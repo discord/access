@@ -1,0 +1,6 @@
+.github
+.vscode
+venv
+**/*.md
+**/*.json
+**/*.html

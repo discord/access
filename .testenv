@@ -1,0 +1,4 @@
+DATABASE_URI=sqlite:///:memory:
+CLIENT_ORIGIN_URL=http://localhost:3000
+REACT_APP_API_SERVER_URL=http://localhost:6060
+FLASK_ENV=test

@@ -1,0 +1,49 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches:
+     - main
+
+jobs:
+  docker-release:
+    name: Docker release to Google Artifact Registry
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: "read"
+      id-token: "write"
+
+    steps:
+      - id: checkout
+        name: Checkout
+        uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate with Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          workload_identity_provider: projects/259610024247/locations/global/workloadIdentityPools/github-actions/providers/github-actions-access
+          service_account: github-actions@discord-access-prd.iam.gserviceaccount.com
+          access_token_lifetime: 300s
+
+      - name: Login to Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: us-east1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - id: docker-push-tagged
+        name: Tag Docker image and push to Google Artifact Registry
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: |
+            us-east1-docker.pkg.dev/discord-access-prd/access/access:latest
+          build-args: |
+            SENTRY_RELEASE=${{ github.sha }}
+            PUSH_SENTRY_RELEASE=true
+          secrets: |
+            "SENTRY_CLI_RC=${{ secrets.SENTRY_CLI_RC }}"

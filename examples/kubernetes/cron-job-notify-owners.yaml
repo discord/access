@@ -1,0 +1,39 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app: access
+    owner: security
+  name: access-cronjob-notify-owners
+  namespace: access
+spec:
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          containers:
+            - command:
+                - flask
+                - notify
+                - --owner
+              env: # See "Production Setup" in the README for more details on configuring these environment variables
+                - name: FLASK_ENV
+                  value: production
+                - name: OKTA_DOMAIN
+                  value: mydomain.okta.com # Replace with your Okta domain
+                - name: DATABASE_URI
+                  value: postgresql+pg8000:// # Replace with your database URI
+                - name: OKTA_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      key: OKTA_API_TOKEN
+                      name: access-secrets
+              image: access # Replace with reference to a Docker image build of access in your container registry
+              name: access-cronjob-notify-owners
+          restartPolicy: Never
+          serviceAccountName: access
+      ttlSecondsAfterFinished: 1800
+  schedule: 0 18 * * 1

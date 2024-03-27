@@ -1,0 +1,20 @@
+{
+  "printWidth": 120,
+  "bracketSpacing": false,
+  "singleQuote": true,
+  "bracketSameLine": true,
+  "overrides": [
+    {
+      "files": ["*.css", "*.styl"],
+      "options": {
+        "parser": "css"
+      }
+    },
+    {
+      "files": ["*.ts", "*.tsx"],
+      "options": {
+        "parser": "typescript"
+      }
+    }
+  ]
+}

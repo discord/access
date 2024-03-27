@@ -1,0 +1,39 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app: access
+    owner: security
+  name: access-cronjob-syncer
+  namespace: access
+spec:
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - command:
+                - flask
+                - sync
+              # Enable this flag when you want Access to be the source-of-truth for group memberships overwriting Okta Admin membership changes
+              # - --sync-group-memberships-authoritatively
+              env: # See "Production Setup" in the README for more details on configuring these environment variables
+                - name: FLASK_ENV
+                  value: production
+                - name: OKTA_DOMAIN
+                  value: mydomain.okta.com # Replace with your Okta domain
+                - name: DATABASE_URI
+                  value: postgresql+pg8000:// # Replace with your database URI
+                - name: OKTA_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      key: OKTA_API_TOKEN
+                      name: access-secrets
+              image: access # Replace with reference to a Docker image build of access in your container registry
+              name: access-cronjob-syncer
+          restartPolicy: Never
+          serviceAccountName: access
+      ttlSecondsAfterFinished: 1800
+  schedule: 0/15 * * * *
