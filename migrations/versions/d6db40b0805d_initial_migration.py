@@ -76,10 +76,15 @@ def upgrade():
         sa.Column('employee_number', sa.Unicode(length=50), nullable=True),
         sa.Column('manager_id', sa.Unicode(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("email", name=op.f('idx_email'), postgresql_where=sa.text("deleted_at IS NULL")),
-        sa.UniqueConstraint("email", "deleted_at", name=op.f('idx_email_deleted_at'), postgresql_where=sa.text("deleted_at IS NOT NULL")),
         sa.ForeignKeyConstraint(['manager_id'], ['okta_user.id'], name=op.f('fk_okta_user_manager_id_okta_user'))
     )
+    with op.batch_alter_table('okta_user', schema=None) as batch_op:
+        batch_op.create_index('idx_email', ['email'], unique=True,
+            postgresql_where=sa.text('deleted_at IS NULL')
+        )
+        batch_op.create_index('idx_email_deleted_at', ['email', 'deleted_at'], unique=True,
+            postgresql_where=sa.text('deleted_at IS NOT NULL')
+        )
     op.create_table(
         "app_group",
         sa.Column("id", sa.Unicode(), nullable=False),
