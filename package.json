@@ -1,0 +1,64 @@
+{
+  "name": "access",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@mui/base": "^5.0.0-beta.28",
+    "@mui/icons-material": "latest",
+    "@mui/lab": "latest",
+    "@mui/material": "latest",
+    "@mui/styled-engine-sc": "latest",
+    "@mui/x-data-grid": "^6.18.4",
+    "@mui/x-date-pickers": "latest",
+    "@sentry/react": "latest",
+    "@tanstack/react-query": "latest",
+    "@testing-library/jest-dom": "latest",
+    "@testing-library/react": "latest",
+    "@testing-library/user-event": "latest",
+    "dayjs": "latest",
+    "env-cmd": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-hook-form": "latest",
+    "react-hook-form-mui": "latest",
+    "react-router-dom": "latest",
+    "styled-components": "latest"
+  },
+  "scripts": {
+    "tsc": "./node_modules/.bin/tsc",
+    "start": "craco start",
+    "build": "env-cmd -f env.production craco build",
+    "test": "craco test",
+    "eject": "react-scripts eject",
+    "prepare": "husky install"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@craco/craco": "latest",
+    "@sentry/cli": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/styled-components": "latest",
+    "husky": "^8.0.3",
+    "lint-staged": "^14.0.1",
+    "prettier": "^3.1.1",
+    "react-app-alias": "^2.2.2",
+    "react-scripts": "latest",
+    "typescript": "latest"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx}": "prettier --write"
+  }
+}

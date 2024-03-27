@@ -1,0 +1,2351 @@
+{
+  "definitions": {
+    "AccessRequest": {
+      "properties": {
+        "active_requested_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "approval_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "approved_membership": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUserGroupMember"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string"
+        },
+        "request_ownership": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "request_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "request_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "requested_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "resolution_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED"
+          ],
+          "maxLength": 8,
+          "readOnly": true
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "AccessRequestPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/AccessRequest"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "App": {
+      "properties": {
+        "active_app_groups": {
+          "items": {
+            "$ref": "#/definitions/AppGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_app_tags": {
+          "items": {
+            "$ref": "#/definitions/AppTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_owner_app_groups": {
+          "items": {
+            "$ref": "#/definitions/AppGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_non_owner_app_groups": {
+          "items": {
+            "$ref": "#/definitions/AppGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_app_tags": {
+          "items": {
+            "$ref": "#/definitions/AppTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "app_groups": {
+          "items": {
+            "$ref": "#/definitions/AppGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "deleted_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string"
+        },
+        "initial_additional_app_groups": {
+          "items": {
+            "$ref": "#/definitions/InitialAppGroup"
+          },
+          "type": "array"
+        },
+        "initial_owner_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "is_managed": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "name": {
+          "maxLength": 255,
+          "type": "string"
+        },
+        "tags_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "AppGroup": {
+      "properties": {
+        "app": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/App"
+            }
+          ],
+          "readOnly": true
+        },
+        "app_id": {
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string"
+        },
+        "is_owner": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "type": {
+          "maxLength": 50,
+          "type": "string"
+        },
+        "id": {
+          "readOnly": true,
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "tags_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "app_id",
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "AppPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/App"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "AppTagMap": {
+      "properties": {
+        "active_app": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/App"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_tag": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Tag"
+            }
+          ],
+          "readOnly": true
+        },
+        "app": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/App"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "tag": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Tag"
+            }
+          ],
+          "readOnly": true
+        }
+      },
+      "type": "object"
+    },
+    "CreateAccessRequest": {
+      "properties": {
+        "ending_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "group_id": {
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string"
+        },
+        "group_owner": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "group_id"
+      ],
+      "type": "object"
+    },
+    "DeleteMessage": {
+      "properties": {
+        "deleted": {
+          "readOnly": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GroupMember": {
+      "properties": {
+        "members": {
+          "items": {
+            "readOnly": true
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "members_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "members_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "owners": {
+          "items": {
+            "readOnly": true
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "owners_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "owners_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "users_added_ending_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "members_to_add",
+        "members_to_remove",
+        "owners_to_add",
+        "owners_to_remove"
+      ],
+      "type": "object"
+    },
+    "GroupPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/PolymorphicGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "OktaGroup": {
+      "properties": {
+        "active_group_tags": {
+          "items": {
+            "$ref": "#/definitions/OktaGroupTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_non_role_user_memberships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_non_role_user_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_role_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_role_member_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_role_owner_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_user_memberships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_user_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_user_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_group_tags": {
+          "items": {
+            "$ref": "#/definitions/OktaGroupTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_role_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_user_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "type": {
+          "maxLength": 50,
+          "type": "string"
+        },
+        "id": {
+          "readOnly": true,
+          "type": "string"
+        },
+        "is_managed": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "externally_managed_data": {
+          "readOnly": true,
+          "type": "object"
+        },
+        "name": {
+          "maxLength": 255,
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "tags_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "deleted_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "InitialAppGroup": {
+      "properties": {
+        "description": {
+          "default": "",
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "OktaGroupTagMap": {
+      "properties": {
+        "active_app_tag_mapping": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AppTagMap"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_tag": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Tag"
+            }
+          ],
+          "readOnly": true
+        },
+        "app_tag_mapping": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AppTagMap"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "tag": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Tag"
+            }
+          ],
+          "readOnly": true
+        }
+      },
+      "type": "object"
+    },
+    "OktaUser": {
+      "properties": {
+        "active_group_memberships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_group_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_group_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_group_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "deleted_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "display_name": {
+          "maxLength": 100,
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "email": {
+          "maxLength": 100,
+          "readOnly": true,
+          "type": "string"
+        },
+        "first_name": {
+          "maxLength": 50,
+          "readOnly": true,
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 50,
+          "readOnly": true,
+          "type": "string"
+        },
+        "last_name": {
+          "maxLength": 50,
+          "readOnly": true,
+          "type": "string"
+        },
+        "profile": {
+          "readOnly": true,
+          "type": "object"
+        },
+        "manager": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        }
+      },
+      "required": [
+        "email",
+        "first_name",
+        "id",
+        "last_name"
+      ],
+      "type": "object"
+    },
+    "OktaUserGroupMember": {
+      "properties": {
+        "role_group_mapping": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleGroupMap"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_role_group_mapping": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleGroupMap"
+            }
+          ],
+          "readOnly": true
+        },
+        "user": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_user": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "access_request": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/AccessRequest"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_actor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ended_actor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "ended_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "created_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "is_owner": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "id": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "PolymorphicGroup": {
+      "properties": {},
+      "type": "object"
+    },
+    "ResolveAccessRequest": {
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        },
+        "ending_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved"
+      ],
+      "type": "object"
+    },
+    "GroupRoleAuditPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RoleGroup": {
+      "properties": {
+        "active_role_associated_group_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_role_associated_group_member_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_role_associated_group_owner_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_role_associated_group_mappings": {
+          "items": {
+            "$ref": "#/definitions/RoleGroupMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "type": {
+          "maxLength": 50,
+          "type": "string"
+        },
+        "id": {
+          "readOnly": true,
+          "type": "string"
+        },
+        "is_managed": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "name": {
+          "maxLength": 255,
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "tags_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tags_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "RoleGroupMap": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "ended_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "is_owner": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "active_role_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_group_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "role_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "all_group_memberships_and_ownerships": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "created_actor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "ended_actor": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "id": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RoleMember": {
+      "properties": {
+        "groups_added_ending_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "groups_in_role": {
+          "items": {
+            "readOnly": true
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "groups_owned_by_role": {
+          "items": {
+            "readOnly": true
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "groups_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "groups_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "owner_groups_to_add": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "owner_groups_to_remove": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "groups_to_add",
+        "groups_to_remove",
+        "owner_groups_to_add",
+        "owner_groups_to_remove"
+      ],
+      "type": "object"
+    },
+    "RolePagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/RoleGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "Tag": {
+      "properties": {
+        "active_app_tags": {
+          "items": {
+            "$ref": "#/definitions/AppTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "active_group_tags": {
+          "items": {
+            "$ref": "#/definitions/OktaGroupTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_app_tags": {
+          "items": {
+            "$ref": "#/definitions/AppTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "all_group_tags": {
+          "items": {
+            "$ref": "#/definitions/OktaGroupTagMap"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "constraints": {
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "deleted_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "id": {
+          "maxLength": 50,
+          "readOnly": true,
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "TagPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/Tag"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "UserGroupAuditPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/OktaUserGroupMember"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "UserPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/OktaUser"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "info": {
+    "title": "access",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/apps": {
+      "get": {
+        "operationId": "getApps",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/AppPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createApp",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/App"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/App"
+            }
+          }
+        }
+      }
+    },
+    "/api/apps/{app_id}": {
+      "delete": {
+        "operationId": "deleteAppById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/DeleteMessage"
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getAppById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/App"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putAppById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/App"
+            }
+          },
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/App"
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/groups": {
+      "get": {
+        "operationId": "getGroupRoleAudits",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "app_owner",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "managed",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "default": "created_at",
+            "enum": [
+              "moniker",
+              "created_at",
+              "ended_at"
+            ],
+            "in": "query",
+            "name": "order_by",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "default": true,
+            "in": "query",
+            "name": "order_desc",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "role_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupRoleAuditPagination"
+            }
+          }
+        }
+      }
+    },
+    "/api/audit/users": {
+      "get": {
+        "operationId": "getUserGroupAudits",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "owner",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "managed",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "default": "created_at",
+            "enum": [
+              "moniker",
+              "created_at",
+              "ended_at"
+            ],
+            "in": "query",
+            "name": "order_by",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "default": true,
+            "in": "query",
+            "name": "order_desc",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "direct",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "deleted",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "type": "number"
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "type": "number"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/UserGroupAuditPagination"
+            }
+          }
+        }
+      }
+    },
+    "/api/groups": {
+      "get": {
+        "operationId": "getGroups",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "managed",
+            "required": false,
+            "type": "boolean"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGroup",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{group_id}": {
+      "delete": {
+        "operationId": "deleteGroupById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/DeleteMessage"
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getGroupById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putGroupById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{group_id}/members": {
+      "get": {
+        "operationId": "getGroupMembersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupMember"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putGroupMembersById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/GroupMember"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupMember"
+            }
+          }
+        }
+      }
+    },
+    "/api/requests": {
+      "get": {
+        "operationId": "getRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requester_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requested_group_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "assignee_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "resolver_user_id",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/AccessRequestPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRequest",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/CreateAccessRequest"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/AccessRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/requests/{access_request_id}": {
+      "get": {
+        "operationId": "getRequestById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "access_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/AccessRequest"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "resolveRequestById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/ResolveAccessRequest"
+            }
+          },
+          {
+            "in": "path",
+            "name": "access_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/AccessRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/roles": {
+      "get": {
+        "operationId": "getRoles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RolePagination"
+            }
+          }
+        }
+      }
+    },
+    "/api/roles/{role_id}": {
+      "get": {
+        "operationId": "getRoleById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleGroup"
+            }
+          }
+        }
+      }
+    },
+    "/api/roles/{role_id}/members": {
+      "get": {
+        "operationId": "getRoleMembersById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleMember"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putRoleMembersById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/RoleMember"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleMember"
+            }
+          }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "operationId": "getTags",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/TagPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createTag",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          }
+        }
+      }
+    },
+    "/api/tags/{tag_id}": {
+      "delete": {
+        "operationId": "deleteTagById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/DeleteMessage"
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "getTagById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putTagById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tag_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "getUsers",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/UserPagination"
+            }
+          }
+        }
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "operationId": "getUserById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/OktaUser"
+            }
+          }
+        }
+      }
+    }
+  },
+  "swagger": "2.0"
+}

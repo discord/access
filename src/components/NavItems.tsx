@@ -1,0 +1,137 @@
+import * as React from 'react';
+import {Link as RouterLink} from 'react-router-dom';
+import List from '@mui/material/List';
+import ListItem, {ListItemProps} from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import Collapse from '@mui/material/Collapse';
+import ListItemIcon from '@mui/material/ListItemIcon';
+import ListItemText from '@mui/material/ListItemText';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import UserIcon from '@mui/icons-material/Person';
+import GroupIcon from '@mui/icons-material/People';
+import RoleIcon from '@mui/icons-material/Diversity3';
+import AppIcon from '@mui/icons-material/AppShortcut';
+import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestFromMe from '@mui/icons-material/AssignmentInd';
+import AccessRequestToMe from '@mui/icons-material/AssignmentReturn';
+import AccessRequestAll from '@mui/icons-material/Assignment';
+import ExpiringGroupsIcon from '@mui/icons-material/RunningWithErrors';
+import ExpiringRolesIcon from '@mui/icons-material/HeartBroken';
+import ExpiringMyAccess from '@mui/icons-material/AccountBox';
+import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
+import ExpiringAll from '@mui/icons-material/SwitchAccount';
+
+interface ListItemLinkProps extends ListItemProps {
+  to: string;
+  displayText: string;
+  displayIcon?: JSX.Element;
+  open?: boolean;
+}
+
+function ListItemLink(props: ListItemLinkProps) {
+  const {to, displayText, displayIcon, open, ...other} = props;
+
+  let icon = null;
+  if (open != null) {
+    icon = open ? <ExpandLess /> : <ExpandMore />;
+  }
+
+  other.sx = Object.assign({textDecoration: 'none', color: 'inherit', p: 0}, other.sx ?? {});
+
+  return (
+    <ListItem component={RouterLink as any} to={to} {...other}>
+      <ListItemButton>
+        <ListItemIcon>{displayIcon}</ListItemIcon>
+        <ListItemText primary={displayText} />
+        {icon}
+      </ListItemButton>
+    </ListItem>
+  );
+}
+interface NavItemsProps {
+  open: boolean;
+}
+
+// Integration MUI Link with React Router Link
+// https://mui.com/material-ui/guides/routing/#link
+export default function NavItems(props: NavItemsProps) {
+  const [openRequests, setOpenRequests] = React.useState(false);
+  const [openExpiringGroups, setOpenExpiringGroups] = React.useState(false);
+  const [openExpiringRoles, setOpenExpiringRoles] = React.useState(false);
+
+  return (
+    <List>
+      <ListItemLink to="/users" displayText="Users" displayIcon={<UserIcon />} />
+      <ListItemLink to="/groups" displayText="Groups" displayIcon={<GroupIcon />} />
+      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} />
+      <ListItemLink to="/apps" displayText="Apps" displayIcon={<AppIcon />} />
+      <ListItemLink
+        to="/requests"
+        displayText="Access Requests"
+        displayIcon={<AccessRequestIcon />}
+        open={openRequests}
+        onClick={() => setOpenRequests(!openRequests)}
+      />
+      <Collapse component="li" in={props.open && openRequests} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          <ListItemLink
+            to="/requests?requester_user_id=@me"
+            displayText="From Me"
+            displayIcon={<AccessRequestFromMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink
+            to="/requests?assignee_user_id=@me"
+            displayText="Assigned to Me"
+            displayIcon={<AccessRequestToMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/requests" displayText="All" displayIcon={<AccessRequestAll />} sx={{pl: 4}} />
+        </List>
+      </Collapse>
+      <ListItemLink
+        to="/expiring-groups"
+        displayText="Expiring Groups"
+        displayIcon={<ExpiringGroupsIcon />}
+        open={openExpiringGroups}
+        onClick={() => setOpenExpiringGroups(!openExpiringGroups)}
+      />
+      <Collapse component="li" in={props.open && openExpiringGroups} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          <ListItemLink
+            to="/expiring-groups?user_id=@me"
+            displayText="My Access"
+            displayIcon={<ExpiringMyAccess />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink
+            to="/expiring-groups?owner_id=@me"
+            displayText="Owned by Me"
+            displayIcon={<ExpiringOwnedByMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+        </List>
+      </Collapse>
+      <ListItemLink
+        to="/expiring-roles"
+        displayText="Expiring Roles"
+        displayIcon={<ExpiringRolesIcon />}
+        open={openExpiringRoles}
+        onClick={() => setOpenExpiringRoles(!openExpiringRoles)}
+      />
+      <Collapse component="li" in={props.open && openExpiringRoles} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          <ListItemLink
+            to="/expiring-roles?owner_id=@me"
+            displayText="Owned by Me"
+            displayIcon={<ExpiringOwnedByMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+        </List>
+      </Collapse>
+    </List>
+  );
+}

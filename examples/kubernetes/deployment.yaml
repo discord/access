@@ -1,0 +1,59 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: access
+  name: access
+  namespace: access
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: access
+  template:
+    metadata:
+      labels:
+        app: access
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - access
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - args:
+            - gunicorn
+            - -w
+            - '4'
+            - -t
+            - '600'
+            - -b
+            - :3000
+            - --access-logfile
+            - '-'
+            - api.wsgi:app
+          env: # See "Production Setup" in the README for more details on configuring these environment variables
+            - name: FLASK_ENV
+              value: production
+            - name: OKTA_DOMAIN
+              value: mydomain.okta.com # Replace with your Okta domain
+            - name: DATABASE_URI
+              value: postgresql+pg8000:// # Replace with your database URI
+            - name: USER_DISPLAY_CUSTOM_ATTRIBUTES
+              value: Title,Department,Work Location # Replace with the Custom Okta User Attributes you want to display
+            - name: OKTA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  key: OKTA_API_TOKEN
+                  name: access-secrets
+          image: access # Replace with reference to a Docker image build of access in your container registry
+          name: access
+          ports:
+            - containerPort: 3000
+      serviceAccountName: access

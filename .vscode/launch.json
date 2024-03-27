@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Access: Run Server",
+      "type": "python",
+      "request": "launch",
+      "module": "flask",
+      "env": {
+        "FLASK_APP": "api/app.py",
+        "FLASK_DEBUG": "1"
+      },
+      "args": ["run"],
+      "jinja": true,
+      "justMyCode": true
+    }
+  ]
+}
