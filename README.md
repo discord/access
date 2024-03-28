@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/discord/access/main/public/logo.png" width="350"></p>
+
 # ACCESS
 
 Meet Access, a centralized portal for employees to transparently discover, request, and manage their access for all internal systems needed to do their jobs.
