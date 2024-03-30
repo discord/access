@@ -124,7 +124,8 @@ def create_app(testing: Optional[bool]=False) -> Flask:
         force_https=False,
     )
 
-    okta.initialize(app.config["OKTA_DOMAIN"], app.config["OKTA_API_TOKEN"])
+    okta.initialize(app.config["OKTA_DOMAIN"], app.config["OKTA_API_TOKEN"],
+                    use_group_owners_api=app.config["OKTA_USE_GROUP_OWNERS_API"])
 
     @app.before_request
     def authenticate_request() -> Optional[ResponseReturnValue]:
@@ -166,7 +167,7 @@ def create_app(testing: Optional[bool]=False) -> Flask:
                 cloudsql_connection_name=app.config["CLOUDSQL_CONNECTION_NAME"],
                 db_user=app.config["DATABASE_USER"],
                 db_name=app.config["DATABASE_NAME"],
-                uses_public_ip=app.config["DATABASE_USES_PUBLIC_IP"] == "True",
+                uses_public_ip=app.config["DATABASE_USES_PUBLIC_IP"],
             )
         }
 

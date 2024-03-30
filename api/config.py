@@ -8,6 +8,9 @@ CLIENT_ORIGIN_URL = os.getenv("CLIENT_ORIGIN_URL")
 
 OKTA_DOMAIN = os.getenv("OKTA_DOMAIN")
 OKTA_API_TOKEN = os.getenv("OKTA_API_TOKEN")
+# The Group Owners API is only available to Okta plans with IGA enabled
+# Disable by default, but allow opt-in to sync group owners to Okta if desired
+OKTA_USE_GROUP_OWNERS_API = os.getenv("OKTA_USE_GROUP_OWNERS_API", "False") == "True"
 CURRENT_OKTA_USER_EMAIL = os.getenv("CURRENT_OKTA_USER_EMAIL", "wumpus@discord.com")
 
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI")
@@ -79,7 +82,7 @@ CLOUDSQL_CONNECTION_NAME = os.getenv("CLOUDSQL_CONNECTION_NAME", "")
 DATABASE_USER = os.getenv("DATABASE_USER", "root")
 DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD", "")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "access")
-DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "False")
+DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "False") == "True"
 
 FLASK_SENTRY_DSN = os.getenv("FLASK_SENTRY_DSN")
 REACT_SENTRY_DSN = os.getenv("REACT_SENTRY_DSN")
