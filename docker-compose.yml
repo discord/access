@@ -1,0 +1,10 @@
+services:
+  discord-access:
+    build: .
+    container_name: discord-access
+    env_file:
+      - path: .env-production
+        required: true
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

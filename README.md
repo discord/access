@@ -191,19 +191,15 @@ CLOUDFLARE_APPLICATION_AUDIENCE=<CLOUFLARE_ACCESS_AUDIENCE_TAG>
 
 ### Docker Build and Run
 
-Build the Docker image
+Build the Docker image and run it using Docker Compose:
 
 ```
-docker build -t access .
+docker-compose up --build
 ```
 
-Run it using your `.env-production` variables
+The command above will build and run the container and will be using the environment variables provided in `.env-production`
 
-```
-docker run --rm --env-file .env-production -p 3000:3000 access
-```
-
-Go to [http://localhost:3000/](http://localhost:3000/) to view it
+Go to [http://localhost:3000/](http://localhost:3000/) to view the application
 
 ### Kubernetes Deployment and CronJobs
 
