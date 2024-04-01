@@ -13,7 +13,7 @@ SQLAlchemy==2.0.29
 Flask-Migrate==4.0.7
 sqlalchemy-json==0.7.0
 cloud-sql-python-connector==1.8.0
-pg8000==1.30.5
+pg8000==1.31.0
 
 # API and Models
 Flask-RESTful==0.3.10
@@ -32,7 +32,7 @@ flask-oidc==2.1.1
 requests==2.31.0
 
 # Error Reporting
-sentry-sdk[flask]==1.43.0
+sentry-sdk[flask]==1.44.0
 
 # Okta
 okta==2.9.5
