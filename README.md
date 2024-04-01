@@ -103,7 +103,7 @@ Invoke the tests using `tox -e test` and `tox -e lint` to run the linter
 
 ## Production Setup
 
-Create a `.env-production` file in the repo root with the following variables
+Create a `.env.production` file in the repo root with the following variables
 
 ```
 OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
@@ -117,7 +117,7 @@ REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 
 ### Google Cloud CloudSQL Configuration
 
-If you want to use the CloudSQL Python Connector, set the following variables in your `.env-production` file
+If you want to use the CloudSQL Python Connector, set the following variables in your `.env.production` file
 
 ```
 CLOUDSQL_CONNECTION_NAME=<YOUR_CLOUDSQL_CONNECTION_NAME> # For example, "project:region:instance-name"
@@ -165,7 +165,7 @@ Create a `client_secrets.json` file containing your OIDC client secrets, that lo
 }
 ```
 
-Then set the following variables in your `.env-production` file
+Then set the following variables in your `.env.production` file
 ```
 # Generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`
 # this is used to encrypt Flask cookies
@@ -178,7 +178,7 @@ OIDC_CLIENT_SECRETS=./client_secrets.json or '{"secrets":..'
 
 To use Cloudflare Access authentication, set up a
 [Self-Hosted Cloudflare Access Application](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/)
-using a Cloudflare Tunnel. Then set the following variables in your `.env-production` file
+using a Cloudflare Tunnel. Then set the following variables in your `.env.production` file
 
 ```
 # Your Cloudflare "Team domain" under Zero Trust -> Settings -> Custom Pages in the Cloudflare dashboard
@@ -197,9 +197,38 @@ Build the Docker image and run it using Docker Compose:
 docker-compose up --build
 ```
 
-The command above will build and run the container and will be using the environment variables provided in `.env-production`
+The command above will build and run the container
 
 Go to [http://localhost:3000/](http://localhost:3000/) to view the application
+
+### Docker configuration
+
+Before launching the container with Docker, make sure to configure `.env.psql` and `.env.production`:
+
+#### Configuration for `.env.psql`
+
+The `.env.psql` file is where you configure the PostgreSQL server credentials, which is also Dockerized.
+
+- `POSTGRES_USER`: Specifies the username for the PostgreSQL server.
+- `POSTGRES_PASSWORD`: Specifies the password for the PostgreSQL server.
+
+#### Configuration for `.env.production`
+
+The `.env.production` file is where you configure the application.
+
+- `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
+- `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
+- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql://<host>:<user>@<password>:5432/<db_name>`
+- `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
+- `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend.
+- `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/).
+- `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/).
+- `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
+- `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
+- `SECRET_KEY`: Specifies the secret key used to encrypt flask cookies. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
+- `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+
+**Check out `.env.psql.example` or `.env.production.example` for example configuration file structure**
 
 ### Kubernetes Deployment and CronJobs
 

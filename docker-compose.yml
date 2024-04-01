@@ -3,8 +3,21 @@ services:
     build: .
     container_name: discord-access
     env_file:
-      - path: .env-production
-        required: true
+      - .env.production
     ports:
       - "3000:3000"
     restart: unless-stopped
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    env_file:
+      - .env.psql
+    volumes: 
+      - pgdata:/var/lib/postgresql/data  # https://stackoverflow.com/a/45606440
+    restart: unless-stopped
+
+volumes:
+  pgdata: # https://stackoverflow.com/a/45606440
