@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class OktaService:
     """For interacting with the Okta API"""
 
-    def initialize(self, okta_domain: Optional[str], okta_api_token: Optional[str]) -> None:
+    def initialize(self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False) -> None:
         # Ignore an okta domain and api token when testing
         if okta_domain is None or okta_api_token is None:
             return
@@ -36,6 +36,7 @@ class OktaService:
                 "token": okta_api_token,
             }
         )
+        self.use_group_owners_api = use_group_owners_api
 
     @staticmethod
     async def _retry(func: Callable[[Any], Any], *args: Any, **kwargs: Any) -> Any:
@@ -50,9 +51,9 @@ class OktaService:
             else:
                 raise Exception("Unexpected result structure from Okta client.")
 
-            if (attempt == REQUEST_MAX_RETRIES or 
-                error is None or 
-                response is None or 
+            if (attempt == REQUEST_MAX_RETRIES or
+                error is None or
+                response is None or
                 (response is not None and response.get_status() not in RETRIABLE_STATUS_CODES)):
                 return result
 
@@ -247,6 +248,9 @@ class OktaService:
         asyncio.run(self.async_add_owner_to_group(groupId, userId))
 
     async def async_add_owner_to_group(self, groupId: str, userId: str) -> None:
+        if not self.use_group_owners_api:
+            return
+
         request_executor = self.okta_client.get_request_executor()
 
         request, error = await request_executor.create_request(
@@ -275,6 +279,9 @@ class OktaService:
         asyncio.run(self.async_remove_owner_from_group(groupId, userId))
 
     async def async_remove_owner_from_group(self, groupId: str, userId: str) -> None:
+        if not self.use_group_owners_api:
+            return
+
         request_executor = self.okta_client.get_request_executor()
 
         request, error = await request_executor.create_request(
@@ -299,6 +306,9 @@ class OktaService:
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/listGroupOwners
     def list_owners_for_group(self, groupId: str) -> list[User]:
+        if not self.use_group_owners_api:
+            return []
+
         async def _list_owners_for_group(groupId: str) -> list[User]:
             request_executor = self.okta_client.get_request_executor()
 

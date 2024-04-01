@@ -139,6 +139,7 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
 @with_appcontext
 def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
     from sentry_sdk import start_transaction
+    from flask import current_app
 
     from api.syncer import (
         expire_access_requests,
@@ -152,7 +153,8 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
         sync_users()
         sync_groups(act_as_authority=sync_groups_authoritatively)
         sync_group_memberships(act_as_authority=sync_group_memberships_authoritatively)
-        sync_group_ownerships(act_as_authority=sync_group_memberships_authoritatively)
+        if current_app.config["OKTA_USE_GROUP_OWNERS_API"]:
+            sync_group_ownerships(act_as_authority=sync_group_memberships_authoritatively)
         expire_access_requests()
 
 
