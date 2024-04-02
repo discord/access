@@ -7,11 +7,13 @@ FROM node:21-alpine as build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 ENV PATH /app/node_modules/.bin:$PATH
-COPY craco.config.js package.json package-lock.json tsconfig.json tsconfig.paths.json env.production ./
+COPY craco.config.js package.json package-lock.json tsconfig.json tsconfig.paths.json .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
 RUN npm install
+RUN touch .env.production
 ENV REACT_APP_SENTRY_RELEASE $SENTRY_RELEASE
+ENV REACT_APP_API_SERVER_URL ""
 RUN npm run build
 
 # Optional build step #2: upload the source maps by pushing a release to sentry
