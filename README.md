@@ -117,7 +117,7 @@ REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 
 ### Google Cloud CloudSQL Configuration
 
-If you want to use the CloudSQL Python Connector, set the following variables in your `.env-production` file
+If you want to use the CloudSQL Python Connector, set the following variables in your `.env.production` file
 
 ```
 CLOUDSQL_CONNECTION_NAME=<YOUR_CLOUDSQL_CONNECTION_NAME> # For example, "project:region:instance-name"
@@ -165,7 +165,7 @@ Create a `client_secrets.json` file containing your OIDC client secrets, that lo
 }
 ```
 
-Then set the following variables in your `.env-production` file
+Then set the following variables in your `.env.production` file
 ```
 # Generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`
 # this is used to encrypt Flask cookies
@@ -178,7 +178,7 @@ OIDC_CLIENT_SECRETS=./client_secrets.json or '{"secrets":..'
 
 To use Cloudflare Access authentication, set up a
 [Self-Hosted Cloudflare Access Application](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/)
-using a Cloudflare Tunnel. Then set the following variables in your `.env-production` file
+using a Cloudflare Tunnel. Then set the following variables in your `.env.production` file
 
 ```
 # Your Cloudflare "Team domain" under Zero Trust -> Settings -> Custom Pages in the Cloudflare dashboard
@@ -191,19 +191,56 @@ CLOUDFLARE_APPLICATION_AUDIENCE=<CLOUFLARE_ACCESS_AUDIENCE_TAG>
 
 ### Docker Build and Run
 
-Build the Docker image
+Build the Docker image:
 
 ```
-docker build -t access .
+docker build -t access . 
 ```
 
-Run it using your `.env-production` variables
+Or build and run it using Docker Compose:
 
 ```
-docker run --rm --env-file .env-production -p 3000:3000 access
+docker compose up --build
 ```
 
-Go to [http://localhost:3000/](http://localhost:3000/) to view it
+The command above will build and run the container
+
+Go to [http://localhost:3000/](http://localhost:3000/) to view the application
+
+### Docker configuration
+
+Before launching the container with Docker, make sure to configure `.env.psql` and `.env.production`:
+
+#### Configuration for `.env.psql`
+
+The `.env.psql` file is where you configure the PostgreSQL server credentials, which is also Dockerized.
+
+- `POSTGRES_USER`: Specifies the username for the PostgreSQL server.
+- `POSTGRES_PASSWORD`: Specifies the password for the PostgreSQL server.
+
+#### Configuration for `.env.production`
+
+The `.env.production` file is where you configure the application.
+
+- `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
+- `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
+- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql://<host>:<user>@<password>:5432/<db_name>`
+- `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
+- `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend.
+- `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
+- `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
+- `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
+- `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
+- `SECRET_KEY`: Specifies the secret key used to encrypt flask cookies. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
+- `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+
+**Check out `.env.psql.example` or `.env.production.example` for example configuration file structure**
+
+**NOTE:** 
+
+If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE`. `SECRET_KEY` and `OIDC_CLIENT_SECRETS` do not need to be set and can be removed from your env file.
+
+Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file.
 
 ### Kubernetes Deployment and CronJobs
 
