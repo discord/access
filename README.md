@@ -46,10 +46,10 @@ CLIENT_ORIGIN_URL=http://localhost:3000
 REACT_APP_API_SERVER_URL=http://localhost:6060
 ```
 
-Then run the following commands to set up your python virtual environment:
+Then run the following commands to set up your python virtual environment. Access can be run with Python 3.10 and above:
 
 ```
-python3.11 -m venv venv
+python3 -m venv venv
 . venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -103,7 +103,7 @@ Invoke the tests using `tox -e test` and `tox -e lint` to run the linter
 
 ## Production Setup
 
-Create a `.env.production` file in the repo root with the following variables
+Create a `.env-production` file in the repo root with the following variables. Access supports running against PostgreSQL 14 and above.
 
 ```
 OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
