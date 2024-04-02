@@ -103,14 +103,14 @@ Invoke the tests using `tox -e test` and `tox -e lint` to run the linter
 
 ## Production Setup
 
-Create a `.env-production` file in the repo root with the following variables. Access supports running against PostgreSQL 14 and above.
+Create a `.env.production` file in the repo root with the following variables. Access supports running against PostgreSQL 14 and above.
 
 ```
 OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
 OKTA_API_TOKEN=<YOUR_OKTA_API_TOKEN>
 DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://wumpus:hunter2@localhost:5432/access"
 CLIENT_ORIGIN_URL=http://localhost:3000
-REACT_APP_API_SERVER_URL=http://localhost:3000
+REACT_APP_API_SERVER_URL=""
 FLASK_SENTRY_DSN=https://<key>@sentry.io/<project>
 REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 ```
@@ -194,7 +194,7 @@ CLOUDFLARE_APPLICATION_AUDIENCE=<CLOUFLARE_ACCESS_AUDIENCE_TAG>
 Build the Docker image:
 
 ```
-docker build -t access . 
+docker build -t access .
 ```
 
 Or build and run it using Docker Compose:
@@ -226,7 +226,7 @@ The `.env.production` file is where you configure the application.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
 - `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql://<host>:<user>@<password>:5432/<db_name>`
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
-- `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend.
+- `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
@@ -236,11 +236,28 @@ The `.env.production` file is where you configure the application.
 
 **Check out `.env.psql.example` or `.env.production.example` for example configuration file structure**
 
-**NOTE:** 
+**NOTE:**
 
 If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE`. `SECRET_KEY` and `OIDC_CLIENT_SECRETS` do not need to be set and can be removed from your env file.
 
 Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file.
+
+#### Database Setup
+
+After `docker-compose up --build`, you can run the following commands to run the initial migrations and seed the initial data from Okta:
+
+```
+docker compose exec discord-access /bin/bash
+```
+
+Then run the following commands inside the container:
+
+```
+flask db upgrade
+flask init <YOUR_OKTA_USER_EMAIL>
+```
+
+Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
 
 ### Kubernetes Deployment and CronJobs
 

@@ -5,7 +5,7 @@ services:
     env_file:
       - .env.production
     ports:
-      - "3000:3000"
+      - '3000:3000'
     restart: unless-stopped
     depends_on:
       - postgres
@@ -15,8 +15,8 @@ services:
     container_name: postgres
     env_file:
       - .env.psql
-    volumes: 
-      - pgdata:/var/lib/postgresql/data  # https://stackoverflow.com/a/45606440
+    volumes:
+      - pgdata:/var/lib/postgresql/data # https://stackoverflow.com/a/45606440
     restart: unless-stopped
 
 volumes:
