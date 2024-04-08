@@ -16,6 +16,8 @@ from api.models import OktaGroup, OktaUser
 
 REQUEST_MAX_RETRIES = 3
 RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
+HTTP_TOO_MANY_REQUESTS = 429
+RATE_LIMIT_RESET_HEADER = 'X-Rate-Limit-Reset'
 RETRY_BACKOFF_FACTOR = 0.5
 
 
@@ -63,8 +65,14 @@ class OktaService:
                 logger.warning(f'Got {response.get_status()} response from Okta resource {response._url}, with error:'
                             f' {error}. Retrying...'
                 )
-
-            await asyncio.sleep(RETRY_BACKOFF_FACTOR * (2**attempt))
+            # if rate limit is hit, then wait until the "X-Rate-Limit-Reset" time, else backoff exponentially
+            if (response.get_status() == HTTP_TOO_MANY_REQUESTS):
+                current_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                rate_limit_reset = float(response.headers[RATE_LIMIT_RESET_HEADER])
+                wait_time = max(rate_limit_reset - current_time, 1)  # Ensure wait_time is at least 1 second
+            else:
+                wait_time = RETRY_BACKOFF_FACTOR * (2 ** attempt)
+            await asyncio.sleep(wait_time)
 
     def get_user(self, userId: str) -> User:
         user, _, error = asyncio.run(OktaService._retry(self.okta_client.get_user, userId))
