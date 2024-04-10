@@ -109,7 +109,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       return out;
     }, new Array<OktaGroup>()) ?? []
   )
-    .filter((group) => ownerCantAddSelf(group.active_group_tags?.map((tagMap) => tagMap.active_tag!), props.owner))
+    .filter((group) =>
+      ownerCantAddSelf(
+        group.active_group_tags?.map((tagMap) => tagMap.active_tag!),
+        props.owner,
+      ),
+    )
     .map((group) => group.id!);
 
   const currUserRoleGroupMember =
