@@ -44,7 +44,7 @@ const guide: Record<string, Record<string, string>> = {
     'Tags and Constraints':
       "Tags can be used to label groups and apps (for their app groups) and, optionally, to apply constraints. These constraints include setting an ownership or membership time limit, requiring a reason for access, and disabling owners from adding themselves as members of a group. To view tags, click the 'Tags' button at the top of the 'Groups' or 'Apps' pages.",
     'Learn more about Access':
-      'Access is open-sourced under the Apache 2.0 license. View the source code at https://github.com/discord/access and check out our blog post that talks about the development process at dis.gd/access.',
+      'Access is open-sourced under the Apache 2.0 license. View the source code at https://github.com/discord/access and check out our blog post that talks about the development process at dis.gd/access-blog.',
   },
   users: {
     'Creating an access request':
@@ -107,6 +107,8 @@ const guide: Record<string, Record<string, string>> = {
       "Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an Access admin to create the tag for you.",
     'I lost access to something! How can I see more information?':
       'Each user has an audit page that can be accessed from their user page by clicking the clock-arrow icon to the right of their name. On this page, you can see your complete ownership and membership history, when each ownership or membership started and ended, who added or removed your access, and the reason you were added to the group if one was provided. You can filter, sort, and search through this information to troubleshoot your lost access.',
+    'I added a role to a group but users in the role were added to the group for less time than I set...':
+      "This could happen for a couple of different reasons. Tags may limit the maximum membership or ownership time for groups. If you are adding the group from the role's page and selected the access time before choosing which group to add, the access time may be lowered to fit the group's constraint. \n\nAccess time when adding a role to a group also depends on for how long users are a member of the role. When adding a role to a group, access time is set as the minimum of each user's remaining role membership time and the time selected for the role's access to the group. ",
   },
 };
 
