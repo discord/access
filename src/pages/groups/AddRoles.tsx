@@ -274,7 +274,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               <DatePickerElement
                 label="Custom End Date"
                 name="customUntil"
-                shouldDisableDate={(date) => date.isSameOrBefore(dayjs(), 'day')}
+                shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
                 maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
                 required
               />
@@ -310,7 +310,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                 filterOptions: (options) =>
                   options.filter((option) =>
                     disallowOwnerAdd && !isAccessAdmin(currentUser)
-                      ? !currentUserRoleMembershipIds.includes(option.id)
+                      ? !currentUserRoleMembershipIds.includes(option.id!)
                       : false || !roles.map((group) => group.id).includes(option.id),
                   ),
                 onInputChange: (event, newInputValue, reason) => {

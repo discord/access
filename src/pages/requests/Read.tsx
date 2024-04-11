@@ -650,7 +650,7 @@ export default function ReadRequest() {
                                   <DatePickerElement
                                     label="Custom End Date"
                                     name="customUntil"
-                                    shouldDisableDate={(date) => date.isSameOrBefore(dayjs(), 'day')}
+                                    shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
                                     maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
                                     required
                                   />

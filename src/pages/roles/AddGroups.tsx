@@ -109,7 +109,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       return out;
     }, new Array<OktaGroup>()) ?? []
   )
-    .filter((group) => ownerCantAddSelf(group.active_group_tags?.map((tagMap) => tagMap.active_tag!), props.owner))
+    .filter((group) =>
+      ownerCantAddSelf(
+        group.active_group_tags?.map((tagMap) => tagMap.active_tag!),
+        props.owner,
+      ),
+    )
     .map((group) => group.id!);
 
   const currUserRoleGroupMember =
@@ -264,7 +269,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
               <DatePickerElement
                 label="Custom End Date"
                 name="customUntil"
-                shouldDisableDate={(date) => date.isSameOrBefore(dayjs(), 'day')}
+                shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
                 maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
                 required
               />
@@ -304,7 +309,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                       option.is_managed == true &&
                       (!groups.map((group) => group.id).includes(option.id) ||
                         (currUserRoleGroupMember && !isAccessAdmin(currentUser)
-                          ? !disallowedGroups.includes(option.id)
+                          ? !disallowedGroups.includes(option.id!)
                           : false)),
                   ),
                 onInputChange: (event, newInputValue, reason) => {
