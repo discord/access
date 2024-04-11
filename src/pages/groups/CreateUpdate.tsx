@@ -230,7 +230,7 @@ function GroupDialog(props: GroupDialogProps) {
                   getOptionLabel: (option) => option.name,
                   isOptionEqualToValue: (option, value) => option.id == value.id,
                   onInputChange: (event, newInputValue) => setAppSearchInput(newInputValue),
-                  onChange: (event, value) => setAppName(value.name),
+                  onChange: (event, value) => setAppName(value!.name),
                 }}
               />
             </FormControl>

@@ -127,7 +127,7 @@ function ButtonField(props: ButtonFieldProps) {
   );
 }
 
-interface DateRangeProps extends DatePickerProps<unknown> {
+interface DateRangeProps extends DatePickerProps<Dayjs> {
   startDate: Dayjs | null;
   setStartDate: (newStartDate: Dayjs | null) => void;
   endDate: Dayjs | null;
@@ -159,7 +159,7 @@ export default function DateRangePicker(props: DateRangeProps) {
             setTmpStartDate(date);
           }
         }}
-        minDate={tmpStartDate && props.datesPicked % 2 != 0 ? tmpStartDate : null}
+        minDate={tmpStartDate && props.datesPicked % 2 != 0 ? tmpStartDate : undefined}
         slots={{
           day: HighlightDay as any,
           field: ButtonField as any,

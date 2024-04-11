@@ -52,7 +52,7 @@ export default function NumberInput(props: NumberInputProps) {
       defaultValue={props.default}
       onChange={(event, val) => {
         event.preventDefault();
-        props.setValue(val);
+        props.setValue(val ?? undefined);
       }}
       endAdornment={<InputAdornment>{props.endAdornment}</InputAdornment>}
     />
