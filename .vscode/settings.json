@@ -12,8 +12,8 @@
   "[python]": {
     "editor.formatOnPaste": false,
     "editor.codeActionsOnSave": {
-      "source.fixAll.ruff": "explicit",
-      "source.organizeImports.ruff": "explicit"
+      "source.fixAll.ruff": true,
+      "source.organizeImports.ruff": true
     }
   },
   "python.languageServer": "Pylance",
