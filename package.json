@@ -53,7 +53,7 @@
     "@types/styled-components": "latest",
     "husky": "^8.0.3",
     "lint-staged": "^14.0.1",
-    "prettier": "^3.2.5",
+    "prettier": "^3.1.1",
     "react-app-alias": "^2.2.2",
     "react-scripts": "latest",
     "typescript": "latest"
