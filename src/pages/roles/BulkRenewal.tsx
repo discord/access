@@ -157,15 +157,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
   const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
-
-  const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
-    props.select != undefined ? props.rows.filter((r) => r.id == props.select) : [],
-  );
   const [until, setUntil] = React.useState('1209600');
 
-  const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
-    props.rows.filter((r) => r.id == props.select).map((r) => r.id!),
-  );
   const [paginationModel, setPaginationModel] = React.useState({
     pageSize: 10,
     page: props.select != undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
@@ -195,6 +188,33 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     ownerCantAddSelfGroups([curr.group!], false) ? out.add(curr.group!.name) : null;
     return out;
   }, new Set<string>());
+
+  const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
+    props.select != undefined
+      ? props.rows.filter(
+          (r) =>
+            r.id == props.select &&
+            !(
+              role_memberships.has(r.role_group!.name) &&
+              ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
+                (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
+            ),
+        )
+      : [],
+  );
+  const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
+    props.rows
+      .filter(
+        (r) =>
+          r.id == props.select &&
+          !(
+            role_memberships.has(r.role_group!.name) &&
+            ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
+              (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
+          ),
+      )
+      .map((r) => r.id!),
+  );
 
   const display_owner_add_constraint =
     !isAccessAdmin(currentUser) &&
