@@ -181,8 +181,11 @@ export default function ReadRequest() {
   const ownRequest = accessRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(accessRequest.request_ending_at);
+  // round the delta to adjust based on partial seconds
   const requestedUntilDelta =
-    accessRequest.request_ending_at == null ? null : requestEndingAt.diff(dayjs(accessRequest.created_at), 'second');
+    accessRequest.request_ending_at == null
+      ? null
+      : Math.round(requestEndingAt.diff(dayjs(accessRequest.created_at), 'second') / 100) * 100;
   const requestedUntil =
     requestedUntilDelta == null
       ? 'indefinite'

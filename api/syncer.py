@@ -576,8 +576,10 @@ def expiring_access_notifications_owner() -> None:
             owners = access_owners
 
         for owner in owners:
-            owner_expiring_groups_this[owner].users += users_per_group[group]
-            owner_expiring_groups_this[owner].groups.append(group)
+            non_owner_users = [user for user in users_per_group[group] if user.id != owner.id]
+            if len(non_owner_users) > 0:
+                owner_expiring_groups_this[owner].users += non_owner_users
+                owner_expiring_groups_this[owner].groups.append(group)
 
     one_week = date.today() + timedelta(weeks=1)
     two_weeks = one_week + timedelta(weeks=1)
@@ -613,8 +615,10 @@ def expiring_access_notifications_owner() -> None:
             owners = access_owners
 
         for owner in owners:
-            owner_expiring_groups_next[owner].users += users_per_group[group]
-            owner_expiring_groups_next[owner].groups.append(group)
+            non_owner_users = [user for user in users_per_group[group] if user.id != owner.id]
+            if len(non_owner_users) > 0:
+                owner_expiring_groups_next[owner].users += non_owner_users
+                owner_expiring_groups_next[owner].groups.append(group)
 
     for owner in owner_expiring_groups_this:
         # If the owner has members with access expiring both this week and next week, only send one message
