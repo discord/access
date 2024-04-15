@@ -188,17 +188,53 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
+function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
+  const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
+    .filter((key) => Number(key) <= timeLimit!)
+    .reduce(
+      (obj, key) => {
+        obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
+        return obj;
+      },
+      {} as Record<string, string>,
+    );
+
+  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(
+    ([id, label], index) => ({
+      id: id,
+      label: label,
+    }),
+  );
+
+  return [Object.keys(filteredUntil).at(-1)!, filteredLabeles];
+}
+
 function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
-  const [until, setUntil] = React.useState('1209600');
+  // If a group is already selected by default and it has constraints limiting ownership or membership time,
+  // find the shortest time (max allowed access time) and set that as the time limit. This value is used to
+  // filter until drop-down labels, display a message about the constraint, and set a max date on the custom
+  // until calendar.
+  const [timeLimit, setTimeLimit] = React.useState<number | null>(
+    props.group
+      ? minTagTime(
+          props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
+          props.owner ?? false,
+        )
+      : null,
+  );
   const [groupSearchInput, setGroupSearchInput] = React.useState(props.group?.name ?? '');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
-  const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [selectedGroup, setSelectedGroup] = React.useState<PolymorphicGroup | null>(props.group ?? null);
   const [owner, setOwner] = React.useState<boolean>(props.owner ?? false);
+
+  const untilLabels: [string, Array<Record<string, string>>] = timeLimit
+    ? filterUntilLabels(timeLimit)
+    : ['1209600', UNTIL_OPTIONS];
+  const [until, setUntil] = React.useState(untilLabels[0]);
+  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
   const complete = (
     completedRequest: AccessRequest | undefined,
@@ -246,24 +282,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     setTimeLimit(time);
 
     if (!(time == null)) {
-      const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-        .filter((key) => Number(key) <= time!)
-        .reduce(
-          (obj, key) => {
-            obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-            return obj;
-          },
-          {} as Record<string, string>,
-        );
+      const [filteredUntil, filteredLabels] = filterUntilLabels(time);
 
-      setUntil(Object.keys(filteredUntil).at(-1)!);
-
-      setLabels(
-        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-          id: id,
-          label: label,
-        })),
-      );
+      setUntil(filteredUntil);
+      setLabels(filteredLabels);
     } else {
       setLabels(UNTIL_OPTIONS);
     }
