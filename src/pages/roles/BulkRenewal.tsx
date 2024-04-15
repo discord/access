@@ -189,6 +189,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     return out;
   }, new Set<string>());
 
+  // If user is renewing a specific role, set it as selected by default *only* if the group tag constraints allow them
+  // to renew it. (Eg. if there is the owner can't add themselves' constraint, make sure they aren't in the role before
+  // selecting the row by default)
   const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
     props.select != undefined
       ? props.rows.filter(

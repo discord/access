@@ -212,6 +212,10 @@ function filterUntilLabels(timeLimit: number): [string, Array<Record<string, str
 function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
+  // If a group is already selected by default and it has constraints limiting ownership or membership time,
+  // find the shortest time (max allowed access time) and set that as the time limit. This value is used to
+  // filter until drop-down labels, display a message about the constraint, and set a max date on the custom
+  // until calendar.
   const [timeLimit, setTimeLimit] = React.useState<number | null>(
     props.group
       ? minTagTime(
