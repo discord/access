@@ -32,7 +32,7 @@ flask-oidc==2.1.1
 requests==2.31.0
 
 # Error Reporting
-sentry-sdk[flask]==1.44.1
+sentry-sdk[flask]==1.45.0
 
 # Okta
 okta==2.9.5
@@ -43,7 +43,7 @@ pluggy==1.4.0
 # Test - TODO: Move test packages to separate file
 tox==4.14.2
 # Lint
-ruff==0.3.5
+ruff==0.3.7
 # Typing
 mypy==1.9.0
 types-google-cloud-ndb==2.3.0.20240311
