@@ -17,9 +17,10 @@ class ApproveAccessRequest:
         self,
         *,
         access_request: AccessRequest | str,
-        approver_user: OktaUser | str,
+        approver_user: Optional[OktaUser | str] = None,
         approval_reason: str = "",
         ending_at: Optional[datetime] = None,
+        notify: bool = True,
 ):
         self.access_request = AccessRequest.query.options(
             joinedload(AccessRequest.active_requested_group)
@@ -27,14 +28,22 @@ class ApproveAccessRequest:
             AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id)
         ).first()
 
-        if isinstance(approver_user, str):
-            self.approver = db.session.get(OktaUser, approver_user)
+        if approver_user is None:
+            self.approver_id = None
+            self.approver_email = None
+        elif isinstance(approver_user, str):
+            approver = db.session.get(OktaUser, approver_user)
+            self.approver_id = approver.id
+            self.approver_email = approver.email
         else:
-            self.approver = approver_user
+            self.approver_id = approver_user.id
+            self.approver_email = approver_user.email
 
         self.approval_reason = approval_reason
 
         self.ending_at = ending_at
+
+        self.notify = notify
 
         self.notification_hook = get_notification_hook()
 
@@ -47,7 +56,7 @@ class ApproveAccessRequest:
             return self.access_request
 
         # Don't allow requester to approve their own request
-        if self.access_request.requester_user_id == self.approver.id:
+        if self.access_request.requester_user_id == self.approver_id:
             return self.access_request
 
         # Don't allow approving a request if the reason is invalid and required
@@ -74,7 +83,7 @@ class ApproveAccessRequest:
         # Now handled inside ModifyGroupUsers
         # self.access_request.status = AccessRequestStatus.APPROVED
         # self.access_request.resolved_at = db.func.now()
-        # self.access_request.resolver_user_id = self.approver.id
+        # self.access_request.resolver_user_id = self.approver_id
         # self.access_request.resolution_reason = self.approval_reason
         # self.access_request.approval_ending_at = self.ending_at
 
@@ -93,8 +102,8 @@ class ApproveAccessRequest:
             'user_agent' : request.headers.get('User-Agent') if context else None,
             'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
                         if context else None,
-            'current_user_id' : self.approver.id,
-            'current_user_email' : self.approver.email,
+            'current_user_id' : self.approver_id,
+            'current_user_email' : self.approver_email,
             'group' : group,
             'request' : self.access_request,
             'requester' : db.session.get(OktaUser, self.access_request.requester_user_id)
@@ -103,18 +112,20 @@ class ApproveAccessRequest:
         if self.access_request.request_ownership:
             ModifyGroupUsers(
                 group=self.access_request.requested_group_id,
-                current_user_id=self.approver.id,
+                current_user_id=self.approver_id,
                 users_added_ended_at=self.ending_at,
                 created_reason=self.approval_reason,
                 owners_to_add=[self.access_request.requester_user_id],
+                notify=self.notify,
             ).execute()
         else:
             ModifyGroupUsers(
                 group=self.access_request.requested_group_id,
-                current_user_id=self.approver.id,
+                current_user_id=self.approver_id,
                 users_added_ended_at=self.ending_at,
                 created_reason=self.approval_reason,
                 members_to_add=[self.access_request.requester_user_id],
+                notify=self.notify,
             ).execute()
 
         # Now handled inside ModifyGroupUsers

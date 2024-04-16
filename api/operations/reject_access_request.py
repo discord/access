@@ -17,6 +17,7 @@ class RejectAccessRequest:
         *,
         access_request: AccessRequest | str,
         rejection_reason: str = "",
+        notify: bool = True,
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None
     ):
@@ -37,6 +38,7 @@ class RejectAccessRequest:
             self.rejecter_id = current_user_id.id
 
         self.rejection_reason = rejection_reason
+        self.notify = notify
         self.notify_requester = notify_requester
 
         self.notification_hook = get_notification_hook()
@@ -82,16 +84,17 @@ class RejectAccessRequest:
             'requester' : db.session.get(OktaUser, self.access_request.requester_user_id),
         }))
 
-        requester = db.session.get(OktaUser, self.access_request.requester_user_id)
+        if self.notify:
+            requester = db.session.get(OktaUser, self.access_request.requester_user_id)
 
-        approvers = get_all_possible_request_approvers(self.access_request)
+            approvers = get_all_possible_request_approvers(self.access_request)
 
-        self.notification_hook.access_request_completed(
-            access_request=self.access_request,
-            group=group.name,
-            requester=requester,
-            approvers=approvers,
-            notify_requester=self.notify_requester,
-        )
+            self.notification_hook.access_request_completed(
+                access_request=self.access_request,
+                group=group.name,
+                requester=requester,
+                approvers=approvers,
+                notify_requester=self.notify_requester,
+            )
 
         return self.access_request
