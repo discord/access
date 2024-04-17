@@ -108,7 +108,7 @@ Create a `.env.production` file in the repo root with the following variables. A
 ```
 OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
 OKTA_API_TOKEN=<YOUR_OKTA_API_TOKEN>
-DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://wumpus:hunter2@localhost:5432/access"
+DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://postgres:postgres@localhost:5432/access"
 CLIENT_ORIGIN_URL=http://localhost:3000
 REACT_APP_API_SERVER_URL=""
 FLASK_SENTRY_DSN=https://<key>@sentry.io/<project>
@@ -224,7 +224,7 @@ The `.env.production` file is where you configure the application.
 
 - `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
-- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql://<host>:<user>@<password>:5432/<db_name>`
+- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
 - `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
@@ -244,8 +244,14 @@ Else, if you are using a generic OIDC identity provider (such as Okta), then you
 
 #### Database Setup
 
-After `docker-compose up --build`, you can run the following commands to run the initial migrations and seed the initial data from Okta:
+After `docker-compose up --build`, you can run the following commands to setup the database:
 
+Create the database in the postgres container
+```
+docker compose exec postgres createdb -U <POSTGRES_USER> <DB_NAME>
+```
+
+Run the initial migrations and seed the initial data from Okta:
 ```
 docker compose exec discord-access /bin/bash
 ```
