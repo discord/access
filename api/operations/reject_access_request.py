@@ -91,7 +91,7 @@ class RejectAccessRequest:
 
             self.notification_hook.access_request_completed(
                 access_request=self.access_request,
-                group=group.name,
+                group=group,
                 requester=requester,
                 approvers=approvers,
                 notify_requester=self.notify_requester,

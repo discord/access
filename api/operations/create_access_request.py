@@ -19,7 +19,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.plugins import get_notification_hook, get_request_hook
+from api.plugins import get_conditional_access_hook, get_notification_hook
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -55,7 +55,7 @@ class CreateAccessRequest:
 
         self.request_approvers = db.session.query()
 
-        self.request_hook = get_request_hook()
+        self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[AccessRequest]:
@@ -114,9 +114,9 @@ class CreateAccessRequest:
             'group_owners' : approvers,
         }))
 
-        conditional_access_responses = self.request_hook.access_request_created(
+        conditional_access_responses = self.conditional_access_hook.access_request_created(
             access_request=access_request,
-            group=self.requested_group.name,
+            group=self.requested_group,
             requester=self.requester,
         )
 
@@ -141,7 +141,7 @@ class CreateAccessRequest:
 
         self.notification_hook.access_request_created(
             access_request=access_request,
-            group=self.requested_group.name,
+            group=self.requested_group,
             requester=self.requester,
             approvers=approvers,
         )

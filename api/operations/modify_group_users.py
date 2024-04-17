@@ -603,7 +603,7 @@ class ModifyGroupUsers:
 
         self.notification_hook.access_request_completed(
             access_request=access_request,
-            group=access_request.requested_group.name,
+            group=access_request.requested_group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,

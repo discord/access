@@ -1,15 +1,15 @@
 import pluggy
 
+from api.plugins.conditional_access import ConditionalAccessResponse, get_conditional_access_hook
 from api.plugins.notifications import get_notification_hook
-from api.plugins.requests import ConditionalAccessResponse, get_request_hook
 
+condtional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
-request_hook_impl = pluggy.HookimplMarker("access_requests")
 
 __all__ = [
   "ConditionalAccessResponse",
+  "conditional_access_hook_impl",
+  "get_conditional_access_hook",
   "get_notification_hook",
-  "get_request_hook",
   "notification_hook_impl",
-  "request_hook_impl",
 ]

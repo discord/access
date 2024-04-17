@@ -23,7 +23,7 @@ from api.operations import (
     ModifyRoleGroups,
     RejectAccessRequest,
 )
-from api.plugins import ConditionalAccessResponse, get_notification_hook, get_request_hook
+from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, get_notification_hook
 from api.services import okta
 from tests.factories import AccessRequestFactory, AppGroupFactory, OktaUserFactory
 
@@ -579,7 +579,7 @@ def test_auto_resolve_create_access_request(app: Flask, db: SQLAlchemy, okta_gro
     request_completed_notification_spy = mocker.patch.object(
         notification_hook, "access_request_completed"
     )
-    request_hook = get_request_hook()
+    request_hook = get_conditional_access_hook()
     request_created_spy = mocker.patch.object(
         request_hook, "access_request_created", return_value=[ConditionalAccessResponse(approved=True,reason="Auto-Approved")]
     )
