@@ -58,6 +58,7 @@ class AuditLogSchema(Schema):
     request = fields.Nested(AccessRequestSchema, only=('id',
                                                        'request_reason',
                                                        'request_ending_at',
+                                                       'request_ownership',
                                                        'resolution_reason',
                                                        'approval_ending_at'))
     requester = fields.Nested(OktaUserSchema, only=('id','email'))

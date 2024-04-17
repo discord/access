@@ -38,7 +38,8 @@ class ModifyGroupUsers:
         owners_to_remove: list[str] = [],
         sync_to_okta: bool = True,
         current_user_id: Optional[str] = None,
-        created_reason: str = ''
+        created_reason: str = '',
+        notify: bool = True,
     ):
         self.group = (
             db.session.query(OktaGroup)
@@ -106,6 +107,7 @@ class ModifyGroupUsers:
         )
 
         self.created_reason = created_reason
+        self.notify = notify
 
         self.notification_hook = get_notification_hook()
 
@@ -592,13 +594,16 @@ class ModifyGroupUsers:
         return asyncio.create_task(self._notify_access_request(access_request))
 
     async def _notify_access_request(self, access_request: AccessRequest) -> None:
+        if not self.notify:
+            return
+
         requester = db.session.get(OktaUser, access_request.requester_user_id)
 
         approvers = get_all_possible_request_approvers(access_request)
 
         self.notification_hook.access_request_completed(
             access_request=access_request,
-            group=access_request.requested_group.name,
+            group=access_request.requested_group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,

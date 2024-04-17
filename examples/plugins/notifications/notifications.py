@@ -70,12 +70,12 @@ def access_request_created(access_request: AccessRequest,
     access_request_url = get_base_url() + f'/requests/{access_request.id}'
 
     approver_message = (
-        f'{requester.email} has requested {type_of_access} {group}.\n\n'
+        f'{requester.email} has requested {type_of_access} {group.name}.\n\n'
         f'[View request to approve or reject]({access_request_url})\n\n'
     )
 
     # Send the message to the approvers
-    assert approver_message is not None
+    logger.info(f'Approver message: {approver_message}')
 
 
 @notification_hook_impl
@@ -88,15 +88,12 @@ def access_request_completed(access_request: AccessRequest,
     access_request_url = get_base_url() + f'/requests/{access_request.id}'
 
     requester_message = (
-        f'Request for access to {group} has been {access_request.status.lower()}.\n\n'
+        f'Request for access to {group.name} has been {access_request.status.lower()}.\n\n'
         f'[View request]({access_request_url})'
     )
 
-
     # Send the message to the requester and optionally update the approvers message
-    assert requester_message is not None
-
-
+    logger.info(f'Requester message: {requester_message}')
 
 @notification_hook_impl
 def access_expiring_user(groups: list[OktaGroup],
@@ -113,7 +110,7 @@ def access_expiring_user(groups: list[OktaGroup],
     )
 
     # Send the message to the individual user with expiring access
-    assert message is not None
+    logger.info(f'User message: {message}')
 
 @notification_hook_impl
 def access_expiring_owner(owner: OktaUser,
@@ -135,7 +132,7 @@ def access_expiring_owner(owner: OktaUser,
         )
 
         # Send the message to the group owner about the users with expiring access
-        assert message is not None
+        logger.info(f'Owner message: {message}')
 
     if roles is not None and len(roles) > 0:
         expiring_access_url = get_base_url() + '/expiring-roles?owner_id=@me'
@@ -150,4 +147,4 @@ def access_expiring_owner(owner: OktaUser,
         )
 
         # Send the message to the group owner about the roles with expiring access
-        assert message is not None
+        logger.info(f'Owner message: {message}')

@@ -23,7 +23,7 @@ from api.operations import (
     ModifyRoleGroups,
     RejectAccessRequest,
 )
-from api.plugins import get_notification_hook
+from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, get_notification_hook
 from api.services import okta
 from tests.factories import AccessRequestFactory, AppGroupFactory, OktaUserFactory
 
@@ -559,3 +559,97 @@ def test_resolve_app_access_request_notification(
     assert app_owner_user1 in kwargs['approvers']
     assert app_owner_user2 in kwargs['approvers']
     assert user in kwargs['approvers']
+
+def test_auto_resolve_create_access_request(app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture) -> None:
+    db.session.add(user)
+    db.session.add(okta_group)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=okta_group,
+        members_to_add=[user.id],
+        owners_to_add=[user.id],
+        sync_to_okta=False
+    ).execute()
+
+    notification_hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(
+        notification_hook, "access_request_created"
+    )
+    request_completed_notification_spy = mocker.patch.object(
+        notification_hook, "access_request_completed"
+    )
+    request_hook = get_conditional_access_hook()
+    request_created_spy = mocker.patch.object(
+        request_hook, "access_request_created", return_value=[ConditionalAccessResponse(approved=True,reason="Auto-Approved")]
+    )
+    add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
+
+    access_request = CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    assert access_request is not None
+    assert access_request.status == AccessRequestStatus.APPROVED
+    assert access_request.resolved_at is not None
+    assert access_request.resolver_user_id is None
+    assert access_request.resolution_reason == "Auto-Approved"
+    assert request_created_notification_spy.call_count == 0
+    assert request_completed_notification_spy.call_count == 0
+    assert request_created_spy.call_count == 1
+    assert add_membership_spy.call_count == 1
+
+    request_created_notification_spy.reset_mock()
+    request_completed_notification_spy.reset_mock()
+    request_created_spy.reset_mock()
+    add_membership_spy.reset_mock()
+
+    request_created_spy = mocker.patch.object(
+        request_hook, "access_request_created", return_value=[ConditionalAccessResponse(approved=False, reason="Auto-Rejected")]
+    )
+
+    access_request = CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    assert access_request is not None
+    assert access_request.status == AccessRequestStatus.REJECTED
+    assert access_request.resolved_at is not None
+    assert access_request.resolver_user_id is None
+    assert access_request.resolution_reason == "Auto-Rejected"
+    assert request_created_notification_spy.call_count == 0
+    assert request_completed_notification_spy.call_count == 0
+    assert request_created_spy.call_count == 1
+    assert add_membership_spy.call_count == 0
+
+    request_created_notification_spy.reset_mock()
+    request_completed_notification_spy.reset_mock()
+    request_created_spy.reset_mock()
+    add_membership_spy.reset_mock()
+
+    request_created_spy = mocker.patch.object(
+        request_hook, "access_request_created", return_value=[None]
+    )
+
+    access_request = CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    assert access_request is not None
+    assert access_request.status == AccessRequestStatus.PENDING
+    assert access_request.resolved_at is None
+    assert access_request.resolver_user_id is None
+    assert access_request.resolution_reason == ''
+    assert request_created_notification_spy.call_count == 1
+    assert request_completed_notification_spy.call_count == 0
+    assert request_created_spy.call_count == 1
+    assert add_membership_spy.call_count == 0
