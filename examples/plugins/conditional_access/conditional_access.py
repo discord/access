@@ -27,4 +27,4 @@ def access_request_created(access_request: AccessRequest,
 
     logger.info(f"Access request {access_request.id} to group {group.name} requires manual approval")
 
-    return
+    return None

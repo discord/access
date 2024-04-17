@@ -2,7 +2,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Generator, Optional
+from typing import Any, Generator, List, Optional
 
 import pluggy
 
@@ -34,9 +34,11 @@ class ConditionalAccessPluginSpec:
 
 
 @hookimpl(wrapper=True)
-def access_request_created(access_request: AccessRequest,
-                           group: OktaGroup,
-                           requester: OktaUser) -> Generator[None, None, Optional[ConditionalAccessResponse]]:
+def access_request_created(
+    access_request: AccessRequest,
+    group: OktaGroup,
+    requester: OktaUser
+) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
     try:
         # Trigger exception if it exists
         return (yield)
