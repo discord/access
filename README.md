@@ -277,7 +277,11 @@ Access uses the [Python pluggy framework](https://pluggy.readthedocs.io/en/lates
 
 ### Creating a Plugin
 
-An example implementation of a notification plugin is included in [examples/plugins/notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications) which can be extended to send messages using custom Python code. It implements the `NotificationPluginSpec` found in [notifications.py](https://github.com/discord/access/blob/main/api/plugins/notifications.py) following the conventions defined by the [Python pluggy framework](https://pluggy.readthedocs.io/en/latest/).
+Plugins in Access follow the conventions defined by the [Python pluggy framework](https://pluggy.readthedocs.io/en/latest/).
+
+An example implementation of a notification plugin is included in [examples/plugins/notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications) which can be extended to send messages using custom Python code. It implements the `NotificationPluginSpec` found in [notifications.py](https://github.com/discord/access/blob/main/api/plugins/notifications.py)
+
+There's also an example implementation of an access request plugin in [examples/plugins/requests](https://github.com/discord/access/tree/main/examples/plugins/requests) which can be extended to conditionally approve or deny requests. It implements the `RequestPluginSpec` found in [requests.py](https://github.com/discord/access/blob/main/api/plugins/requests.py)
 
 ### Installing a Plugin in the Docker Container
 
