@@ -114,26 +114,25 @@ class CreateAccessRequest:
             'group_owners' : approvers,
         }))
 
-        conditional_access_results = self.request_hook.access_request_created(
+        conditional_access_responses = self.request_hook.access_request_created(
             access_request=access_request,
             group=self.requested_group.name,
             requester=self.requester,
         )
 
-        for result in conditional_access_results:
-            if result is not None:
-                approved, reason = result
-                if approved:
+        for response in conditional_access_responses:
+            if response is not None:
+                if response.approved:
                     ApproveAccessRequest(
                         access_request=access_request,
-                        approval_reason=reason,
-                        ending_at=access_request.request_ending_at,
+                        approval_reason=response.reason,
+                        ending_at=response.ending_at,
                         notify=False,
                     ).execute()
                 else:
                     RejectAccessRequest(
                         access_request=access_request,
-                        rejection_reason=reason,
+                        rejection_reason=response.reason,
                         notify=False,
                     ).execute()
 

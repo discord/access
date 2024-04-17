@@ -1,6 +1,8 @@
 import logging
 import sys
-from typing import Generator, Optional, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Generator, Optional
 
 import pluggy
 
@@ -15,19 +17,26 @@ _cached_request_hook = None
 logger = logging.getLogger(__name__)
 
 
+
+@dataclass
+class ConditionalAccessResponse:
+    approved: bool
+    reason: str = ''
+    ending_at: Optional[datetime] = None
+
 class RequestPluginSpec:
     @hookspec
     def access_request_created(self,
                                access_request: AccessRequest,
                                group: OktaGroup,
-                               requester: OktaUser) -> Optional[Tuple[bool, str]]:
+                               requester: OktaUser) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the access request."""
 
 
 @hookimpl(wrapper=True)
 def access_request_created(access_request: AccessRequest,
                            group: OktaGroup,
-                           requester: OktaUser) -> Generator[None, None, Optional[Tuple[bool, str]]]:
+                           requester: OktaUser) -> Generator[None, None, Optional[ConditionalAccessResponse]]:
     try:
         # Trigger exception if it exists
         return (yield)
