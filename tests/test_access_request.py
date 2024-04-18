@@ -11,9 +11,11 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
+    Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.operations import (
@@ -560,9 +562,18 @@ def test_resolve_app_access_request_notification(
     assert app_owner_user2 in kwargs['approvers']
     assert user in kwargs['approvers']
 
-def test_auto_resolve_create_access_request(app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture) -> None:
+def test_auto_resolve_create_access_request(app: Flask,
+                                            db: SQLAlchemy,
+                                            okta_group: OktaGroup,
+                                            user: OktaUser,
+                                            tag: Tag,
+                                            mocker: MockerFixture) -> None:
     db.session.add(user)
     db.session.add(okta_group)
+    db.session.add(tag)
+    db.session.commit()
+
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
     db.session.commit()
 
     ModifyGroupUsers(

@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser
+from api.models import AccessRequest, OktaGroup, OktaUser, Tag
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
@@ -29,6 +29,7 @@ class ConditionalAccessPluginSpec:
     def access_request_created(self,
                                access_request: AccessRequest,
                                group: OktaGroup,
+                               group_tags: List[Tag],
                                requester: OktaUser) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the access request."""
 
