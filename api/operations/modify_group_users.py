@@ -497,7 +497,8 @@ class ModifyGroupUsers:
                             associated_users_ended_at = role_associated_group_map.ended_at
                         else:
                             associated_users_ended_at = (
-                                min(self.members_added_ended_at, role_associated_group_map.ended_at.replace(tzinfo=UTC))
+                                min(self.members_added_ended_at.replace(tzinfo=UTC),
+                                    role_associated_group_map.ended_at.replace(tzinfo=UTC))
                             )
 
                         access_to_add = OktaUserGroupMember(

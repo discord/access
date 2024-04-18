@@ -40,4 +40,4 @@ def coalesce_ended_at(
         if initial_ended_at is None:
             return constraint_ended_at
         else:
-            return min(constraint_ended_at, initial_ended_at)
+            return min(constraint_ended_at, initial_ended_at.replace(tzinfo=UTC))
