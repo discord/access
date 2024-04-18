@@ -38,6 +38,7 @@ class ConditionalAccessPluginSpec:
 def access_request_created(
     access_request: AccessRequest,
     group: OktaGroup,
+    group_tags: List[Tag],
     requester: OktaUser
 ) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
     try:
