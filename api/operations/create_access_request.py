@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
 from api.models import (
@@ -12,6 +12,7 @@ from api.models import (
     AccessRequestStatus,
     AppGroup,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     RoleGroup,
 )
@@ -92,7 +93,11 @@ class CreateAccessRequest:
         group = (
             db.session.query(OktaGroup)
                 .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app))
+                         joinedload(AppGroup.app),
+                         selectinload(OktaGroup.active_group_tags).options(
+                            joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                            joinedload(OktaGroupTagMap.enabled_active_tag)
+                        ))
                 .filter(OktaGroup.deleted_at.is_(None))
                 .filter(OktaGroup.id == self.requested_group.id)
                 .first()
@@ -116,7 +121,8 @@ class CreateAccessRequest:
 
         conditional_access_responses = self.conditional_access_hook.access_request_created(
             access_request=access_request,
-            group=self.requested_group,
+            group=group,
+            group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
             requester=self.requester,
         )
 
@@ -141,7 +147,7 @@ class CreateAccessRequest:
 
         self.notification_hook.access_request_created(
             access_request=access_request,
-            group=self.requested_group,
+            group=group,
             requester=self.requester,
             approvers=approvers,
         )
