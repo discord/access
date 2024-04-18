@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from typing import Any
 
 from flask import Flask, url_for
@@ -29,6 +30,9 @@ from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, 
 from api.services import okta
 from tests.factories import AccessRequestFactory, AppGroupFactory, OktaUserFactory
 
+SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
+THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
+ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
 def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
     # test 404
@@ -673,6 +677,69 @@ def test_auto_resolve_create_access_request(app: Flask,
     assert request_completed_notification_spy.call_count == 0
     assert request_created_conditional_access_spy.call_count == 1
     assert add_membership_spy.call_count == 0
+
+    _, kwargs = request_created_conditional_access_spy.call_args
+    assert access_request == kwargs['access_request']
+    assert okta_group == kwargs['group']
+    assert user == kwargs['requester']
+    assert len(kwargs['group_tags']) == 1
+    assert tag in kwargs['group_tags']
+
+def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
+        app: Flask,
+        db: SQLAlchemy,
+        okta_group: OktaGroup,
+        user: OktaUser,
+        tag: Tag,
+        mocker: MockerFixture) -> None:
+
+    db.session.add(user)
+    db.session.add(okta_group)
+    tag.constraints = {
+        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
+    }
+    db.session.add(tag)
+    db.session.commit()
+
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    notification_hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(
+        notification_hook, "access_request_created"
+    )
+    request_completed_notification_spy = mocker.patch.object(
+        notification_hook, "access_request_completed"
+    )
+    request_hook = get_conditional_access_hook()
+    request_created_conditional_access_spy = mocker.patch.object(
+        request_hook, "access_request_created", return_value=[
+            ConditionalAccessResponse(
+                approved=True,
+                reason="Auto-Approved",
+                ending_at=datetime.now() + timedelta(seconds=SEVEN_DAYS_IN_SECONDS)
+            ),
+        ]
+    )
+    add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
+
+    access_request = CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    assert access_request is not None
+    assert access_request.status == AccessRequestStatus.APPROVED
+    assert access_request.resolved_at is not None
+    assert access_request.resolver_user_id is None
+    assert access_request.resolution_reason == "Auto-Approved"
+    assert request_created_notification_spy.call_count == 0
+    assert request_completed_notification_spy.call_count == 0
+    assert request_created_conditional_access_spy.call_count == 1
+    assert add_membership_spy.call_count == 1
 
     _, kwargs = request_created_conditional_access_spy.call_args
     assert access_request == kwargs['access_request']

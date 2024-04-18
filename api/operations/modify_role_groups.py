@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Dict, Optional
 
 from flask import current_app, has_request_context, request
@@ -342,7 +342,8 @@ class ModifyRoleGroups:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
                         associated_users_ended_at = (
-                            min(member.ended_at, role_associated_group_map.ended_at)
+                            min(member.ended_at.replace(tzinfo=UTC),
+                                role_associated_group_map.ended_at.replace(tzinfo=UTC))
                         )
 
                     membership_to_add = OktaUserGroupMember(
@@ -380,7 +381,8 @@ class ModifyRoleGroups:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
                         associated_users_ended_at = (
-                            min(member.ended_at, role_associated_group_map.ended_at)
+                            min(member.ended_at.replace(tzinfo=UTC),
+                                role_associated_group_map.ended_at.replace(tzinfo=UTC))
                         )
                     ownership_to_add = OktaUserGroupMember(
                         user_id=member.user_id,
