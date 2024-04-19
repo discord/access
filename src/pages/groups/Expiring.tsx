@@ -34,7 +34,7 @@ import Ending from '../../components/Ending';
 import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {displayUserName} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -410,7 +410,7 @@ export default function ExpiringGroups() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={9}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

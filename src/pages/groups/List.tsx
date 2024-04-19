@@ -20,7 +20,7 @@ import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from './CreateUpdate';
-import {displayGroupType} from '../../helpers';
+import {displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 
@@ -181,7 +181,7 @@ export default function ListGroups() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={4}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

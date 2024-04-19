@@ -19,6 +19,7 @@ import Box from '@mui/material/Box';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateTag from './CreateUpdate';
+import {perPage} from '../../helpers';
 import {useGetTags} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 
@@ -168,7 +169,7 @@ export default function ListTags() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={3}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

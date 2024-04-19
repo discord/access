@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateApp from './CreateUpdate';
+import {perPage} from '../../helpers';
 import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 
@@ -175,7 +176,7 @@ export default function ListApps() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={3}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

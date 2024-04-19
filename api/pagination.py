@@ -23,6 +23,8 @@ def extract_pagination(
 def paginate(query: SQLAlchemy, schema: Schema) -> Dict[str, Any]:
     page, per_page, other_request_args = extract_pagination(**request.args) # type: ignore[arg-type]
     # Make pagination index 0 based instead of 1 based
+    if per_page is -1:
+        per_page=query.count()
     page_obj = query.paginate(page=page + 1, per_page=per_page)
     endpoint = request.endpoint if request.endpoint is not None else ""
     view_args = request.view_args if request.view_args is not None else {}

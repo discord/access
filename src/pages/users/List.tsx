@@ -21,7 +21,7 @@ import Box from '@mui/material/Box';
 import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
-import {displayUserName} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 
 export default function ListUsers() {
   const navigate = useNavigate();
@@ -187,7 +187,7 @@ export default function ListUsers() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={3}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}
