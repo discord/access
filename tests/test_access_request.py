@@ -415,6 +415,10 @@ def test_create_app_access_request_notification(
 
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
+    _, kwargs = request_created_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
 
     access_owner = OktaUser.query.filter(
         OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
@@ -426,6 +430,10 @@ def test_create_app_access_request_notification(
 
     assert add_membership_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 1
+    _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
 
     access_request.status = AccessRequestStatus.PENDING
     access_request.resolved_at = None
@@ -440,6 +448,10 @@ def test_create_app_access_request_notification(
 
     assert add_membership_spy.call_count == 0
     assert request_completed_notification_spy.call_count == 1
+    _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
 
 def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
@@ -528,6 +540,9 @@ def test_resolve_app_access_request_notification(
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
     _, kwargs = request_created_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
     assert len(kwargs['approvers']) == 2
     assert app_owner_user1 in kwargs['approvers']
     assert app_owner_user2 in kwargs['approvers']
@@ -539,6 +554,9 @@ def test_resolve_app_access_request_notification(
     assert add_ownership_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
     assert len(kwargs['approvers']) == 4
     assert access_admin in kwargs['approvers']
     assert app_owner_user1 in kwargs['approvers']
@@ -560,6 +578,9 @@ def test_resolve_app_access_request_notification(
     assert add_ownership_spy.call_count == 0
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs['access_request'] == access_request
+    assert kwargs['group'] == app_group
+    assert kwargs['requester'] == user
     assert len(kwargs['approvers']) == 4
     assert access_admin in kwargs['approvers']
     assert app_owner_user1 in kwargs['approvers']

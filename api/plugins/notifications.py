@@ -62,7 +62,7 @@ def access_request_created(access_request: AccessRequest,
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
-        logger.error("Failed to execute access request created notification callback")
+        logger.exception("Failed to execute access request created notification callback")
 
 
 @hookimpl(wrapper=True)
@@ -77,7 +77,7 @@ def access_request_completed(access_request: AccessRequest,
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
-        logger.error("Failed to execute access request completed notification callback")
+        logger.exception("Failed to execute access request completed notification callback")
 
 
 @hookimpl(wrapper=True)
@@ -90,7 +90,7 @@ def access_expiring_user(groups: list[OktaGroup],
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
-        logger.error("Failed to execute access expiring for user notification callback")
+        logger.exception("Failed to execute access expiring for user notification callback")
 
 @hookimpl(wrapper=True)
 def access_expiring_owner(owner: OktaUser,
@@ -104,7 +104,7 @@ def access_expiring_owner(owner: OktaUser,
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
-        logger.error("Failed to execute access expiring for owner notification callback")
+        logger.exception("Failed to execute access expiring for owner notification callback")
 
 
 def get_notification_hook() -> pluggy.HookRelay:

@@ -48,7 +48,7 @@ def access_request_created(
         # Log and do not raise since request failures should not
         # break the flow. The access request can still be manually
         # approved or denied
-        logger.error("Failed to execute request created callback")
+        logger.exception("Failed to execute request created callback")
 
     return []
 
