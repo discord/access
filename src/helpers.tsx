@@ -1,5 +1,7 @@
 import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap} from './api/apiSchemas';
 
+export const perPage: Array<number | {label: string; value: number}> = [5, 10, 20, 50, {label: 'All', value: -1}];
+
 export function displayGroupType(group: PolymorphicGroup | undefined) {
   if (group == undefined || group.type == undefined) {
     return '';

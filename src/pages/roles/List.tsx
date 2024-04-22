@@ -21,6 +21,7 @@ import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from '../groups/CreateUpdate';
+import {perPage} from '../../helpers';
 import {useGetRoles} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 
@@ -181,7 +182,7 @@ export default function ListRoles() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={3}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

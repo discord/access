@@ -26,7 +26,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import {useCurrentUser} from '../../authentication';
 import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
-import {displayUserName} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 
 dayjs.extend(RelativeTime);
@@ -284,7 +284,7 @@ export default function ListRequests() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={6}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}
