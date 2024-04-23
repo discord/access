@@ -134,24 +134,48 @@ class OktaService:
         return Group(group)
 
     async def async_add_user_to_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot add user to groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot add user to userId of {userId}")
+            return
         _, error = await OktaService._retry(self.okta_client.add_user_to_group, groupId, userId)
         if error is not None:
             raise Exception(error)
         return
 
     def add_user_to_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot add user to groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot add user to userId of {userId}")
+            return
         _, error = asyncio.run(OktaService._retry(self.okta_client.add_user_to_group, groupId, userId))
         if error is not None:
             raise Exception(error)
         return
 
     async def async_remove_user_from_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot remove user from groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot remove user from userId of {userId}")
+            return
         _, error = await OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId)
         if error is not None:
             raise Exception(error)
         return
 
     def remove_user_from_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot remove user from groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot remove user from userId of {userId}")
+            return
         _, error = asyncio.run(OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId))
 
         if error is not None:
@@ -245,6 +269,12 @@ class OktaService:
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/assignGroupOwner
     def add_owner_to_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot add owner to groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot add owner to userId of {userId}")
+            return
         asyncio.run(self.async_add_owner_to_group(groupId, userId))
 
     async def async_add_owner_to_group(self, groupId: str, userId: str) -> None:
@@ -276,6 +306,12 @@ class OktaService:
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/deleteGroupOwner
     def remove_owner_from_group(self, groupId: str, userId: str) -> None:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot to remove owner from groupId of {groupId}")
+            return
+        if userId is None or userId == "":
+            logger.warning(f"cannot remove owner from userId of {userId}")
+            return
         asyncio.run(self.async_remove_owner_from_group(groupId, userId))
 
     async def async_remove_owner_from_group(self, groupId: str, userId: str) -> None:
@@ -306,6 +342,9 @@ class OktaService:
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/listGroupOwners
     def list_owners_for_group(self, groupId: str) -> list[User]:
+        if groupId is None or groupId == "":
+            logger.warning(f"cannot to list owners for groupId of {groupId}")
+            return []
         if not self.use_group_owners_api:
             return []
 
