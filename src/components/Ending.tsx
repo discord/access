@@ -11,7 +11,7 @@ function selectLastTime(
 ): OktaUserGroupMember | RoleGroupMap {
   if (a.ended_at == null) return a;
   if (b.ended_at == null) return b;
-  if (a.ended_at > b.ended_at) {
+  if (dayjs(a.ended_at).isAfter(dayjs(b.ended_at))) {
     return a;
   } else {
     return b;
