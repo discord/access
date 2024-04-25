@@ -2,7 +2,9 @@
 
 # ACCESS
 
-Meet Access, a centralized portal for employees to transparently discover, request, and manage their access for all internal systems needed to do their jobs.
+Meet Access, a centralized portal for employees to transparently discover, request, and manage their access for all internal systems needed to do their jobs. If you're interested in the project, come chat with us!
+
+<p align="center"><a href="https://discord.gg/access-enjoyers"><img src="https://discordapp.com/api/guilds/1232815453907189922/widget.png?style=banner2" alt="Join our Discord!"></a></p>
 
 ## Purpose
 
