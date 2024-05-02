@@ -32,7 +32,7 @@ Access is a React and Typescript single-page application (SPA) with a Flask API 
 
 You'll need an Okta API Token from an Okta user with the `Group Admin` and `Application Admin`
 Okta administrator roles granted as well as all Group permissions (ie. `Manage groups` checkbox checked)
-in a custom Admin role. If you want to manage Groups which grant `Okta Admin` permissions, then the Okta API
+in a custom Admin role. If you want to manage Groups which grant Okta Admin permissions, then the Okta API
 Token will need to be created from an Okta user with the `Super Admin` Okta administrator role.
 
 ### Flask
@@ -271,7 +271,7 @@ Visit [http://localhost:3000/](http://localhost:3000/) to view your running vers
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
 
-These examples include a Deployment, Service, Namespace and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `flask sync` and `flask notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
+These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `flask sync` and `flask notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
 
 ## Plugins
 
