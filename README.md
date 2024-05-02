@@ -24,7 +24,7 @@ The access service exists to help answer the following questions for each person
   - Who has access to my application?
   - How do I setup access for a new application?
   - How do I create a new access group for my application?
-  - How do I give one of my application's groups access to a role?
+  - How do I give a role access to one of my application's groups?
 
 ## Development Setup
 
