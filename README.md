@@ -24,11 +24,11 @@ The access service exists to help answer the following questions for each person
   - Who has access to my application?
   - How do I setup access for a new application?
   - How do I create a new access group for my application?
-  - How do I give access to a role to one of my application's groups?
+  - How do I give a role access to one of my application's groups?
 
 ## Development Setup
 
-Access is a React+Typescript single-page application (SPA) with a Flask API that connects to the Okta API
+Access is a React and Typescript single-page application (SPA) with a Flask API that connects to the Okta API.
 
 You'll need an Okta API Token from an Okta user with the `Group Admin` and `Application Admin`
 Okta administrator roles granted as well as all Group permissions (ie. `Manage groups` checkbox checked)
@@ -37,7 +37,7 @@ Token will need to be created from an Okta user with the `Super Admin` Okta admi
 
 ### Flask
 
-Create a `.env` file in the repo root with the following variables
+Create a `.env` file in the repo root with the following variables:
 
 ```
 CURRENT_OKTA_USER_EMAIL=<YOUR_OKTA_USER_EMAIL>
@@ -48,7 +48,7 @@ CLIENT_ORIGIN_URL=http://localhost:3000
 REACT_APP_API_SERVER_URL=http://localhost:6060
 ```
 
-Then run the following commands to set up your python virtual environment. Access can be run with Python 3.10 and above:
+Next, run the following commands to set up your python virtual environment. Access can be run with Python 3.10 and above:
 
 ```
 python3 -m venv venv
@@ -69,11 +69,11 @@ Finally, you can run the server:
 flask run
 ```
 
-Go to [http://localhost:6060/api/users/](http://localhost:6060/api/users/) to view the API
+Go to [http://localhost:6060/api/users/](http://localhost:6060/api/users/) to view the API.
 
 ### Node
 
-In a separate window setup and run node
+In a separate window, setup and run nodejs:
 
 ```
 npm install
@@ -83,11 +83,11 @@ npm install
 npm start
 ```
 
-Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA
+Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
 
 #### Generating Typescript React-Query API Client
 
-We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified that generated Swagger schema in [api/swagger.json](api/swagger.json) which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands.
+We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified that generated Swagger schema in [api/swagger.json](api/swagger.json), which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands:
 
 ```
 npm install @openapi-codegen/cli
@@ -99,9 +99,9 @@ npx openapi-codegen gen api
 ## Tests
 
 We use tox to run our tests, which should be installed into the python venv from
-our `requirements.txt`
+our `requirements.txt`.
 
-Invoke the tests using `tox -e test` and `tox -e lint` to run the linter
+Invoke the tests using `tox -e test` and `tox -e lint` to run the linter.
 
 ## Production Setup
 
@@ -119,7 +119,7 @@ REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 
 ### Google Cloud CloudSQL Configuration
 
-If you want to use the CloudSQL Python Connector, set the following variables in your `.env.production` file
+If you want to use the CloudSQL Python Connector, set the following variables in your `.env.production` file:
 
 ```
 CLOUDSQL_CONNECTION_NAME=<YOUR_CLOUDSQL_CONNECTION_NAME> # For example, "project:region:instance-name"
@@ -139,9 +139,9 @@ and [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applica
 
 To use OpenID Connect (OIDC) authentication, such as with Okta:
 
-Go to your Okta Admin dashboard -> Applications -> Create App Integration
+Go to your Okta Admin dashboard -> Applications -> Create App Integration.
 
-In the Create a new app integration, select
+In the Create a new app integration, select:
 - Sign-in method: `OIDC - OpenID Connect`
 - Application type: `Web Application`
 
@@ -154,9 +154,9 @@ Then on the New Web App Integration page:
 - Sign-out redirect URIs: `https://<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>/oidc/logout`
 
 Then click `Save` and go to the General tab of the new app integration to find
-the `Client ID` and `Client secret`, you'll need these for the next step.
+the `Client ID` and `Client secret`. You'll need these for the next step.
 
-Create a `client_secrets.json` file containing your OIDC client secrets, that looks something like the following
+Create a `client_secrets.json` file containing your OIDC client secrets, that looks something like the following:
 ```
 {
   "secrets": {
@@ -167,7 +167,7 @@ Create a `client_secrets.json` file containing your OIDC client secrets, that lo
 }
 ```
 
-Then set the following variables in your `.env.production` file
+Then set the following variables in your `.env.production` file:
 ```
 # Generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`
 # this is used to encrypt Flask cookies
@@ -180,7 +180,7 @@ OIDC_CLIENT_SECRETS=./client_secrets.json or '{"secrets":..'
 
 To use Cloudflare Access authentication, set up a
 [Self-Hosted Cloudflare Access Application](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-apps/)
-using a Cloudflare Tunnel. Then set the following variables in your `.env.production` file
+using a Cloudflare Tunnel. Next, set the following variables in your `.env.production` file:
 
 ```
 # Your Cloudflare "Team domain" under Zero Trust -> Settings -> Custom Pages in the Cloudflare dashboard
@@ -205,9 +205,9 @@ Or build and run it using Docker Compose:
 docker compose up --build
 ```
 
-The command above will build and run the container
+The command above will build and run the container.
 
-Go to [http://localhost:3000/](http://localhost:3000/) to view the application
+Go to [http://localhost:3000/](http://localhost:3000/) to view the application.
 
 ### Docker configuration
 
@@ -226,7 +226,7 @@ The `.env.production` file is where you configure the application.
 
 - `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
-- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`
+- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`.
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
 - `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
@@ -236,7 +236,7 @@ The `.env.production` file is where you configure the application.
 - `SECRET_KEY`: Specifies the secret key used to encrypt flask cookies. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
 
-**Check out `.env.psql.example` or `.env.production.example` for example configuration file structure**
+**Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
 **NOTE:**
 
@@ -248,7 +248,7 @@ Else, if you are using a generic OIDC identity provider (such as Okta), then you
 
 After `docker-compose up --build`, you can run the following commands to setup the database:
 
-Create the database in the postgres container
+Create the database in the postgres container:
 ```
 docker compose exec postgres createdb -U <POSTGRES_USER> <DB_NAME>
 ```
@@ -271,7 +271,7 @@ Visit [http://localhost:3000/](http://localhost:3000/) to view your running vers
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
 
-These examples include a Deployment, Service, Namespace, Service Account object for serving the stateless web application. Additionally there are examples for deploying the `flask sync` and `flask notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
+These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `flask sync` and `flask notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
 
 ## Plugins
 
@@ -281,13 +281,13 @@ Access uses the [Python pluggy framework](https://pluggy.readthedocs.io/en/lates
 
 Plugins in Access follow the conventions defined by the [Python pluggy framework](https://pluggy.readthedocs.io/en/latest/).
 
-An example implementation of a notification plugin is included in [examples/plugins/notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications) which can be extended to send messages using custom Python code. It implements the `NotificationPluginSpec` found in [notifications.py](https://github.com/discord/access/blob/main/api/plugins/notifications.py)
+An example implementation of a notification plugin is included in [examples/plugins/notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications), which can be extended to send messages using custom Python code. It implements the `NotificationPluginSpec` found in [notifications.py](https://github.com/discord/access/blob/main/api/plugins/notifications.py)
 
-There's also an example implementation of an conditional access plugin in [examples/plugins/conditional_access](https://github.com/discord/access/tree/main/examples/plugins/conditional_access) which can be extended to conditionally approve or deny requests. It implements the `ConditionalAccessPluginSpec` found in [requests.py](https://github.com/discord/access/blob/main/api/plugins/conditional_access.py)
+There's also an example implementation of a conditional access plugin in [examples/plugins/conditional_access](https://github.com/discord/access/tree/main/examples/plugins/conditional_access), which can be extended to conditionally approve or deny requests. It implements the `ConditionalAccessPluginSpec` found in [requests.py](https://github.com/discord/access/blob/main/api/plugins/conditional_access.py).
 
 ### Installing a Plugin in the Docker Container
 
-Below is an example Dockerfile that would install that example notification plugin into the Access Docker container which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is installed into the `/app/plugins` directory and then installed using pip.
+Below is an example Dockerfile that would install the example notification plugin into the Access Docker container, which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is installed into the `/app/plugins` directory and then installed using pip.
 
 ```Dockerfile
 FROM access:latest
