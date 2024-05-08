@@ -7,14 +7,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
-from api.models import (
-    App,
-    AppGroup,
-    AppTagMap,
-    OktaUser,
-    OktaUserGroupMember,
-    RoleGroupMap,
-)
+from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import CreateApp, DeleteApp, ModifyAppTags
 from api.pagination import paginate
 from api.services import okta
@@ -287,6 +280,18 @@ class AppList(MethodResource):
         if owner_id is None:
             abort(400, "App initial_owner_id is required")
 
+        owner_role_ids = []
+        if "initial_owner_role_ids" in json_data:
+            owner_roles = (
+                RoleGroup.query.filter(RoleGroup.id.in_(json_data["initial_owner_role_ids"]))
+                .filter(RoleGroup.deleted_at.is_(None))
+                .all()
+            )
+            owner_role_ids = [role.id for role in owner_roles]
+
+            if len(owner_role_ids) != len(json_data["initial_owner_role_ids"]):
+                abort(400, "Given App initial_owner_role_ids contains invalid role ids")
+
         initial_additional_app_groups = []
         app_group_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         owner_group_name = f"{app_group_prefix}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
@@ -302,6 +307,7 @@ class AppList(MethodResource):
 
         app = CreateApp(
             owner_id=owner_id,
+            owner_role_ids=owner_role_ids,
             app=app,
             tags=json_data.get("tags_to_add", []),
             additional_app_groups=initial_additional_app_groups,

@@ -7,7 +7,17 @@ from flask_sqlalchemy import SQLAlchemy
 from okta.models.group import Group
 from pytest_mock import MockerFixture
 
-from api.models import App, AppGroup, AppTagMap, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.models import (
+    App,
+    AppGroup,
+    AppTagMap,
+    OktaGroupTagMap,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    Tag,
+)
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory
@@ -257,6 +267,61 @@ def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
     assert test_app_group is not None
     assert test_app_group.is_owner is True
+
+def test_create_app_with_initial_owners(
+        client: FlaskClient,
+        db: SQLAlchemy,
+        mocker: MockerFixture,
+        faker: Faker,
+        user: OktaUser,
+        role_group: RoleGroup
+    ) -> None:
+
+    db.session.add(role_group)
+    db.session.add(user)
+    db.session.commit()
+
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": faker.pystr()})
+    )
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+
+    data = {"name": "Created", "initial_owner_id": user.id, "initial_owner_role_ids": [role_group.id]}
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.post(apps_url, json=data)
+    assert rep.status_code == 201
+    assert create_group_spy.call_count == 1
+    assert add_user_to_group_spy.call_count == 1
+    assert add_owner_to_group_spy.call_count == 1
+
+    data = rep.get_json()
+    assert db.session.get(App, data["id"]) is not None
+
+    assert data["name"] == "Created"
+    assert data["description"] == ""
+
+    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    assert len(app_groups) == 1
+
+    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    assert test_app_group is not None
+    assert test_app_group.is_owner is True
+
+    assert (
+        OktaUserGroupMember.query
+            .filter(OktaUserGroupMember.group_id == test_app_group.id)
+            .filter(OktaUserGroupMember.user_id == user.id)
+            .filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    )
+    assert (
+        RoleGroupMap.query
+            .filter(RoleGroupMap.group_id == test_app_group.id)
+            .filter(RoleGroupMap.role_group_id == role_group.id)
+            .filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    )
+
 
 def test_create_app_with_additional_groups(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker) -> None:
     # test bad data

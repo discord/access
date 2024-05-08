@@ -11,6 +11,7 @@ from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Okt
 from api.operations.create_group import CreateGroup, GroupDict
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
+from api.operations.modify_role_groups import ModifyRoleGroups
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -25,6 +26,7 @@ class CreateApp:
         app: App | AppDict,
         tags: list[str] = [],
         owner_id: Optional[str] = None,
+        owner_role_ids: Optional[list[str]] = None,
         additional_app_groups: Optional[list[AppGroup] | list[GroupDict]] = None,
         current_user_id: Optional[str] = None
     ):
@@ -48,6 +50,15 @@ class CreateApp:
             .filter(OktaUser.deleted_at.is_(None))
             .filter(OktaUser.id == owner_id).first(), 'id', None)
         )
+        self.owner_role_ids = None
+        if owner_role_ids is not None:
+            self.owner_roles = (
+                RoleGroup.query.filter(RoleGroup.id.in_(owner_role_ids))
+                .filter(RoleGroup.deleted_at.is_(None))
+                .all()
+            )
+            self.owner_role_ids = [role.id for role in self.owner_roles]
+
         self.app_group_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{self.app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         self.owner_group_name = f"{self.app_group_prefix}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
         self.additional_app_groups = []
@@ -148,6 +159,15 @@ class CreateApp:
                 members_to_add=[self.owner_id],
                 owners_to_add=[self.owner_id]
             ).execute()
+
+        if self.owner_role_ids is not None:
+            for role_id in self.owner_role_ids:
+                ModifyRoleGroups(
+                    role_group=role_id,
+                    current_user_id=self.current_user_id,
+                    groups_to_add=[owner_app_group.id],
+                    owner_groups_to_add=[owner_app_group.id]
+                ).execute()
 
         # Find other app groups with the same app name prefix and update them
         other_existing_app_groups = (
