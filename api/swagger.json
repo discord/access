@@ -225,6 +225,14 @@
           "minLength": 1,
           "type": "string"
         },
+        "initial_owner_role_ids": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
         "is_managed": {
           "readOnly": true,
           "type": "boolean"

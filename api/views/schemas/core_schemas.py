@@ -1161,6 +1161,7 @@ class AppSchema(SQLAlchemyAutoSchema):
     description = auto_field(validate=validate.Length(max=1024))
 
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
+    initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
     initial_additional_app_groups = fields.Nested(lambda: InitialAppGroupSchema, many=True, load_only=True)
 
     tags_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1207,6 +1208,7 @@ class AppSchema(SQLAlchemyAutoSchema):
             "name",
             "description",
             "initial_owner_id",
+            "initial_owner_role_ids",
             "initial_additional_app_groups",
             "tags_to_add",
             "tags_to_remove",
@@ -1231,6 +1233,7 @@ class AppSchema(SQLAlchemyAutoSchema):
         )
         load_only = (
             "initial_owner_id",
+            "initial_owner_role_ids",
             "initial_additional_app_groups",
             "tags_to_add",
             "tags_to_remove",
