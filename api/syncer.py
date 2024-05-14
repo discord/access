@@ -221,6 +221,10 @@ def sync_group_memberships(act_as_authority: bool) -> None:
 
         members = okta.list_users_for_group(group.id)
 
+        logger.info(
+            f"Fetched users list for group {group.id}"
+        )
+
         db_all_group_members = {
             row.id: row.user_id
             for row in db.session.query(
@@ -261,6 +265,8 @@ def sync_group_memberships(act_as_authority: bool) -> None:
                     k: v for k, v in db_all_group_members.items() if v != member.id
                 }
 
+        logger.info("Members in Okta synced to DB.")
+
         # All remaining values are memberships that are marked active in our DB
         # But are not valid memberships in okta
         if db_all_group_members:
@@ -279,6 +285,8 @@ def sync_group_memberships(act_as_authority: bool) -> None:
                 ModifyGroupUsers(
                     group=group.id, members_to_remove=list(distinct_member_ids)
                 ).execute()
+
+        logger.info("Members in DB synced to Okta.")
 
         db.session.commit()
 
