@@ -19,6 +19,7 @@ RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
 HTTP_TOO_MANY_REQUESTS = 429
 RATE_LIMIT_RESET_HEADER = 'X-Rate-Limit-Reset'
 RETRY_BACKOFF_FACTOR = 0.5
+REQUEST_TIMEOUT = 30
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class OktaService:
     async def _retry(func: Callable[[Any], Any], *args: Any, **kwargs: Any) -> Any:
         """Retry Okta API requests with specific status codes using exponential backoff."""
         for attempt in range(1 + REQUEST_MAX_RETRIES):
-            result =  await asyncio.wait_for(func(*args, **kwargs), timeout=30)
+            result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
 
             if len(result) == 2:
                 response, error = result
@@ -111,7 +112,7 @@ class OktaService:
             assert users is not None and resp is not None
 
             while resp.has_next():
-                more_users, _ = await resp.next()
+                more_users, _ = await OktaService._retry(resp.next())
                 users.extend(more_users)
             return list(map(lambda user: User(user), users))
 
@@ -215,7 +216,7 @@ class OktaService:
             assert groups is not None and resp is not None
 
             while resp.has_next():
-                more_groups, _ = await resp.next()
+                more_groups, _ = await OktaService._retry(resp.next())
                 groups.extend(more_groups)
             return list(map(lambda group: Group(group), groups))
 
@@ -243,7 +244,7 @@ class OktaService:
             assert group_rules is not None and resp is not None
 
             while resp.has_next():
-                more_group_rules, _ = await resp.next()
+                more_group_rules, _ = await OktaService._retry(resp.next())
                 group_rules.extend(more_group_rules)
             return group_rules
 
@@ -258,7 +259,7 @@ class OktaService:
             assert users is not None and resp is not None
 
             while resp.has_next():
-                more_users, _ = await resp.next()
+                more_users, _ = await OktaService._retry(resp.next())
                 users.extend(more_users)
             return list(map(lambda user: User(user), users))
 
