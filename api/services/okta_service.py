@@ -16,6 +16,8 @@ from api.models import OktaGroup, OktaUser
 
 REQUEST_MAX_RETRIES = 3
 RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
+HTTP_TOO_MANY_REQUESTS = 429
+RATE_LIMIT_RESET_HEADER = 'X-Rate-Limit-Reset'
 RETRY_BACKOFF_FACTOR = 0.5
 
 
@@ -42,7 +44,7 @@ class OktaService:
     async def _retry(func: Callable[[Any], Any], *args: Any, **kwargs: Any) -> Any:
         """Retry Okta API requests with specific status codes using exponential backoff."""
         for attempt in range(1 + REQUEST_MAX_RETRIES):
-            result = await func(*args, **kwargs)
+            result =  asyncio.wait_for(func(*args, **kwargs), timeout=30)
 
             if len(result) == 2:
                 response, error = result
@@ -64,7 +66,15 @@ class OktaService:
                             f' {error}. Retrying...'
                 )
 
-            await asyncio.sleep(RETRY_BACKOFF_FACTOR * (2**attempt))
+            # If rate limit is hit, then wait until the "X-Rate-Limit-Reset" time, else backoff exponentially
+            if (response.get_status() == HTTP_TOO_MANY_REQUESTS):
+                logger.warning('Rate limit hit, waiting until reset...')
+                current_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
+                rate_limit_reset = float(response.headers[RATE_LIMIT_RESET_HEADER])
+                wait_time = max(rate_limit_reset - current_time, 1)  # Ensure wait_time is at least 1 second
+            else:
+                wait_time = RETRY_BACKOFF_FACTOR * (2 ** attempt)
+            await asyncio.sleep(wait_time)
 
     def get_user(self, userId: str) -> User:
         user, _, error = asyncio.run(OktaService._retry(self.okta_client.get_user, userId))
