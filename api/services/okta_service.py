@@ -44,7 +44,7 @@ class OktaService:
     async def _retry(func: Callable[[Any], Any], *args: Any, **kwargs: Any) -> Any:
         """Retry Okta API requests with specific status codes using exponential backoff."""
         for attempt in range(1 + REQUEST_MAX_RETRIES):
-            result =  asyncio.wait_for(func(*args, **kwargs), timeout=30)
+            result =  await asyncio.wait_for(func(*args, **kwargs), timeout=30)
 
             if len(result) == 2:
                 response, error = result
