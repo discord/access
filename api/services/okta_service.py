@@ -112,7 +112,7 @@ class OktaService:
             assert users is not None and resp is not None
 
             while resp.has_next():
-                more_users, _ = await OktaService._retry(resp.next())
+                more_users, _ = await OktaService._retry(resp.next)
                 users.extend(more_users)
             return list(map(lambda user: User(user), users))
 
@@ -216,7 +216,7 @@ class OktaService:
             assert groups is not None and resp is not None
 
             while resp.has_next():
-                more_groups, _ = await OktaService._retry(resp.next())
+                more_groups, _ = await OktaService._retry(resp.next)
                 groups.extend(more_groups)
             return list(map(lambda group: Group(group), groups))
 
@@ -244,7 +244,7 @@ class OktaService:
             assert group_rules is not None and resp is not None
 
             while resp.has_next():
-                more_group_rules, _ = await OktaService._retry(resp.next())
+                more_group_rules, _ = await OktaService._retry(resp.next)
                 group_rules.extend(more_group_rules)
             return group_rules
 
@@ -259,7 +259,7 @@ class OktaService:
             assert users is not None and resp is not None
 
             while resp.has_next():
-                more_users, _ = await OktaService._retry(resp.next())
+                more_users, _ = await OktaService._retry(resp.next)
                 users.extend(more_users)
             return list(map(lambda user: User(user), users))
 
