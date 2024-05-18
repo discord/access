@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import datetime
 import logging
+from datetime import UTC, datetime
 from typing import Any, Callable, Optional
 
 import dateutil.parser
@@ -17,7 +17,7 @@ from api.models import OktaGroup, OktaUser
 REQUEST_MAX_RETRIES = 3
 RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
 HTTP_TOO_MANY_REQUESTS = 429
-RATE_LIMIT_RESET_HEADER = 'X-Rate-Limit-Reset'
+RATE_LIMIT_RESET_HEADER = "X-Rate-Limit-Reset"
 RETRY_BACKOFF_FACTOR = 0.5
 REQUEST_TIMEOUT = 30
 
@@ -28,13 +28,16 @@ logger = logging.getLogger(__name__)
 class OktaService:
     """For interacting with the Okta API"""
 
-    def initialize(self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False) -> None:
+    def initialize(
+        self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False
+    ) -> None:
         # Ignore an okta domain and api token when testing
         if okta_domain is None or okta_api_token is None:
             return
         self.okta_domain = okta_domain
         self.okta_api_token = okta_api_token
-        self.okta_client = OktaClient({
+        self.okta_client = OktaClient(
+            {
                 "orgUrl": f"https://{okta_domain}",
                 "token": okta_api_token,
             }
@@ -45,7 +48,11 @@ class OktaService:
     async def _retry(func: Callable[[Any], Any], *args: Any, **kwargs: Any) -> Any:
         """Retry Okta API requests with specific status codes using exponential backoff."""
         for attempt in range(1 + REQUEST_MAX_RETRIES):
-            result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
+            try:
+                result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
+            except asyncio.TimeoutError as e:
+                logger.warning("Timeout on Okta request. Retrying...")
+                result = (None, e)
 
             if len(result) == 2:
                 response, error = result
@@ -54,27 +61,27 @@ class OktaService:
             else:
                 raise Exception("Unexpected result structure from Okta client.")
 
-            if (attempt == REQUEST_MAX_RETRIES or
-                error is None or
-                response is None or
-                (response is not None and response.get_status() not in RETRIABLE_STATUS_CODES)):
+            if (
+                attempt == REQUEST_MAX_RETRIES
+                or error is None
+                or ((response is not None) and (response.get_status() not in RETRIABLE_STATUS_CODES))
+            ):
                 return result
 
-            if response is None:
-                logger.warning('Got None response from Okta resource. Retrying...')
-            else:
-                logger.warning(f'Got {response.get_status()} response from Okta resource {response._url}, with error:'
-                            f' {error}. Retrying...'
+            if response is not None:
+                logger.warning(
+                    f"Got {response.get_status()} response from Okta resource {response._url}, with error:"
+                    f" {error}. Retrying..."
                 )
 
             # If rate limit is hit, then wait until the "X-Rate-Limit-Reset" time, else backoff exponentially
-            if (response.get_status() == HTTP_TOO_MANY_REQUESTS):
-                logger.warning('Rate limit hit, waiting until reset...')
-                current_time = datetime.datetime.now(datetime.timezone.utc).timestamp()
+            if (response is not None) and (response.get_status() == HTTP_TOO_MANY_REQUESTS):
+                logger.warning("Rate limit hit, waiting until reset...")
+                current_time = datetime.now(UTC).timestamp()
                 rate_limit_reset = float(response.headers[RATE_LIMIT_RESET_HEADER])
                 wait_time = max(rate_limit_reset - current_time, 1)  # Ensure wait_time is at least 1 second
             else:
-                wait_time = RETRY_BACKOFF_FACTOR * (2 ** attempt)
+                wait_time = RETRY_BACKOFF_FACTOR * (2**attempt)
             await asyncio.sleep(wait_time)
 
     def get_user(self, userId: str) -> User:
@@ -121,8 +128,8 @@ class OktaService:
     def create_group(self, name: str, description: str) -> Group:
         group, _, error = asyncio.run(
             OktaService._retry(
-                self.okta_client.create_group,
-                OktaGroupType({"profile": {"name": name, "description": description}}))
+                self.okta_client.create_group, OktaGroupType({"profile": {"name": name, "description": description}})
+            )
         )
         if error is not None:
             raise Exception(error)
@@ -206,7 +213,8 @@ class OktaService:
 
         return Group(group)
 
-    DEFAULT_QUERY_PARAMS = {'filter': 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+
     def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
         async def _list_groups(query_params: dict[str, str]) -> list[Group]:
             groups, resp, error = await OktaService._retry(self.okta_client.list_groups, query_params=query_params)
@@ -224,18 +232,17 @@ class OktaService:
 
     def list_groups_with_active_rules(self) -> dict[str, list[OktaGroupRuleType]]:
         group_rules = self.list_group_rules()
-        group_ids_with_group_rules = {} # type: dict[str, list[OktaGroupRuleType]]
+        group_ids_with_group_rules = {}  # type: dict[str, list[OktaGroupRuleType]]
         for group_rule in group_rules:
             if group_rule.status == "ACTIVE":
                 for id in group_rule.actions.assign_user_to_groups.group_ids:
                     group_ids_with_group_rules.setdefault(id, []).append(group_rule)
         return group_ids_with_group_rules
 
-    def list_group_rules(self, *, query_params: dict[str,str]={}) -> list[OktaGroupRuleType]:
+    def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
         async def _list_group_rules(query_params: dict[str, str]) -> list[OktaGroupRuleType]:
             group_rules, resp, error = await OktaService._retry(
-                self.okta_client.list_group_rules,
-                query_params=query_params
+                self.okta_client.list_group_rules, query_params=query_params
             )
 
             if error is not None:
@@ -308,9 +315,7 @@ class OktaService:
         _, error = await OktaService._retry(request_executor.execute, request)
 
         # Ignore error if owner is already assigned to group
-        if error is not None and not error.message.endswith(
-            "Provided owner is already assigned to this group"
-        ):
+        if error is not None and not error.message.endswith("Provided owner is already assigned to this group"):
             raise Exception(error)
 
         return
@@ -333,9 +338,7 @@ class OktaService:
 
         request, error = await request_executor.create_request(
             method="DELETE",
-            url="/api/v1/groups/{groupId}/owners/{userId}".format(
-                groupId=groupId, userId=userId
-            ),
+            url="/api/v1/groups/{groupId}/owners/{userId}".format(groupId=groupId, userId=userId),
             body={},
             headers={},
             oauth=False,
@@ -402,9 +405,7 @@ class User:
             okta_user.created_at = dateutil.parser.isoparse(self.user.created)
         if okta_user.updated_at is None:
             okta_user.updated_at = (
-                dateutil.parser.isoparse(self.user.last_updated)
-                if self.user.last_updated is not None
-                else None
+                dateutil.parser.isoparse(self.user.last_updated) if self.user.last_updated is not None else None
             )
         okta_user.deleted_at = self.get_deleted_at()
         okta_user.email = self.user.profile.login
@@ -416,14 +417,9 @@ class User:
         return okta_user
 
     def _convert_profile_keys_to_titles(self, user_attrs_to_titles: dict[str, str]) -> dict[str, str]:
-        return dict(
-            (
-                (user_attrs_to_titles.get(k, k), v)
-                for (k, v) in self.user.profile.__dict__.items()
-            )
-        )
+        return dict(((user_attrs_to_titles.get(k, k), v) for (k, v) in self.user.profile.__dict__.items()))
 
-    def get_deleted_at(self) -> Optional[datetime.datetime]:
+    def get_deleted_at(self) -> Optional[datetime]:
         return (
             dateutil.parser.isoparse(self.user.status_changed)
             if self.user.status in ("SUSPENDED", "DEPROVISIONED")
@@ -472,9 +468,7 @@ class Group:
         return getattr(self.group, name)
 
     def update_okta_group(
-        self,
-        okta_group: OktaGroup,
-        group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]]
+        self, okta_group: OktaGroup, group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]]
     ) -> OktaGroup:
         if okta_group.id is None:
             okta_group.id = self.group.id
@@ -482,25 +476,19 @@ class Group:
             okta_group.created_at = dateutil.parser.isoparse(self.group.created)
         if okta_group.updated_at is None:
             okta_group.updated_at = (
-                dateutil.parser.isoparse(self.group.last_updated)
-                if self.group.last_updated is not None
-                else None
+                dateutil.parser.isoparse(self.group.last_updated) if self.group.last_updated is not None else None
             )
 
         okta_group.name = self.group.profile.name
-        okta_group.description = (
-            self.group.profile.description
-            if self.group.profile.description is not None
-            else ""
-        )
+        okta_group.description = self.group.profile.description if self.group.profile.description is not None else ""
 
         okta_group.is_managed = is_managed_group(self, group_ids_with_group_rules)
 
         # Get externally managed group data
         if self.group.id in group_ids_with_group_rules:
-            okta_group.externally_managed_data = {rule.name:rule.conditions.expression.value
-                                                  for rule in group_ids_with_group_rules[self.group.id]}
-
+            okta_group.externally_managed_data = {
+                rule.name: rule.conditions.expression.value for rule in group_ids_with_group_rules[self.group.id]
+            }
 
         return okta_group
 
