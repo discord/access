@@ -1,4 +1,3 @@
-
 from flask import abort, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -38,32 +37,35 @@ from api.views.schemas import (
 )
 
 # Use selectinload for one-to-many eager loading and used joinedload for one-to-one eager loading
-ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup,], flat=True)
+ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(
+    OktaGroup,
+    [
+        AppGroup,
+    ],
+    flat=True,
+)
 DEFAULT_LOAD_OPTIONS = (
     joinedload(AccessRequest.requester),
     joinedload(AccessRequest.requested_group).options(
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
         joinedload(AppGroup.app),
         selectinload(OktaGroup.active_group_tags).options(
-            joinedload(OktaGroupTagMap.active_tag),
-            joinedload(OktaGroupTagMap.active_app_tag_mapping)
+            joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
         ),
         joinedload(RoleGroup.active_role_associated_group_member_mappings).options(
             joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                 selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_tag),
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                    joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                 ),
-                joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
             ),
         ),
         joinedload(RoleGroup.active_role_associated_group_owner_mappings).options(
             joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                 selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_tag),
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                    joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                 ),
-                joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
             ),
         ),
     ),
@@ -121,42 +123,33 @@ class AccessRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(AccessRequestSchema)
     def put(self, access_request_id: str) -> ResponseReturnValue:
         access_request = (
-            AccessRequest.query.options(
-                joinedload(AccessRequest.active_requested_group)
-            )
+            AccessRequest.query.options(joinedload(AccessRequest.active_requested_group))
             .filter(AccessRequest.id == access_request_id)
             .first_or_404()
         )
 
         access_request_args = ResolveAccessRequestSchema().load(request.get_json())
 
+        # Check if the current user is the user who created the request (they can always reject their own requests)
+        if access_request.requester_user_id == g.current_user_id:
+            if access_request_args["approved"]:
+                abort(403, "Users cannot approve their own requests")
+        # Otherwise check if the current user can manage the requested group for the access request
+        elif not AuthorizationHelpers.can_manage_group(access_request.active_requested_group):
+            abort(403, "Current user is not allowed to perform this action")
+
+        # Check group tags to see if a reason is required for approval
         if access_request_args["approved"]:
-            # Check if the current user is the user who created the request (they can always reject their own requests)
-            if access_request.requester_user_id == g.current_user_id:
-                    abort(403, "Users cannot approve their own requests")
-
-
-            # Check group tags to see if a reason is required for approval
             valid, err_message = CheckForReason(
                 group=access_request.active_requested_group,
                 reason=access_request_args.get("reason"),
                 members_to_add=[access_request.requester_user_id] if not access_request.request_ownership else [],
-                owners_to_add=[access_request.requester_user_id] if access_request.request_ownership else []
+                owners_to_add=[access_request.requester_user_id] if access_request.request_ownership else [],
             ).execute_for_group()
             if not valid:
                 abort(400, err_message)
 
-
-        # Otherwise check if the current user can manage the requested group for the access request
-        elif not AuthorizationHelpers.can_manage_group(
-            access_request.active_requested_group
-        ):
-            abort(403, "Current user is not allowed to perform this action")
-
-        if (
-            access_request.status != AccessRequestStatus.PENDING
-            or access_request.resolved_at is not None
-        ):
+        if access_request.status != AccessRequestStatus.PENDING or access_request.resolved_at is not None:
             abort(400, "Access request is not pending")
 
         if access_request_args["approved"]:
@@ -176,13 +169,11 @@ class AccessRequestResource(MethodResource):
                 access_request=access_request,
                 rejection_reason=access_request_args.get("reason"),
                 notify_requester=access_request.requester_user_id != g.current_user_id,
-                current_user_id=g.current_user_id
+                current_user_id=g.current_user_id,
             ).execute()
 
         access_request = (
-            AccessRequest.query.options(DEFAULT_LOAD_OPTIONS)
-            .filter(AccessRequest.id == access_request.id)
-            .first()
+            AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(AccessRequest.id == access_request.id).first()
         )
         return AccessRequestSchema(
             only=(
@@ -215,42 +206,32 @@ class AccessRequestResource(MethodResource):
 
 
 class AccessRequestList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(
-        SearchAccessRequestPaginationRequestSchema, location="query"
-    )
+    @FlaskApiSpecDecorators.request_schema(SearchAccessRequestPaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(AccessRequestPaginationSchema)
     def get(self) -> ResponseReturnValue:
         search_args = SearchAccessRequestPaginationRequestSchema().load(request.args)
 
-        query = AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).order_by(
-            AccessRequest.created_at.desc()
-        )
+        query = AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).order_by(AccessRequest.created_at.desc())
 
         if "status" in search_args:
             query = query.filter(AccessRequest.status == search_args["status"])
 
         if "requester_user_id" in search_args:
             if search_args["requester_user_id"] == "@me":
-                query = query.filter(
-                    AccessRequest.requester_user_id == g.current_user_id
-                )
+                query = query.filter(AccessRequest.requester_user_id == g.current_user_id)
             else:
                 requester_alias = aliased(OktaUser)
                 query = query.join(AccessRequest.requester.of_type(requester_alias)).filter(
                     db.or_(
-                        AccessRequest.requester_user_id
-                        == search_args["requester_user_id"],
-                        requester_alias.email.ilike(
-                            search_args["requester_user_id"]
-                        ),
+                        AccessRequest.requester_user_id == search_args["requester_user_id"],
+                        requester_alias.email.ilike(search_args["requester_user_id"]),
                     )
                 )
 
         if "requested_group_id" in search_args:
             query = query.join(AccessRequest.requested_group).filter(
                 db.or_(
-                    AccessRequest.requested_group_id
-                    == search_args["requested_group_id"],
+                    AccessRequest.requested_group_id == search_args["requested_group_id"],
                     OktaGroup.name.ilike(search_args["requested_group_id"]),
                 )
             )
@@ -303,15 +284,12 @@ class AccessRequestList(MethodResource):
 
         if "resolver_user_id" in search_args:
             if search_args["resolver_user_id"] == "@me":
-                query = query.filter(
-                    AccessRequest.resolver_user_id == g.current_user_id
-                )
+                query = query.filter(AccessRequest.resolver_user_id == g.current_user_id)
             else:
                 resolver_alias = aliased(OktaUser)
                 query = query.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).filter(
                     db.or_(
-                        AccessRequest.resolver_user_id
-                        == search_args["resolver_user_id"],
+                        AccessRequest.resolver_user_id == search_args["resolver_user_id"],
                         resolver_alias.email.ilike(search_args["resolver_user_id"]),
                     )
                 )
@@ -333,18 +311,14 @@ class AccessRequestList(MethodResource):
                         requester_alias.first_name.ilike(like_search),
                         requester_alias.last_name.ilike(like_search),
                         requester_alias.display_name.ilike(like_search),
-                        (
-                            requester_alias.first_name + " " + requester_alias.last_name
-                        ).ilike(like_search),
+                        (requester_alias.first_name + " " + requester_alias.last_name).ilike(like_search),
                         OktaGroup.name.ilike(like_search),
                         OktaGroup.description.ilike(like_search),
                         resolver_alias.email.ilike(like_search),
                         resolver_alias.first_name.ilike(like_search),
                         resolver_alias.last_name.ilike(like_search),
                         resolver_alias.display_name.ilike(like_search),
-                        (
-                            resolver_alias.first_name + " " + resolver_alias.last_name
-                        ).ilike(like_search),
+                        (resolver_alias.first_name + " " + resolver_alias.last_name).ilike(like_search),
                     )
                 )
             )
@@ -385,9 +359,8 @@ class AccessRequestList(MethodResource):
         access_request_args = CreateAccessRequestSchema().load(request.get_json())
 
         if (
-            OktaUser.query
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == g.current_user_id).first() is None
+            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == g.current_user_id).first()
+            is None
         ):
             abort(403, "Current user is not allowed to perform this action")
 
@@ -405,16 +378,9 @@ class AccessRequestList(MethodResource):
             )
 
         existing_access_requests = (
-            AccessRequest.query.filter(
-                AccessRequest.requester_user_id == g.current_user_id
-            )
-            .filter(
-                AccessRequest.requested_group_id == access_request_args["group_id"]
-            )
-            .filter(
-                AccessRequest.request_ownership
-                == access_request_args["group_owner"]
-            )
+            AccessRequest.query.filter(AccessRequest.requester_user_id == g.current_user_id)
+            .filter(AccessRequest.requested_group_id == access_request_args["group_id"])
+            .filter(AccessRequest.request_ownership == access_request_args["group_owner"])
             .filter(AccessRequest.status == AccessRequestStatus.PENDING)
             .filter(AccessRequest.resolved_at.is_(None))
             .all()
@@ -424,7 +390,7 @@ class AccessRequestList(MethodResource):
                 access_request=existing_access_request,
                 rejection_reason="Closed due to duplicate access request creation",
                 notify_requester=False,
-                current_user_id=g.current_user_id
+                current_user_id=g.current_user_id,
             ).execute()
 
         access_request = CreateAccessRequest(
@@ -439,9 +405,7 @@ class AccessRequestList(MethodResource):
             abort(400, "Groups not managed by Access cannot be modified")
 
         access_request = (
-            AccessRequest.query.options(DEFAULT_LOAD_OPTIONS)
-            .filter(AccessRequest.id == access_request.id)
-            .first()
+            AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(AccessRequest.id == access_request.id).first()
         )
         return (
             AccessRequestSchema(

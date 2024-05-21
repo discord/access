@@ -34,11 +34,18 @@ SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
 ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
-def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+
+def test_get_access_request(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # test 404
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id="randomid"
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
     rep = client.get(access_request_url)
     assert rep.status_code == 404
 
@@ -48,10 +55,7 @@ def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     db.session.commit()
 
     ModifyRoleGroups(
-        role_group=role_group,
-        groups_to_add=[okta_group.id],
-        owner_groups_to_add=[okta_group.id],
-        sync_to_okta=False
+        role_group=role_group, groups_to_add=[okta_group.id], owner_groups_to_add=[okta_group.id], sync_to_okta=False
     ).execute()
 
     okta_group_access_request = CreateAccessRequest(
@@ -84,9 +88,7 @@ def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert data["request_reason"] == okta_group_access_request.request_reason
     assert data["request_ownership"] == okta_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -124,9 +126,7 @@ def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert data["request_reason"] == role_group_access_request.request_reason
     assert data["request_ownership"] == role_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -149,11 +149,17 @@ def test_get_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert data["request_ownership"] == role_group_access_request.request_ownership
 
 
-def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser) -> None:
+def test_put_access_request(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_request: AccessRequest,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
     # test 404
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id="randomid"
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
     rep = client.put(access_request_url)
     assert rep.status_code == 404
 
@@ -167,9 +173,7 @@ def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
 
     # test missing data
     data: dict[str, Any] = {}
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
@@ -184,9 +188,7 @@ def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     data = rep.get_json()
     assert data["requester"]["email"] == user.email
@@ -198,10 +200,7 @@ def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert data["resolver"]["email"] == access_owner.email
     assert data["resolution_reason"] == access_request.resolution_reason
 
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 2
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
     access_request2 = CreateAccessRequest(
         requester_user=user,
@@ -216,17 +215,13 @@ def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     add_owner_to_group_spy.reset_mock()
     data = {"approved": False, "reason": "test reason"}
 
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     data = rep.get_json()
     assert data["requester"]["email"] == user.email
@@ -238,16 +233,106 @@ def test_put_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, moc
     assert data["resolver"]["email"] == access_owner.email
     assert data["resolution_reason"] == access_request.resolution_reason
 
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 2
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+
+
+def test_put_access_request_by_non_owner(
+    client: FlaskClient, app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser
+) -> None:
+    access_owner = app.config["CURRENT_OKTA_USER_EMAIL"]
+
+    db.session.add(user)
+    db.session.add(okta_group)
+    db.session.commit()
+
+    access_request_by_owner = CreateAccessRequest(
+        requester_user=OktaUser.query.filter(OktaUser.email == access_owner).first(),
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    access_request_by_non_owner = CreateAccessRequest(
+        requester_user=user,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="test reason",
+    ).execute()
+
+    db.session.commit()
+
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+
+    assert access_request_by_owner is not None
+    assert access_request_by_owner.status == AccessRequestStatus.PENDING
+    assert access_request_by_non_owner is not None
+    assert access_request_by_non_owner.status == AccessRequestStatus.PENDING
+
+    data: dict[str, Any] = {}
+    app.config["CURRENT_OKTA_USER_EMAIL"] = user.email
+
+    access_request_url = url_for(
+        "api-access-requests.access_request_by_id", access_request_id=access_request_by_owner.id
     )
+    data = {"approved": True, "reason": "test approval"}
+    rep = client.put(access_request_url, json=data)
+    assert rep.status_code == 403
+
+    assert access_request_by_non_owner.status == AccessRequestStatus.PENDING
+    assert access_request_by_non_owner.resolved_at is None
+    assert access_request_by_non_owner.resolver_user_id is None
+
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+
+    data = {"approved": False, "reason": "test rejection"}
+
+    rep = client.put(access_request_url, json=data)
+    assert rep.status_code == 403
+
+    assert access_request_by_non_owner.status == AccessRequestStatus.PENDING
+    assert access_request_by_non_owner.resolved_at is None
+    assert access_request_by_non_owner.resolver_user_id is None
+
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+
+    access_request_url = url_for(
+        "api-access-requests.access_request_by_id", access_request_id=access_request_by_non_owner.id
+    )
+
+    data = {"approved": True, "reason": "test approval"}
+    rep = client.put(access_request_url, json=data)
+    assert rep.status_code == 403
+
+    assert access_request_by_non_owner.status == AccessRequestStatus.PENDING
+    assert access_request_by_non_owner.resolved_at is None
+    assert access_request_by_non_owner.resolver_user_id is None
+
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+
+    data = {"approved": False, "reason": "test rejection"}
+
+    rep = client.put(access_request_url, json=data)
+    assert rep.status_code == 200
+
+    data = rep.get_json()
+    assert data["requester"]["email"] == user.email
+    assert data["requested_group"]["name"] == okta_group.name
+    assert data["status"] == AccessRequestStatus.REJECTED
+    assert data["request_reason"] == access_request_by_non_owner.request_reason
+    assert data["request_ownership"] == access_request_by_non_owner.request_ownership
+    assert data["resolver"]["email"] == user.email
+    assert data["resolution_reason"] == access_request_by_non_owner.resolution_reason
+
+    assert access_request_by_non_owner.resolved_at is not None
+    assert access_request_by_non_owner.resolver_user_id == user.id
+
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
 
 def test_create_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, okta_group: OktaGroup) -> None:
     # test bad data
     access_requests_url = url_for("api-access-requests.access_requests")
-    data: dict[str, Any]  = {}
+    data: dict[str, Any] = {}
     rep = client.post(access_requests_url, json=data)
     assert rep.status_code == 400
 
@@ -265,9 +350,7 @@ def test_create_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, 
 
     data = rep.get_json()
     access_request = db.session.get(AccessRequest, data["id"])
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     assert data["requester"]["email"] == access_owner.email
     assert data["requested_group"]["name"] == okta_group.name
@@ -283,9 +366,7 @@ def test_get_all_access_request(client: FlaskClient, db: SQLAlchemy, okta_group:
     db.session.add(okta_group)
     db.session.commit()
 
-    access_requests = AccessRequestFactory.create_batch(
-        10, requester_user_id=user.id, requested_group_id=okta_group.id
-    )
+    access_requests = AccessRequestFactory.create_batch(10, requester_user_id=user.id, requested_group_id=okta_group.id)
     db.session.add_all(access_requests)
     db.session.commit()
 
@@ -304,25 +385,18 @@ def test_get_all_access_request(client: FlaskClient, db: SQLAlchemy, okta_group:
         assert any(u["id"] == access_request.id for u in results["results"])
 
 
-def test_create_access_request_notification(app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture) -> None:
+def test_create_access_request_notification(
+    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
     db.session.add(user)
     db.session.add(okta_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
 
     hook = get_notification_hook()
-    request_created_notification_spy = mocker.patch.object(
-        hook, "access_request_created"
-    )
-    request_completed_notification_spy = mocker.patch.object(
-        hook, "access_request_completed"
-    )
+    request_created_notification_spy = mocker.patch.object(hook, "access_request_created")
+    request_completed_notification_spy = mocker.patch.object(hook, "access_request_completed")
     add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
 
     access_request = CreateAccessRequest(
@@ -335,13 +409,9 @@ def test_create_access_request_notification(app: Flask, db: SQLAlchemy, okta_gro
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
-    ApproveAccessRequest(
-        access_request=access_request, approver_user=access_owner
-    ).execute()
+    ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
     assert add_membership_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 1
@@ -353,9 +423,7 @@ def test_create_access_request_notification(app: Flask, db: SQLAlchemy, okta_gro
     add_membership_spy.reset_mock()
     request_completed_notification_spy.reset_mock()
 
-    RejectAccessRequest(
-        access_request=access_request, current_user_id=access_owner
-    ).execute()
+    RejectAccessRequest(access_request=access_request, current_user_id=access_owner).execute()
 
     assert add_membership_spy.call_count == 0
     assert request_completed_notification_spy.call_count == 1
@@ -391,19 +459,12 @@ def test_create_app_access_request_notification(
 
     # Add app_owner_user to the owner group
     ModifyGroupUsers(
-        group=app_owner_group,
-        members_to_add=[],
-        owners_to_add=[app_owner_user.id],
-        sync_to_okta=False
+        group=app_owner_group, members_to_add=[], owners_to_add=[app_owner_user.id], sync_to_okta=False
     ).execute()
 
     hook = get_notification_hook()
-    request_created_notification_spy = mocker.patch.object(
-        hook, "access_request_created"
-    )
-    request_completed_notification_spy = mocker.patch.object(
-        hook, "access_request_completed"
-    )
+    request_created_notification_spy = mocker.patch.object(hook, "access_request_created")
+    request_completed_notification_spy = mocker.patch.object(hook, "access_request_completed")
     add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
 
     access_request = CreateAccessRequest(
@@ -416,24 +477,20 @@ def test_create_app_access_request_notification(
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
     _, kwargs = request_created_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
-    ApproveAccessRequest(
-        access_request=access_request, approver_user=access_owner
-    ).execute()
+    ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
     assert add_membership_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
 
     access_request.status = AccessRequestStatus.PENDING
     access_request.resolved_at = None
@@ -442,16 +499,15 @@ def test_create_app_access_request_notification(
     add_membership_spy.reset_mock()
     request_completed_notification_spy.reset_mock()
 
-    RejectAccessRequest(
-        access_request=access_request, current_user_id=access_owner
-    ).execute()
+    RejectAccessRequest(access_request=access_request, current_user_id=access_owner).execute()
 
     assert add_membership_spy.call_count == 0
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+
 
 def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
@@ -482,6 +538,7 @@ def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, d
     assert users[1] in approvers
     assert users[2] in approvers
 
+
 def test_resolve_app_access_request_notification(
     app: Flask, db: SQLAlchemy, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
@@ -497,7 +554,7 @@ def test_resolve_app_access_request_notification(
     # Add Users
     db.session.add(app_owner_user1)
     db.session.add(app_owner_user2)
-    db.session.add(user) # Future group owner
+    db.session.add(user)  # Future group owner
 
     db.session.commit()
 
@@ -518,16 +575,12 @@ def test_resolve_app_access_request_notification(
         group=app_owner_group,
         members_to_add=[],
         owners_to_add=[app_owner_user1.id, app_owner_user2.id],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     hook = get_notification_hook()
-    request_created_notification_spy = mocker.patch.object(
-        hook, "access_request_created"
-    )
-    request_completed_notification_spy = mocker.patch.object(
-        hook, "access_request_completed"
-    )
+    request_created_notification_spy = mocker.patch.object(hook, "access_request_created")
+    request_completed_notification_spy = mocker.patch.object(hook, "access_request_completed")
     add_ownership_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
     access_request = CreateAccessRequest(
@@ -540,28 +593,26 @@ def test_resolve_app_access_request_notification(
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
     _, kwargs = request_created_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
-    assert len(kwargs['approvers']) == 2
-    assert app_owner_user1 in kwargs['approvers']
-    assert app_owner_user2 in kwargs['approvers']
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+    assert len(kwargs["approvers"]) == 2
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
 
-    ApproveAccessRequest(
-        access_request=access_request, approver_user=app_owner_user1
-    ).execute()
+    ApproveAccessRequest(access_request=access_request, approver_user=app_owner_user1).execute()
 
     assert add_ownership_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
-    assert len(kwargs['approvers']) == 4
-    assert access_admin in kwargs['approvers']
-    assert app_owner_user1 in kwargs['approvers']
-    assert app_owner_user2 in kwargs['approvers']
-    assert user in kwargs['approvers']
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+    assert len(kwargs["approvers"]) == 4
+    assert access_admin in kwargs["approvers"]
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
+    assert user in kwargs["approvers"]
 
     # Reset the access request so we can test the reject path
     access_request.status = AccessRequestStatus.PENDING
@@ -571,28 +622,24 @@ def test_resolve_app_access_request_notification(
     add_ownership_spy.reset_mock()
     request_completed_notification_spy.reset_mock()
 
-    RejectAccessRequest(
-        access_request=access_request, current_user_id=app_owner_user1
-    ).execute()
+    RejectAccessRequest(access_request=access_request, current_user_id=app_owner_user1).execute()
 
     assert add_ownership_spy.call_count == 0
     assert request_completed_notification_spy.call_count == 1
     _, kwargs = request_completed_notification_spy.call_args
-    assert kwargs['access_request'] == access_request
-    assert kwargs['group'] == app_group
-    assert kwargs['requester'] == user
-    assert len(kwargs['approvers']) == 4
-    assert access_admin in kwargs['approvers']
-    assert app_owner_user1 in kwargs['approvers']
-    assert app_owner_user2 in kwargs['approvers']
-    assert user in kwargs['approvers']
+    assert kwargs["access_request"] == access_request
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+    assert len(kwargs["approvers"]) == 4
+    assert access_admin in kwargs["approvers"]
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
+    assert user in kwargs["approvers"]
 
-def test_auto_resolve_create_access_request(app: Flask,
-                                            db: SQLAlchemy,
-                                            okta_group: OktaGroup,
-                                            user: OktaUser,
-                                            tag: Tag,
-                                            mocker: MockerFixture) -> None:
+
+def test_auto_resolve_create_access_request(
+    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+) -> None:
     db.session.add(user)
     db.session.add(okta_group)
     db.session.add(tag)
@@ -602,16 +649,13 @@ def test_auto_resolve_create_access_request(app: Flask,
     db.session.commit()
 
     notification_hook = get_notification_hook()
-    request_created_notification_spy = mocker.patch.object(
-        notification_hook, "access_request_created"
-    )
-    request_completed_notification_spy = mocker.patch.object(
-        notification_hook, "access_request_completed"
-    )
+    request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
+    request_completed_notification_spy = mocker.patch.object(notification_hook, "access_request_completed")
     request_hook = get_conditional_access_hook()
     request_created_conditional_access_spy = mocker.patch.object(
-        request_hook, "access_request_created", return_value=[
-            ConditionalAccessResponse(approved=True,reason="Auto-Approved")]
+        request_hook,
+        "access_request_created",
+        return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
     )
     add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
 
@@ -633,11 +677,11 @@ def test_auto_resolve_create_access_request(app: Flask,
     assert add_membership_spy.call_count == 1
 
     _, kwargs = request_created_conditional_access_spy.call_args
-    assert access_request == kwargs['access_request']
-    assert okta_group == kwargs['group']
-    assert user == kwargs['requester']
-    assert len(kwargs['group_tags']) == 1
-    assert tag in kwargs['group_tags']
+    assert access_request == kwargs["access_request"]
+    assert okta_group == kwargs["group"]
+    assert user == kwargs["requester"]
+    assert len(kwargs["group_tags"]) == 1
+    assert tag in kwargs["group_tags"]
 
     request_created_notification_spy.reset_mock()
     request_completed_notification_spy.reset_mock()
@@ -645,8 +689,9 @@ def test_auto_resolve_create_access_request(app: Flask,
     add_membership_spy.reset_mock()
 
     request_created_conditional_access_spy = mocker.patch.object(
-        request_hook, "access_request_created", return_value=[
-            ConditionalAccessResponse(approved=False, reason="Auto-Rejected")]
+        request_hook,
+        "access_request_created",
+        return_value=[ConditionalAccessResponse(approved=False, reason="Auto-Rejected")],
     )
 
     access_request = CreateAccessRequest(
@@ -667,11 +712,11 @@ def test_auto_resolve_create_access_request(app: Flask,
     assert add_membership_spy.call_count == 0
 
     _, kwargs = request_created_conditional_access_spy.call_args
-    assert access_request == kwargs['access_request']
-    assert okta_group == kwargs['group']
-    assert user == kwargs['requester']
-    assert len(kwargs['group_tags']) == 1
-    assert tag in kwargs['group_tags']
+    assert access_request == kwargs["access_request"]
+    assert okta_group == kwargs["group"]
+    assert user == kwargs["requester"]
+    assert len(kwargs["group_tags"]) == 1
+    assert tag in kwargs["group_tags"]
 
     request_created_notification_spy.reset_mock()
     request_completed_notification_spy.reset_mock()
@@ -693,32 +738,28 @@ def test_auto_resolve_create_access_request(app: Flask,
     assert access_request.status == AccessRequestStatus.PENDING
     assert access_request.resolved_at is None
     assert access_request.resolver_user_id is None
-    assert access_request.resolution_reason == ''
+    assert access_request.resolution_reason == ""
     assert request_created_notification_spy.call_count == 1
     assert request_completed_notification_spy.call_count == 0
     assert request_created_conditional_access_spy.call_count == 1
     assert add_membership_spy.call_count == 0
 
     _, kwargs = request_created_conditional_access_spy.call_args
-    assert access_request == kwargs['access_request']
-    assert okta_group == kwargs['group']
-    assert user == kwargs['requester']
-    assert len(kwargs['group_tags']) == 1
-    assert tag in kwargs['group_tags']
+    assert access_request == kwargs["access_request"]
+    assert okta_group == kwargs["group"]
+    assert user == kwargs["requester"]
+    assert len(kwargs["group_tags"]) == 1
+    assert tag in kwargs["group_tags"]
+
 
 def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
-        app: Flask,
-        db: SQLAlchemy,
-        okta_group: OktaGroup,
-        user: OktaUser,
-        tag: Tag,
-        mocker: MockerFixture) -> None:
-
+    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+) -> None:
     db.session.add(user)
     db.session.add(okta_group)
     tag.constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
+        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
     }
     db.session.add(tag)
     db.session.commit()
@@ -727,21 +768,19 @@ def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
     db.session.commit()
 
     notification_hook = get_notification_hook()
-    request_created_notification_spy = mocker.patch.object(
-        notification_hook, "access_request_created"
-    )
-    request_completed_notification_spy = mocker.patch.object(
-        notification_hook, "access_request_completed"
-    )
+    request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
+    request_completed_notification_spy = mocker.patch.object(notification_hook, "access_request_completed")
     request_hook = get_conditional_access_hook()
     request_created_conditional_access_spy = mocker.patch.object(
-        request_hook, "access_request_created", return_value=[
+        request_hook,
+        "access_request_created",
+        return_value=[
             ConditionalAccessResponse(
                 approved=True,
                 reason="Auto-Approved",
-                ending_at=datetime.now() + timedelta(seconds=SEVEN_DAYS_IN_SECONDS)
+                ending_at=datetime.now() + timedelta(seconds=SEVEN_DAYS_IN_SECONDS),
             ),
-        ]
+        ],
     )
     add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
 
@@ -763,8 +802,8 @@ def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
     assert add_membership_spy.call_count == 1
 
     _, kwargs = request_created_conditional_access_spy.call_args
-    assert access_request == kwargs['access_request']
-    assert okta_group == kwargs['group']
-    assert user == kwargs['requester']
-    assert len(kwargs['group_tags']) == 1
-    assert tag in kwargs['group_tags']
+    assert access_request == kwargs["access_request"]
+    assert okta_group == kwargs["group"]
+    assert user == kwargs["requester"]
+    assert len(kwargs["group_tags"]) == 1
+    assert tag in kwargs["group_tags"]
