@@ -36,13 +36,11 @@ class ModifyRoleGroups:
         owner_groups_to_remove: list[str] = [],
         sync_to_okta: bool = True,
         current_user_id: Optional[str] = None,
-        created_reason: str = ''
+        created_reason: str = "",
     ):
         if isinstance(role_group, str):
             self.role = (
-                RoleGroup.query.filter(RoleGroup.deleted_at.is_(None))
-                .filter(RoleGroup.id == role_group)
-                .first()
+                RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == role_group).first()
             )
         else:
             self.role = role_group
@@ -54,34 +52,32 @@ class ModifyRoleGroups:
             self.groups_to_add = (
                 OktaGroup.query.options(
                     selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                ).filter(OktaGroup.id.in_(groups_to_add))
+                )
+                .filter(OktaGroup.id.in_(groups_to_add))
                 .filter(OktaGroup.is_managed.is_(True))
                 .filter(OktaGroup.deleted_at.is_(None))
                 # Don't allow Roles to be added as Groups to Roles
-                .filter(
-                    OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"]
-                ).all()
+                .filter(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
+                .all()
             )
         self.owner_groups_to_add = []
         if len(owner_groups_to_add) > 0:
             self.owner_groups_to_add = (
                 OktaGroup.query.options(
                     selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                ).filter(OktaGroup.id.in_(owner_groups_to_add))
+                )
+                .filter(OktaGroup.id.in_(owner_groups_to_add))
                 .filter(OktaGroup.is_managed.is_(True))
                 .filter(OktaGroup.deleted_at.is_(None))
                 # Don't allow Roles to be added as Groups to Roles
-                .filter(
-                    OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"]
-                ).all()
+                .filter(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
+                .all()
             )
 
         self.groups_to_remove = []
         if len(groups_to_remove) > 0:
             self.groups_to_remove = (
-                OktaGroup.query.filter(OktaGroup.id.in_(groups_to_remove))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .all()
+                OktaGroup.query.filter(OktaGroup.id.in_(groups_to_remove)).filter(OktaGroup.deleted_at.is_(None)).all()
             )
 
         self.owner_groups_to_remove = []
@@ -94,10 +90,10 @@ class ModifyRoleGroups:
 
         self.sync_to_okta = sync_to_okta
 
-        self.current_user_id = (
-            getattr(OktaUser.query
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id).first(), 'id', None)
+        self.current_user_id = getattr(
+            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            "id",
+            None,
         )
 
         self.created_reason = created_reason
@@ -110,10 +106,12 @@ class ModifyRoleGroups:
 
     async def _execute(self) -> RoleGroup:
         # Fast return if no changes are being made
-        if (len(self.groups_to_add) +
-            len(self.groups_to_remove) +
-            len(self.owner_groups_to_add) +
-            len(self.owner_groups_to_remove) == 0
+        if (
+            len(self.groups_to_add)
+            + len(self.groups_to_remove)
+            + len(self.owner_groups_to_add)
+            + len(self.owner_groups_to_remove)
+            == 0
         ):
             return self.role
 
@@ -122,7 +120,7 @@ class ModifyRoleGroups:
             group=self.role,
             current_user=self.current_user_id,
             members_to_add=[g.id for g in self.groups_to_add],
-            owners_to_add=[g.id for g in self.owner_groups_to_add]
+            owners_to_add=[g.id for g in self.owner_groups_to_add],
         ).execute_for_role()
         if not valid:
             return self.role
@@ -132,7 +130,7 @@ class ModifyRoleGroups:
             group=self.role,
             reason=self.created_reason,
             members_to_add=[g.id for g in self.groups_to_add],
-            owners_to_add=[g.id for g in self.owner_groups_to_add]
+            owners_to_add=[g.id for g in self.owner_groups_to_add],
         ).execute_for_role()
         if not valid:
             return self.role
@@ -140,24 +138,29 @@ class ModifyRoleGroups:
         # Audit logging
         email = None
         if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), 'email', None)
+            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
         context = has_request_context()
 
-        current_app.logger.info(AuditLogSchema(exclude=['group.app.id', 'group.app.name']).dumps({
-            'event_type' : EventType.role_group_modify,
-            'user_agent' : request.headers.get('User-Agent') if context else None,
-            'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
-                        if context else None,
-            'current_user_id' : self.current_user_id,
-            'current_user_email' : email,
-            'role' : self.role,
-            'groups_added_ending_at' : self.groups_added_ended_at,
-            'owner_groups_removed_ids_names' : self.owner_groups_to_remove,
-            'owner_groups_added_ids_names' : self.owner_groups_to_add,
-            'groups_removed_ids_names' : self.groups_to_remove,
-            'groups_added_ids_names' : self.groups_to_add,
-        }))
+        current_app.logger.info(
+            AuditLogSchema(exclude=["group.app.id", "group.app.name"]).dumps(
+                {
+                    "event_type": EventType.role_group_modify,
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                    if context
+                    else None,
+                    "current_user_id": self.current_user_id,
+                    "current_user_email": email,
+                    "role": self.role,
+                    "groups_added_ending_at": self.groups_added_ended_at,
+                    "owner_groups_removed_ids_names": self.owner_groups_to_remove,
+                    "owner_groups_added_ids_names": self.owner_groups_to_add,
+                    "groups_removed_ids_names": self.groups_to_remove,
+                    "groups_added_ids_names": self.groups_to_add,
+                }
+            )
+        )
 
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         async_tasks = []
@@ -167,13 +170,9 @@ class ModifyRoleGroups:
         # those extensions occured
 
         # Remove groups from role
-        self.__remove_groups_from_role(
-            self.groups_to_remove + self.groups_to_add, False
-        )
+        self.__remove_groups_from_role(self.groups_to_remove + self.groups_to_add, False)
         # Remove owner groups from role
-        self.__remove_groups_from_role(
-            self.owner_groups_to_remove + self.owner_groups_to_add, True
-        )
+        self.__remove_groups_from_role(self.owner_groups_to_remove + self.owner_groups_to_add, True)
 
         # Remove role members and owners from Okta groups associated with the role
         if len(self.groups_to_remove) > 0 or len(self.owner_groups_to_remove) > 0:
@@ -208,11 +207,7 @@ class ModifyRoleGroups:
                     )
                 )
                 .filter(OktaUserGroupMember.user_id.in_(role_members_to_remove_ids))
-                .filter(
-                    OktaUserGroupMember.group_id.in_(
-                        groups_to_remove_ids + owner_groups_to_remove_ids
-                    )
-                )
+                .filter(OktaUserGroupMember.group_id.in_(groups_to_remove_ids + owner_groups_to_remove_ids))
                 .group_by(
                     OktaUserGroupMember.user_id,
                     OktaUserGroupMember.group_id,
@@ -233,11 +228,7 @@ class ModifyRoleGroups:
                     )
                     for member_id in okta_members_to_remove_ids:
                         # Remove user from okta group members
-                        async_tasks.append(
-                            asyncio.create_task(
-                                okta.async_remove_user_from_group(group_id, member_id)
-                            )
-                        )
+                        async_tasks.append(asyncio.create_task(okta.async_remove_user_from_group(group_id, member_id)))
 
             if self.sync_to_okta:
                 for group_id in owner_groups_to_remove_ids:
@@ -252,11 +243,7 @@ class ModifyRoleGroups:
                     for owner_id in okta_owners_to_remove_ids:
                         # Remove user from okta group owners
                         # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
-                        async_tasks.append(
-                            asyncio.create_task(
-                                okta.async_remove_owner_from_group(group_id, owner_id)
-                            )
-                        )
+                        async_tasks.append(asyncio.create_task(okta.async_remove_owner_from_group(group_id, owner_id)))
 
         # Add new groups to role and owner groups to role
         if len(self.groups_to_add) > 0 or len(self.owner_groups_to_add) > 0:
@@ -266,9 +253,9 @@ class ModifyRoleGroups:
                 # with tagged time limits as members
                 membership_ended_at = coalesce_ended_at(
                     constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-                    tags=[tag_map.active_tag for tag_map in  group.active_group_tags],
+                    tags=[tag_map.active_tag for tag_map in group.active_group_tags],
                     initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=group.is_managed
+                    group_is_managed=group.is_managed,
                 )
                 membership_to_add = RoleGroupMap(
                     group_id=group.id,
@@ -277,7 +264,7 @@ class ModifyRoleGroups:
                     ended_at=membership_ended_at,
                     created_actor_id=self.current_user_id,
                     ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                    created_reason=self.created_reason
+                    created_reason=self.created_reason,
                 )
                 role_memberships_added[group.id] = membership_to_add
                 db.session.add(membership_to_add)
@@ -290,7 +277,7 @@ class ModifyRoleGroups:
                     constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
                     tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
                     initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=owner_group.is_managed
+                    group_is_managed=owner_group.is_managed,
                 )
                 ownership_to_add = RoleGroupMap(
                     group_id=owner_group.id,
@@ -299,7 +286,7 @@ class ModifyRoleGroups:
                     ended_at=ownership_ended_at,
                     created_actor_id=self.current_user_id,
                     ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                    created_reason=self.created_reason
+                    created_reason=self.created_reason,
                 )
                 role_ownerships_added[owner_group.id] = ownership_to_add
                 db.session.add(ownership_to_add)
@@ -328,9 +315,7 @@ class ModifyRoleGroups:
                     if self.sync_to_okta:
                         async_tasks.append(
                             asyncio.create_task(
-                                okta.async_add_user_to_group(
-                                    role_associated_group_map.group_id, member.user_id
-                                )
+                                okta.async_add_user_to_group(role_associated_group_map.group_id, member.user_id)
                             )
                         )
 
@@ -341,9 +326,8 @@ class ModifyRoleGroups:
                     elif member.ended_at is None:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
-                        associated_users_ended_at = (
-                            min(member.ended_at.replace(tzinfo=UTC),
-                                role_associated_group_map.ended_at.replace(tzinfo=UTC))
+                        associated_users_ended_at = min(
+                            member.ended_at.replace(tzinfo=UTC), role_associated_group_map.ended_at.replace(tzinfo=UTC)
                         )
 
                     membership_to_add = OktaUserGroupMember(
@@ -354,7 +338,7 @@ class ModifyRoleGroups:
                         ended_at=associated_users_ended_at,
                         created_actor_id=self.current_user_id,
                         ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                        created_reason=self.created_reason
+                        created_reason=self.created_reason,
                     )
                     role_associated_membership_added[member.user_id] = membership_to_add
                     db.session.add(membership_to_add)
@@ -368,9 +352,7 @@ class ModifyRoleGroups:
                     if self.sync_to_okta:
                         async_tasks.append(
                             asyncio.create_task(
-                                okta.async_add_owner_to_group(
-                                    role_associated_group_map.group_id, member.user_id
-                                )
+                                okta.async_add_owner_to_group(role_associated_group_map.group_id, member.user_id)
                             )
                         )
                     # If the both the role membership and role group map are time bounded,
@@ -380,9 +362,8 @@ class ModifyRoleGroups:
                     elif member.ended_at is None:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
-                        associated_users_ended_at = (
-                            min(member.ended_at.replace(tzinfo=UTC),
-                                role_associated_group_map.ended_at.replace(tzinfo=UTC))
+                        associated_users_ended_at = min(
+                            member.ended_at.replace(tzinfo=UTC), role_associated_group_map.ended_at.replace(tzinfo=UTC)
                         )
                     ownership_to_add = OktaUserGroupMember(
                         user_id=member.user_id,
@@ -392,7 +373,7 @@ class ModifyRoleGroups:
                         ended_at=associated_users_ended_at,
                         created_actor_id=self.current_user_id,
                         ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                        created_reason=self.created_reason
+                        created_reason=self.created_reason,
                     )
                     role_associated_ownership_added[member.user_id] = ownership_to_add
                     db.session.add(ownership_to_add)
@@ -401,46 +382,40 @@ class ModifyRoleGroups:
             db.session.commit()
 
             # Approve any pending access requests for access granted by this operation
-            pending_requests_query = (
-                AccessRequest.query
-                .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-                .filter(AccessRequest.resolved_at.is_(None))
-            )
+            pending_requests_query = AccessRequest.query.filter(
+                AccessRequest.status == AccessRequestStatus.PENDING
+            ).filter(AccessRequest.resolved_at.is_(None))
             active_role_membership_ids = [m.user_id for m in active_role_memberships]
 
             # Find all pending membership requests to approve for groups added as members via this role
             pending_member_requests = (
-                pending_requests_query.filter(
-                    AccessRequest.requested_group_id.in_(group_memberships_added.keys())
-                )
-                .filter(
-                    AccessRequest.requester_user_id.in_(active_role_membership_ids)
-                )
+                pending_requests_query.filter(AccessRequest.requested_group_id.in_(group_memberships_added.keys()))
+                .filter(AccessRequest.requester_user_id.in_(active_role_membership_ids))
                 .filter(AccessRequest.request_ownership.is_(False))
                 .all()
             )
             for access_request in pending_member_requests:
-                async_tasks.append(self._approve_access_request(
-                    access_request,
-                    group_memberships_added[access_request.requested_group_id][access_request.requester_user_id])
+                async_tasks.append(
+                    self._approve_access_request(
+                        access_request,
+                        group_memberships_added[access_request.requested_group_id][access_request.requester_user_id],
+                    )
                 )
 
             # Find all pending ownership requests to approve for groups added as owners via this role
             pending_role_associated_owner_requests = (
-                pending_requests_query.filter(
-                    AccessRequest.requested_group_id.in_(group_ownerships_added.keys())
-                )
-                .filter(
-                    AccessRequest.requester_user_id.in_(active_role_membership_ids)
-                )
+                pending_requests_query.filter(AccessRequest.requested_group_id.in_(group_ownerships_added.keys()))
+                .filter(AccessRequest.requester_user_id.in_(active_role_membership_ids))
                 .filter(AccessRequest.request_ownership.is_(True))
                 .all()
             )
             for access_request in pending_role_associated_owner_requests:
-                async_tasks.append(self._approve_access_request(
-                    access_request,
-                    group_ownerships_added[access_request.requested_group_id][access_request.requester_user_id]
-                ))
+                async_tasks.append(
+                    self._approve_access_request(
+                        access_request,
+                        group_ownerships_added[access_request.requested_group_id][access_request.requester_user_id],
+                    )
+                )
 
             db.session.commit()
 
@@ -476,13 +451,8 @@ class ModifyRoleGroups:
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > db.func.now(),
             )
-        ).filter(
-            OktaUserGroupMember.role_group_map_id.in_(
-                [m.id for m in old_role_associated_groups_mappings]
-            )
-        ).update(
-            {OktaUserGroupMember.ended_at: db.func.now(),
-             OktaUserGroupMember.ended_actor_id: self.current_user_id},
+        ).filter(OktaUserGroupMember.role_group_map_id.in_([m.id for m in old_role_associated_groups_mappings])).update(
+            {OktaUserGroupMember.ended_at: db.func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
             synchronize_session="fetch",
         )
 
@@ -491,16 +461,14 @@ class ModifyRoleGroups:
             db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
         ).filter(RoleGroupMap.role_group_id == self.role.id).filter(
             RoleGroupMap.group_id.in_([g.id for g in groups_to_remove])
-        ).filter(
-            RoleGroupMap.is_owner == owner_groups
-        ).update(
-            {RoleGroupMap.ended_at: db.func.now(),
-             RoleGroupMap.ended_actor_id: self.current_user_id},
+        ).filter(RoleGroupMap.is_owner == owner_groups).update(
+            {RoleGroupMap.ended_at: db.func.now(), RoleGroupMap.ended_actor_id: self.current_user_id},
             synchronize_session="fetch",
         )
 
     def _approve_access_request(
-            self, access_request: AccessRequest, added_okta_user_group_member: OktaUserGroupMember) -> asyncio.Task[None]:
+        self, access_request: AccessRequest, added_okta_user_group_member: OktaUserGroupMember
+    ) -> asyncio.Task[None]:
         access_request.status = AccessRequestStatus.APPROVED
         access_request.resolved_at = db.func.now()
         access_request.resolver_user_id = self.current_user_id

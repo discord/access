@@ -34,49 +34,43 @@ from api.views.schemas import (
 )
 
 # Use selectinload for one-to-many eager loading and used joinedload for one-to-one eager loading
-ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup,])
+ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(
+    OktaGroup,
+    [
+        AppGroup,
+    ],
+)
 DEFAULT_LOAD_OPTIONS = (
     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
     selectinload(OktaGroup.active_user_memberships).options(
         joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-            RoleGroupMap.active_role_group
-        ),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
     ),
     selectinload(OktaGroup.active_user_ownerships).options(
         joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-            RoleGroupMap.active_role_group
-        ),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
     ),
-    selectinload(OktaGroup.active_role_member_mappings).joinedload(
-        RoleGroupMap.active_role_group
-    ),
-    selectinload(OktaGroup.active_role_owner_mappings).joinedload(
-        RoleGroupMap.active_role_group
-    ),
+    selectinload(OktaGroup.active_role_member_mappings).joinedload(RoleGroupMap.active_role_group),
+    selectinload(OktaGroup.active_role_owner_mappings).joinedload(RoleGroupMap.active_role_group),
     selectinload(RoleGroup.active_role_associated_group_member_mappings).options(
         joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
             selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                joinedload(OktaGroupTagMap.active_tag),
-                joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
             ),
-            joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+            joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
         ),
     ),
     selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(
         joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
             selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                joinedload(OktaGroupTagMap.active_tag),
-                joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
             ),
-            joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+            joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
         ),
     ),
     joinedload(AppGroup.app),
     selectinload(OktaGroup.active_group_tags).options(
-      joinedload(OktaGroupTagMap.active_app_tag_mapping),
-      joinedload(OktaGroupTagMap.active_tag)
+        joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.active_tag)
     ),
 )
 
@@ -138,7 +132,7 @@ class GroupResource(MethodResource):
                     group=group,
                     tags_to_add=json_data.get("tags_to_add", []),
                     tags_to_remove=json_data.get("tags_to_remove", []),
-                    current_user_id=g.current_user_id
+                    current_user_id=g.current_user_id,
                 ).execute()
                 group = (
                     db.session.query(OktaGroup)
@@ -153,7 +147,6 @@ class GroupResource(MethodResource):
                     400,
                     "Only tags can be modifed for application owner groups",
                 )
-
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
         if group.name.lower() != group_changes.name.lower():
@@ -175,9 +168,7 @@ class GroupResource(MethodResource):
                     "Current user is not an Access admin and not allowed to change group types",
                 )
             group = ModifyGroupType(
-                group=group,
-                group_changes=group_changes,
-                current_user_id=g.current_user_id
+                group=group, group_changes=group_changes, current_user_id=g.current_user_id
             ).execute()
 
         # Update additional fields like name, description, etc.
@@ -189,7 +180,7 @@ class GroupResource(MethodResource):
             group=group,
             tags_to_add=json_data.get("tags_to_add", []),
             tags_to_remove=json_data.get("tags_to_remove", []),
-            current_user_id=g.current_user_id
+            current_user_id=g.current_user_id,
         ).execute()
 
         group = (
@@ -202,15 +193,21 @@ class GroupResource(MethodResource):
 
         # Audit logging gnly log if group name changed
         if old_group_name.lower() != group.name.lower():
-            current_app.logger.info(AuditLogSchema().dumps({
-                'event_type' : EventType.group_modify_name,
-                'user_agent' : request.headers.get('User-Agent'),
-                'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr)),
-                'current_user_id' : g.current_user_id,
-                'current_user_email' : getattr(db.session.get(OktaUser, g.current_user_id), 'email', None),
-                'group' : group,
-                'old_group_name' : old_group_name
-            }))
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.group_modify_name,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "group": group,
+                        "old_group_name": old_group_name,
+                    }
+                )
+            )
 
         return schema.dump(group)
 
@@ -234,11 +231,21 @@ class GroupResource(MethodResource):
 
         return DeleteMessageSchema().dump({"deleted": True})
 
+
 class GroupAuditResource(MethodResource):
     def get(self, group_id: str) -> ResponseReturnValue:
-        return redirect(url_for('api-audit.users_and_groups',
-                                _anchor=None, _method=None, _scheme=None, _external=None, # To pass type checking
-                                group_id=group_id, **request.args))
+        return redirect(
+            url_for(
+                "api-audit.users_and_groups",
+                _anchor=None,
+                _method=None,
+                _scheme=None,
+                _external=None,  # To pass type checking
+                group_id=group_id,
+                **request.args,
+            )
+        )
+
 
 class GroupMemberResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(GroupMemberSchema)
@@ -293,31 +300,23 @@ class GroupMemberResource(MethodResource):
 
         # Check if the current user can manage this group
         if not AuthorizationHelpers.can_manage_group(group):
-            if (
-                len(user_changes["members_to_add"]) > 0
-                or len(user_changes["owners_to_add"]) > 0
-            ):
+            if len(user_changes["members_to_add"]) > 0 or len(user_changes["owners_to_add"]) > 0:
                 abort(
                     403,
                     "Current user is not allowed to add members to this group",
                 )
-            if (
-                len(user_changes["members_to_remove"]) > 0
-                or len(user_changes["owners_to_remove"]) > 0
-            ):
+            if len(user_changes["members_to_remove"]) > 0 or len(user_changes["owners_to_remove"]) > 0:
                 for user_id in user_changes["members_to_remove"] + user_changes["owners_to_remove"]:
                     # Allow current user to remove themselves from the group
                     if user_id != g.current_user_id:
-                        abort(
-                            403, "Current user is not allowed to perform this action"
-                        )
+                        abort(403, "Current user is not allowed to perform this action")
 
         # Check groups tags to see if self-add is allowed
         valid, err_message = CheckForSelfAdd(
             group=group,
             current_user=g.current_user_id,
             members_to_add=user_changes["members_to_add"],
-            owners_to_add=user_changes["owners_to_add"]
+            owners_to_add=user_changes["owners_to_add"],
         ).execute_for_group()
         if not valid:
             abort(400, err_message)
@@ -327,7 +326,7 @@ class GroupMemberResource(MethodResource):
             group=group,
             reason=user_changes.get("created_reason"),
             members_to_add=user_changes["members_to_add"],
-            owners_to_add=user_changes["owners_to_add"]
+            owners_to_add=user_changes["owners_to_add"],
         ).execute_for_group()
         if not valid:
             abort(400, err_message)
@@ -341,7 +340,7 @@ class GroupMemberResource(MethodResource):
             owners_to_add=user_changes["owners_to_add"],
             members_to_remove=user_changes["members_to_remove"],
             owners_to_remove=user_changes["owners_to_remove"],
-            created_reason=user_changes.get("created_reason", "")
+            created_reason=user_changes.get("created_reason", ""),
         ).execute()
 
         members = (
@@ -367,9 +366,7 @@ class GroupMemberResource(MethodResource):
 
 
 class GroupList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(
-        SearchGroupPaginationRequestSchema, location="query"
-    )
+    @FlaskApiSpecDecorators.request_schema(SearchGroupPaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(GroupPaginationSchema)
     def get(self) -> ResponseReturnValue:
         search_args = SearchGroupPaginationRequestSchema().load(request.args)
@@ -386,19 +383,17 @@ class GroupList(MethodResource):
                 selectinload(RoleGroup.active_role_associated_group_member_mappings).options(
                     joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                         selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                            joinedload(OktaGroupTagMap.active_tag),
-                            joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                            joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                         ),
-                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
                     ),
                 ),
                 selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(
                     joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                         selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                            joinedload(OktaGroupTagMap.active_tag),
-                            joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                            joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                         ),
-                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
                     ),
                 ),
             )
@@ -434,7 +429,7 @@ class GroupList(MethodResource):
                     "active_group_tags",
                     "app.id",
                     "active_role_associated_group_member_mappings",
-                    "active_role_associated_group_owner_mappings"
+                    "active_role_associated_group_owner_mappings",
                 ),
             ),
         )
@@ -446,10 +441,7 @@ class GroupList(MethodResource):
         group = schema.load(request.json)
 
         # Only allow if the current user is an Access admin or app owner (if it's an app group)
-        if not (
-            AuthorizationHelpers.is_access_admin()
-            or AuthorizationHelpers.is_app_owner_group_owner(group)
-        ):
+        if not (AuthorizationHelpers.is_access_admin() or AuthorizationHelpers.is_app_owner_group_owner(group)):
             abort(403, "Current user is not allowed to perform this action")
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
@@ -463,10 +455,8 @@ class GroupList(MethodResource):
             abort(400, "Group already exists with the same name")
 
         group = CreateGroup(
-                    group=group,
-                    tags=request.get_json().get("tags_to_add", []),
-                    current_user_id=g.current_user_id
-                ).execute()
+            group=group, tags=request.get_json().get("tags_to_add", []), current_user_id=g.current_user_id
+        ).execute()
 
         group = (
             db.session.query(OktaGroup)

@@ -38,7 +38,9 @@ def test_user_sync_updates_fields(db: SQLAlchemy, mocker: MockerFixture) -> None
     assert get_user_by_id(new_db_users, initial_users_in_okta[0].id).email == "changed"
 
 
-def test_user_sync_updates_deleted_user(db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup) -> None:
+def test_user_sync_updates_deleted_user(
+    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
     initial_db_users = seed_db(db, initial_users_in_okta)
@@ -102,7 +104,9 @@ def test_user_sync_updates_deleted_user(db: SQLAlchemy, mocker: MockerFixture, o
     assert delete_ownership_spy.call_count == 1
 
 
-def test_user_sync_deletes_disappearing_user(db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup) -> None:
+def test_user_sync_deletes_disappearing_user(
+    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
     initial_db_users = seed_db(db, initial_users_in_okta)
@@ -147,16 +151,12 @@ def test_user_sync_deletes_disappearing_user(db: SQLAlchemy, mocker: MockerFixtu
     delete_membership_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     delete_ownership_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
-    assert (
-        get_user_by_id(initial_db_users, initial_users_in_okta[0].id).deleted_at is None
-    )
+    assert get_user_by_id(initial_db_users, initial_users_in_okta[0].id).deleted_at is None
 
     new_db_users = run_sync(db, mocker, [])
 
     assert len(initial_db_users) == len(new_db_users)
-    assert (
-        get_user_by_id(new_db_users, initial_users_in_okta[0].id).deleted_at is not None
-    )
+    assert get_user_by_id(new_db_users, initial_users_in_okta[0].id).deleted_at is not None
     assert db.session.get(OktaUser, initial_users_in_okta[0].id).deleted_at is not None
     assert access_request is not None
     assert db.session.get(AccessRequest, access_request.id).status == AccessRequestStatus.REJECTED
@@ -168,7 +168,10 @@ def test_user_sync_deletes_disappearing_user(db: SQLAlchemy, mocker: MockerFixtu
     assert delete_membership_spy.call_count == 0
     assert delete_ownership_spy.call_count == 0
 
-def test_user_sync_ends_memberships_for_previously_deleted_user(db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup) -> None:
+
+def test_user_sync_ends_memberships_for_previously_deleted_user(
+    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
     seed_db(db, initial_users_in_okta)
@@ -235,9 +238,7 @@ def seed_db(db: SQLAlchemy, users: List[User]) -> List[OktaUser]:
 def run_sync(db: SQLAlchemy, mocker: MockerFixture, okta_users: List[User]) -> List[OktaUser]:
     schema = UserSchemaFactory.create()
     with Session(db.engine) as session:
-        mocker.patch.object(
-            okta, "list_users", return_value=[User(u) for u in okta_users]
-        )
+        mocker.patch.object(okta, "list_users", return_value=[User(u) for u in okta_users])
         mocker.patch.object(okta, "get_user_schema", return_value=UserSchema(schema))
         sync_users()
         return session.query(OktaUser).all()

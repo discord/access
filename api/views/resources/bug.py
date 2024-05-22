@@ -11,10 +11,7 @@ from flask_apispec import MethodResource
 # https://github.com/getsentry/examples/blob/master/tunneling/python/app.py
 class SentryProxyResource(MethodResource):
     def post(self) -> Dict[str, Any]:
-        if (
-            current_app.config["ENV"] not in ("development", "test")
-            and current_app.config["REACT_SENTRY_DSN"]
-        ):
+        if current_app.config["ENV"] not in ("development", "test") and current_app.config["REACT_SENTRY_DSN"]:
             envelope = request.data
             dsn = urlparse(current_app.config["REACT_SENTRY_DSN"])
 

@@ -5,6 +5,7 @@ Revises:
 Create Date: 2024-03-01 12:00:00.000000
 
 """
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
@@ -38,21 +39,19 @@ def upgrade():
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
         sa.Column("name", sa.Unicode(length=255), nullable=False),
         sa.Column("description", sa.Unicode(length=1024), nullable=False),
-        sa.Column(
-            "is_managed", sa.Boolean(), server_default=expression.true(), nullable=False
-        ),
+        sa.Column("is_managed", sa.Boolean(), server_default=expression.true(), nullable=False),
         sa.Column(
             "plugin_data",
-            sa.JSON().with_variant(
-                postgresql.JSONB(astext_type=sa.Text()), "postgresql"
-            ),
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             server_default="{}",
             nullable=False,
         ),
-        sa.Column('externally_managed_data',
-            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'),
-            server_default='{}',
-            nullable=False),
+        sa.Column(
+            "externally_managed_data",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            server_default="{}",
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_table(
@@ -67,31 +66,28 @@ def upgrade():
         sa.Column("display_name", sa.Unicode(length=100), nullable=True),
         sa.Column(
             "profile",
-            sa.JSON().with_variant(
-                postgresql.JSONB(astext_type=sa.Text()), "postgresql"
-            ),
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
             server_default="{}",
             nullable=False,
         ),
-        sa.Column('employee_number', sa.Unicode(length=50), nullable=True),
-        sa.Column('manager_id', sa.Unicode(), nullable=True),
+        sa.Column("employee_number", sa.Unicode(length=50), nullable=True),
+        sa.Column("manager_id", sa.Unicode(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(['manager_id'], ['okta_user.id'], name=op.f('fk_okta_user_manager_id_okta_user'))
+        sa.ForeignKeyConstraint(["manager_id"], ["okta_user.id"], name=op.f("fk_okta_user_manager_id_okta_user")),
     )
-    with op.batch_alter_table('okta_user', schema=None) as batch_op:
-        batch_op.create_index('idx_email', ['email'], unique=True,
-            postgresql_where=sa.text('deleted_at IS NULL')
-        )
-        batch_op.create_index('idx_email_deleted_at', ['email', 'deleted_at'], unique=True,
-            postgresql_where=sa.text('deleted_at IS NOT NULL')
+    with op.batch_alter_table("okta_user", schema=None) as batch_op:
+        batch_op.create_index("idx_email", ["email"], unique=True, postgresql_where=sa.text("deleted_at IS NULL"))
+        batch_op.create_index(
+            "idx_email_deleted_at",
+            ["email", "deleted_at"],
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NOT NULL"),
         )
     op.create_table(
         "app_group",
         sa.Column("id", sa.Unicode(), nullable=False),
         sa.Column("app_id", sa.Unicode(), nullable=False),
-        sa.Column(
-            "is_owner", sa.Boolean(), server_default=expression.false(), nullable=False
-        ),
+        sa.Column("is_owner", sa.Boolean(), server_default=expression.false(), nullable=False),
         sa.ForeignKeyConstraint(
             ["app_id"],
             ["app.id"],
@@ -121,15 +117,13 @@ def upgrade():
         ),
         sa.Column("role_id", sa.Unicode(), nullable=True),
         sa.Column("group_id", sa.Unicode(), nullable=True),
-        sa.Column(
-            "is_owner", sa.Boolean(), server_default=expression.false(), nullable=False
-        ),
+        sa.Column("is_owner", sa.Boolean(), server_default=expression.false(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("ended_at", sa.DateTime(), nullable=True),
-        sa.Column('created_reason', sa.Unicode(length=1024), server_default='', nullable=False),
-        sa.Column('created_actor_id', sa.Unicode(), nullable=True),
-        sa.Column('ended_actor_id', sa.Unicode(), nullable=True),
+        sa.Column("created_reason", sa.Unicode(length=1024), server_default="", nullable=False),
+        sa.Column("created_actor_id", sa.Unicode(), nullable=True),
+        sa.Column("ended_actor_id", sa.Unicode(), nullable=True),
         sa.ForeignKeyConstraint(
             ["group_id"],
             ["okta_group.id"],
@@ -139,14 +133,14 @@ def upgrade():
             ["okta_group.id"],
         ),
         sa.ForeignKeyConstraint(
-            ['created_actor_id'],
-            ['okta_user.id'],
-            name=op.f('fk_role_group_map_created_actor_id_okta_user'),
+            ["created_actor_id"],
+            ["okta_user.id"],
+            name=op.f("fk_role_group_map_created_actor_id_okta_user"),
         ),
         sa.ForeignKeyConstraint(
-            ['ended_actor_id'],
-            ['okta_user.id'],
-            name=op.f('fk_role_group_map_ended_actor_id_okta_user'),
+            ["ended_actor_id"],
+            ["okta_user.id"],
+            name=op.f("fk_role_group_map_ended_actor_id_okta_user"),
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -165,15 +159,13 @@ def upgrade():
             sa.BigInteger().with_variant(sa.Integer(), "sqlite"),
             nullable=True,
         ),
-        sa.Column(
-            "is_owner", sa.Boolean(), server_default=expression.false(), nullable=False
-        ),
+        sa.Column("is_owner", sa.Boolean(), server_default=expression.false(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.Column("ended_at", sa.DateTime(), nullable=True),
-        sa.Column('created_reason', sa.Unicode(length=1024), server_default='', nullable=False),
-        sa.Column('created_actor_id', sa.Unicode(), nullable=True),
-        sa.Column('ended_actor_id', sa.Unicode(), nullable=True),
+        sa.Column("created_reason", sa.Unicode(length=1024), server_default="", nullable=False),
+        sa.Column("created_actor_id", sa.Unicode(), nullable=True),
+        sa.Column("ended_actor_id", sa.Unicode(), nullable=True),
         sa.ForeignKeyConstraint(
             ["group_id"],
             ["okta_group.id"],
@@ -187,82 +179,107 @@ def upgrade():
             ["okta_user.id"],
         ),
         sa.ForeignKeyConstraint(
-            ['created_actor_id'],
-            ['okta_user.id'],
-            name=op.f('fk_okta_user_group_member_created_actor_id_okta_user'),
+            ["created_actor_id"],
+            ["okta_user.id"],
+            name=op.f("fk_okta_user_group_member_created_actor_id_okta_user"),
         ),
         sa.ForeignKeyConstraint(
-            ['ended_actor_id'],
-            ['okta_user.id'],
-            name=op.f('fk_okta_user_group_member_ended_actor_id_okta_user'),
+            ["ended_actor_id"],
+            ["okta_user.id"],
+            name=op.f("fk_okta_user_group_member_ended_actor_id_okta_user"),
         ),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_table('access_request',
-        sa.Column('id', sa.Unicode(length=20), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.Column('resolved_at', sa.DateTime(), nullable=True),
-        sa.Column('status', sa.Enum('PENDING', 'APPROVED', 'REJECTED', name='accessrequeststate'), nullable=False),
-        sa.Column('requester_user_id', sa.Unicode(), nullable=True),
-        sa.Column('requested_group_id', sa.Unicode(), nullable=True),
-        sa.Column('request_ownership', sa.Boolean(), nullable=False),
-        sa.Column('request_reason', sa.Unicode(length=1024), nullable=False),
-        sa.Column('request_ending_at', sa.DateTime(), nullable=True),
-        sa.Column('resolver_user_id', sa.Unicode(), nullable=True),
-        sa.Column('resolution_reason', sa.Unicode(length=1024), nullable=False),
-        sa.Column('approved_membership_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=True),
-        sa.Column('approval_ending_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['approved_membership_id'], ['okta_user_group_member.id'], ),
-        sa.ForeignKeyConstraint(['requested_group_id'], ['okta_group.id'], ),
-        sa.ForeignKeyConstraint(['requester_user_id'], ['okta_user.id'], ),
-        sa.ForeignKeyConstraint(['resolver_user_id'], ['okta_user.id'], ),
-        sa.PrimaryKeyConstraint('id')
+    op.create_table(
+        "access_request",
+        sa.Column("id", sa.Unicode(length=20), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("resolved_at", sa.DateTime(), nullable=True),
+        sa.Column("status", sa.Enum("PENDING", "APPROVED", "REJECTED", name="accessrequeststate"), nullable=False),
+        sa.Column("requester_user_id", sa.Unicode(), nullable=True),
+        sa.Column("requested_group_id", sa.Unicode(), nullable=True),
+        sa.Column("request_ownership", sa.Boolean(), nullable=False),
+        sa.Column("request_reason", sa.Unicode(length=1024), nullable=False),
+        sa.Column("request_ending_at", sa.DateTime(), nullable=True),
+        sa.Column("resolver_user_id", sa.Unicode(), nullable=True),
+        sa.Column("resolution_reason", sa.Unicode(length=1024), nullable=False),
+        sa.Column("approved_membership_id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=True),
+        sa.Column("approval_ending_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["approved_membership_id"],
+            ["okta_user_group_member.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["requested_group_id"],
+            ["okta_group.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["requester_user_id"],
+            ["okta_user.id"],
+        ),
+        sa.ForeignKeyConstraint(
+            ["resolver_user_id"],
+            ["okta_user.id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
     )
-    op.create_table('tag',
-        sa.Column('id', sa.Unicode(length=50), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.Column('deleted_at', sa.DateTime(), nullable=True),
-        sa.Column('name', sa.Unicode(length=255), nullable=False),
-        sa.Column('description', sa.Unicode(length=1024), nullable=False),
-        sa.Column('constraints', sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql'), server_default='{}', nullable=False),
-        sa.Column('enabled', sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_tag'))
+    op.create_table(
+        "tag",
+        sa.Column("id", sa.Unicode(length=50), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("deleted_at", sa.DateTime(), nullable=True),
+        sa.Column("name", sa.Unicode(length=255), nullable=False),
+        sa.Column("description", sa.Unicode(length=1024), nullable=False),
+        sa.Column(
+            "constraints",
+            sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), "postgresql"),
+            server_default="{}",
+            nullable=False,
+        ),
+        sa.Column("enabled", sa.Boolean(), nullable=False),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_tag")),
     )
-    op.create_table('app_tag_map',
-        sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
-        sa.Column('tag_id', sa.Unicode(), nullable=True),
-        sa.Column('app_id', sa.Unicode(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.Column('ended_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['app_id'], ['app.id'], name=op.f('fk_app_tag_map_app_id_app')),
-        sa.ForeignKeyConstraint(['tag_id'], ['tag.id'], name=op.f('fk_app_tag_map_tag_id_tag')),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_app_tag_map'))
+    op.create_table(
+        "app_tag_map",
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), autoincrement=True, nullable=False),
+        sa.Column("tag_id", sa.Unicode(), nullable=True),
+        sa.Column("app_id", sa.Unicode(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("ended_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(["app_id"], ["app.id"], name=op.f("fk_app_tag_map_app_id_app")),
+        sa.ForeignKeyConstraint(["tag_id"], ["tag.id"], name=op.f("fk_app_tag_map_tag_id_tag")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_app_tag_map")),
     )
-    op.create_table('okta_group_tag_map',
-        sa.Column('id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), autoincrement=True, nullable=False),
-        sa.Column('tag_id', sa.Unicode(), nullable=True),
-        sa.Column('group_id', sa.Unicode(), nullable=True),
-        sa.Column('app_tag_map_id', sa.BigInteger().with_variant(sa.Integer(), 'sqlite'), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.Column('ended_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['app_tag_map_id'], ['app_tag_map.id'], name=op.f('fk_okta_group_tag_map_app_tag_map_id_app_tag_map')),
-        sa.ForeignKeyConstraint(['group_id'], ['okta_group.id'], name=op.f('fk_okta_group_tag_map_group_id_okta_group')),
-        sa.ForeignKeyConstraint(['tag_id'], ['tag.id'], name=op.f('fk_okta_group_tag_map_tag_id_tag')),
-        sa.PrimaryKeyConstraint('id', name=op.f('pk_okta_group_tag_map'))
+    op.create_table(
+        "okta_group_tag_map",
+        sa.Column("id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), autoincrement=True, nullable=False),
+        sa.Column("tag_id", sa.Unicode(), nullable=True),
+        sa.Column("group_id", sa.Unicode(), nullable=True),
+        sa.Column("app_tag_map_id", sa.BigInteger().with_variant(sa.Integer(), "sqlite"), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
+        sa.Column("ended_at", sa.DateTime(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["app_tag_map_id"], ["app_tag_map.id"], name=op.f("fk_okta_group_tag_map_app_tag_map_id_app_tag_map")
+        ),
+        sa.ForeignKeyConstraint(
+            ["group_id"], ["okta_group.id"], name=op.f("fk_okta_group_tag_map_group_id_okta_group")
+        ),
+        sa.ForeignKeyConstraint(["tag_id"], ["tag.id"], name=op.f("fk_okta_group_tag_map_tag_id_tag")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_okta_group_tag_map")),
     )
     # ### end Alembic commands ###
 
 
 def downgrade():
     # ### commands auto generated by Alembic - please adjust! ###
-    op.drop_table('okta_group_tag_map')
-    op.drop_table('app_tag_map')
-    op.drop_table('tag')
-    op.drop_table('access_request')
+    op.drop_table("okta_group_tag_map")
+    op.drop_table("app_tag_map")
+    op.drop_table("tag")
+    op.drop_table("access_request")
     op.drop_table("okta_user_group_member")
     op.drop_table("role_group_map")
     op.drop_table("role_group")

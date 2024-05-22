@@ -16,4 +16,3 @@ api.add_resource(AppList, "", endpoint="apps")
 def register_docs() -> None:
     docs.register(AppResource, blueprint=bp_name, endpoint="app_by_id")
     docs.register(AppList, blueprint=bp_name, endpoint="apps")
-

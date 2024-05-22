@@ -50,13 +50,11 @@ def db(app: Flask) -> Generator[SQLAlchemy, None, None]:
     access_app_owner_group = AppGroupFactory.build(
         app_id=access_app.id,
         is_owner=True,
-        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}" +
-             f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
         description=f"Owners of the {access_app.name} application",
     )
-    access_app_owner_group_membership = OktaUserGroupMember(
-        user_id=access_owner.id, group_id=access_app_owner_group.id
-    )
+    access_app_owner_group_membership = OktaUserGroupMember(user_id=access_owner.id, group_id=access_app_owner_group.id)
     _db.session.add(access_owner)
     _db.session.add(access_app)
     _db.session.add(access_app_owner_group)

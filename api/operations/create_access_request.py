@@ -43,11 +43,10 @@ class CreateAccessRequest:
 
         self.requested_group = (
             db.session.query(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
-                .first()
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
+            .first()
         )
 
         self.request_ownership = request_ownership
@@ -82,8 +81,11 @@ class CreateAccessRequest:
 
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
-        if ((len(approvers) == 0 and type(self.requested_group) == AppGroup) or
-            (len(approvers) == 1 and approvers[0].id == self.requester.id) and type(self.requested_group) == AppGroup):
+        if (
+            (len(approvers) == 0 and type(self.requested_group) == AppGroup)
+            or (len(approvers) == 1 and approvers[0].id == self.requester.id)
+            and type(self.requested_group) == AppGroup
+        ):
             approvers = get_app_managers(self.requested_group.app_id)
 
         # If there are still no approvers, try to get the access owners
@@ -92,32 +94,38 @@ class CreateAccessRequest:
 
         group = (
             db.session.query(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app),
-                         selectinload(OktaGroup.active_group_tags).options(
-                            joinedload(OktaGroupTagMap.active_app_tag_mapping),
-                            joinedload(OktaGroupTagMap.enabled_active_tag)
-                        ))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaGroup.id == self.requested_group.id)
-                .first()
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                joinedload(AppGroup.app),
+                selectinload(OktaGroup.active_group_tags).options(
+                    joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
+                ),
+            )
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.id == self.requested_group.id)
+            .first()
         )
 
         # Audit logging
         context = has_request_context()
 
-        current_app.logger.info(AuditLogSchema(exclude=['request.resolution_reason','request.approval_ending_at']).dumps({
-            'event_type' : EventType.access_create,
-            'user_agent' : request.headers.get('User-Agent') if context else None,
-            'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
-                        if context else None,
-            'current_user_id' : self.requester.id,
-            'current_user_email' : self.requester.email,
-            'group' : group,
-            'request' : access_request,
-            'requester' : self.requester,
-            'group_owners' : approvers,
-        }))
+        current_app.logger.info(
+            AuditLogSchema(exclude=["request.resolution_reason", "request.approval_ending_at"]).dumps(
+                {
+                    "event_type": EventType.access_create,
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                    if context
+                    else None,
+                    "current_user_id": self.requester.id,
+                    "current_user_email": self.requester.email,
+                    "group": group,
+                    "request": access_request,
+                    "requester": self.requester,
+                    "group_owners": approvers,
+                }
+            )
+        )
 
         conditional_access_responses = self.conditional_access_hook.access_request_created(
             access_request=access_request,
@@ -143,7 +151,6 @@ class CreateAccessRequest:
                     ).execute()
 
                 return access_request
-
 
         self.notification_hook.access_request_created(
             access_request=access_request,

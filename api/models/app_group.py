@@ -15,9 +15,7 @@ def get_app_managers(app_id: str) -> List[OktaUser]:
     if owner_app_groups.count() > 0:
         return (
             OktaUser.query.join(OktaUser.all_group_memberships_and_ownerships)
-            .filter(
-                OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups])
-            )
+            .filter(OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups]))
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
                 db.or_(
@@ -30,14 +28,11 @@ def get_app_managers(app_id: str) -> List[OktaUser]:
 
     return []
 
+
 def get_access_owners() -> List[OktaUser]:
     """Returns the access super admins that are members of the owners group"""
 
-    access_app = (
-        App.query.filter(App.deleted_at.is_(None))
-        .filter(App.name == App.ACCESS_APP_RESERVED_NAME)
-        .first()
-    )
+    access_app = App.query.filter(App.deleted_at.is_(None)).filter(App.name == App.ACCESS_APP_RESERVED_NAME).first()
 
     owner_app_groups = (
         AppGroup.query.filter(OktaGroup.deleted_at.is_(None))
@@ -48,9 +43,7 @@ def get_access_owners() -> List[OktaUser]:
     if owner_app_groups.count() > 0:
         return (
             OktaUser.query.join(OktaUser.all_group_memberships_and_ownerships)
-            .filter(
-                OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups])
-            )
+            .filter(OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups]))
             .filter(OktaUserGroupMember.is_owner.is_(False))
             .filter(
                 db.or_(

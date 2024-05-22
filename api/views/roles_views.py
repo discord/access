@@ -10,12 +10,8 @@ bp = Blueprint(bp_name, __name__, url_prefix=bp_url_prefix)
 api = Api(bp)
 
 api.add_resource(RoleResource, "/<string:role_id>", endpoint="role_by_id")
-api.add_resource(
-    RoleAuditResource, "/<string:role_id>/audit", endpoint="role_audit_by_id"
-)
-api.add_resource(
-    RoleMemberResource, "/<string:role_id>/members", endpoint="role_members_by_id"
-)
+api.add_resource(RoleAuditResource, "/<string:role_id>/audit", endpoint="role_audit_by_id")
+api.add_resource(RoleMemberResource, "/<string:role_id>/members", endpoint="role_members_by_id")
 api.add_resource(RoleList, "", endpoint="roles")
 
 

@@ -12,14 +12,12 @@ class CreateAccessRequestSchema(Schema):
     @staticmethod
     def must_be_in_the_future(data: Optional[datetime]) -> None:
         if data and data < datetime.now():
-            raise ValidationError(
-                "Ended at datetime for access request approval must be in the future"
-            )
+            raise ValidationError("Ended at datetime for access request approval must be in the future")
 
     ending_at = fields.DateTime(
         load_only=True,
         format="rfc822",
-        metadata={ 'validation': must_be_in_the_future },
+        metadata={"validation": must_be_in_the_future},
     )
 
     @post_load
@@ -37,14 +35,12 @@ class ResolveAccessRequestSchema(Schema):
     @staticmethod
     def must_be_in_the_future(data: Optional[datetime]) -> None:
         if data and data < datetime.now():
-            raise ValidationError(
-                "Ended at datetime for access request approval must be in the future"
-            )
+            raise ValidationError("Ended at datetime for access request approval must be in the future")
 
     ending_at = fields.DateTime(
         load_only=True,
         format="rfc822",
-        metadata={ 'validation' : must_be_in_the_future },
+        metadata={"validation": must_be_in_the_future},
     )
 
     @post_load

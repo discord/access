@@ -18,12 +18,8 @@ SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = ENV == "development"  # or ENV == "test"
 
 # Attributes to display in the user page
-USER_DISPLAY_CUSTOM_ATTRIBUTES = os.getenv(
-    "USER_DISPLAY_CUSTOM_ATTRIBUTES", "Title,Manager"
-)
-MAX_ACCESS_REQUEST_AGE_SECONDS = os.getenv(
-    "MAX_ACCESS_REQUEST_AGE_SECONDS", 7 * 24 * 60 * 60
-)  # 7 days
+USER_DISPLAY_CUSTOM_ATTRIBUTES = os.getenv("USER_DISPLAY_CUSTOM_ATTRIBUTES", "Title,Manager")
+MAX_ACCESS_REQUEST_AGE_SECONDS = os.getenv("MAX_ACCESS_REQUEST_AGE_SECONDS", 7 * 24 * 60 * 60)  # 7 days
 
 
 def default_user_search() -> list[str]:
@@ -35,9 +31,7 @@ def default_user_search() -> list[str]:
 
 # Attributes to search across for users
 # defaults to the USER_DISPLAY_CUSTOM_ATTRIBUTES excluding the "Manager" attribute
-USER_SEARCH_CUSTOM_ATTRIBUTES = os.getenv(
-    "USER_SEARCH_CUSTOM_ATTRIBUTES", ",".join(default_user_search())
-)
+USER_SEARCH_CUSTOM_ATTRIBUTES = os.getenv("USER_SEARCH_CUSTOM_ATTRIBUTES", ",".join(default_user_search()))
 
 # Cloudflare Access authentication
 # The Application Audience (AUD) tag for your application

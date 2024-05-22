@@ -11,7 +11,15 @@ from api.views.schemas import OktaUserSchema
 from tests.factories import OktaUserFactory
 
 
-def test_get_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser, access_app: App, app_group: AppGroup, role_group: RoleGroup, okta_group: OktaGroup) -> None:
+def test_get_user(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    user: OktaUser,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+) -> None:
     # test 404
     user_url = url_for("api-users.user_by_id", user_id="randomid")
     rep = client.get(user_url)
@@ -26,29 +34,14 @@ def test_get_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser, access_ap
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[okta_group.id, app_group.id],
         owner_groups_to_add=[okta_group.id, app_group.id],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     user_id = user.id
@@ -65,6 +58,7 @@ def test_get_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser, access_ap
     data = rep.get_json()
     assert data["display_name"] == user_name
     assert data["email"] == user_email
+
 
 def test_put_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> None:
     db.session.add(user)
@@ -90,7 +84,7 @@ def test_create_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> Non
     # test 405
     users_url = url_for("api-users.users")
     # marshmallow-sqlalchemy SQLAlchemyAutoSchema constructors are not typed
-    data = OktaUserSchema().dump(user) # type: ignore[no-untyped-call]
+    data = OktaUserSchema().dump(user)  # type: ignore[no-untyped-call]
     rep = client.post(users_url, json=data)
     assert rep.status_code == 405
 

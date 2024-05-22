@@ -6,7 +6,15 @@ from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Okt
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
 
-def test_get_user_audit(client: FlaskClient, db: SQLAlchemy, user: OktaUser, access_app: App, app_group: AppGroup, role_group: RoleGroup, okta_group: OktaGroup) -> None:
+def test_get_user_audit(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    user: OktaUser,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+) -> None:
     # test 404
     user_url = url_for("api-audit.users_and_groups")
     rep = client.get(user_url, query_string={"user_id": "randomid"})
@@ -21,29 +29,14 @@ def test_get_user_audit(client: FlaskClient, db: SQLAlchemy, user: OktaUser, acc
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[okta_group.id, app_group.id],
         owner_groups_to_add=[okta_group.id, app_group.id],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     user_id = user.id
@@ -60,7 +53,7 @@ def test_get_user_audit(client: FlaskClient, db: SQLAlchemy, user: OktaUser, acc
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, query_string={"user_id":  user_id, "owner": True})
+    rep = client.get(user_url, query_string={"user_id": user_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.get_json()
@@ -69,14 +62,24 @@ def test_get_user_audit(client: FlaskClient, db: SQLAlchemy, user: OktaUser, acc
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, query_string={"user_id":  user_id, "q": "App-"})
+    rep = client.get(user_url, query_string={"user_id": user_id, "q": "App-"})
     assert rep.status_code == 200
 
     data = rep.get_json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
-def test_get_group_audit(client: FlaskClient, db: SQLAlchemy, access_app: App, app_group: AppGroup, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, tag: Tag) -> None:
+
+def test_get_group_audit(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    tag: Tag,
+) -> None:
     # test 404
     group_url = url_for("api-audit.users_and_groups")
     rep = client.get(group_url, query_string={"group_id": "randomid"})
@@ -100,29 +103,14 @@ def test_get_group_audit(client: FlaskClient, db: SQLAlchemy, access_app: App, a
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[okta_group.id, app_group.id],
         owner_groups_to_add=[okta_group.id, app_group.id],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     user_email = user.email
@@ -221,7 +209,16 @@ def test_get_group_audit(client: FlaskClient, db: SQLAlchemy, access_app: App, a
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
-def test_get_role_audit(client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, access_app: App, app_group: AppGroup, okta_group: OktaGroup, user: OktaUser) -> None:
+
+def test_get_role_audit(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    role_group: RoleGroup,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
     # test 404
     role_url = url_for("api-audit.groups_and_roles")
     rep = client.get(role_url, query_string={"role_id": "randomid"})
@@ -236,24 +233,9 @@ def test_get_role_audit(client: FlaskClient, db: SQLAlchemy, role_group: RoleGro
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
@@ -264,7 +246,7 @@ def test_get_role_audit(client: FlaskClient, db: SQLAlchemy, role_group: RoleGro
             okta_group.id,
             app_group.id,
         ],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     role_group_id = role_group.id

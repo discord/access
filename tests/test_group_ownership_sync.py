@@ -18,18 +18,14 @@ OwnershipDetails = namedtuple("OwnershipDetails", ["expired_at", "db_pk"])
 def test_ownership_sync(db: SQLAlchemy, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.build_batch(3)
-    initial_db_users, initial_db_groups = seed_db(
-        db, initial_okta_users, initial_okta_groups
-    )
+    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
             return initial_okta_users
         return []
 
-    ownerships = run_sync(
-        db, mocker, initial_okta_groups, fake_list_owners_for_group, False
-    )
+    ownerships = run_sync(db, mocker, initial_okta_groups, fake_list_owners_for_group, False)
 
     assert ownerships is not None
 
@@ -37,9 +33,7 @@ def test_ownership_sync(db: SQLAlchemy, mocker: MockerFixture) -> None:
 def test_ownership_in_okta_not_in_db_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = seed_db(
-        db, initial_okta_users, initial_okta_groups
-    )
+    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -321,9 +315,7 @@ def test_ownership_in_both_non_authoritative(db: SQLAlchemy, mocker: MockerFixtu
 def test_ownership_unamanaged_group_in_okta_not_in_db_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = seed_db(
-        db, initial_okta_users, initial_okta_groups
-    )
+    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_owners_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -389,14 +381,11 @@ def test_ownership_through_multiple_groups_non_authoritative(db: SQLAlchemy, moc
 
 def seed_db(db: SQLAlchemy, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
     with Session(db.engine) as session:
-        session.add_all(
-            [Group(g).update_okta_group(OktaGroup(), {}) for g in groups]
-        )
+        session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
         session.commit()
 
         return (session.query(OktaUser).all(), session.query(OktaGroup).all())
-
 
 
 def run_sync(
@@ -405,18 +394,14 @@ def run_sync(
     okta_groups: list[OktaGroup],
     user_ownership_func: Callable[[str], list[User]],
     act_as_authority: bool,
-    groups_with_rules: set[str]=set(),
+    groups_with_rules: set[str] = set(),
 ) -> list[OktaGroup]:
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 
-        mocker.patch.object(
-            okta, "list_owners_for_group", side_effect=user_ownership_func
-        )
+        mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
 
-        mocker.patch.object(
-            okta, "list_groups_with_active_rules", return_value=groups_with_rules
-        )
+        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
 
         sync_group_ownerships(act_as_authority)
 
@@ -447,9 +432,7 @@ def _get_group_ownership(db: SQLAlchemy, ownership_id: int) -> OwnershipDetails:
 
 
 def _add_group_ownership_record(db: SQLAlchemy, user_id: str, group_id: str, ended_at: datetime) -> int:
-    ownership = OktaUserGroupMember(
-        user_id=user_id, group_id=group_id, ended_at=ended_at, is_owner=True
-    )
+    ownership = OktaUserGroupMember(user_id=user_id, group_id=group_id, ended_at=ended_at, is_owner=True)
     db.session.add(ownership)
     db.session.commit()
 

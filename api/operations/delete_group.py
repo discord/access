@@ -23,27 +23,20 @@ from api.views.schemas import AuditLogSchema, EventType
 
 
 class DeleteGroup:
-    def __init__(
-        self,
-        *,
-        group: OktaGroup | str,
-        sync_to_okta: bool = True,
-        current_user_id: Optional[str] = None
-    ):
+    def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
         self.group = (
             db.session.query(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app))
-                .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
-                .first()
-            )
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+            .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
+            .first()
+        )
 
         self.sync_to_okta = sync_to_okta
 
-        self.current_user_id = (
-            getattr(OktaUser.query
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id).first(), 'id', None)
+        self.current_user_id = getattr(
+            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            "id",
+            None,
         )
 
     def execute(self) -> None:
@@ -56,30 +49,31 @@ class DeleteGroup:
 
         # Prevent deletion of the Access owner group
         if type(self.group) == AppGroup and self.group.is_owner:
-            app = (
-                App.query.filter(App.id == self.group.app_id)
-                .filter(App.deleted_at.is_(None))
-                .first()
-            )
+            app = App.query.filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
             if app is not None and app.name == App.ACCESS_APP_RESERVED_NAME:
                 raise ValueError("Access application owner group cannot be deleted")
 
         # Audit logging
         email = None
         if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), 'email', None)
+            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
         context = has_request_context()
 
-        current_app.logger.info(AuditLogSchema().dumps({
-            'event_type' : EventType.group_delete,
-            'user_agent' : request.headers.get('User-Agent') if context else None,
-            'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
-                        if context else None,
-            'current_user_id' : self.current_user_id,
-            'current_user_email' : email,
-            'group' : self.group
-        }))
+        current_app.logger.info(
+            AuditLogSchema().dumps(
+                {
+                    "event_type": EventType.group_delete,
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                    if context
+                    else None,
+                    "current_user_id": self.current_user_id,
+                    "current_user_email": email,
+                    "group": self.group,
+                }
+            )
+        )
 
         if self.sync_to_okta:
             okta_tasks.append(asyncio.create_task(okta.async_delete_group(self.group.id)))
@@ -96,24 +90,18 @@ class DeleteGroup:
 
         direct_members_to_remove_ids = [
             m.user_id
-            for m in group_memberships_query.filter(
-                OktaUserGroupMember.is_owner.is_(False)
-            )
+            for m in group_memberships_query.filter(OktaUserGroupMember.is_owner.is_(False))
             .filter(OktaUserGroupMember.role_group_map_id.is_(None))
             .all()
         ]
         direct_owners_to_remove_ids = [
             m.user_id
-            for m in group_memberships_query.filter(
-                OktaUserGroupMember.is_owner.is_(True)
-            )
+            for m in group_memberships_query.filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(OktaUserGroupMember.role_group_map_id.is_(None))
             .all()
         ]
 
-        group_memberships_query.update(
-            {OktaUserGroupMember.ended_at: db.func.now()}, synchronize_session="fetch"
-        )
+        group_memberships_query.update({OktaUserGroupMember.ended_at: db.func.now()}, synchronize_session="fetch")
 
         # End all roles associations where this group was a member
         RoleGroupMap.query.filter(
@@ -149,15 +137,11 @@ class DeleteGroup:
             # combination before removing group membership in Okta, there can be multiple role groups
             # which allow group access for this user
             role_associated_groups_mappings_query = RoleGroupMap.query.filter(
-                db.or_(
-                    RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now()
-                )
+                db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
             ).filter(RoleGroupMap.role_group_id == self.group.id)
 
             if self.sync_to_okta:
-                role_associated_groups_mappings = (
-                    role_associated_groups_mappings_query.all()
-                )
+                role_associated_groups_mappings = role_associated_groups_mappings_query.all()
 
                 removed_role_group_users_with_other_access = (
                     OktaUserGroupMember.query.with_entities(
@@ -171,16 +155,8 @@ class DeleteGroup:
                             OktaUserGroupMember.ended_at > db.func.now(),
                         )
                     )
-                    .filter(
-                        OktaUserGroupMember.user_id.in_(
-                            direct_members_to_remove_ids + direct_owners_to_remove_ids
-                        )
-                    )
-                    .filter(
-                        OktaUserGroupMember.group_id.in_(
-                            [r.group_id for r in role_associated_groups_mappings]
-                        )
-                    )
+                    .filter(OktaUserGroupMember.user_id.in_(direct_members_to_remove_ids + direct_owners_to_remove_ids))
+                    .filter(OktaUserGroupMember.group_id.in_([r.group_id for r in role_associated_groups_mappings]))
                     .group_by(
                         OktaUserGroupMember.user_id,
                         OktaUserGroupMember.group_id,
@@ -194,26 +170,22 @@ class DeleteGroup:
                         removed_members_with_other_access_ids = [
                             m.user_id
                             for m in removed_role_group_users_with_other_access
-                            if role_associated_group_map.group_id == m.group_id
-                            and not m.is_owner
+                            if role_associated_group_map.group_id == m.group_id and not m.is_owner
                         ]
-                        okta_members_to_remove_ids = set(
-                            direct_members_to_remove_ids
-                        ) - set(removed_members_with_other_access_ids)
+                        okta_members_to_remove_ids = set(direct_members_to_remove_ids) - set(
+                            removed_members_with_other_access_ids
+                        )
                         for member_id in okta_members_to_remove_ids:
                             okta_tasks.append(
                                 asyncio.create_task(
-                                    okta.async_remove_user_from_group(
-                                        role_associated_group_map.group_id, member_id
-                                    )
+                                    okta.async_remove_user_from_group(role_associated_group_map.group_id, member_id)
                                 )
                             )
                     else:
                         removed_owners_with_other_access_ids = [
                             m.user_id
                             for m in removed_role_group_users_with_other_access
-                            if role_associated_group_map.group_id == m.group_id
-                            and m.is_owner
+                            if role_associated_group_map.group_id == m.group_id and m.is_owner
                         ]
                         okta_owners_to_remove_ids = set(direct_owners_to_remove_ids) - set(
                             removed_owners_with_other_access_ids
@@ -223,9 +195,7 @@ class DeleteGroup:
                             # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
                             okta_tasks.append(
                                 asyncio.create_task(
-                                    okta.async_remove_owner_from_group(
-                                        role_associated_group_map.group_id, owner_id
-                                    )
+                                    okta.async_remove_owner_from_group(role_associated_group_map.group_id, owner_id)
                                 )
                             )
 
@@ -238,9 +208,7 @@ class DeleteGroup:
 
         # Reject all pending access requests for this group
         obsolete_access_requests = (
-            AccessRequest.query.filter(
-                AccessRequest.requested_group_id == self.group.id
-            )
+            AccessRequest.query.filter(AccessRequest.requested_group_id == self.group.id)
             .filter(AccessRequest.status == AccessRequestStatus.PENDING)
             .filter(AccessRequest.resolved_at.is_(None))
             .all()
@@ -249,7 +217,7 @@ class DeleteGroup:
             RejectAccessRequest(
                 access_request=obsolete_access_request,
                 rejection_reason="Closed because the requested group was deleted",
-                current_user_id=self.current_user_id
+                current_user_id=self.current_user_id,
             ).execute()
 
         # End all tag mappings for this group

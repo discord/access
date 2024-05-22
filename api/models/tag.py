@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
@@ -18,21 +17,16 @@ def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Any:
                 )
     return coalesced_constraint_value
 
+
 def coalesce_ended_at(
-    constraint_key: str,
-    tags: list[Tag],
-    initial_ended_at: Optional[datetime],
-    group_is_managed: bool
+    constraint_key: str, tags: list[Tag], initial_ended_at: Optional[datetime], group_is_managed: bool
 ) -> Optional[datetime]:
     # Only apply constraints if the group is managed
     if not group_is_managed:
         return initial_ended_at
 
     # Determine the minimum time allowed for group membership and ownership by current group tags
-    seconds_limit = coalesce_constraints(
-        constraint_key=constraint_key,
-        tags=tags
-    )
+    seconds_limit = coalesce_constraints(constraint_key=constraint_key, tags=tags)
     if seconds_limit is None:
         return initial_ended_at
     else:

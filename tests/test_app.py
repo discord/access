@@ -23,7 +23,9 @@ from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory
 
 
-def test_get_app(client: FlaskClient, db: SQLAlchemy, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser) -> None:
+def test_get_app(
+    client: FlaskClient, db: SQLAlchemy, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
     rep = client.get(app_url)
@@ -37,23 +39,10 @@ def test_get_app(client: FlaskClient, db: SQLAlchemy, access_app: App, app_group
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
-        role_group=role_group,
-        groups_to_add=[app_group.id],
-        owner_groups_to_add=[app_group.id],
-        sync_to_okta=False
+        role_group=role_group, groups_to_add=[app_group.id], owner_groups_to_add=[app_group.id], sync_to_okta=False
     ).execute()
 
     app_id = access_app.id
@@ -82,7 +71,9 @@ def test_get_app(client: FlaskClient, db: SQLAlchemy, access_app: App, app_group
     assert rep.status_code == 404
 
 
-def test_put_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag) -> None:
+def test_put_app(
+    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
     rep = client.put(app_url)
@@ -149,8 +140,9 @@ def test_put_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, acc
 
     # Updating the name of the built-in Access app should fail
     builtin_access_app = App.query.filter(App.name == App.ACCESS_APP_RESERVED_NAME).first()
-    builtin_access_owners_group = AppGroup.query.filter(AppGroup.app_id == builtin_access_app.id,
-                                                        AppGroup.is_owner.is_(True)).first()
+    builtin_access_owners_group = AppGroup.query.filter(
+        AppGroup.app_id == builtin_access_app.id, AppGroup.is_owner.is_(True)
+    ).first()
     app_url = url_for("api-apps.app_by_id", app_id=builtin_access_app.id)
     data = {"name": "UpdatedAccess"}
     rep = client.put(app_url, json=data)
@@ -169,8 +161,8 @@ def test_put_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, acc
     assert data["id"] == builtin_access_app.id
     assert (
         db.session.get(AppGroup, builtin_access_owners_group.id).name
-        == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}" +
-        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
@@ -187,11 +179,12 @@ def test_put_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, acc
     assert data["id"] == builtin_access_app.id
     assert (
         db.session.get(AppGroup, builtin_access_owners_group.id).name
-        == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}" +
-        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
+
 
 def test_delete_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, tag: Tag) -> None:
     # test 404
@@ -238,9 +231,7 @@ def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     db.session.add(tag)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": faker.pystr()})
-    )
+    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
@@ -268,22 +259,15 @@ def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
-def test_create_app_with_initial_owners(
-        client: FlaskClient,
-        db: SQLAlchemy,
-        mocker: MockerFixture,
-        faker: Faker,
-        user: OktaUser,
-        role_group: RoleGroup
-    ) -> None:
 
+def test_create_app_with_initial_owners(
+    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, user: OktaUser, role_group: RoleGroup
+) -> None:
     db.session.add(role_group)
     db.session.add(user)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": faker.pystr()})
-    )
+    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
@@ -310,46 +294,50 @@ def test_create_app_with_initial_owners(
     assert test_app_group.is_owner is True
 
     assert (
-        OktaUserGroupMember.query
-            .filter(OktaUserGroupMember.group_id == test_app_group.id)
-            .filter(OktaUserGroupMember.user_id == user.id)
-            .filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == test_app_group.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.ended_at.is_(None))
+        .count()
+        == 2
     )
     assert (
-        RoleGroupMap.query
-            .filter(RoleGroupMap.group_id == test_app_group.id)
-            .filter(RoleGroupMap.role_group_id == role_group.id)
-            .filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+        RoleGroupMap.query.filter(RoleGroupMap.group_id == test_app_group.id)
+        .filter(RoleGroupMap.role_group_id == role_group.id)
+        .filter(RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
     )
 
 
-def test_create_app_with_additional_groups(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker) -> None:
+def test_create_app_with_additional_groups(
+    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker
+) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
     data = {
-                "name": "Created",
-                "initial_additional_app_groups": [
-                    {"name": "Test", "description": "test"},
-                ]
-            }
+        "name": "Created",
+        "initial_additional_app_groups": [
+            {"name": "Test", "description": "test"},
+        ],
+    }
     rep = client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     data = {
-                "name": "Created",
-                "initial_additional_app_groups": [
-                    {"name": "App-WrongApp-Test", "description": "test"},
-                ]
-            }
+        "name": "Created",
+        "initial_additional_app_groups": [
+            {"name": "App-WrongApp-Test", "description": "test"},
+        ],
+    }
     rep = client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     data = {
-                "name": "Created",
-                "initial_additional_app_groups": [
-                    {},
-                ]
-            }
+        "name": "Created",
+        "initial_additional_app_groups": [
+            {},
+        ],
+    }
     rep = client.post(apps_url, json=data)
     assert rep.status_code == 400
 
@@ -360,12 +348,12 @@ def test_create_app_with_additional_groups(client: FlaskClient, db: SQLAlchemy, 
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
     data = {
-                "name": "Created",
-                "initial_additional_app_groups": [
-                    {"name": "App-Created-Test", "description": "test"},
-                    {"name": "App-Created-Test2"},
-                ]
-            }
+        "name": "Created",
+        "initial_additional_app_groups": [
+            {"name": "App-Created-Test", "description": "test"},
+            {"name": "App-Created-Test2"},
+        ],
+    }
 
     apps_url = url_for("api-apps.apps")
     rep = client.post(apps_url, json=data)

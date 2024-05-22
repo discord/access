@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from flask import url_for
@@ -23,11 +22,23 @@ from api.services import okta
 from tests.factories import TagFactory
 
 
-def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
-        Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
-    })
+def test_require_reason_modify_group_users(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
+            Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
+        },
+    )
     tags[1].constraints = {
         Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
         Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True,
@@ -57,7 +68,7 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
             okta_group.id,
             app_group.id,
         ],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
@@ -73,23 +84,21 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     db.session.commit()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(
-        okta, "async_remove_owner_from_group"
-    )
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -105,13 +114,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -134,13 +145,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -160,13 +173,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -190,13 +205,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -225,13 +242,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -251,13 +270,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -272,13 +293,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -302,13 +325,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -329,13 +354,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -358,13 +385,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -384,13 +413,15 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -414,22 +445,36 @@ def test_require_reason_modify_group_users(client: FlaskClient, db: SQLAlchemy, 
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 10
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
 
-def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
-        Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
-    })
+def test_require_reason_modify_role_groups(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
+            Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
+        },
+    )
     tags[1].constraints = {
         Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
         Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True,
@@ -449,12 +494,7 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
@@ -469,35 +509,25 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     db.session.commit()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(
-        okta, "async_remove_owner_from_group"
-    )
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                         RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     # Add the role group as a member to the okta group without a reason
     data: dict[str, Any] = {
@@ -511,25 +541,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                         RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     # Add the role group as a owner to the okta group without a reason
     data = {
@@ -546,25 +570,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -582,25 +600,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -624,25 +636,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -666,25 +672,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -708,25 +708,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -748,25 +742,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                         RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -784,25 +772,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                         RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     # Add the role group as a member and owner to the app group without a reason
     data = {
@@ -815,25 +797,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 1
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
 
     # Add the role group as a member to the app group with a reason
     data = {
@@ -852,25 +828,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -894,25 +864,19 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 4
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 4
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -936,31 +900,38 @@ def test_require_reason_modify_role_groups(client: FlaskClient, db: SQLAlchemy, 
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason != "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 4
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.created_reason == "",
-                                  RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 4
+    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
 
-def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
-        Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
-    })
+
+def test_require_reason_approve_access_request(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
+            Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
+        },
+    )
     tags[1].constraints = {
         Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
         Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True,
@@ -990,7 +961,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
             okta_group.id,
             app_group.id,
         ],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
@@ -1006,23 +977,21 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     db.session.commit()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(
-        okta, "async_remove_owner_from_group"
-    )
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1037,20 +1006,20 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": ""}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1063,9 +1032,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1074,13 +1041,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1100,9 +1069,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": "approval reason"}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1111,13 +1078,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1135,9 +1104,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1146,13 +1113,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1172,9 +1141,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": ""}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1183,13 +1150,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1207,20 +1176,20 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1235,9 +1204,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": "approval reason"}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1246,13 +1213,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1270,9 +1239,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1281,13 +1248,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1307,20 +1276,20 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": ""}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )
 
@@ -1333,9 +1302,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1344,13 +1311,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1370,9 +1339,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     data = {"approved": True, "reason": "approval reason"}
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
@@ -1381,13 +1348,15 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 9
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 2
     )
 
@@ -1405,9 +1374,7 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     ).execute()
 
     assert access_request is not None
-    access_request_url = url_for(
-        "api-access-requests.access_request_by_id", access_request_id=access_request.id
-    )
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1416,12 +1383,14 @@ def test_require_reason_approve_access_request(client: FlaskClient, db: SQLAlche
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason != "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 10
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.created_reason == "",
-                                         OktaUserGroupMember.ended_at.is_(None)).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+        ).count()
         == 1
     )

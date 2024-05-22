@@ -19,18 +19,16 @@ class AuthenticationHelpers:
         if current_app.config["ENV"] in ("development", "test"):
             # Bypass authentication for development and testing
             current_user = (
-                OktaUser.query
-                    .filter(OktaUser.email.ilike(current_app.config["CURRENT_OKTA_USER_EMAIL"]))
-                    .filter(OktaUser.deleted_at.is_(None))
-                    .first_or_404()
+                OktaUser.query.filter(OktaUser.email.ilike(current_app.config["CURRENT_OKTA_USER_EMAIL"]))
+                .filter(OktaUser.deleted_at.is_(None))
+                .first_or_404()
             )
             g.current_user_id = current_user.id
         elif "CLOUDFLARE_TEAM_DOMAIN" in current_app.config:
             payload = CloudflareAuthenticationHelpers.verify_cloudflare_token(request)
             if "email" in payload:
                 current_user = (
-                    OktaUser.query
-                    .filter(OktaUser.email.ilike(payload["email"]))
+                    OktaUser.query.filter(OktaUser.email.ilike(payload["email"]))
                     .filter(OktaUser.deleted_at.is_(None))
                     .first_or_404()
                 )
@@ -50,8 +48,7 @@ class AuthenticationHelpers:
                 )
                 return redirect(redirect_uri)
             current_user = (
-                OktaUser.query
-                .filter(OktaUser.email.ilike(session["oidc_auth_profile"].get('email')))
+                OktaUser.query.filter(OktaUser.email.ilike(session["oidc_auth_profile"].get("email")))
                 .filter(OktaUser.deleted_at.is_(None))
                 .first_or_404()
             )
@@ -69,7 +66,7 @@ class CloudflareAuthenticationHelpers:
     # https://developers.cloudflare.com/cloudflare-one/identity/authorization-cookie/validating-json/
     # https://developers.cloudflare.com/cloudflare-one/identity/authorization-cookie/application-token/
     @staticmethod
-    def verify_cloudflare_token(request: Request)-> Dict[str, Any]:
+    def verify_cloudflare_token(request: Request) -> Dict[str, Any]:
         token = ""
         if "Cf-Access-Token" in request.headers:
             token = request.headers["Cf-Access-Token"]
@@ -89,9 +86,7 @@ class CloudflareAuthenticationHelpers:
 
         if unverified_payload["kid"] not in keys:
             # If the kid is not in the cache, fetch the new key set
-            keys = CloudflareAuthenticationHelpers.get_public_keys(
-                current_app.config["CLOUDFLARE_TEAM_DOMAIN"]
-            )
+            keys = CloudflareAuthenticationHelpers.get_public_keys(current_app.config["CLOUDFLARE_TEAM_DOMAIN"])
             if unverified_payload["kid"] not in keys:
                 abort(403, "Invalid Cloudflare authorization token: Invalid kid")
 
@@ -118,9 +113,7 @@ class CloudflareAuthenticationHelpers:
         Returns:
             List of RSA public keys usable by PyJWT.
         """
-        r = requests.get(
-            "https://{}/cdn-cgi/access/certs".format(cloudflare_team_domain)
-        )
+        r = requests.get("https://{}/cdn-cgi/access/certs".format(cloudflare_team_domain))
         public_keys = {}
         jwk_set = r.json()
         for key_dict in jwk_set["keys"]:

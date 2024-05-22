@@ -18,5 +18,5 @@ setup(
         "python-dotenv",
         "apispec[yaml]",
         "apispec-webframeworks",
-    ]
+    ],
 )

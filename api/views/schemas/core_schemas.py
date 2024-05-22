@@ -55,7 +55,7 @@ class OktaUserGroupMemberSchema(SQLAlchemyAutoSchema):
             "created_actor_id",
             "ended_actor_id",
             "created_actor",
-            "ended_actor"
+            "ended_actor",
         )
         dump_only = (
             "id",
@@ -77,7 +77,7 @@ class OktaUserGroupMemberSchema(SQLAlchemyAutoSchema):
             "created_actor_id",
             "ended_actor_id",
             "created_actor",
-            "ended_actor"
+            "ended_actor",
         )
         model = OktaUserGroupMember
         sqla_session = db.session
@@ -100,9 +100,7 @@ class OktaUserSchema(SQLAlchemyAutoSchema):
 
     def get_attribute(self, obj: OktaUser, key: str, default: Any) -> Any:
         if key == "profile":
-            attrs_to_display = current_app.config[
-                "USER_DISPLAY_CUSTOM_ATTRIBUTES"
-            ].split(",")
+            attrs_to_display = current_app.config["USER_DISPLAY_CUSTOM_ATTRIBUTES"].split(",")
 
             if len(attrs_to_display) == 1 and attrs_to_display[0] == "":
                 return {}
@@ -248,8 +246,8 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 "^[A-Z][A-Za-z0-9-]*$",
-                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
@@ -271,8 +269,7 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
                 "user.first_name",
                 "user.last_name",
                 "user.display_name",
-                "user.deleted_at"
-                "role_group_mapping.created_at",
+                "user.deleted_at" "role_group_mapping.created_at",
                 "role_group_mapping.ended_at",
                 "role_group_mapping.role_group.id",
                 "role_group_mapping.role_group.type",
@@ -447,7 +444,7 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
                 "active_tag.id",
                 "active_tag.name",
                 "active_tag.constraints",
-                "active_tag.enabled"
+                "active_tag.enabled",
             ),
             many=True,
         ),
@@ -586,7 +583,7 @@ class RoleGroupMapSchema(SQLAlchemyAutoSchema):
             "ended_actor_id",
             "created_actor",
             "ended_actor",
-            "created_reason"
+            "created_reason",
         )
         dump_only = (
             "id",
@@ -606,7 +603,7 @@ class RoleGroupMapSchema(SQLAlchemyAutoSchema):
             "ended_actor_id",
             "created_actor",
             "ended_actor",
-            "created_reason"
+            "created_reason",
         )
         model = RoleGroupMap
         sqla_session = db.session
@@ -621,8 +618,8 @@ class RoleGroupSchema(SQLAlchemyAutoSchema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 f"^{RoleGroup.ROLE_GROUP_NAME_PREFIX}[A-Z][A-Za-z0-9-]*$",
-                error="Role name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="Role name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
@@ -841,8 +838,8 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 f"^{AppGroup.APP_GROUP_NAME_PREFIX}[A-Z][A-Za-z0-9-]*{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}[A-Z][A-Za-z0-9-]*$",
-                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
@@ -852,15 +849,9 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
 
     @validates_schema
     def validate_app_group(self, data: Dict[str, Any], **kwargs: Any) -> None:
-        app = (
-            App.query.filter(App.id == data["app_id"])
-            .filter(App.deleted_at.is_(None))
-            .first()
-        )
+        app = App.query.filter(App.id == data["app_id"]).filter(App.deleted_at.is_(None)).first()
         if app is None:
-            raise ValidationError(
-                'Specified App with app_id: "{}" does not exist'.format(data["app_id"])
-            )
+            raise ValidationError('Specified App with app_id: "{}" does not exist'.format(data["app_id"]))
         # app_groups should have app name prepended always
         app_group_name_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         if not data["name"].startswith(app_group_name_prefix):
@@ -1071,7 +1062,6 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
         ),
     )
 
-
     class Meta:
         model = AppGroup
         sqla_session = db.session
@@ -1132,6 +1122,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             "tags_to_remove",
         )
 
+
 class InitialAppGroupSchema(Schema):
     name = fields.String(
         required=True,
@@ -1139,12 +1130,13 @@ class InitialAppGroupSchema(Schema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 f"^{AppGroup.APP_GROUP_NAME_PREFIX}[A-Z][A-Za-z0-9-]*{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}[A-Z][A-Za-z0-9-]*$",
-                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="Group name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
     description = fields.String(load_default="", validate=validate.Length(max=1024))
+
 
 class AppSchema(SQLAlchemyAutoSchema):
     name = auto_field(
@@ -1153,8 +1145,8 @@ class AppSchema(SQLAlchemyAutoSchema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 "^[A-Z][A-Za-z0-9-]*$",
-                error="App name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="App name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
@@ -1250,9 +1242,9 @@ class PolymorphicGroupSchemaMeta(SchemaMeta):
     def get_declared_fields(
         mcs,
         klass: type,
-        cls_fields: list, # type: ignore[type-arg]
-        inherited_fields: list, # type: ignore[type-arg]
-        dict_cls: type = dict
+        cls_fields: list,  # type: ignore[type-arg]
+        inherited_fields: list,  # type: ignore[type-arg]
+        dict_cls: type = dict,
     ) -> Any:
         fields = dict_cls()
         for group_schema in klass().TYPE_TO_GROUP_SCHEMA_MAP.values():
@@ -1269,43 +1261,29 @@ class PolymorphicGroupSchema(Schema, metaclass=PolymorphicGroupSchemaMeta):
     }
 
     def load(
-            self,
-            data: Any,
-            *args: Any,
-            session: Optional[Session] = None,
-            instance: Optional[Any] = None,
-            transient: Optional[bool]=False,
-            **kwargs: Any
-        ) -> Any:
+        self,
+        data: Any,
+        *args: Any,
+        session: Optional[Session] = None,
+        instance: Optional[Any] = None,
+        transient: Optional[bool] = False,
+        **kwargs: Any,
+    ) -> Any:
         if "type" not in data:
-            raise ValidationError(
-                f"type not given, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}"
-            )
+            raise ValidationError(f"type not given, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}")
 
         group_type = data["type"]
         if group_type in self.TYPE_TO_GROUP_SCHEMA_MAP:
             group_class = self.TYPE_TO_GROUP_SCHEMA_MAP[group_type]
             return group_class(
-                only=self._polymorphic_fields_intersection(
-                    group_class, self.only
-                ),
-                exclude=self._polymorphic_fields_intersection(
-                    group_class, self.exclude
-                ),
-                load_only=self._polymorphic_fields_intersection(
-                    group_class, self.load_only
-                ),
-                dump_only=self._polymorphic_fields_intersection(
-                    group_class, self.dump_only
-                ),
+                only=self._polymorphic_fields_intersection(group_class, self.only),
+                exclude=self._polymorphic_fields_intersection(group_class, self.exclude),
+                load_only=self._polymorphic_fields_intersection(group_class, self.load_only),
+                dump_only=self._polymorphic_fields_intersection(group_class, self.dump_only),
             ).load(data, session=session, instance=instance, transient=transient)
         else:
-            raise ValidationError(
-                f"Unexpected group type, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}"
-            )
-        raise ValidationError(
-            f"Unable to validate with: {self.TYPE_TO_GROUP_SCHEMA_MAP}"
-        )
+            raise ValidationError(f"Unexpected group type, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}")
+        raise ValidationError(f"Unable to validate with: {self.TYPE_TO_GROUP_SCHEMA_MAP}")
 
     def dump(self, obj: Any, *args: Any, many: Optional[bool] = None) -> List[Dict[str, Any]] | Dict[str, Any]:
         many = self.many if many is None else bool(many)
@@ -1320,39 +1298,24 @@ class PolymorphicGroupSchema(Schema, metaclass=PolymorphicGroupSchemaMeta):
         if group_type in self.TYPE_TO_GROUP_SCHEMA_MAP:
             group_class = self.TYPE_TO_GROUP_SCHEMA_MAP[group_type]
             return group_class(
-                only=self._polymorphic_fields_intersection(
-                    group_class, self.only
-                ),
-                exclude=self._polymorphic_fields_intersection(
-                    group_class, self.exclude
-                ),
-                load_only=self._polymorphic_fields_intersection(
-                    group_class, self.load_only
-                ),
-                dump_only=self._polymorphic_fields_intersection(
-                    group_class, self.dump_only
-                ),
+                only=self._polymorphic_fields_intersection(group_class, self.only),
+                exclude=self._polymorphic_fields_intersection(group_class, self.exclude),
+                load_only=self._polymorphic_fields_intersection(group_class, self.load_only),
+                dump_only=self._polymorphic_fields_intersection(group_class, self.dump_only),
             ).dump(obj)
         else:
-            raise ValidationError(
-                f"Unexpected group type, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}"
-            )
-        raise ValidationError(
-            f"Unable to validate with: {self.TYPE_TO_GROUP_SCHEMA_MAP}"
-        )
+            raise ValidationError(f"Unexpected group type, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}")
+        raise ValidationError(f"Unable to validate with: {self.TYPE_TO_GROUP_SCHEMA_MAP}")
 
     def _polymorphic_fields_intersection(
-            self,
-            group_class: type[Schema],
-            input_fields: Optional[Sequence[str] | AbstractSet[str]]
-        ) -> Optional[Sequence[str] | AbstractSet[str]]:
+        self, group_class: type[Schema], input_fields: Optional[Sequence[str] | AbstractSet[str]]
+    ) -> Optional[Sequence[str] | AbstractSet[str]]:
         if input_fields is None:
             return None
 
         fields = set(cast(SchemaOpts, group_class.Meta).fields)
-        return (
-            set(filter(lambda field: field.split(".")[0] in fields, input_fields))
-        )
+        return set(filter(lambda field: field.split(".")[0] in fields, input_fields))
+
 
 class AccessRequestSchema(SQLAlchemyAutoSchema):
     requester = fields.Nested(lambda: OktaUserSchema)
@@ -1418,6 +1381,7 @@ class AccessRequestSchema(SQLAlchemyAutoSchema):
             "approval_ending_at",
         )
 
+
 class TagSchema(SQLAlchemyAutoSchema):
     name = auto_field(
         required=True,
@@ -1425,8 +1389,8 @@ class TagSchema(SQLAlchemyAutoSchema):
             validate.Length(min=1, max=255),
             validate.Regexp(
                 "^[A-Z][A-Za-z0-9-]*$",
-                error="Tag name must start capitalized and contain only alphanumeric characters or hyphens. " \
-                    "Regex to match: /{regex}/",
+                error="Tag name must start capitalized and contain only alphanumeric characters or hyphens. "
+                "Regex to match: /{regex}/",
             ),
         ),
     )
@@ -1439,7 +1403,9 @@ class TagSchema(SQLAlchemyAutoSchema):
             if not isinstance(key, str):
                 raise ValidationError("Constraint keys must be strings")
             if key not in Tag.CONSTRAINTS:
-                raise ValidationError(f"Constraint key must be one of {', '.join([k for k,_ in Tag.CONSTRAINTS.items()])}")
+                raise ValidationError(
+                    f"Constraint key must be one of {', '.join([k for k,_ in Tag.CONSTRAINTS.items()])}"
+                )
             constraint = Tag.CONSTRAINTS[key]
             if not constraint.validator(val):
                 raise ValidationError(f"Constraint value must be {constraint.description}")
@@ -1508,13 +1474,7 @@ class TagSchema(SQLAlchemyAutoSchema):
 
     active_app_tags = fields.Nested(
         lambda: AppTagMapSchema(
-            only=(
-                "created_at",
-                "ended_at",
-                "active_app.id",
-                "active_app.name",
-                "active_app.description"
-            ),
+            only=("created_at", "ended_at", "active_app.id", "active_app.name", "active_app.description"),
             many=True,
         ),
     )
@@ -1549,6 +1509,7 @@ class TagSchema(SQLAlchemyAutoSchema):
             "active_app_tags",
         )
 
+
 class OktaGroupTagMapSchema(SQLAlchemyAutoSchema):
     tag = fields.Nested(lambda: TagSchema)
     active_tag = fields.Nested(lambda: TagSchema)
@@ -1559,6 +1520,7 @@ class OktaGroupTagMapSchema(SQLAlchemyAutoSchema):
 
     app_tag_mapping = fields.Nested(lambda: AppTagMapSchema)
     active_app_tag_mapping = fields.Nested(lambda: AppTagMapSchema)
+
     class Meta:
         model = OktaGroupTagMap
         sqla_session = db.session
@@ -1597,6 +1559,7 @@ class OktaGroupTagMapSchema(SQLAlchemyAutoSchema):
             "active_app_tag_mapping",
         )
 
+
 class AppTagMapSchema(SQLAlchemyAutoSchema):
     tag = fields.Nested(lambda: TagSchema)
     active_tag = fields.Nested(lambda: TagSchema)
@@ -1607,6 +1570,7 @@ class AppTagMapSchema(SQLAlchemyAutoSchema):
 
     group_tag_mappings = fields.Nested(lambda: OktaGroupTagMapSchema, many=True)
     active_group_tag_mappings = fields.Nested(lambda: OktaGroupTagMapSchema, many=True)
+
     class Meta:
         model = AppTagMap
         sqla_session = db.session
