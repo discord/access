@@ -9,7 +9,7 @@ from marshmallow import Schema
 class FlaskApiSpecExt:
     """Very simple and small extension to use apispec with this API as a flask extension"""
 
-    def __init__(self, app:  Optional[Flask] = None, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, app: Optional[Flask] = None, **kwargs: dict[str, Any]) -> None:
         if app is not None:
             self.init_app(app, **kwargs)
 
@@ -27,12 +27,11 @@ class FlaskApiSpecExt:
         endpoint: Optional[str] = None,
         blueprint: Optional[str] = None,
     ) -> None:
-        self.spec.register(
-            target, endpoint, blueprint
-        )
+        self.spec.register(target, endpoint, blueprint)
 
 
 F = TypeVar("F", bound=Callable[..., Any])
+
 
 class FlaskApiSpecDecorators:
     @staticmethod

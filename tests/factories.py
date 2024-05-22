@@ -50,7 +50,7 @@ class GroupFactory(factory.Factory):
         access_owner_group = access_app.active_owner_app_groups[0]
         okta_access_owner_group = GroupFactory.build()
         okta_access_owner_group.profile.name = access_owner_group.name
-        okta_access_owner_group.id =  access_owner_group.id
+        okta_access_owner_group.id = access_owner_group.id
         return okta_access_owner_group
 
 
@@ -105,62 +105,32 @@ class UserSchemaFactory(factory.Factory):
                             "properties": factory.Dict(
                                 {
                                     "city": factory.Dict({"title": "City"}),
-                                    "costCenter": factory.Dict(
-                                        {"title": "Cost Center"}
-                                    ),
-                                    "countryCode": factory.Dict(
-                                        {"title": "Country Code"}
-                                    ),
+                                    "costCenter": factory.Dict({"title": "Cost Center"}),
+                                    "countryCode": factory.Dict({"title": "Country Code"}),
                                     "department": factory.Dict({"title": "Department"}),
-                                    "displayName": factory.Dict(
-                                        {"title": "Display Name"}
-                                    ),
+                                    "displayName": factory.Dict({"title": "Display Name"}),
                                     "division": factory.Dict({"title": "Division"}),
                                     "email": factory.Dict({"title": "Email"}),
-                                    "employeeNumber": factory.Dict(
-                                        {"title": "Employee Number"}
-                                    ),
+                                    "employeeNumber": factory.Dict({"title": "Employee Number"}),
                                     "firstName": factory.Dict({"title": "First Name"}),
-                                    "honorificPrefix": factory.Dict(
-                                        {"title": "HonorificPrefix"}
-                                    ),
-                                    "honorificSuffix": factory.Dict(
-                                        {"title": "HonorificSuffix"}
-                                    ),
+                                    "honorificPrefix": factory.Dict({"title": "HonorificPrefix"}),
+                                    "honorificSuffix": factory.Dict({"title": "HonorificSuffix"}),
                                     "lastName": factory.Dict({"title": "Last Name"}),
                                     "locale": factory.Dict({"title": "Locale"}),
                                     "login": factory.Dict({"title": "Login"}),
                                     "manager": factory.Dict({"title": "Manager"}),
                                     "managerId": factory.Dict({"title": "Manager ID"}),
-                                    "middleName": factory.Dict(
-                                        {"title": "Middle Name"}
-                                    ),
-                                    "mobilePhone": factory.Dict(
-                                        {"title": "Mobile Phone"}
-                                    ),
+                                    "middleName": factory.Dict({"title": "Middle Name"}),
+                                    "mobilePhone": factory.Dict({"title": "Mobile Phone"}),
                                     "nickName": factory.Dict({"title": "Nick Name"}),
-                                    "organization": factory.Dict(
-                                        {"title": "Organization"}
-                                    ),
-                                    "postalAddress": factory.Dict(
-                                        {"title": "Postal Address"}
-                                    ),
-                                    "preferredLanguage": factory.Dict(
-                                        {"title": "Preferred Language"}
-                                    ),
-                                    "primaryPhone": factory.Dict(
-                                        {"title": "Primary Phone"}
-                                    ),
-                                    "profileUrl": factory.Dict(
-                                        {"title": "Profile URL"}
-                                    ),
-                                    "secondEmail": factory.Dict(
-                                        {"title": "Second Email"}
-                                    ),
+                                    "organization": factory.Dict({"title": "Organization"}),
+                                    "postalAddress": factory.Dict({"title": "Postal Address"}),
+                                    "preferredLanguage": factory.Dict({"title": "Preferred Language"}),
+                                    "primaryPhone": factory.Dict({"title": "Primary Phone"}),
+                                    "profileUrl": factory.Dict({"title": "Profile URL"}),
+                                    "secondEmail": factory.Dict({"title": "Second Email"}),
                                     "state": factory.Dict({"title": "State"}),
-                                    "streetAddress": factory.Dict(
-                                        {"title": "Street Address"}
-                                    ),
+                                    "streetAddress": factory.Dict({"title": "Street Address"}),
                                     "timezone": factory.Dict({"title": "Timezone"}),
                                     "title": factory.Dict({"title": "Title"}),
                                     "userType": factory.Dict({"title": "User Type"}),
@@ -173,9 +143,7 @@ class UserSchemaFactory(factory.Factory):
                         {
                             "properties": factory.Dict(
                                 {
-                                    "custom_attr": factory.Dict(
-                                        {"title": "Custom Attribute"}
-                                    ),
+                                    "custom_attr": factory.Dict({"title": "Custom Attribute"}),
                                 }
                             )
                         }
@@ -192,14 +160,10 @@ class UserSchemaFactory(factory.Factory):
 class OktaUserFactory(factory.Factory):
     id = factory.Faker("pystr")
 
-    email = factory.LazyAttribute(
-        lambda a: "{}.{}@example.com".format(a.first_name, a.last_name).lower()
-    )
+    email = factory.LazyAttribute(lambda a: "{}.{}@example.com".format(a.first_name, a.last_name).lower())
     first_name = factory.Faker("first_name")
     last_name = factory.Faker("last_name")
-    display_name = factory.LazyAttribute(
-        lambda a: "{} {}".format(a.first_name, a.last_name)
-    )
+    display_name = factory.LazyAttribute(lambda a: "{} {}".format(a.first_name, a.last_name))
     profile: Dict[str, str] = {}
 
     class Meta:
@@ -246,8 +210,10 @@ class AppGroupFactory(factory.Factory):
     id = factory.Faker("pystr")
     name = fuzzy.FuzzyText(
         length=12,
-        prefix= AppGroup.APP_GROUP_NAME_PREFIX + random.choice(string.ascii_uppercase)
-        + AppGroup.APP_NAME_GROUP_NAME_SEPARATOR + random.choice(string.ascii_uppercase),
+        prefix=AppGroup.APP_GROUP_NAME_PREFIX
+        + random.choice(string.ascii_uppercase)
+        + AppGroup.APP_NAME_GROUP_NAME_SEPARATOR
+        + random.choice(string.ascii_uppercase),
         chars=string.ascii_letters + string.digits + "-",
     )
     type = "app_group"
@@ -264,11 +230,10 @@ class AccessRequestFactory(factory.Factory):
     class Meta:
         model = AccessRequest
 
+
 class TagFactory(factory.Factory):
     id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(
-        length=12, prefix="Tag-", chars=string.ascii_letters + string.digits + "-"
-    )
+    name = fuzzy.FuzzyText(length=12, prefix="Tag-", chars=string.ascii_letters + string.digits + "-")
 
     class Meta:
         model = Tag

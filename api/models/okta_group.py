@@ -6,9 +6,7 @@ from api.models.core_models import OktaUser, OktaUserGroupMember
 
 def get_group_managers(group_id: str) -> List[OktaUser]:
     return (
-        OktaUser.query.join(
-            OktaUserGroupMember, OktaUser.id == OktaUserGroupMember.user_id
-        )
+        OktaUser.query.join(OktaUserGroupMember, OktaUser.id == OktaUserGroupMember.user_id)
         .filter(OktaUserGroupMember.group_id == group_id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .filter(

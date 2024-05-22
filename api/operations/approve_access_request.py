@@ -21,12 +21,12 @@ class ApproveAccessRequest:
         approval_reason: str = "",
         ending_at: Optional[datetime] = None,
         notify: bool = True,
-):
-        self.access_request = AccessRequest.query.options(
-            joinedload(AccessRequest.active_requested_group)
-        ).filter(
-            AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id)
-        ).first()
+    ):
+        self.access_request = (
+            AccessRequest.query.options(joinedload(AccessRequest.active_requested_group))
+            .filter(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
+            .first()
+        )
 
         if approver_user is None:
             self.approver_id = None
@@ -49,10 +49,7 @@ class ApproveAccessRequest:
 
     def execute(self) -> AccessRequest:
         # Don't allow approving a request that is already resolved
-        if (
-            self.access_request.status != AccessRequestStatus.PENDING
-            or self.access_request.resolved_at is not None
-        ):
+        if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
             return self.access_request
 
         # Don't allow requester to approve their own request
@@ -88,26 +85,32 @@ class ApproveAccessRequest:
         # self.access_request.approval_ending_at = self.ending_at
 
         # Audit logging
-        group = (db.session.query(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaGroup.id == self.access_request.requested_group_id)
-                .first())
+        group = (
+            db.session.query(OktaGroup)
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.id == self.access_request.requested_group_id)
+            .first()
+        )
 
         context = has_request_context()
 
-        current_app.logger.info(AuditLogSchema().dumps({
-            'event_type' : EventType.access_approve,
-            'user_agent' : request.headers.get('User-Agent') if context else None,
-            'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
-                        if context else None,
-            'current_user_id' : self.approver_id,
-            'current_user_email' : self.approver_email,
-            'group' : group,
-            'request' : self.access_request,
-            'requester' : db.session.get(OktaUser, self.access_request.requester_user_id)
-        }))
+        current_app.logger.info(
+            AuditLogSchema().dumps(
+                {
+                    "event_type": EventType.access_approve,
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                    if context
+                    else None,
+                    "current_user_id": self.approver_id,
+                    "current_user_email": self.approver_email,
+                    "group": group,
+                    "request": self.access_request,
+                    "requester": db.session.get(OktaUser, self.access_request.requester_user_id),
+                }
+            )
+        )
 
         if self.access_request.request_ownership:
             ModifyGroupUsers(

@@ -33,7 +33,7 @@ from api.views import (
 )
 
 
-def create_app(testing: Optional[bool]=False) -> Flask:
+def create_app(testing: Optional[bool] = False) -> Flask:
     ##########################################
     # Flask App Instance
     ##########################################
@@ -45,7 +45,7 @@ def create_app(testing: Optional[bool]=False) -> Flask:
         static_url_path="",
     )
 
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format='%(message)s')
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
 
     app.logger.setLevel(logging.INFO)
     logging.root.setLevel(logging.INFO)
@@ -61,33 +61,29 @@ def create_app(testing: Optional[bool]=False) -> Flask:
     # Cache the Cloudflare Access public keys for authentication
     if app.config["ENV"] not in ("development", "test"):
         if "CLOUDFLARE_TEAM_DOMAIN" in app.config:
-            app.config[
-                "CLOUDFLARE_PUBLIC_KEYS"
-            ] = CloudflareAuthenticationHelpers.get_public_keys(
+            app.config["CLOUDFLARE_PUBLIC_KEYS"] = CloudflareAuthenticationHelpers.get_public_keys(
                 app.config["CLOUDFLARE_TEAM_DOMAIN"]
             )
         elif "OIDC_CLIENT_SECRETS" in app.config:
             if app.config.get("SECRET_KEY", None) is None:
-                raise ValueError("SECRET_KEY must be set in the environment when using OIDC authentication. " +
-                                 "Generate a good secret key with " +
-                                 "`python -c 'import secrets; print(secrets.token_hex())'`")
+                raise ValueError(
+                    "SECRET_KEY must be set in the environment when using OIDC authentication. "
+                    + "Generate a good secret key with "
+                    + "`python -c 'import secrets; print(secrets.token_hex())'`"
+                )
 
             oidc.init_app(app, prefix="/oidc")
         else:
             raise ValueError(
-                "Cloudflare Access (with CLOUDFLARE_TEAM_DOMAIN) or " +
-                "OIDC authentication (with OIDC_CLIENT_SECRETS) must " +
-                "be configured in a non-development/testing environment"
+                "Cloudflare Access (with CLOUDFLARE_TEAM_DOMAIN) or "
+                + "OIDC authentication (with OIDC_CLIENT_SECRETS) must "
+                + "be configured in a non-development/testing environment"
             )
-
 
     ##########################################
     # Error reporting
     ##########################################
-    if (
-        app.config["ENV"] not in ("development", "test")
-        and "FLASK_SENTRY_DSN" in app.config
-    ):
+    if app.config["ENV"] not in ("development", "test") and "FLASK_SENTRY_DSN" in app.config:
         import sentry_sdk
         from sentry_sdk.integrations.flask import FlaskIntegration
 
@@ -124,8 +120,11 @@ def create_app(testing: Optional[bool]=False) -> Flask:
         force_https=False,
     )
 
-    okta.initialize(app.config["OKTA_DOMAIN"], app.config["OKTA_API_TOKEN"],
-                    use_group_owners_api=app.config["OKTA_USE_GROUP_OWNERS_API"])
+    okta.initialize(
+        app.config["OKTA_DOMAIN"],
+        app.config["OKTA_API_TOKEN"],
+        use_group_owners_api=app.config["OKTA_USE_GROUP_OWNERS_API"],
+    )
 
     @app.before_request
     def authenticate_request() -> Optional[ResponseReturnValue]:
@@ -133,9 +132,7 @@ def create_app(testing: Optional[bool]=False) -> Flask:
 
     @app.after_request
     def add_headers(response: Response) -> ResponseReturnValue:
-        if request.path.startswith("/api") and not request.path.startswith(
-            "/api/swagger-ui"
-        ):
+        if request.path.startswith("/api") and not request.path.startswith("/api/swagger-ui"):
             response.headers["X-XSS-Protection"] = "0"
             response.headers["Cache-Control"] = "no-store, max-age=0"
             response.headers["Pragma"] = "no-cache"
@@ -199,17 +196,10 @@ def create_app(testing: Optional[bool]=False) -> Flask:
 
     # Ignore the following warning because we are using the same schema name for multiple schemas
     # https://github.com/marshmallow-code/apispec/issues/444
-    warnings.filterwarnings(
-        "ignore",
-        message="Multiple schemas resolved to the name "
-    )
+    warnings.filterwarnings("ignore", message="Multiple schemas resolved to the name ")
     # Ignore the following warning because nested schemas may declare less fields via only tuples
     # than the actual schema has specfieid in the fields tuple
-    warnings.filterwarnings(
-        "ignore",
-        message="Only explicitly-declared fields will be included in the Schema Object"
-    )
-
+    warnings.filterwarnings("ignore", message="Only explicitly-declared fields will be included in the Schema Object")
 
     app.register_blueprint(exception_views.bp)
     app.register_blueprint(access_requests_views.bp)

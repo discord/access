@@ -22,33 +22,26 @@ from api.views.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupType:
-    def __init__(
-        self,
-        *,
-        group: OktaGroup | str,
-        group_changes: OktaGroup,
-        current_user_id: Optional[str]
-    ):
+    def __init__(self, *, group: OktaGroup | str, group_changes: OktaGroup, current_user_id: Optional[str]):
         self.group = (
             db.session.query(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                        joinedload(AppGroup.app))
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
             .first()
         )
 
         self.group_changes = group_changes
-        self.current_user_id = (
-            getattr(OktaUser.query
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id).first(), 'id', None)
+        self.current_user_id = getattr(
+            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            "id",
+            None,
         )
 
     def execute(self) -> OktaGroup:
         # Update group type if it's being modified
         # Ignore Ruff because we don't want to include subclasses with an isinstance comparison
-        if type(self.group) != type(self.group_changes): # noqa: E721
+        if type(self.group) != type(self.group_changes):  # noqa: E721
             group_id = self.group.id
             old_group_type = self.group.type
 
@@ -64,22 +57,12 @@ class ModifyGroupType:
                 ModifyRoleGroups(
                     role_group=self.group,
                     current_user_id=self.current_user_id,
-                    groups_to_remove=[
-                        g.group_id
-                        for g in active_role_associated_groups
-                        if not g.is_owner
-                    ],
-                    owner_groups_to_remove=[
-                        g.group_id for g in active_role_associated_groups if g.is_owner
-                    ],
+                    groups_to_remove=[g.group_id for g in active_role_associated_groups if not g.is_owner],
+                    owner_groups_to_remove=[g.group_id for g in active_role_associated_groups if g.is_owner],
                 ).execute()
                 db.session.commit()
 
-                db.session.execute(
-                    delete(RoleGroup.__table__).where(
-                        RoleGroup.__table__.c.id == group_id
-                    )
-                )
+                db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
             elif type(self.group) == AppGroup:
                 # Bail if this is the owner group for the app
                 # which cannot have its type changed
@@ -92,9 +75,7 @@ class ModifyGroupType:
                         OktaGroupTagMap.ended_at.is_(None),
                         OktaGroupTagMap.ended_at > db.func.now(),
                     )
-                ).filter(
-                    OktaGroupTagMap.group_id == self.group.id
-                ).filter(
+                ).filter(OktaGroupTagMap.group_id == self.group.id).filter(
                     OktaGroupTagMap.app_tag_map_id.isnot(None)
                 ).update(
                     {OktaGroupTagMap.app_tag_map_id: None},
@@ -102,11 +83,7 @@ class ModifyGroupType:
                 )
                 db.session.commit()
 
-                db.session.execute(
-                    delete(AppGroup.__table__).where(
-                        AppGroup.__table__.c.id == group_id
-                    )
-                )
+                db.session.execute(delete(AppGroup.__table__).where(AppGroup.__table__.c.id == group_id))
             # Expunge the session so the changed object is flushed from the ORM
             # See https://stackoverflow.com/a/21792969
             db.session.expunge_all()
@@ -116,11 +93,7 @@ class ModifyGroupType:
             self.group.type = OktaGroup.__mapper_args__["polymorphic_identity"]
             db.session.commit()
 
-            self.group = (
-                OktaGroup.query.filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaGroup.id == group_id)
-                .first()
-            )
+            self.group = OktaGroup.query.filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == group_id).first()
 
             # Create new child table row
             if type(self.group_changes) == RoleGroup:
@@ -198,34 +171,37 @@ class ModifyGroupType:
 
             # Add all app tags to this new app group, after we've updated the group type
             if type(self.group_changes) == AppGroup:
-                app_tag_maps = AppTagMap.query.options(
-                    joinedload(AppTagMap.active_tag)
-                ).filter(
-                    db.or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                app_tag_maps = (
+                    AppTagMap.query.options(joinedload(AppTagMap.active_tag))
+                    .filter(
+                        db.or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > db.func.now(),
+                        )
                     )
-                ).filter(
-                    AppTagMap.app_id == self.group_changes.app_id,
-                ).all()
+                    .filter(
+                        AppTagMap.app_id == self.group_changes.app_id,
+                    )
+                    .all()
+                )
                 for app_tag_map in app_tag_maps:
-                    db.session.add(OktaGroupTagMap(
-                        tag_id=app_tag_map.tag_id,
-                        group_id=group_id,
-                        app_tag_map_id=app_tag_map.id,
-                    ))
+                    db.session.add(
+                        OktaGroupTagMap(
+                            tag_id=app_tag_map.tag_id,
+                            group_id=group_id,
+                            app_tag_map_id=app_tag_map.id,
+                        )
+                    )
 
                 # Handle group time limit constraints when adding tags with time limit contraints to a group
                 ModifyGroupsTimeLimit(
-                    groups=[group_id],
-                    tags=[tag_map.active_tag.id for tag_map in app_tag_maps]
+                    groups=[group_id], tags=[tag_map.active_tag.id for tag_map in app_tag_maps]
                 ).execute()
 
             # Return a new lookup for the group
             self.group = (
                 db.session.query(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                         joinedload(AppGroup.app))
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
                 .filter(OktaGroup.deleted_at.is_(None))
                 .filter(OktaGroup.id == group_id)
                 .first()
@@ -235,18 +211,25 @@ class ModifyGroupType:
         if self.group.type != old_group_type:
             email = None
             if self.current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, self.current_user_id), 'email', None)
+                email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
             context = has_request_context()
-            current_app.logger.info(AuditLogSchema().dumps({
-                'event_type' : EventType.group_modify_type,
-                'user_agent' : request.headers.get('User-Agent') if context else None,
-                'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr))
-                            if context else None,
-                'current_user_id' : self.current_user_id,
-                'current_user_email' : email,
-                'group' : self.group,
-                'old_group_type' : old_group_type
-            }))
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.group_modify_type,
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        )
+                        if context
+                        else None,
+                        "current_user_id": self.current_user_id,
+                        "current_user_email": email,
+                        "group": self.group,
+                        "old_group_type": old_group_type,
+                    }
+                )
+            )
 
         return self.group

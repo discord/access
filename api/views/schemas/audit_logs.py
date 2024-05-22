@@ -32,6 +32,7 @@ class EventType(Enum):
     tag_modify = "TAG_MODIFY"
     tag_delete = "TAG_DELETE"
 
+
 class AuditLogSchema(Schema):
     event_type = fields.Enum(EventType, by_value=True)
     user_agent = fields.Str()
@@ -39,46 +40,46 @@ class AuditLogSchema(Schema):
     current_user_id = fields.Str()
     current_user_email = fields.Str()
 
-    group = fields.Nested(PolymorphicGroupSchema, only=('id','name','type','app.id','app.name'))
+    group = fields.Nested(PolymorphicGroupSchema, only=("id", "name", "type", "app.id", "app.name"))
     old_group_name = fields.Str()
     old_group_type = fields.Str()
-    group_owners = fields.List(fields.Nested(OktaUserSchema, only=('id','email')))
-    owners_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=('id','email')))
-    owners_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=('id','email')))
-    members_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=('id','email')))
-    members_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=('id','email')))
+    group_owners = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    owners_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    owners_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    members_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    members_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
 
-    role = fields.Nested(RoleGroupSchema, only=('id','name'))
+    role = fields.Nested(RoleGroupSchema, only=("id", "name"))
     groups_added_ending_at = fields.DateTime()
-    owner_groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=('id','name')))
-    owner_groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=('id','name')))
-    groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=('id','name')))
-    groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=('id','name')))
+    owner_groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
+    owner_groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
+    groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
+    groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
 
-    request = fields.Nested(AccessRequestSchema, only=('id',
-                                                       'request_reason',
-                                                       'request_ending_at',
-                                                       'request_ownership',
-                                                       'resolution_reason',
-                                                       'approval_ending_at'))
-    requester = fields.Nested(OktaUserSchema, only=('id','email'))
+    request = fields.Nested(
+        AccessRequestSchema,
+        only=(
+            "id",
+            "request_reason",
+            "request_ending_at",
+            "request_ownership",
+            "resolution_reason",
+            "approval_ending_at",
+        ),
+    )
+    requester = fields.Nested(OktaUserSchema, only=("id", "email"))
 
-    app = fields.Nested(AppSchema, only=('id','name'))
+    app = fields.Nested(AppSchema, only=("id", "name"))
     old_app_name = fields.Str()
     owner_id = fields.Str()
 
-    tag = fields.Nested(TagSchema, only=('id','name', 'constraints', 'enabled'))
-    old_tag = fields.Nested(TagSchema, only=('name', 'constraints', 'enabled'))
+    tag = fields.Nested(TagSchema, only=("id", "name", "constraints", "enabled"))
+    old_tag = fields.Nested(TagSchema, only=("name", "constraints", "enabled"))
 
-    tags_added = fields.List(fields.Nested(TagSchema, only=('id','name', 'constraints', 'enabled')))
-    tags_removed = fields.List(fields.Nested(TagSchema, only=('id','name', 'constraints', 'enabled')))
+    tags_added = fields.List(fields.Nested(TagSchema, only=("id", "name", "constraints", "enabled")))
+    tags_removed = fields.List(fields.Nested(TagSchema, only=("id", "name", "constraints", "enabled")))
 
     @pre_dump
     def remove_skip_values(self, data: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        allowed_keys = ['groups_added_ending_at',
-                        'current_user_id',
-                        'current_user_email']
-        return {
-            key: value for key, value in data.items()
-            if value is not None or key in allowed_keys
-        }
+        allowed_keys = ["groups_added_ending_at", "current_user_id", "current_user_email"]
+        return {key: value for key, value in data.items() if value is not None or key in allowed_keys}

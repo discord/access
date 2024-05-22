@@ -9,7 +9,9 @@ from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Tag
 from tests.factories import TagFactory
 
 
-def test_get_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup) -> None:
+def test_get_tag(
+    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.get(tag_url)
@@ -39,7 +41,9 @@ def test_get_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App,
     assert data["name"] == tag.name
 
 
-def test_put_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup) -> None:
+def test_put_tag(
+    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.put(tag_url)
@@ -64,9 +68,7 @@ def test_put_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App,
         "name": "Updated",
         "description": "new description",
         "enabled": False,
-        "constraints": {
-            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 9999
-        },
+        "constraints": {Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 9999},
     }
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
     rep = client.put(tag_url, json=data)
@@ -97,23 +99,21 @@ def test_put_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App,
     assert data["id"] == tag.id
 
     data = {
-        "constraints": {
-            "invalid_constraint": "asdfas"
-        },
+        "constraints": {"invalid_constraint": "asdfas"},
     }
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 400
 
     data = {
-        "constraints": {
-            "time_limit": "asdfas"
-        },
+        "constraints": {"time_limit": "asdfas"},
     }
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 400
 
 
-def test_delete_tag(client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup) -> None:
+def test_delete_tag(
+    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.delete(tag_url)
@@ -193,6 +193,6 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
     assert rep.status_code == 200
 
     results = rep.get_json()
-    assert(len(results["results"]) == 3)
+    assert len(results["results"]) == 3
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])

@@ -26,6 +26,7 @@ class Base(DeclarativeBase):
         }
     )
 
+
 db = SQLAlchemy(model_class=Base)
 ma = Marshmallow()
 migrate = Migrate(render_as_batch=True)
@@ -34,30 +35,31 @@ oidc = OpenIDConnect()
 
 P = ParamSpec("P")
 
+
 class Api(_Api):
-    def error_router(self,
-                     original_handler: Callable[P, Tuple[Response, int]],
-                     e: BaseException) -> Tuple[Response, int]:
+    def error_router(
+        self, original_handler: Callable[P, Tuple[Response, int]], e: BaseException
+    ) -> Tuple[Response, int]:
         if isinstance(e, exceptions.ValidationError):
             if isinstance(e.messages, list):
                 return jsonify(message=e.messages[0]), 400
             elif isinstance(e.messages, dict):
-                return jsonify(message=list(
-                    e.normalized_messages().values())[0][0] # type: ignore[no-untyped-call]
+                return jsonify(
+                    message=list(e.normalized_messages().values())[0][0]  # type: ignore[no-untyped-call]
                 ), 400
             else:
                 return jsonify(message=e.messages), 400
 
         return super().error_router(original_handler, e)
 
+
 def get_cloudsql_conn(
     cloudsql_connection_name: str,
-    db_user: Optional[str] ="root",
-    db_name: Optional[str] ="access",
-    uses_public_ip: Optional[bool] =False,
+    db_user: Optional[str] = "root",
+    db_name: Optional[str] = "access",
+    uses_public_ip: Optional[bool] = False,
 ) -> Callable[[], Connector]:
     def _get_conn() -> Connector:
-
         with Connector() as connector:
             conn = connector.connect(
                 cloudsql_connection_name,  # Cloud SQL Instance Connection Name

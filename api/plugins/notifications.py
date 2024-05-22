@@ -18,44 +18,44 @@ logger = logging.getLogger(__name__)
 
 class NotificationPluginSpec:
     @hookspec
-    def access_request_created(self,
-                               access_request: AccessRequest,
-                               group: OktaGroup,
-                               requester: OktaUser,
-                               approvers: list[OktaUser]) -> None:
+    def access_request_created(
+        self, access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
+    ) -> None:
         """Notify the approvers of the access request."""
 
     @hookspec
-    def access_request_completed(self,
-                                 access_request: AccessRequest,
-                                 group: OktaGroup,
-                                 requester: OktaUser,
-                                 approvers: list[OktaUser],
-                                 notify_requester: bool) -> None:
+    def access_request_completed(
+        self,
+        access_request: AccessRequest,
+        group: OktaGroup,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+        notify_requester: bool,
+    ) -> None:
         """Notify the requester that their access request has been processed."""
 
     @hookspec
-    def access_expiring_user(self,
-                             groups: list[OktaGroup],
-                             user: OktaUser,
-                             expiration_datetime: datetime.datetime) -> None:
+    def access_expiring_user(
+        self, groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
+    ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
     @hookspec
-    def access_expiring_owner(self,
-                              owner: OktaUser,
-                              groups: list[OktaGroup],
-                              roles: list[OktaGroup],
-                              users: list[RoleGroup],
-                              expiration_datetime: datetime.datetime) -> None:
+    def access_expiring_owner(
+        self,
+        owner: OktaUser,
+        groups: list[OktaGroup],
+        roles: list[OktaGroup],
+        users: list[RoleGroup],
+        expiration_datetime: datetime.datetime,
+    ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
 
 
 @hookimpl(wrapper=True)
-def access_request_created(access_request: AccessRequest,
-                           group: OktaGroup,
-                           requester: OktaUser,
-                           approvers: list[OktaUser]) -> Generator[None, None, None]:
+def access_request_created(
+    access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
+) -> Generator[None, None, None]:
     try:
         return (yield)
     except Exception:
@@ -66,11 +66,13 @@ def access_request_created(access_request: AccessRequest,
 
 
 @hookimpl(wrapper=True)
-def access_request_completed(access_request: AccessRequest,
-                             group: OktaGroup,
-                             requester: OktaUser,
-                             approvers: list[OktaUser],
-                             notify_requester: bool) -> Generator[None, None, None]:
+def access_request_completed(
+    access_request: AccessRequest,
+    group: OktaGroup,
+    requester: OktaUser,
+    approvers: list[OktaUser],
+    notify_requester: bool,
+) -> Generator[None, None, None]:
     try:
         return (yield)
     except Exception:
@@ -81,9 +83,9 @@ def access_request_completed(access_request: AccessRequest,
 
 
 @hookimpl(wrapper=True)
-def access_expiring_user(groups: list[OktaGroup],
-                         user: OktaUser,
-                         expiration_datetime: datetime.datetime) -> Generator[None, None, None]:
+def access_expiring_user(
+    groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
+) -> Generator[None, None, None]:
     try:
         return (yield)
     except Exception:
@@ -92,12 +94,15 @@ def access_expiring_user(groups: list[OktaGroup],
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for user notification callback")
 
+
 @hookimpl(wrapper=True)
-def access_expiring_owner(owner: OktaUser,
-                          groups: list[OktaGroup],
-                          roles: list[RoleGroup],
-                          users: list[OktaUser],
-                          expiration_datetime: datetime.datetime) -> Generator[None, None, None]:
+def access_expiring_owner(
+    owner: OktaUser,
+    groups: list[OktaGroup],
+    roles: list[RoleGroup],
+    users: list[OktaUser],
+    expiration_datetime: datetime.datetime,
+) -> Generator[None, None, None]:
     try:
         return (yield)
     except Exception:

@@ -17,29 +17,24 @@ _cached_conditional_access_hook = None
 logger = logging.getLogger(__name__)
 
 
-
 @dataclass
 class ConditionalAccessResponse:
     approved: bool
-    reason: str = ''
+    reason: str = ""
     ending_at: Optional[datetime] = None
+
 
 class ConditionalAccessPluginSpec:
     @hookspec
-    def access_request_created(self,
-                               access_request: AccessRequest,
-                               group: OktaGroup,
-                               group_tags: List[Tag],
-                               requester: OktaUser) -> Optional[ConditionalAccessResponse]:
+    def access_request_created(
+        self, access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
+    ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the access request."""
 
 
 @hookimpl(wrapper=True)
 def access_request_created(
-    access_request: AccessRequest,
-    group: OktaGroup,
-    group_tags: List[Tag],
-    requester: OktaUser
+    access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
 ) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
     try:
         # Trigger exception if it exists

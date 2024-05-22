@@ -17,17 +17,13 @@ def test_get_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy) -> No
     rep = client.get(webhook_url)
     assert rep.status_code == 403
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
     app.config["OKTA_WEBHOOK_ID"] = access_owner.id
 
     rep = client.get(webhook_url)
     assert rep.status_code == 400
 
-    rep = client.get(
-        webhook_url, headers={OKTA_WEBHOOK_VERIFICATION_HEADER_NAME: "test"}
-    )
+    rep = client.get(webhook_url, headers={OKTA_WEBHOOK_VERIFICATION_HEADER_NAME: "test"})
     assert rep.status_code == 200
     results = rep.get_json()
     results["verification"] == "test"
@@ -131,15 +127,21 @@ TEST_OKTA_WEBHOOK_USER_MODIFY_EVENT = """
 """
 
 
-def test_post_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup) -> None:
+def test_post_okta_webhook(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    user: OktaUser,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+) -> None:
     webhook_url = url_for("api-webhooks.okta_webhook")
 
     rep = client.post(webhook_url)
     assert rep.status_code == 403
 
-    access_owner = OktaUser.query.filter(
-        OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]
-    ).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
     app.config["OKTA_WEBHOOK_ID"] = access_owner.id
 
     rep = client.post(webhook_url)
@@ -153,9 +155,7 @@ def test_post_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy, mock
     db.session.commit()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
 
     rep = client.post(
         webhook_url,
@@ -171,24 +171,12 @@ def test_post_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy, mock
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 2
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
-    ModifyRoleGroups(
-        role_group=role_group,
-        groups_to_add=[okta_group.id]
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id]
-    ).execute()
+    ModifyRoleGroups(role_group=role_group, groups_to_add=[okta_group.id]).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id]).execute()
 
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 4
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -207,7 +195,4 @@ def test_post_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy, mock
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 2
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1

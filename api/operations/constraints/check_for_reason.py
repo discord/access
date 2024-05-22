@@ -11,8 +11,13 @@ from api.models.tag import coalesce_constraints
 
 
 class CheckForReason:
-    def __init__(self, group: OktaGroup | str,  reason: Optional[str], members_to_add: list[str] = [], owners_to_add: list[str] = []):
-
+    def __init__(
+        self,
+        group: OktaGroup | str,
+        reason: Optional[str],
+        members_to_add: list[str] = [],
+        owners_to_add: list[str] = [],
+    ):
         self.group = (
             db.session.query(OktaGroup)
             .options(
@@ -20,10 +25,12 @@ class CheckForReason:
                 selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
                 selectinload(RoleGroup.active_role_associated_group_member_mappings)
                 .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                .selectinload(OktaGroup.active_group_tags)
+                .joinedload(OktaGroupTagMap.active_tag),
                 selectinload(RoleGroup.active_role_associated_group_owner_mappings)
                 .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
+                .selectinload(OktaGroup.active_group_tags)
+                .joinedload(OktaGroupTagMap.active_tag),
             )
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
@@ -37,22 +44,20 @@ class CheckForReason:
 
     @staticmethod
     def invalid_reason(reason: Optional[str]) -> bool:
-      return reason is None or reason.strip() == ""
+        return reason is None or reason.strip() == ""
 
     def execute_for_group(self) -> Tuple[bool, str]:
         if self.invalid_reason(self.reason):
             tags = [tag_map.active_tag for tag_map in self.group.active_group_tags]
             if len(self.owners_to_add) > 0:
                 require_owner_reason = coalesce_constraints(
-                    constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
-                    tags=tags
+                    constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY, tags=tags
                 )
                 if self.group.is_managed and require_owner_reason is True:
                     return False, f"Reason for adding owners to {self.group.name} group is required due to group tags"
             if len(self.members_to_add) > 0:
                 require_member_reason = coalesce_constraints(
-                    constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY,
-                    tags=tags
+                    constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY, tags=tags
                 )
                 if self.group.is_managed and require_member_reason is True:
                     return False, f"Reason for adding members to {self.group.name} group is required due to group tags"
@@ -64,20 +69,26 @@ class CheckForReason:
                     for member_group in member_groups:
                         require_member_reason = coalesce_constraints(
                             constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY,
-                            tags=[tag_map.active_tag for tag_map in member_group.active_group_tags]
+                            tags=[tag_map.active_tag for tag_map in member_group.active_group_tags],
                         )
                         if member_group.is_managed and require_member_reason is True:
-                            return False, f"Reason for adding members to {member_group.name} group associated " + \
-                                f"with role {self.group.name} is required due to group tags"
+                            return (
+                                False,
+                                f"Reason for adding members to {member_group.name} group associated "
+                                + f"with role {self.group.name} is required due to group tags",
+                            )
                     owner_groups = [rm.active_group for rm in self.group.active_role_associated_group_owner_mappings]
                     for owner_group in owner_groups:
                         require_owner_reason = coalesce_constraints(
                             constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
-                            tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags]
+                            tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
                         )
                         if owner_group.is_managed and require_owner_reason is True:
-                            return False, f"Reason for adding owners to {owner_group.name} group associated " + \
-                                f"with role {self.group.name} is required due to group tags"
+                            return (
+                                False,
+                                f"Reason for adding owners to {owner_group.name} group associated "
+                                + f"with role {self.group.name} is required due to group tags",
+                            )
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
@@ -92,16 +103,20 @@ class CheckForReason:
                     )
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.members_to_add))
-                    .filter(OktaGroup.deleted_at.is_(None)).all()
+                    .filter(OktaGroup.deleted_at.is_(None))
+                    .all()
                 )
                 for member_group in new_member_groups:
                     require_member_reason = coalesce_constraints(
                         constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY,
-                        tags=[tag_map.active_tag for tag_map in member_group.active_group_tags]
+                        tags=[tag_map.active_tag for tag_map in member_group.active_group_tags],
                     )
                     if require_member_reason is True:
-                        return (False, f"Reason for adding role {self.group.name} as members " +
-                                       f"to {member_group.name} group is required due to group tags")
+                        return (
+                            False,
+                            f"Reason for adding role {self.group.name} as members "
+                            + f"to {member_group.name} group is required due to group tags",
+                        )
 
             if len(self.owners_to_add) > 0:
                 new_owner_groups = (
@@ -110,14 +125,18 @@ class CheckForReason:
                     )
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.owners_to_add))
-                    .filter(OktaGroup.deleted_at.is_(None)).all()
+                    .filter(OktaGroup.deleted_at.is_(None))
+                    .all()
                 )
                 for owner_group in new_owner_groups:
                     require_owner_reason = coalesce_constraints(
                         constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
-                        tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags]
+                        tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
                     )
                     if require_owner_reason is True:
-                        return (False, f"Reason for adding role {self.group.name} as owners " +
-                                       f"to {owner_group.name} group is required due to group tags")
+                        return (
+                            False,
+                            f"Reason for adding role {self.group.name} as owners "
+                            + f"to {owner_group.name} group is required due to group tags",
+                        )
         return True, ""

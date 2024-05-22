@@ -19,10 +19,12 @@ from api.models import (
 R = TypeVar("R")
 P = ParamSpec("P")
 
+
 class AuthorizationDecorator:
     @staticmethod
     def require_app_or_group_owner_or_access_admin_for_group(
-        view_func: Callable[P, R]) -> Callable[[Any, Optional[str], Any], R]:
+        view_func: Callable[P, R],
+    ) -> Callable[[Any, Optional[str], Any], R]:
         @wraps(view_func)
         def decorated(*args: P.args, group_id: Optional[str] = None, **kwargs: P.kwargs) -> R:
             group = (
@@ -40,8 +42,7 @@ class AuthorizationDecorator:
         return decorated
 
     @staticmethod
-    def require_app_owner_or_access_admin_for_app(
-        view_func: Callable[P, R]) -> Callable[[Any, Optional[str], Any], R]:
+    def require_app_owner_or_access_admin_for_app(view_func: Callable[P, R]) -> Callable[[Any, Optional[str], Any], R]:
         @wraps(view_func)
         def decorated(*args: P.args, app_id: Optional[str] = None, **kwargs: P.kwargs) -> R:
             app = (
@@ -68,7 +69,10 @@ class AuthorizationDecorator:
         @wraps(view_func)
         def decorated(*args: P.args, **kwargs: P.kwargs) -> R:
             # Check if the current user is an app creator
-            if current_app.config["APP_CREATOR_ID"] is not None and g.current_user_id == current_app.config["APP_CREATOR_ID"]:
+            if (
+                current_app.config["APP_CREATOR_ID"] is not None
+                and g.current_user_id == current_app.config["APP_CREATOR_ID"]
+            ):
                 return view_func(*args, **kwargs)
             # Finally check to see if they are an Access owner (aka. Access admin)
             if AuthorizationHelpers.is_access_admin():
@@ -129,9 +133,7 @@ class AuthorizationHelpers:
 
         # Allow only app owner group owners to manage an app
         return (
-            OktaUserGroupMember.query.filter(
-                OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups])
-            )
+            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups]))
             .filter(OktaUserGroupMember.user_id == g.current_user_id)
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
@@ -149,7 +151,7 @@ class AuthorizationHelpers:
     def is_access_admin(current_user_id: Optional[str] = None) -> bool:
         if current_user_id is None:
             current_user_id = g.current_user_id
-        
+
         access_app = (
             App.query.options(selectinload(App.active_owner_app_groups))
             .filter(App.deleted_at.is_(None))
@@ -164,9 +166,7 @@ class AuthorizationHelpers:
 
         return (
             OktaUserGroupMember.query.filter(
-                OktaUserGroupMember.group_id.in_(
-                    [ag.id for ag in access_app.active_owner_app_groups]
-                )
+                OktaUserGroupMember.group_id.in_([ag.id for ag in access_app.active_owner_app_groups])
             )
             .filter(OktaUserGroupMember.user_id == current_user_id)
             .filter(OktaUserGroupMember.is_owner.is_(False))

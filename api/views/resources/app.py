@@ -25,29 +25,21 @@ DEFAULT_LOAD_OPTIONS = (
     selectinload(App.active_owner_app_groups).options(
         selectinload(AppGroup.active_user_memberships).options(
             joinedload(OktaUserGroupMember.active_user),
-            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                RoleGroupMap.active_role_group
-            ),
+            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         ),
         selectinload(AppGroup.active_user_ownerships).options(
             joinedload(OktaUserGroupMember.active_user),
-            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                RoleGroupMap.active_role_group
-            ),
+            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         ),
     ),
     selectinload(App.active_non_owner_app_groups).options(
         selectinload(AppGroup.active_user_memberships).options(
             joinedload(OktaUserGroupMember.active_user),
-            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                RoleGroupMap.active_role_group
-            ),
+            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         ),
         selectinload(AppGroup.active_user_ownerships).options(
             joinedload(OktaUserGroupMember.active_user),
-            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                RoleGroupMap.active_role_group
-            ),
+            joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         ),
     ),
     selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag),
@@ -158,9 +150,7 @@ class AppResource(MethodResource):
                         app_group.name,
                     )
                 if app_group.deleted_at is None:
-                    okta.update_group(
-                        app_group.id, app_group.name, app_group.description
-                    )
+                    okta.update_group(app_group.id, app_group.name, app_group.description)
 
         db.session.commit()
 
@@ -172,24 +162,25 @@ class AppResource(MethodResource):
             current_user_id=g.current_user_id,
         ).execute()
 
-        app = (
-            App.query.options(DEFAULT_LOAD_OPTIONS)
-            .filter(App.deleted_at.is_(None))
-            .filter(App.id == app.id)
-            .first()
-        )
+        app = App.query.options(DEFAULT_LOAD_OPTIONS).filter(App.deleted_at.is_(None)).filter(App.id == app.id).first()
 
         # Audit logging gnly log if app name changed
         if old_app_name.lower() != app.name.lower():
-            current_app.logger.info(AuditLogSchema().dumps({
-                'event_type' : EventType.app_modify_name,
-                'user_agent' : request.headers.get('User-Agent'),
-                'ip' : request.headers.get('X-Forwarded-For', request.headers.get('X-Real-IP', request.remote_addr)),
-                'current_user_id' : g.current_user_id,
-                'current_user_email' : getattr(db.session.get(OktaUser, g.current_user_id), 'email', None),
-                'app' : app,
-                'old_app_name' : old_app_name,
-            }))
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.app_modify_name,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "app": app,
+                        "old_app_name": old_app_name,
+                    }
+                )
+            )
 
         return schema.dump(app)
 
@@ -206,9 +197,7 @@ class AppResource(MethodResource):
 
 
 class AppList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(
-        SearchPaginationRequestSchema, location="query"
-    )
+    @FlaskApiSpecDecorators.request_schema(SearchPaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(AppPaginationSchema)
     def get(self) -> ResponseReturnValue:
         search_args = SearchPaginationRequestSchema().load(request.args)
@@ -248,9 +237,7 @@ class AppList(MethodResource):
         app = schema.load(request.json)
 
         existing_app = (
-            App.query.filter(func.lower(App.name) == func.lower(app.name))
-            .filter(App.deleted_at.is_(None))
-            .first()
+            App.query.filter(func.lower(App.name) == func.lower(app.name)).filter(App.deleted_at.is_(None)).first()
         )
         if existing_app is not None:
             abort(400, "App already exists with the same name")
@@ -297,11 +284,13 @@ class AppList(MethodResource):
         owner_group_name = f"{app_group_prefix}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
         if "initial_additional_app_groups" in json_data:
             for initial_app_group in json_data["initial_additional_app_groups"]:
-                name=initial_app_group['name']
+                name = initial_app_group["name"]
                 if not name.startswith(app_group_prefix):
                     abort(400, f"Additional app group name must be prefixed with {app_group_prefix}")
                 if name == owner_group_name:
-                    abort(400, f"Cannot specify {AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group")
+                    abort(
+                        400, f"Cannot specify {AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group"
+                    )
 
                 initial_additional_app_groups.append(initial_app_group)
 
@@ -311,13 +300,8 @@ class AppList(MethodResource):
             app=app,
             tags=json_data.get("tags_to_add", []),
             additional_app_groups=initial_additional_app_groups,
-            current_user_id=g.current_user_id
+            current_user_id=g.current_user_id,
         ).execute()
 
-        a = (
-            App.query.options(DEFAULT_LOAD_OPTIONS)
-            .filter(App.deleted_at.is_(None))
-            .filter(App.id == app.id)
-            .first()
-        )
+        a = App.query.options(DEFAULT_LOAD_OPTIONS).filter(App.deleted_at.is_(None)).filter(App.id == app.id).first()
         return schema.dump(a), 201

@@ -20,13 +20,9 @@ class OktaWebhookResource(MethodResource):
         if current_app.config["OKTA_WEBHOOK_ID"] is None or g.current_user_id != current_app.config["OKTA_WEBHOOK_ID"]:
             abort(403)
 
-        verification_challenge_from_header = request.headers.get(
-            OKTA_WEBHOOK_VERIFICATION_HEADER_NAME
-        )
+        verification_challenge_from_header = request.headers.get(OKTA_WEBHOOK_VERIFICATION_HEADER_NAME)
         if verification_challenge_from_header is None:
-            current_app.logger.error(
-                "Okta event webhook verification request is missing header"
-            )
+            current_app.logger.error("Okta event webhook verification request is missing header")
             abort(400)
 
         return {"verification": verification_challenge_from_header}
@@ -46,17 +42,13 @@ class OktaWebhookResource(MethodResource):
             # Verify that the event is from the IGA user agent
             userAgent = event.get("client", {}).get("userAgent", {}).get("rawUserAgent")
             if userAgent != OKTA_IGA_USER_AGENT:
-                current_app.logger.info(
-                    "Okta webhook Event is not from Okta IGA user agent: %s", userAgent
-                )
+                current_app.logger.info("Okta webhook Event is not from Okta IGA user agent: %s", userAgent)
                 continue
 
             # Verify that the event is from the IGA actor ID
             actorId = event.get("actor", {}).get("id")
             if current_app.config["OKTA_IGA_ACTOR_ID"] is None or actorId != current_app.config["OKTA_IGA_ACTOR_ID"]:
-                current_app.logger.warn(
-                    "Okta webhook event is not from Okta IGA user agent: %s", actorId
-                )
+                current_app.logger.warn("Okta webhook event is not from Okta IGA user agent: %s", actorId)
                 continue
 
             # Verify that the event is a group membership change
@@ -65,9 +57,7 @@ class OktaWebhookResource(MethodResource):
                 "group.user_membership.add",
                 "group.user_membership.remove",
             ):
-                current_app.logger.warn(
-                    "Okta webhook event type is unexpected: %s", eventType
-                )
+                current_app.logger.warn("Okta webhook event type is unexpected: %s", eventType)
                 continue
 
             user = None
@@ -110,15 +100,12 @@ class OktaWebhookResource(MethodResource):
                 ).execute()
 
             # If the user has access to this group via a role, remove them from the role
-            if (
-                type(group) != RoleGroup
-                and event.get("eventType") == "group.user_membership.remove"
-            ):
+            if type(group) != RoleGroup and event.get("eventType") == "group.user_membership.remove":
                 active_role_user_group_memberships = (
                     OktaUserGroupMember.query.options(
-                        joinedload(
-                            OktaUserGroupMember.active_role_group_mapping
-                        ).joinedload(RoleGroupMap.active_role_group)
+                        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
+                            RoleGroupMap.active_role_group
+                        )
                     )
                     .filter(OktaUserGroupMember.user_id == user.id)
                     .filter(OktaUserGroupMember.group_id == group.id)
@@ -133,12 +120,8 @@ class OktaWebhookResource(MethodResource):
                     .all()
                 )
 
-                for (
-                    active_role_user_group_membership
-                ) in active_role_user_group_memberships:
-                    if (
-                        active_role_user_group_membership.active_role_group_mapping.active_role_group.is_managed
-                    ):
+                for active_role_user_group_membership in active_role_user_group_memberships:
+                    if active_role_user_group_membership.active_role_group_mapping.active_role_group.is_managed:
                         ModifyGroupUsers(
                             group=active_role_user_group_membership.active_role_group_mapping.role_group_id,
                             current_user_id=g.current_user_id,

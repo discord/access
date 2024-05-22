@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -27,12 +26,25 @@ SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
 ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
-def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+
+def test_time_limit_modify_group_users(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        },
+    )
     tags[1].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
         Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -64,18 +76,16 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
     db.session.commit()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(
-        okta, "async_remove_owner_from_group"
-    )
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     # Establish a baseline where a user shouldn't be expiring in the next 8 days
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now(),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > db.func.now(),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
 
@@ -101,13 +111,17 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
 
     # user should only be added to the app group for 3 days (time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
 
@@ -137,13 +151,17 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
 
     # user should only be added to the app group group for 1 days (less than time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now(),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > db.func.now(),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+        ).count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 0
     )
 
@@ -188,10 +206,7 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
@@ -221,13 +236,17 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
 
     # user should only be added to the role and okta group for 3 days (time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
 
@@ -257,22 +276,39 @@ def test_time_limit_modify_group_users(client: FlaskClient, db: SQLAlchemy, mock
 
     # user should only be added to the role and okta group for 1 days (less than time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now(),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > db.func.now(),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 0
     )
 
-def test_time_limit_modify_role_groups(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+
+def test_time_limit_modify_role_groups(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        },
+    )
     tags[1].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
         Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -303,44 +339,29 @@ def test_time_limit_modify_role_groups(client: FlaskClient, db: SQLAlchemy, mock
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(
-        okta, "async_remove_user_from_group"
-    )
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(
-        okta, "async_remove_owner_from_group"
-    )
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     # Establish a base line of tag, user, and role mappings
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(db.or_(RoleGroupMap.ended_at.is_(None),
-                                         RoleGroupMap.ended_at > db.func.now())).count()
+        RoleGroupMap.query.filter(
+            db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
+        ).count()
         == 0
     )
-
 
     # Add the role group as a member and owner of the okta group, for an unlimited time
     data = {
@@ -357,23 +378,21 @@ def test_time_limit_modify_role_groups(client: FlaskClient, db: SQLAlchemy, mock
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 0
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     # Add the role group as a member and owner of the app group, for an unlimited time
     add_user_to_group_spy.reset_mock()
@@ -394,30 +413,40 @@ def test_time_limit_modify_role_groups(client: FlaskClient, db: SQLAlchemy, mock
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 6
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
-def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture,access_app: App, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+
+def test_time_limit_modify_group_type(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        },
+    )
     tags[1].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
         Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -439,18 +468,8 @@ def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocke
     db.session.add_all([AppTagMap(app_id=access_app.id, tag_id=tag.id) for tag in tags])
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
@@ -459,7 +478,7 @@ def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocke
         owner_groups_to_add=[
             okta_group.id,
         ],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
     okta_group_id = okta_group.id
     role_group_id = role_group.id
@@ -468,18 +487,14 @@ def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocke
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
@@ -504,23 +519,21 @@ def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocke
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 5
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 6
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
     # Update the role group to be an app group which should affect and also limit it's role group mapping
     update_group_spy.reset_mock()
@@ -539,27 +552,38 @@ def test_time_limit_modify_group_type(client: FlaskClient, db: SQLAlchemy, mocke
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 8
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
-    assert (
-        RoleGroupMap.query.filter(db.or_(RoleGroupMap.ended_at.is_(None),
-                                         RoleGroupMap.ended_at > db.func.now())).count()
+        RoleGroupMap.query.filter(
+            db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
+        ).count()
         == 0
     )
 
 
-def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+def test_time_limit_modify_group_tags(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 7 days initially
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
+        },
+    )
     tags[2].enabled = False
     tags[2].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: ONE_DAY_IN_SECONDS,
@@ -587,18 +611,8 @@ def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, acces
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
@@ -609,26 +623,24 @@ def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, acces
             okta_group.id,
             app_group.id,
         ],
-        sync_to_okta=False
+        sync_to_okta=False,
     ).execute()
 
     # Establish a baseline of user and role mappings
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 6
     )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 2
     )
 
@@ -657,32 +669,34 @@ def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, acces
     assert data["id"] == tags[0].id
 
     # The primary tag should reduce the user and role mappings to three days
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
 
@@ -711,32 +725,26 @@ def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, acces
     assert data["id"] == tags[2].id
 
     # The enabled tag should reduce the user and role mappings to one day
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now(),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > db.func.now(),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+        ).count()
         == 6
     )
     assert (
         OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
         == 0
     )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > db.func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now(),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count() == 0
 
     # Update the last tag to be disabled
     data = {
@@ -763,39 +771,46 @@ def test_time_limit_modify_group_tags(client: FlaskClient, db: SQLAlchemy, acces
     assert data["id"] == tags[2].id
 
     # The disabled tag should have no effect on the user and role mappings
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now(),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > db.func.now(),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+        ).count()
         == 6
     )
     assert (
         OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
         == 0
     )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > db.func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now(),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))).count()
-        == 2
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count() == 0
 
-def test_time_limit_add_group_tags(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, okta_group: OktaGroup, role_group: RoleGroup, user: OktaUser) -> None:
+
+def test_time_limit_add_group_tags(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        },
+    )
     tags[1].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
         Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -815,50 +830,22 @@ def test_time_limit_add_group_tags(client: FlaskClient, db: SQLAlchemy, mocker: 
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=okta_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
         role_group=role_group,
-        groups_to_add=[
-            okta_group.id,
-            app_group.id
-        ],
-        owner_groups_to_add=[
-            okta_group.id,
-            app_group.id
-        ],
-        sync_to_okta=False
+        groups_to_add=[okta_group.id, app_group.id],
+        owner_groups_to_add=[okta_group.id, app_group.id],
+        sync_to_okta=False,
     ).execute()
 
     # Establish a base line of tag, user, and role mappings
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count()
-        == 0
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 9
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 4
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 0
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 9
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 4
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
@@ -878,23 +865,21 @@ def test_time_limit_add_group_tags(client: FlaskClient, db: SQLAlchemy, mocker: 
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 5
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy.reset_mock()
 
@@ -914,33 +899,35 @@ def test_time_limit_add_group_tags(client: FlaskClient, db: SQLAlchemy, mocker: 
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 4
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 0
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy.reset_mock()
 
@@ -961,41 +948,54 @@ def test_time_limit_add_group_tags(client: FlaskClient, db: SQLAlchemy, mocker: 
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 6
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 1
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
 
-def test_time_limit_add_app_tags(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser) -> None:
+def test_time_limit_add_app_tags(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(3, constraints = {
-        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
-        Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS
-    })
+    tags = TagFactory.create_batch(
+        3,
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+        },
+    )
     tags[1].constraints = {
         Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
         Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -1014,57 +1014,24 @@ def test_time_limit_add_app_tags(client: FlaskClient, db: SQLAlchemy, mocker: Mo
     db.session.add(app_group)
     db.session.commit()
 
-    ModifyGroupUsers(
-        group=app_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
-    ModifyGroupUsers(
-        group=role_group,
-        members_to_add=[user.id],
-        owners_to_add=[user.id],
-        sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
-        role_group=role_group,
-        groups_to_add=[
-            app_group.id
-        ],
-        owner_groups_to_add=[
-            app_group.id
-        ],
-        sync_to_okta=False
+        role_group=role_group, groups_to_add=[app_group.id], owner_groups_to_add=[app_group.id], sync_to_okta=False
     ).execute()
 
     # Establish a base line of tag, user, and role mappings
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count()
-        == 0
-    )
-    assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 7
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count()
-        == 0
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 2
-    )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 0
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count() == 0
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
     # Add the primary and disabled tag to the app
-    data = {
-        "name": "Updated",
-        "description": "new description",
-        "tags_to_add": [tags[0].id, tags[2].id]
-    }
+    data = {"name": "Updated", "description": "new description", "tags_to_add": [tags[0].id, tags[2].id]}
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
     rep = client.put(app_url, json=data)
@@ -1074,23 +1041,21 @@ def test_time_limit_add_app_tags(client: FlaskClient, db: SQLAlchemy, mocker: Mo
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
     update_group_spy.reset_mock()
 
@@ -1099,7 +1064,7 @@ def test_time_limit_add_app_tags(client: FlaskClient, db: SQLAlchemy, mocker: Mo
         "name": "Updated",
         "description": "new description",
         "tags_to_remove": [tags[0].id],
-        "tags_to_add": [tags[1].id, tags[2].id]
+        "tags_to_add": [tags[1].id, tags[2].id],
     }
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
@@ -1110,20 +1075,18 @@ def test_time_limit_add_app_tags(client: FlaskClient, db: SQLAlchemy, mocker: Mo
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                         OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        OktaUserGroupMember.query.filter(
+            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 4
     )
+    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count()
-        == 3
-    )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                                  RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4))).count()
+        RoleGroupMap.query.filter(
+            RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+            RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        ).count()
         == 2
     )
-    assert (
-        RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count()
-        == 0
-    )
+    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0

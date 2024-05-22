@@ -18,10 +18,14 @@ from api.views.schemas import (
     SearchPaginationRequestSchema,
 )
 
-ALL_GROUP_TYPES = with_polymorphic(
-    OktaGroup, [AppGroup, RoleGroup], flat=True
+ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
+ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(
+    OktaGroup,
+    [
+        AppGroup,
+    ],
 )
-ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup,])
+
 
 class RoleResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(RoleGroupSchema)
@@ -42,27 +46,21 @@ class RoleResource(MethodResource):
                 selectinload(RoleGroup.active_role_associated_group_member_mappings).options(
                     joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                         selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                            joinedload(OktaGroupTagMap.active_tag),
-                            joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                            joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                         ),
-                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
                     ),
                 ),
                 selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(
                     joinedload(RoleGroupMap.active_group.of_type(ROLE_ASSOCIATED_GROUP_TYPES)).options(
                         selectinload(ROLE_ASSOCIATED_GROUP_TYPES.active_group_tags).options(
-                            joinedload(OktaGroupTagMap.active_tag),
-                            joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                            joinedload(OktaGroupTagMap.active_tag), joinedload(OktaGroupTagMap.active_app_tag_mapping)
                         ),
-                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app)
+                        joinedload(ROLE_ASSOCIATED_GROUP_TYPES.AppGroup.app),
                     ),
                 ),
-                selectinload(RoleGroup.active_user_memberships).joinedload(
-                    OktaUserGroupMember.active_user
-                ),
-                selectinload(RoleGroup.active_user_ownerships).joinedload(
-                    OktaUserGroupMember.active_user
-                ),
+                selectinload(RoleGroup.active_user_memberships).joinedload(OktaUserGroupMember.active_user),
+                selectinload(RoleGroup.active_user_ownerships).joinedload(OktaUserGroupMember.active_user),
                 selectinload(RoleGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
             )
             .filter(db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
@@ -71,11 +69,21 @@ class RoleResource(MethodResource):
         )
         return schema.dump(role)
 
+
 class RoleAuditResource(MethodResource):
     def get(self, role_id: str) -> ResponseReturnValue:
-        return redirect(url_for('api-audit.groups_and_roles',
-                                _anchor=None, _method=None, _scheme=None, _external=None, # To pass type checking
-                                role_id=role_id, **request.args))
+        return redirect(
+            url_for(
+                "api-audit.groups_and_roles",
+                _anchor=None,
+                _method=None,
+                _scheme=None,
+                _external=None,  # To pass type checking
+                role_id=role_id,
+                **request.args,
+            )
+        )
+
 
 class RoleMemberResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(RoleMemberSchema)
@@ -92,11 +100,7 @@ class RoleMemberResource(MethodResource):
             RoleGroupMap.query.join(RoleGroupMap.active_role_group)
             .options(joinedload(RoleGroupMap.active_role_group))
             .with_entities(RoleGroupMap.group_id)
-            .filter(
-                db.or_(
-                    RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now()
-                )
-            )
+            .filter(db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now()))
             .filter(RoleGroup.deleted_at.is_(None))
             .filter(RoleGroupMap.role_group_id == role.id)
             .group_by(RoleGroupMap.group_id)
@@ -125,19 +129,12 @@ class RoleMemberResource(MethodResource):
             groups = (
                 db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
                 .filter(OktaGroup.deleted_at.is_(None))
-                .filter(
-                    OktaGroup.id.in_(
-                        group_changes["groups_to_add"]
-                        + group_changes["owner_groups_to_add"]
-                    )
-                )
+                .filter(OktaGroup.id.in_(group_changes["groups_to_add"] + group_changes["owner_groups_to_add"]))
             )
             for group in groups:
                 # Check each group being added to make sure the current user is an owner of the group
                 # or the owner of the associated app
-                if not AuthorizationHelpers.is_group_owner(
-                    group
-                ) and not AuthorizationHelpers.is_app_owner_group_owner(
+                if not AuthorizationHelpers.is_group_owner(group) and not AuthorizationHelpers.is_app_owner_group_owner(
                     app_group=group
                 ):
                     abort(403, "Current user is not allowed to perform this action")
@@ -148,10 +145,7 @@ class RoleMemberResource(MethodResource):
                     db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
                     .filter(OktaGroup.deleted_at.is_(None))
                     .filter(
-                        OktaGroup.id.in_(
-                            group_changes["groups_to_remove"]
-                            + group_changes["owner_groups_to_remove"]
-                        )
+                        OktaGroup.id.in_(group_changes["groups_to_remove"] + group_changes["owner_groups_to_remove"])
                     )
                 )
                 for group in groups:
@@ -159,9 +153,7 @@ class RoleMemberResource(MethodResource):
                     # or the owner of the associated app
                     if not AuthorizationHelpers.is_group_owner(
                         group
-                    ) and not AuthorizationHelpers.is_app_owner_group_owner(
-                        app_group=group
-                    ):
+                    ) and not AuthorizationHelpers.is_app_owner_group_owner(app_group=group):
                         abort(403, "Current user is not allowed to perform this action")
 
         if (
@@ -186,12 +178,7 @@ class RoleMemberResource(MethodResource):
 
         if (
             db.session.query(db.func.count(OktaGroup.id))
-            .filter(
-                OktaGroup.id.in_(
-                    group_changes["groups_to_add"]
-                    + group_changes["owner_groups_to_add"]
-                )
-            )
+            .filter(OktaGroup.id.in_(group_changes["groups_to_add"] + group_changes["owner_groups_to_add"]))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.type == RoleGroup.__mapper_args__["polymorphic_identity"])
             .scalar()
@@ -207,7 +194,7 @@ class RoleMemberResource(MethodResource):
             group=role,
             current_user=g.current_user_id,
             members_to_add=group_changes["groups_to_add"],
-            owners_to_add=group_changes["owner_groups_to_add"]
+            owners_to_add=group_changes["owner_groups_to_add"],
         ).execute_for_role()
         if not valid:
             abort(400, err_message)
@@ -217,7 +204,7 @@ class RoleMemberResource(MethodResource):
             group=role,
             reason=group_changes.get("created_reason"),
             members_to_add=group_changes["groups_to_add"],
-            owners_to_add=group_changes["owner_groups_to_add"]
+            owners_to_add=group_changes["owner_groups_to_add"],
         ).execute_for_role()
         if not valid:
             abort(400, err_message)
@@ -230,18 +217,14 @@ class RoleMemberResource(MethodResource):
             owner_groups_to_add=group_changes["owner_groups_to_add"],
             groups_to_remove=group_changes["groups_to_remove"],
             owner_groups_to_remove=group_changes["owner_groups_to_remove"],
-            created_reason=group_changes.get("created_reason", "")
+            created_reason=group_changes.get("created_reason", ""),
         ).execute()
 
         members = (
             RoleGroupMap.query.join(RoleGroupMap.active_role_group)
             .options(joinedload(RoleGroupMap.active_role_group))
             .with_entities(RoleGroupMap.group_id)
-            .filter(
-                db.or_(
-                    RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now()
-                )
-            )
+            .filter(db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now()))
             .filter(RoleGroup.deleted_at.is_(None))
             .filter(RoleGroupMap.role_group_id == role.id)
             .group_by(RoleGroupMap.group_id)
@@ -255,16 +238,12 @@ class RoleMemberResource(MethodResource):
 
 
 class RoleList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(
-        SearchPaginationRequestSchema, location="query"
-    )
+    @FlaskApiSpecDecorators.request_schema(SearchPaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(RolePaginationSchema)
     def get(self) -> ResponseReturnValue:
         search_args = SearchPaginationRequestSchema().load(request.args)
 
-        query = RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).order_by(
-            func.lower(RoleGroup.name)
-        )
+        query = RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
 
         # Implement basic search with the "q" url parameter
         if "q" in search_args and len(search_args["q"]) > 0:

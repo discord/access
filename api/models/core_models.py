@@ -1,4 +1,3 @@
-
 from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
@@ -28,9 +27,7 @@ class OktaUserGroupMember(db.Model):
     )
     # Is this user an owner of the group and can administer the group and manage membership?
     # Or is this user only a member of this group?
-    is_owner: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
-    )
+    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
     updated_at: Mapped[datetime] = mapped_column(
         db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
@@ -52,8 +49,7 @@ class OktaUserGroupMember(db.Model):
     )
     active_group: Mapped["OktaGroup"] = db.relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
-        "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_user_memberships_and_ownerships",
         viewonly=True,
         lazy="raise_on_sql",
@@ -68,8 +64,7 @@ class OktaUserGroupMember(db.Model):
     )
     active_user: Mapped["OktaUser"] = db.relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, "
-        "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, " "OktaUser.deleted_at.is_(None))",
         back_populates="active_group_memberships_and_ownerships",
         viewonly=True,
         lazy="raise_on_sql",
@@ -100,18 +95,13 @@ class OktaUserGroupMember(db.Model):
     )
 
     created_actor: Mapped["OktaUser"] = db.relationship(
-        "OktaUser",
-        foreign_keys=[created_actor_id],
-        lazy="raise_on_sql",
-        viewonly=True
+        "OktaUser", foreign_keys=[created_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
     ended_actor: Mapped["OktaUser"] = db.relationship(
-        "OktaUser",
-        foreign_keys=[ended_actor_id],
-        lazy="raise_on_sql",
-        viewonly=True
+        "OktaUser", foreign_keys=[ended_actor_id], lazy="raise_on_sql", viewonly=True
     )
+
 
 class OktaUser(db.Model):
     id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
@@ -179,7 +169,7 @@ class OktaUser(db.Model):
         "OktaUserGroupMember",
         primaryjoin="OktaUser.id == OktaUserGroupMember.user_id",
         back_populates="user",
-        lazy="raise_on_sql"
+        lazy="raise_on_sql",
     )
     active_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
         "OktaUserGroupMember",
@@ -245,6 +235,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
+
 class OktaGroup(db.Model):
     __tablename__ = "okta_group"
     id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
@@ -259,26 +250,23 @@ class OktaGroup(db.Model):
     description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
 
     # Is this group managed by Access or is it managed externally (Built-in Okta group? via Okta Group rule?)
-    is_managed: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.true(), default=True
-    )
+    is_managed: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.true(), default=True)
 
     # Field containing additional data about externally managed groups
     externally_managed_data: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True,
+            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            nested=True,
         ),
         nullable=False,
-        server_default='{}'
+        server_default="{}",
     )
 
     # A JSON field for Group plugin integrations in the form of {"unique_plugin_name":{plugin_data},}
     # https://github.com/edelooff/sqlalchemy-json
     # https://amercader.net/blog/beware-of-json-fields-in-sqlalchemy/
     plugin_data: Mapped[Dict[str, Any]] = mapped_column(
-        mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True
-        ),
+        mutable_json_type(dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True),
         nullable=False,
         server_default="{}",
     )
@@ -408,6 +396,7 @@ class OktaGroup(db.Model):
         "polymorphic_on": "type",
     }
 
+
 class RoleGroupMap(db.Model):
     # See https://stackoverflow.com/a/60840921
     id: Mapped[int] = mapped_column(
@@ -419,9 +408,7 @@ class RoleGroupMap(db.Model):
     group_id: Mapped[str] = mapped_column("group_id", db.Unicode(50), db.ForeignKey("okta_group.id"))
     # Does this role grant ownership of the group and allow role members to administer the group and manage membership?
     # Or does this role grant only membership to the group?
-    is_owner: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
-    )
+    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
     created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
     updated_at: Mapped[datetime] = mapped_column(
         db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
@@ -444,8 +431,7 @@ class RoleGroupMap(db.Model):
     )
     active_role_group: Mapped["RoleGroup"] = db.relationship(
         "RoleGroup",
-        primaryjoin="and_(remote(OktaGroup.id) == RoleGroupMap.role_group_id, "
-        "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(remote(OktaGroup.id) == RoleGroupMap.role_group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_associated_group_mappings",
         foreign_keys=[role_group_id],
         viewonly=True,
@@ -461,8 +447,7 @@ class RoleGroupMap(db.Model):
     )
     active_group: Mapped[OktaGroup] = db.relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, "
-        "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_mappings",
         foreign_keys=[group_id],
         viewonly=True,
@@ -487,26 +472,19 @@ class RoleGroupMap(db.Model):
     )
 
     created_actor: Mapped[OktaUser] = db.relationship(
-        "OktaUser",
-        foreign_keys=[created_actor_id],
-        lazy="raise_on_sql",
-        viewonly=True
+        "OktaUser", foreign_keys=[created_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
     ended_actor: Mapped[OktaUser] = db.relationship(
-        "OktaUser",
-        foreign_keys=[ended_actor_id],
-        lazy="raise_on_sql",
-        viewonly=True
+        "OktaUser", foreign_keys=[ended_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
     @validates("group")
     def validate_group(self, key: str, group: OktaGroup) -> OktaGroup:
         if group.type == RoleGroup.__mapper_args__["polymorphic_identity"]:
-            raise ValueError(
-                "Roles cannot contain Role Groups as a member of their list of Groups"
-            )
+            raise ValueError("Roles cannot contain Role Groups as a member of their list of Groups")
         return group
+
 
 class RoleGroup(OktaGroup):
     ROLE_GROUP_NAME_PREFIX = "Role-"
@@ -555,6 +533,7 @@ class RoleGroup(OktaGroup):
         "polymorphic_identity": "role_group",
     }
 
+
 class AppGroup(OktaGroup):
     APP_GROUP_NAME_PREFIX = "App-"
     APP_NAME_GROUP_NAME_SEPARATOR = "-"
@@ -567,9 +546,7 @@ class AppGroup(OktaGroup):
     # Is this group the app owner group and can administer the app and other app groups?
     # Membership to an app onwer group implicitly grants group owner permissions on the
     # group to administer and manage membership of the app owner group
-    is_owner: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
-    )
+    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
 
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
@@ -582,11 +559,7 @@ class AppGroup(OktaGroup):
 
     @validates("name")
     def validate_group(self, key: str, name: str) -> str:
-        app = (
-            App.query.filter(App.id == self.app_id)
-            .filter(App.deleted_at.is_(None))
-            .first()
-        )
+        app = App.query.filter(App.id == self.app_id).filter(App.deleted_at.is_(None)).first()
         if app is None:
             raise ValueError(f"Specified App with app_id: {self.app_id} does not exist")
         # app_groups should have app name prepended always
@@ -598,6 +571,7 @@ class AppGroup(OktaGroup):
                 )
             )
         return name
+
 
 class App(db.Model):
     ACCESS_APP_RESERVED_NAME = "Access"
@@ -626,9 +600,7 @@ class App(db.Model):
 
     active_owner_app_groups: Mapped[List[AppGroup]] = db.relationship(
         "AppGroup",
-        primaryjoin="and_(App.id == AppGroup.app_id, "
-        "AppGroup.deleted_at.is_(None), "
-        "AppGroup.is_owner.is_(True))",
+        primaryjoin="and_(App.id == AppGroup.app_id, " "AppGroup.deleted_at.is_(None), " "AppGroup.is_owner.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -661,12 +633,14 @@ class App(db.Model):
         innerjoin=True,
     )
 
+
 # Subclass str to make it JSON serializable
 # https://stackoverflow.com/a/51976841
 class AccessRequestStatus(str, Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
 
 class AccessRequest(db.Model):
     # A 20 character random string like Okta IDs
@@ -709,8 +683,7 @@ class AccessRequest(db.Model):
 
     active_requester: Mapped[OktaUser] = db.relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, "
-        "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -725,8 +698,7 @@ class AccessRequest(db.Model):
 
     active_requested_group: Mapped[OktaGroup] = db.relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, "
-        "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -741,8 +713,7 @@ class AccessRequest(db.Model):
 
     active_resolver: Mapped[OktaUser] = db.relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, "
-        "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -754,15 +725,20 @@ class AccessRequest(db.Model):
         lazy="raise_on_sql",
     )
 
+
 class TagConstraint:
-    def __init__(self, name: str,
-                 validator: Callable[[Any], bool],
-                 coalesce: Callable[[Any, Any], Any],
-                 description: Optional[str] = '', ):
+    def __init__(
+        self,
+        name: str,
+        validator: Callable[[Any], bool],
+        coalesce: Callable[[Any, Any], Any],
+        description: Optional[str] = "",
+    ):
         self.name = name
         self.description = description
         self.validator = validator
         self.coalesce = coalesce
+
 
 class Tag(db.Model):
     MEMBER_TIME_LIMIT_CONSTRAINT_KEY = "member_time_limit"
@@ -773,46 +749,46 @@ class Tag(db.Model):
     DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY = "disallow_self_add_ownership"
     CONSTRAINTS: Dict[str, TagConstraint] = {
         MEMBER_TIME_LIMIT_CONSTRAINT_KEY: TagConstraint(
-            name =  "Limit time of membership",
-            description = "Specify a maximum length of time in seconds that a user or role can be a member of " +
-             "this group or groups associated with this app.",
-            validator = lambda value: isinstance(value, int) and value > 0,
-            coalesce = lambda a, b: min(a, b),
+            name="Limit time of membership",
+            description="Specify a maximum length of time in seconds that a user or role can be a member of "
+            + "this group or groups associated with this app.",
+            validator=lambda value: isinstance(value, int) and value > 0,
+            coalesce=lambda a, b: min(a, b),
         ),
         OWNER_TIME_LIMIT_CONSTRAINT_KEY: TagConstraint(
-            name =  "Limit time of ownership",
-            description = "Specify a maximum length of time in seconds that a user or role can be a owner of " +
-             "this group or groups associated with this app.",
-            validator = lambda value: isinstance(value, int) and value > 0,
-            coalesce = lambda a, b: min(a, b),
+            name="Limit time of ownership",
+            description="Specify a maximum length of time in seconds that a user or role can be a owner of "
+            + "this group or groups associated with this app.",
+            validator=lambda value: isinstance(value, int) and value > 0,
+            coalesce=lambda a, b: min(a, b),
         ),
         REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: TagConstraint(
-            name =  "Require reason for member access",
-            description = "Require a reason for adding a user or role as a member to this group or groups " +
-             "associated with this app.",
-            validator = lambda value: isinstance(value, bool),
-            coalesce = lambda a, b: a or b,
+            name="Require reason for member access",
+            description="Require a reason for adding a user or role as a member to this group or groups "
+            + "associated with this app.",
+            validator=lambda value: isinstance(value, bool),
+            coalesce=lambda a, b: a or b,
         ),
         REQUIRE_OWNER_REASON_CONSTRAINT_KEY: TagConstraint(
-            name =  "Require reason for owner access",
-            description = "Require a reason for adding a user or role as a owner to this group or groups " +
-             "associated with this app.",
-            validator = lambda value: isinstance(value, bool),
-            coalesce = lambda a, b: a or b,
+            name="Require reason for owner access",
+            description="Require a reason for adding a user or role as a owner to this group or groups "
+            + "associated with this app.",
+            validator=lambda value: isinstance(value, bool),
+            coalesce=lambda a, b: a or b,
         ),
         DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: TagConstraint(
-            name =  "Disallow owners from adding themselves as members",
-            description = "Do not allow owners from adding themselves as members to this group or groups " +
-             "associated with this app",
-            validator = lambda value: isinstance(value, bool),
-            coalesce = lambda a, b: a or b,
+            name="Disallow owners from adding themselves as members",
+            description="Do not allow owners from adding themselves as members to this group or groups "
+            + "associated with this app",
+            validator=lambda value: isinstance(value, bool),
+            coalesce=lambda a, b: a or b,
         ),
         DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: TagConstraint(
-            name =  "Disallow owners from adding themselves as owners",
-            description = "Do not allow owners from adding themselves as owners to this group or groups " +
-             "associated with this app",
-            validator = lambda value: isinstance(value, bool),
-            coalesce = lambda a, b: a or b,
+            name="Disallow owners from adding themselves as owners",
+            description="Do not allow owners from adding themselves as owners to this group or groups "
+            + "associated with this app",
+            validator=lambda value: isinstance(value, bool),
+            coalesce=lambda a, b: a or b,
         ),
     }
 
@@ -831,10 +807,11 @@ class Tag(db.Model):
     # Field containing additional data about externally managed groups
     constraints: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True,
+            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            nested=True,
         ),
         nullable=False,
-        server_default='{}'
+        server_default="{}",
     )
 
     all_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
@@ -866,6 +843,7 @@ class Tag(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
+
 
 class OktaGroupTagMap(db.Model):
     # See https://stackoverflow.com/a/60840921
@@ -900,8 +878,7 @@ class OktaGroupTagMap(db.Model):
     # in GET /api/audit/users so we have to enable "select" lazy loading.
     active_tag: Mapped[Tag] = db.relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, "
-        "Tag.deleted_at.is_(None))",
+        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None))",
         back_populates="active_group_tags",
         viewonly=True,
         lazy="select",
@@ -909,8 +886,7 @@ class OktaGroupTagMap(db.Model):
     )
     enabled_active_tag: Mapped[Tag] = db.relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, "
-        "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
+        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -923,8 +899,7 @@ class OktaGroupTagMap(db.Model):
     )
     active_group: Mapped[OktaGroup] = db.relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, "
-        "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_group_tags",
         viewonly=True,
         lazy="raise_on_sql",
@@ -975,8 +950,7 @@ class AppTagMap(db.Model):
     )
     active_tag: Mapped[Tag] = db.relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == AppTagMap.tag_id, "
-        "Tag.deleted_at.is_(None))",
+        primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None))",
         back_populates="active_app_tags",
         viewonly=True,
         lazy="raise_on_sql",
@@ -984,8 +958,7 @@ class AppTagMap(db.Model):
     )
     enabled_active_tag: Mapped[Tag] = db.relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == AppTagMap.tag_id, "
-        "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
+        primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -998,8 +971,7 @@ class AppTagMap(db.Model):
     )
     active_app: Mapped[App] = db.relationship(
         "App",
-        primaryjoin="and_(App.id == AppTagMap.app_id, "
-        "App.deleted_at.is_(None))",
+        primaryjoin="and_(App.id == AppTagMap.app_id, " "App.deleted_at.is_(None))",
         back_populates="active_app_tags",
         viewonly=True,
         lazy="raise_on_sql",

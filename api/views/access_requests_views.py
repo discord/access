@@ -18,7 +18,5 @@ api.add_resource(AccessRequestList, "", endpoint="access_requests")
 
 
 def register_docs() -> None:
-    docs.register(
-        AccessRequestResource, blueprint=bp_name, endpoint="access_request_by_id"
-    )
+    docs.register(AccessRequestResource, blueprint=bp_name, endpoint="access_request_by_id")
     docs.register(AccessRequestList, blueprint=bp_name, endpoint="access_requests")

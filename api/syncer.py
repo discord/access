@@ -54,9 +54,7 @@ def sync_users() -> None:
         logger.info(f"Syncing user {user.id}")
 
         if user.type.id not in user_type_to_user_attrs_to_titles:
-            user_type_to_user_attrs_to_titles[user.type.id] = okta.get_user_schema(
-                user.type.id
-            ).user_attrs_to_titles()
+            user_type_to_user_attrs_to_titles[user.type.id] = okta.get_user_schema(user.type.id).user_attrs_to_titles()
 
         user_attrs_to_titles = user_type_to_user_attrs_to_titles[user.type.id]
 
@@ -73,14 +71,10 @@ def sync_users() -> None:
     db.session.commit()
 
     # Delete users and end all group memberships in the DB for users that are suspended/deactivated in Okta
-    deleted_user_ids = [
-        u.id for u in filter(lambda u: u.get_deleted_at() is not None, users)
-    ]
+    deleted_user_ids = [u.id for u in filter(lambda u: u.get_deleted_at() is not None, users)]
 
     users_to_delete = (
-        OktaUser.query.filter(OktaUser.id.in_(deleted_user_ids))
-        .filter(OktaUser.deleted_at.is_(None))
-        .all()
+        OktaUser.query.filter(OktaUser.id.in_(deleted_user_ids)).filter(OktaUser.deleted_at.is_(None)).all()
     )
 
     for user in users_to_delete:
@@ -88,14 +82,10 @@ def sync_users() -> None:
         DeleteUser(user=user.id).execute()
 
     # Delete users and end all group memberships in the DB for users that are deleted in Okta
-    active_user_ids = [
-        u.id for u in filter(lambda u: u.get_deleted_at() is None, users)
-    ]
+    active_user_ids = [u.id for u in filter(lambda u: u.get_deleted_at() is None, users)]
 
     more_users_to_delete = (
-        OktaUser.query.filter(OktaUser.id.not_in(active_user_ids))
-        .filter(OktaUser.deleted_at.is_(None))
-        .all()
+        OktaUser.query.filter(OktaUser.id.not_in(active_user_ids)).filter(OktaUser.deleted_at.is_(None)).all()
     )
 
     for user in more_users_to_delete:
@@ -104,8 +94,8 @@ def sync_users() -> None:
 
     # End all active group memberships in the DB for users that were previously deleted
     db_deleted_users_with_access = (
-        OktaUserGroupMember.query
-        .join(OktaUserGroupMember.user).filter(OktaUser.deleted_at.isnot(None))
+        OktaUserGroupMember.query.join(OktaUserGroupMember.user)
+        .filter(OktaUser.deleted_at.isnot(None))
         .filter(db.or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > db.func.now()))
         .all()
     )
@@ -113,11 +103,9 @@ def sync_users() -> None:
         logger.info(f"Ending active group ownerships/memberships for deleted user in DB {user_id}")
         DeleteUser(user=user_id).execute()
 
-
     # Sync manager foreign keys, as Okta only gives us employee numbers
     users_by_employee_number = {
-        user.profile.employee_number: user
-        for user in filter(lambda u: u.profile.employee_number is not None, users)
+        user.profile.employee_number: user for user in filter(lambda u: u.profile.employee_number is not None, users)
     }
     for user in users:
         db_user = db.session.get(OktaUser, user.id)
@@ -133,12 +121,7 @@ def sync_groups(act_as_authority: bool) -> None:
     logger.info("Group sync starting")
 
     groups_in_okta = okta.list_groups()
-    db_group_ids = {
-        row.id
-        for row in db.session.query(OktaGroup.id)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .all()
-    }
+    db_group_ids = {row.id for row in db.session.query(OktaGroup.id).filter(OktaGroup.deleted_at.is_(None)).all()}
 
     group_ids_with_group_rules = okta.list_groups_with_active_rules()
 
@@ -153,29 +136,19 @@ def sync_groups(act_as_authority: bool) -> None:
         # Handle the case where the group is in okta but not in the DB.
         if db_group is None:
             if act_as_authority:
-                logger.info(
-                    f"A new group {group.id} was added directly through okta. Deleting."
-                )
+                logger.info(f"A new group {group.id} was added directly through okta. Deleting.")
                 okta.delete_group(group.id)
             else:
-                logger.info(
-                    f"A new group {group.id} was added directly through okta. Adding to DB."
-                )
-                db.session.add(
-                    group.update_okta_group(OktaGroup(), group_ids_with_group_rules)
-                )
+                logger.info(f"A new group {group.id} was added directly through okta. Adding to DB.")
+                db.session.add(group.update_okta_group(OktaGroup(), group_ids_with_group_rules))
 
         # Handle the case where we've marked the group as deleted, but it still exists in okta
         elif db_group.deleted_at:
             if act_as_authority:
-                logger.info(
-                    f"Group {group.id} is marked as deleted, but still exists in okta. Deleting."
-                )
+                logger.info(f"Group {group.id} is marked as deleted, but still exists in okta. Deleting.")
                 DeleteGroup(group=group.id).execute()
             else:
-                logger.info(
-                    f"Group {group.id} is marked as deleted, but still exists in okta. Resurrecting."
-                )
+                logger.info(f"Group {group.id} is marked as deleted, but still exists in okta. Resurrecting.")
                 db_group.deleted_at = None
 
         # Handle the cases where the group is active in both Okta and our DB.
@@ -215,15 +188,11 @@ def sync_group_memberships(act_as_authority: bool) -> None:
 
         act_authoritatively = act_as_authority and is_managed
 
-        logger.info(
-            f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}"
-        )
+        logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
 
         members = okta.list_users_for_group(group.id)
 
-        logger.info(
-            f"Fetched users list for group {group.id}"
-        )
+        logger.info(f"Fetched users list for group {group.id}")
 
         db_all_group_members = {
             row.id: row.user_id
@@ -249,9 +218,9 @@ def sync_group_memberships(act_as_authority: bool) -> None:
                     okta.remove_user_from_group(group.id, member.id)
                 else:
                     reason = (
-                        'User in Okta group but not in Access group.' 
+                        "User in Okta group but not in Access group."
                         if is_managed
-                        else 'User added via Okta group rule.'
+                        else "User added via Okta group rule."
                     )
                     ModifyGroupUsers(
                         group=group.id,
@@ -261,9 +230,7 @@ def sync_group_memberships(act_as_authority: bool) -> None:
 
             # User is a member in okta and an entry exists in our DB
             else:
-                db_all_group_members = {
-                    k: v for k, v in db_all_group_members.items() if v != member.id
-                }
+                db_all_group_members = {k: v for k, v in db_all_group_members.items() if v != member.id}
 
         logger.info("Members in Okta synced to DB.")
 
@@ -282,9 +249,7 @@ def sync_group_memberships(act_as_authority: bool) -> None:
             else:
                 # Remove the direct group memberships to this group in our DB
                 # This will not affect group memberships that are via other group roles
-                ModifyGroupUsers(
-                    group=group.id, members_to_remove=list(distinct_member_ids)
-                ).execute()
+                ModifyGroupUsers(group=group.id, members_to_remove=list(distinct_member_ids)).execute()
 
         logger.info("Members in DB synced to Okta.")
 
@@ -304,9 +269,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
 
         act_authoritatively = act_as_authority and is_managed
 
-        logger.info(
-            f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}"
-        )
+        logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
 
         owners = okta.list_owners_for_group(group.id)
 
@@ -330,9 +293,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
         if act_authoritatively and len(db_all_group_owners) == 0:
             app_group = (
                 AppGroup.query.options(
-                    joinedload(AppGroup.app).options(
-                        selectinload(App.active_owner_app_groups)
-                    ),
+                    joinedload(AppGroup.app).options(selectinload(App.active_owner_app_groups)),
                 )
                 .filter(AppGroup.deleted_at.is_(None))
                 .filter(AppGroup.id == group.id)
@@ -340,9 +301,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
             )
 
             if app_group is not None and not app_group.is_owner:
-                app_owner_group_ids = [
-                    g.id for g in app_group.app.active_owner_app_groups
-                ]
+                app_owner_group_ids = [g.id for g in app_group.app.active_owner_app_groups]
                 db_all_group_owners = {
                     row.id: row.user_id
                     for row in db.session.query(
@@ -367,9 +326,9 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
                     okta.remove_owner_from_group(group.id, owner.id)
                 else:
                     reason = (
-                        'User in Okta group but not in Access group.' 
+                        "User in Okta group but not in Access group."
                         if is_managed
-                        else 'User was added via Okta group rule.'
+                        else "User was added via Okta group rule."
                     )
                     ModifyGroupUsers(
                         group=group.id,
@@ -379,9 +338,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
 
             # User is a owner in okta and an entry exists in our DB
             else:
-                db_all_group_owners = {
-                    k: v for k, v in db_all_group_owners.items() if v != owner.id
-                }
+                db_all_group_owners = {k: v for k, v in db_all_group_owners.items() if v != owner.id}
 
         # All remaining values are ownerships that are marked active in our DB
         # But are not valid ownerships in okta
@@ -398,9 +355,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
             else:
                 # Remove the direct group ownerships to this group in our DB
                 # This will not affect group ownerships that are via other group roles
-                ModifyGroupUsers(
-                    group=group.id, owners_to_remove=list(distinct_owner_ids)
-                ).execute()
+                ModifyGroupUsers(group=group.id, owners_to_remove=list(distinct_owner_ids)).execute()
 
         db.session.commit()
 
@@ -409,17 +364,13 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
 
 def expire_access_requests() -> None:
     logger.info("Access request expiration started.")
-    MAX_ACCESS_REQUEST_AGE_SECONDS = current_app.config[
-        "MAX_ACCESS_REQUEST_AGE_SECONDS"
-    ]
+    MAX_ACCESS_REQUEST_AGE_SECONDS = current_app.config["MAX_ACCESS_REQUEST_AGE_SECONDS"]
 
     older_than_max = (
         AccessRequest.query.filter(AccessRequest.status == AccessRequestStatus.PENDING)
         .filter(AccessRequest.resolved_at.is_(None))
         .filter(
-            AccessRequest.created_at
-            < datetime.now(timezone.utc)
-            - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
+            AccessRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
         )
         .all()
     )
@@ -456,23 +407,21 @@ def expiring_access_notifications_user() -> None:
         weekend_notif_tomorrow = True
 
     db_memberships_expiring_tomorrow = (
-        OktaUserGroupMember.query
-        .options(joinedload(OktaUserGroupMember.active_user),
-                 joinedload(OktaUserGroupMember.active_group))
+        OktaUserGroupMember.query.options(
+            joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group)
+        )
         .join(OktaUserGroupMember.active_user)
         .join(OktaUserGroupMember.active_group)
-        .filter(db.and_(
-            OktaUserGroupMember.ended_at >= day,
-            OktaUserGroupMember.ended_at < next_day))
+        .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_day))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
         .all()
     )
 
     # remove OktaUserGroupMembers from the list where there's a role that grants the same access
     db_memberships_roles = (
-        OktaUserGroupMember.query
-        .options(joinedload(OktaUserGroupMember.active_user),
-                 joinedload(OktaUserGroupMember.active_group))
+        OktaUserGroupMember.query.options(
+            joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group)
+        )
         .join(OktaUserGroupMember.active_user)
         .join(OktaUserGroupMember.active_group)
         .filter(OktaUserGroupMember.role_group_map_id.is_not(None))
@@ -481,10 +430,13 @@ def expiring_access_notifications_user() -> None:
 
     user_id_group_id_roles = set((member.user_id, member.group_id) for member in db_memberships_roles)
 
-    db_memberships_expiring_tomorrow = [member for member in db_memberships_expiring_tomorrow
-                                        if (member.user_id, member.group_id) not in user_id_group_id_roles]
+    db_memberships_expiring_tomorrow = [
+        member
+        for member in db_memberships_expiring_tomorrow
+        if (member.user_id, member.group_id) not in user_id_group_id_roles
+    ]
 
-    grouped_tomorrow : dict[OktaUser, list[OktaGroup]] = {}
+    grouped_tomorrow: dict[OktaUser, list[OktaGroup]] = {}
     for membership in db_memberships_expiring_tomorrow:
         grouped_tomorrow.setdefault(membership.active_user, []).append(membership.active_group)
 
@@ -496,19 +448,17 @@ def expiring_access_notifications_user() -> None:
         weekend_notif_week = True
 
     db_memberships_expiring_next_week = (
-        OktaUserGroupMember.query
-        .options(joinedload(OktaUserGroupMember.active_user),
-                 joinedload(OktaUserGroupMember.active_group))
+        OktaUserGroupMember.query.options(
+            joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group)
+        )
         .join(OktaUserGroupMember.active_user)
         .join(OktaUserGroupMember.active_group)
-        .filter(db.and_(
-            OktaUserGroupMember.ended_at >= day,
-            OktaUserGroupMember.ended_at < next_day))
+        .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_day))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
         .all()
     )
 
-    grouped_next_week : dict[OktaUser, list[OktaGroup]] = {}
+    grouped_next_week: dict[OktaUser, list[OktaGroup]] = {}
     for membership in db_memberships_expiring_next_week:
         grouped_next_week.setdefault(membership.active_user, []).append(membership.active_group)
 
@@ -516,15 +466,13 @@ def expiring_access_notifications_user() -> None:
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
             notification_hook.access_expiring_user(
-                groups=grouped_tomorrow[user] + grouped_next_week[user],
-                user=user,
-                expiration_datetime=None
+                groups=grouped_tomorrow[user] + grouped_next_week[user], user=user, expiration_datetime=None
             )
         else:
             notification_hook.access_expiring_user(
                 groups=grouped_tomorrow[user],
                 user=user,
-                expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1)
+                expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
             )
 
     for user in grouped_next_week:
@@ -532,7 +480,8 @@ def expiring_access_notifications_user() -> None:
             notification_hook.access_expiring_user(
                 groups=grouped_next_week[user],
                 user=user,
-                expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1))
+                expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
+            )
 
     logger.info("Expiring access notifications for users finished.")
 
@@ -543,6 +492,7 @@ class GroupsAndUsers:
         self.roles: List[RoleGroup] = []
         self.users: List[OktaUser] = []
 
+
 def expiring_access_notifications_owner() -> None:
     logger.info("Expiring access notifications for owners started.")
     notification_hook = get_notification_hook()
@@ -552,14 +502,12 @@ def expiring_access_notifications_owner() -> None:
 
     # Expiring groups
     db_memberships_expiring_this_week = (
-        OktaUserGroupMember.query
-        .options(joinedload(OktaUserGroupMember.active_user),
-                 joinedload(OktaUserGroupMember.active_group))
+        OktaUserGroupMember.query.options(
+            joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group)
+        )
         .join(OktaUserGroupMember.active_user)
         .join(OktaUserGroupMember.active_group)
-        .filter(db.and_(
-            OktaUserGroupMember.ended_at >= day,
-            OktaUserGroupMember.ended_at < next_week))
+        .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_week))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
         .all()
     )
@@ -573,7 +521,7 @@ def expiring_access_notifications_owner() -> None:
     access_owners = get_access_owners()
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_groups_this : defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_groups_this: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in users_per_group:
         owners = get_group_managers(group.id)
 
@@ -593,14 +541,12 @@ def expiring_access_notifications_owner() -> None:
     two_weeks = one_week + timedelta(weeks=1)
 
     db_memberships_expiring_next_week = (
-        OktaUserGroupMember.query
-        .options(joinedload(OktaUserGroupMember.active_user),
-                 joinedload(OktaUserGroupMember.active_group))
+        OktaUserGroupMember.query.options(
+            joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group)
+        )
         .join(OktaUserGroupMember.active_user)
         .join(OktaUserGroupMember.active_group)
-        .filter(db.and_(
-            OktaUserGroupMember.ended_at >= one_week,
-            OktaUserGroupMember.ended_at < two_weeks))
+        .filter(db.and_(OktaUserGroupMember.ended_at >= one_week, OktaUserGroupMember.ended_at < two_weeks))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
         .all()
     )
@@ -612,7 +558,7 @@ def expiring_access_notifications_owner() -> None:
         users_per_group[m.active_group].append(m.active_user)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_groups_next : defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_groups_next: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in users_per_group:
         owners = get_group_managers(group.id)
 
@@ -636,7 +582,7 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_groups_this[owner].groups + owner_expiring_groups_next[owner].groups,
                 roles=None,
                 users=owner_expiring_groups_this[owner].users + owner_expiring_groups_next[owner].users,
-                expiration_datetime=None
+                expiration_datetime=None,
             )
         else:
             notification_hook.access_expiring_owner(
@@ -644,7 +590,7 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_groups_this[owner].groups,
                 roles=None,
                 users=owner_expiring_groups_this[owner].users,
-                expiration_datetime=datetime.now()
+                expiration_datetime=datetime.now(),
             )
 
     for owner in owner_expiring_groups_next:
@@ -654,12 +600,10 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_groups_next[owner].groups,
                 roles=None,
                 users=owner_expiring_groups_next[owner].users,
-                expiration_datetime=datetime.now() + timedelta(weeks=1)
+                expiration_datetime=datetime.now() + timedelta(weeks=1),
             )
 
-    all_group_types = with_polymorphic(
-        OktaGroup, [AppGroup, RoleGroup], flat=True
-    )
+    all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
     role_group_alias = aliased(RoleGroup)
 
     # Expiring roles
@@ -667,17 +611,12 @@ def expiring_access_notifications_owner() -> None:
     next_week = day + timedelta(weeks=1)
 
     db_roles_expiring_this_week = (
-        RoleGroupMap.query
-        .options(joinedload(RoleGroupMap.active_role_group),
-                 joinedload(RoleGroupMap.active_group.of_type(all_group_types)))
+        RoleGroupMap.query.options(
+            joinedload(RoleGroupMap.active_role_group), joinedload(RoleGroupMap.active_group.of_type(all_group_types))
+        )
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
-        .filter(
-            db.and_(
-                RoleGroupMap.ended_at >= day,
-                RoleGroupMap.ended_at < next_week
-            )
-        )
+        .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_week))
         .all()
     )
 
@@ -688,7 +627,7 @@ def expiring_access_notifications_owner() -> None:
         roles_per_group[r.active_group].append(r.active_role_group)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_roles_this : defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_roles_this: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in roles_per_group:
         owners = get_group_managers(group.id)
 
@@ -706,28 +645,23 @@ def expiring_access_notifications_owner() -> None:
     two_weeks = one_week + timedelta(weeks=1)
 
     db_roles_expiring_next_week = (
-        RoleGroupMap.query
-        .options(joinedload(RoleGroupMap.active_role_group),
-                 joinedload(RoleGroupMap.active_group.of_type(all_group_types)))
+        RoleGroupMap.query.options(
+            joinedload(RoleGroupMap.active_role_group), joinedload(RoleGroupMap.active_group.of_type(all_group_types))
+        )
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
-        .filter(
-            db.and_(
-                RoleGroupMap.ended_at >= one_week,
-                RoleGroupMap.ended_at < two_weeks
-            )
-        )
+        .filter(db.and_(RoleGroupMap.ended_at >= one_week, RoleGroupMap.ended_at < two_weeks))
         .all()
     )
 
-   # Map of group -> list of roles with access expiring next week
+    # Map of group -> list of roles with access expiring next week
     roles_per_group = defaultdict(list)
 
     for r in db_roles_expiring_next_week:
         roles_per_group[r.active_group].append(r.active_role_group)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_roles_next : defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_roles_next: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in roles_per_group:
         owners = get_group_managers(group.id)
 
@@ -749,7 +683,7 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_roles_this[owner].groups + owner_expiring_roles_next[owner].groups,
                 roles=owner_expiring_roles_this[owner].roles + owner_expiring_roles_next[owner].roles,
                 users=None,
-                expiration_datetime=None
+                expiration_datetime=None,
             )
         else:
             notification_hook.access_expiring_owner(
@@ -757,7 +691,7 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_roles_this[owner].groups,
                 roles=owner_expiring_roles_this[owner].roles,
                 users=None,
-                expiration_datetime=datetime.now()
+                expiration_datetime=datetime.now(),
             )
 
     for owner in owner_expiring_roles_next:
@@ -767,7 +701,7 @@ def expiring_access_notifications_owner() -> None:
                 groups=owner_expiring_roles_next[owner].groups,
                 roles=owner_expiring_roles_next[owner].roles,
                 users=None,
-                expiration_datetime=datetime.now() + timedelta(weeks=1)
+                expiration_datetime=datetime.now() + timedelta(weeks=1),
             )
 
     logger.info("Expiring access notifications for owners finished.")

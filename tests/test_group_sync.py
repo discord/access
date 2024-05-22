@@ -142,17 +142,16 @@ def test_group_sync_externally_managed_group_in_okta(db: SQLAlchemy, mocker: Moc
     with Session(db.engine) as session:
         # Create a rule for the externally managed group
         test_rule_expression = OktaGroupRuleExpressionType()
-        test_rule_expression.value = "user.department equals \"Test\""
+        test_rule_expression.value = 'user.department equals "Test"'
         test_rule_conditions = OktaGroupRuleConditionsType()
         test_rule_conditions.expression = test_rule_expression
         test_rule = OktaGroupRuleType()
-        test_rule.name = 'Test'
+        test_rule.name = "Test"
         test_rule.conditions = test_rule_conditions
-        mocker.patch.object(okta, "list_groups_with_active_rules",
-                            return_value={externally_managed_group.id : [test_rule]})
         mocker.patch.object(
-            okta, "list_groups", return_value=[Group(g) for g in groups_in_okta]
+            okta, "list_groups_with_active_rules", return_value={externally_managed_group.id: [test_rule]}
         )
+        mocker.patch.object(okta, "list_groups", return_value=[Group(g) for g in groups_in_okta])
         sync_groups(False)
         new_db_groups = session.query(OktaGroup).all()
 
@@ -160,29 +159,22 @@ def test_group_sync_externally_managed_group_in_okta(db: SQLAlchemy, mocker: Moc
     external_group_entry = get_group_by_id(new_db_groups, externally_managed_group.id)
     assert external_group_entry is not None
     assert external_group_entry.is_managed is False
-    assert external_group_entry.externally_managed_data == {'Test' : "user.department equals \"Test\""}
+    assert external_group_entry.externally_managed_data == {"Test": 'user.department equals "Test"'}
 
 
 def seed_db(db: SQLAlchemy, groups: list[OktaGroup]) -> list[OktaGroup]:
     with Session(db.engine) as session:
-        session.add_all(
-            [Group(g).update_okta_group(OktaGroup(), {}) for g in groups]
-        )
+        session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.commit()
         return session.query(OktaGroup).all()
 
 
 def run_sync(
-    db: SQLAlchemy,
-    mocker: MockerFixture,
-    okta_groups: list[OktaGroup],
-    act_as_authority: bool
+    db: SQLAlchemy, mocker: MockerFixture, okta_groups: list[OktaGroup], act_as_authority: bool
 ) -> list[OktaGroup]:
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value={})
-        mocker.patch.object(
-            okta, "list_groups", return_value=[Group(g) for g in okta_groups]
-        )
+        mocker.patch.object(okta, "list_groups", return_value=[Group(g) for g in okta_groups])
         sync_groups(act_as_authority)
         return session.query(OktaGroup).all()
 
