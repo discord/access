@@ -380,7 +380,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || groups.length == 0}>
             {submitting ? <CircularProgress size={24} /> : 'Add'}
           </Button>
         </DialogActions>
