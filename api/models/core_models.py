@@ -1,5 +1,5 @@
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.dialects.postgresql import JSONB
@@ -634,9 +634,8 @@ class App(db.Model):
     )
 
 
-# Subclass str to make it JSON serializable
-# https://stackoverflow.com/a/51976841
-class AccessRequestStatus(str, Enum):
+# Use StrEnum to make it JSON serializable
+class AccessRequestStatus(StrEnum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
