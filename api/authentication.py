@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPubl
 from flask import Request, abort, current_app, g, redirect, session, url_for
 from flask.typing import ResponseReturnValue
 from sentry_sdk import set_user
+from sqlalchemy import func
 
 from api.extensions import oidc
 from api.models import OktaUser
@@ -19,7 +20,9 @@ class AuthenticationHelpers:
         if current_app.config["ENV"] in ("development", "test"):
             # Bypass authentication for development and testing
             current_user = (
-                OktaUser.query.filter(OktaUser.email.ilike(current_app.config["CURRENT_OKTA_USER_EMAIL"]))
+                OktaUser.query.filter(
+                    func.lower(OktaUser.email) == func.lower(current_app.config["CURRENT_OKTA_USER_EMAIL"])
+                )
                 .filter(OktaUser.deleted_at.is_(None))
                 .first_or_404()
             )
@@ -28,7 +31,7 @@ class AuthenticationHelpers:
             payload = CloudflareAuthenticationHelpers.verify_cloudflare_token(request)
             if "email" in payload:
                 current_user = (
-                    OktaUser.query.filter(OktaUser.email.ilike(payload["email"]))
+                    OktaUser.query.filter(func.lower(OktaUser.email) == func.lower(payload["email"]))
                     .filter(OktaUser.deleted_at.is_(None))
                     .first_or_404()
                 )
@@ -48,7 +51,9 @@ class AuthenticationHelpers:
                 )
                 return redirect(redirect_uri)
             current_user = (
-                OktaUser.query.filter(OktaUser.email.ilike(session["oidc_auth_profile"].get("email")))
+                OktaUser.query.filter(
+                    func.lower(OktaUser.email) == func.lower(session["oidc_auth_profile"].get("email"))
+                )
                 .filter(OktaUser.deleted_at.is_(None))
                 .first_or_404()
             )
