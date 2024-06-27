@@ -40,13 +40,12 @@ class ModifyGroupType:
 
     def execute(self) -> OktaGroup:
         # Update group type if it's being modified
-        # Ignore Ruff because we don't want to include subclasses with an isinstance comparison
-        if type(self.group) != type(self.group_changes):  # noqa: E721
+        if type(self.group) is not type(self.group_changes):
             group_id = self.group.id
             old_group_type = self.group.type
 
             # Clean-up the old child table row
-            if type(self.group) == RoleGroup:
+            if type(self.group) is RoleGroup:
                 # End all group attachments to this role and all group memberships via the role grant
                 active_role_associated_groups = RoleGroupMap.query.filter(
                     db.or_(
@@ -63,7 +62,7 @@ class ModifyGroupType:
                 db.session.commit()
 
                 db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
-            elif type(self.group) == AppGroup:
+            elif type(self.group) is AppGroup:
                 # Bail if this is the owner group for the app
                 # which cannot have its type changed
                 if self.group.is_owner:
@@ -96,7 +95,7 @@ class ModifyGroupType:
             self.group = OktaGroup.query.filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == group_id).first()
 
             # Create new child table row
-            if type(self.group_changes) == RoleGroup:
+            if type(self.group_changes) is RoleGroup:
                 # Convert any group memberships and ownerships via a role to direct group memberships and ownerships
                 active_group_users_from_role = (
                     OktaUserGroupMember.query.filter(
@@ -153,7 +152,7 @@ class ModifyGroupType:
                         ).execute()
 
                 db.session.execute(insert(RoleGroup.__table__).values(id=group_id))
-            elif type(self.group_changes) == AppGroup:
+            elif type(self.group_changes) is AppGroup:
                 db.session.execute(
                     insert(AppGroup.__table__).values(
                         id=group_id,
@@ -170,7 +169,7 @@ class ModifyGroupType:
             db.session.expunge_all()
 
             # Add all app tags to this new app group, after we've updated the group type
-            if type(self.group_changes) == AppGroup:
+            if type(self.group_changes) is AppGroup:
                 app_tag_maps = (
                     AppTagMap.query.options(joinedload(AppTagMap.active_tag))
                     .filter(

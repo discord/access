@@ -206,7 +206,7 @@ class ModifyGroupUsers:
             )
 
             # For role groups, members to be removed should also be removed from all role associated groups
-            if type(self.group) == RoleGroup:
+            if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = (
                     RoleGroupMap.query.filter(
                         db.or_(
@@ -274,7 +274,7 @@ class ModifyGroupUsers:
                     async_tasks.append(asyncio.create_task(okta.async_remove_owner_from_group(self.group.id, owner_id)))
 
             # For role groups, members to be removed should also be removed from all Access-managed role associated groups
-            if type(self.group) == RoleGroup and self.sync_to_okta:
+            if type(self.group) is RoleGroup and self.sync_to_okta:
                 role_associated_groups_mappings = (
                     RoleGroupMap.query.options(joinedload(RoleGroupMap.active_group))
                     .join(RoleGroupMap.active_group)
@@ -388,7 +388,7 @@ class ModifyGroupUsers:
                 db.session.add(ownership_to_add)
 
             # For role groups, new members should also be added to all Access-managed role associated groups
-            if type(self.group) == RoleGroup:
+            if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = (
                     RoleGroupMap.query.options(joinedload(RoleGroupMap.active_group))
                     .join(RoleGroupMap.active_group)

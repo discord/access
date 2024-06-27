@@ -526,7 +526,7 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(group.id)
 
         if len(owners) == 0:
-            owners += get_app_managers(group.app_id) if type(group) == AppGroup else []
+            owners += get_app_managers(group.app_id) if type(group) is AppGroup else []
 
         if len(owners) == 0:
             owners = access_owners
@@ -563,7 +563,7 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(group.id)
 
         if len(owners) == 0:
-            owners += get_app_managers(group.app_id) if type(group) == AppGroup else []
+            owners += get_app_managers(group.app_id) if type(group) is AppGroup else []
 
         if len(owners) == 0:
             owners = access_owners
@@ -632,7 +632,7 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(group.id)
 
         if len(owners) == 0:
-            owners += get_app_managers(group.app_id) if type(group) == AppGroup else []
+            owners += get_app_managers(group.app_id) if type(group) is AppGroup else []
 
         if len(owners) == 0:
             owners = access_owners
@@ -666,7 +666,7 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(group.id)
 
         if len(owners) == 0:
-            owners += get_app_managers(group.app_id) if type(group) == AppGroup else []
+            owners += get_app_managers(group.app_id) if type(group) is AppGroup else []
 
         if len(owners) == 0:
             owners = access_owners

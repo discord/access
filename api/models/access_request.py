@@ -15,7 +15,7 @@ def get_all_possible_request_approvers(access_request: AccessRequest) -> Set[Okt
 
     app_managers = []
 
-    if type(access_request.requested_group) == AppGroup:
+    if type(access_request.requested_group) is AppGroup:
         app_managers = get_app_managers(access_request.requested_group.app_id)
 
     return set(group_owners + access_app_owners + app_managers)

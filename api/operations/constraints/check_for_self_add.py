@@ -79,7 +79,7 @@ class CheckForSelfAdd:
 
             # If the group is a role group check to see if a reason is required for adding members or owners
             # to the associated groups
-            if type(self.group) == RoleGroup and self.group.is_managed:
+            if type(self.group) is RoleGroup and self.group.is_managed:
                 member_groups = [rm.active_group for rm in self.group.active_role_associated_group_member_mappings]
                 for member_group in member_groups:
                     disallow_self_add_membership = coalesce_constraints(
@@ -112,7 +112,7 @@ class CheckForSelfAdd:
         if self.current_user is None or AuthorizationHelpers.is_access_admin(self.current_user.id):
             return True, ""
 
-        if type(self.group) != RoleGroup:
+        if type(self.group) is not RoleGroup:
             return True, ""
 
         # Check to see if the current user is a member of the role,

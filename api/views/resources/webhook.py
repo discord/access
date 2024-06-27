@@ -100,7 +100,7 @@ class OktaWebhookResource(MethodResource):
                 ).execute()
 
             # If the user has access to this group via a role, remove them from the role
-            if type(group) != RoleGroup and event.get("eventType") == "group.user_membership.remove":
+            if type(group) is not RoleGroup and event.get("eventType") == "group.user_membership.remove":
                 active_role_user_group_memberships = (
                     OktaUserGroupMember.query.options(
                         joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
