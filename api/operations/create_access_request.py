@@ -82,9 +82,9 @@ class CreateAccessRequest:
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
         if (
-            (len(approvers) == 0 and type(self.requested_group) == AppGroup)
+            (len(approvers) == 0 and type(self.requested_group) is AppGroup)
             or (len(approvers) == 1 and approvers[0].id == self.requester.id)
-            and type(self.requested_group) == AppGroup
+            and type(self.requested_group) is AppGroup
         ):
             approvers = get_app_managers(self.requested_group.app_id)
 

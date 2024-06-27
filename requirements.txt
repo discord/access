@@ -43,7 +43,7 @@ pluggy==1.5.0
 # Test - TODO: Move test packages to separate file
 tox==4.15.1
 # Lint
-ruff==0.4.8
+ruff==0.5.0
 # Typing
 mypy==1.10.0
 types-google-cloud-ndb==2.3.0.20240311

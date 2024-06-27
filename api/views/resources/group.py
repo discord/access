@@ -126,7 +126,7 @@ class GroupResource(MethodResource):
                 )
 
         # Do not allow non-tag modifications of app owner groups (including Access app owner group)
-        if type(group) == AppGroup and group.is_owner:
+        if type(group) is AppGroup and group.is_owner:
             if len(json_data.get("tags_to_add", [])) > 0 or len(json_data.get("tags_to_remove", [])) > 0:
                 ModifyGroupTags(
                     group=group,
@@ -160,7 +160,7 @@ class GroupResource(MethodResource):
                 abort(400, "Group already exists with the same name")
 
         # Update group type if it's being modified
-        if type(group) != type(group_changes):
+        if type(group) is not type(group_changes):
             # Only access admins should be able to change group types
             if not AuthorizationHelpers.is_access_admin():
                 abort(
@@ -221,7 +221,7 @@ class GroupResource(MethodResource):
                 "Groups not managed by Access cannot be modified",
             )
         # Do not allow deletion of app owner groups (including the Access app owner group)
-        if type(group) == AppGroup and group.is_owner:
+        if type(group) is AppGroup and group.is_owner:
             abort(
                 400,
                 "Application owner groups cannot be deleted without first deleting the application",

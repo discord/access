@@ -48,7 +48,7 @@ class DeleteGroup:
         okta_tasks = []
 
         # Prevent deletion of the Access owner group
-        if type(self.group) == AppGroup and self.group.is_owner:
+        if type(self.group) is AppGroup and self.group.is_owner:
             app = App.query.filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
             if app is not None and app.name == App.ACCESS_APP_RESERVED_NAME:
                 raise ValueError("Access application owner group cannot be deleted")
@@ -110,7 +110,7 @@ class DeleteGroup:
             {RoleGroupMap.ended_at: db.func.now()}, synchronize_session="fetch"
         )
 
-        if type(self.group) == RoleGroup:
+        if type(self.group) is RoleGroup:
             # End all group memberships via the role grant
             OktaUserGroupMember.query.filter(
                 db.or_(

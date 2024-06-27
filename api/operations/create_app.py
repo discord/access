@@ -129,7 +129,7 @@ class CreateApp:
             owner_app_group = CreateGroup(group=owner_app_group, current_user_id=self.current_user_id).execute()
         else:
             group_id = existing_owner_group.id
-            if type(existing_owner_group) != AppGroup:
+            if type(existing_owner_group) is not AppGroup:
                 ModifyGroupType(
                     group=existing_owner_group,
                     group_changes=AppGroup(app_id=app_id, is_owner=True),
@@ -168,7 +168,7 @@ class CreateApp:
         )
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
-            if type(existing_app_group) == AppGroup:
+            if type(existing_app_group) is AppGroup:
                 existing_app_group.app_id = app_id
                 existing_app_group.is_owner = False
             else:
@@ -198,7 +198,7 @@ class CreateApp:
                     CreateGroup(group=app_group, current_user_id=self.current_user_id).execute()
                 else:
                     group_id = existing_group.id
-                    if type(existing_owner_group) != AppGroup:
+                    if type(existing_owner_group) is not AppGroup:
                         ModifyGroupType(
                             group=existing_owner_group,
                             group_changes=AppGroup(app_id=app_id, is_owner=False),

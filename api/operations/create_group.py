@@ -45,7 +45,7 @@ class CreateGroup:
 
         # Make sure the app exists if we're creating an app group
         if (
-            type(self.group) == AppGroup
+            type(self.group) is AppGroup
             and App.query.filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first() is None
         ):
             raise ValueError("App for AppGroup does not exist")
@@ -58,7 +58,7 @@ class CreateGroup:
         db.session.commit()
 
         # If this is an app group, add any app tags
-        if type(self.group) == AppGroup:
+        if type(self.group) is AppGroup:
             app_tag_maps = (
                 AppTagMap.query.filter(AppTagMap.app_id == self.group.app_id)
                 .filter(
