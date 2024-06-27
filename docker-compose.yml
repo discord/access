@@ -4,6 +4,8 @@ services:
     container_name: discord-access
     env_file:
       - .env.production
+    # volumes:
+    # - ./client_secrets.json:/app/client_secrets.json
     ports:
       - '3000:3000'
     restart: unless-stopped
