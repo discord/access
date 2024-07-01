@@ -32,7 +32,7 @@ flask-oidc==2.1.1
 requests==2.32.3
 
 # Error Reporting
-sentry-sdk[flask]==1.44.1
+sentry-sdk[flask]==2.7.1
 
 # Okta
 okta==2.9.7
