@@ -246,7 +246,7 @@ Else, if you are using a generic OIDC identity provider (such as Okta), then you
 
 #### Database Setup
 
-After `docker-compose up --build`, you can run the following commands to setup the database:
+After `docker compose up --build`, you can run the following commands to setup the database:
 
 Create the database in the postgres container:
 ```
