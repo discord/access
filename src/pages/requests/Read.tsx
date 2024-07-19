@@ -810,7 +810,7 @@ export default function ReadRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {Object.keys(appOwnerships).length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
