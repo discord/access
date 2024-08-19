@@ -47,7 +47,7 @@ ruff==0.5.0
 # Typing
 mypy==1.10.0
 types-google-cloud-ndb==2.3.0.20240311
-types-Flask-Cors==4.0.0.20240405
+types-Flask-Cors==4.0.0.20240806
 types-Flask-Migrate==4.0.0.20240311
 types-python-dateutil==2.9.0.20240316
 types-requests==2.32.0.20240602
