@@ -2,7 +2,7 @@
 click==8.1.7
 Flask==3.0.3
 Werkzeug==3.0.3
-gunicorn==22.0.0
+gunicorn==23.0.0
 six==1.16.0
 python-dotenv==1.0.1
 python-dateutil==2.9.0.post0
@@ -32,7 +32,7 @@ flask-oidc==2.1.1
 requests==2.32.3
 
 # Error Reporting
-sentry-sdk[flask]==1.44.1
+sentry-sdk[flask]==2.13.0
 
 # Okta
 okta==2.9.7
