@@ -56,4 +56,8 @@ spec:
           name: access
           ports:
             - containerPort: 3000
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: 3000
       serviceAccountName: access

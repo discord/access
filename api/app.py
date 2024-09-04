@@ -26,6 +26,7 @@ from api.views import (
     bugs_views,
     exception_views,
     groups_views,
+    health_check_views,
     roles_views,
     tags_views,
     users_views,
@@ -128,6 +129,9 @@ def create_app(testing: Optional[bool] = False) -> Flask:
 
     @app.before_request
     def authenticate_request() -> Optional[ResponseReturnValue]:
+        # Skip authentication for health check endpoint
+        if request.path.startswith("/api/healthz"):
+            return None
         return AuthenticationHelpers.authenticate_user(request)
 
     @app.after_request
@@ -202,6 +206,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     warnings.filterwarnings("ignore", message="Only explicitly-declared fields will be included in the Schema Object")
 
     app.register_blueprint(exception_views.bp)
+    app.register_blueprint(health_check_views.bp)
     app.register_blueprint(access_requests_views.bp)
     access_requests_views.register_docs()
     app.register_blueprint(apps_views.bp)
