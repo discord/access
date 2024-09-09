@@ -118,7 +118,7 @@ class AuthorizationHelpers:
     def is_app_owner_group_owner(app_group: Optional[AppGroup] = None, app: Optional[App] = None) -> bool:
         if app is not None:
             app_id = app.id
-        elif app_group is not None and type(app_group) == AppGroup:
+        elif app_group is not None and type(app_group) is AppGroup:
             app_id = app_group.app_id
         else:
             return False
