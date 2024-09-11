@@ -48,7 +48,7 @@ CLIENT_ORIGIN_URL=http://localhost:3000
 REACT_APP_API_SERVER_URL=http://localhost:6060
 ```
 
-Next, run the following commands to set up your python virtual environment. Access can be run with Python 3.10 and above:
+Next, run the following commands to set up your python virtual environment. Access can be run with Python 3.11 and above:
 
 ```
 python3 -m venv venv
