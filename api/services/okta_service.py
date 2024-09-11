@@ -5,12 +5,14 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Callable, Optional
 
+import aiohttp
 import dateutil.parser
 from okta.client import Client as OktaClient
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
+from okta.request_executor import RequestExecutor as OktaRequestExecutor
 
 from api.models import OktaGroup, OktaUser
 
@@ -85,147 +87,186 @@ class OktaService:
             await asyncio.sleep(wait_time)
 
     def get_user(self, userId: str) -> User:
-        user, _, error = asyncio.run(OktaService._retry(self.okta_client.get_user, userId))
+        async def _get_user(userId: str) -> User:
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-        if error is not None:
-            raise Exception(error)
-        assert user is not None
+                user, _, error = await OktaService._retry(self.okta_client.get_user, userId)
 
-        return User(user)
+            if error is not None:
+                raise Exception(error)
+            
+            assert user is not None
+
+            return User(user)
+        
+        return asyncio.run(_get_user(userId))
 
     def get_user_schema(self, userTypeId: str) -> UserSchema:
         async def _get_user_schema(userTypeId: str) -> UserSchema:
-            userType, _, error = await OktaService._retry(self.okta_client.get_user_type, userTypeId)
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
+
+                userType, _, error = await OktaService._retry(self.okta_client.get_user_type, userTypeId)
+
+                if error is not None:
+                    raise Exception(error)
+                
+                assert userType is not None
+
+                schemaId = userType.links["schema"]["href"].rsplit("/", 1).pop()
+
+                schema, _, error = await OktaService._retry(self.okta_client.get_user_schema, schemaId)
 
             if error is not None:
                 raise Exception(error)
-            assert userType is not None
-
-            schemaId = userType.links["schema"]["href"].rsplit("/", 1).pop()
-
-            schema, _, error = await OktaService._retry(self.okta_client.get_user_schema, schemaId)
-            if error is not None:
-                raise Exception(error)
+            
             return UserSchema(schema)
 
         return asyncio.run(_get_user_schema(userTypeId))
 
     def list_users(self) -> list[User]:
         async def _list_users() -> list[User]:
-            users, resp, error = await OktaService._retry(self.okta_client.list_users)
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-            if error is not None:
-                raise Exception(error)
-            assert users is not None and resp is not None
+                users, resp, error = await OktaService._retry(self.okta_client.list_users)
 
-            while resp.has_next():
-                more_users, _ = await OktaService._retry(resp.next)
-                users.extend(more_users)
+                if error is not None:
+                    raise Exception(error)
+                
+                assert users is not None and resp is not None
+
+                while resp.has_next():
+                    more_users, _ = await OktaService._retry(resp.next)
+                    users.extend(more_users)
+
             return list(map(lambda user: User(user), users))
 
         return asyncio.run(_list_users())
 
     def create_group(self, name: str, description: str) -> Group:
-        group, _, error = asyncio.run(
-            OktaService._retry(
-                self.okta_client.create_group, OktaGroupType({"profile": {"name": name, "description": description}})
-            )
-        )
-        if error is not None:
-            raise Exception(error)
-        assert group is not None
+        async def _create_group(name: str, description: str) -> Group:
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-        return Group(group)
+                group, _, error = await OktaService._retry(
+                    self.okta_client.create_group, OktaGroupType({"profile": {"name": name, "description": description}})
+                )
+
+            if error is not None:
+                raise Exception(error)
+            
+            assert group is not None
+
+            return Group(group)
+        
+        return asyncio.run(_create_group(name, description))
 
     def update_group(self, groupId: str, name: str, description: str) -> Group:
-        group, _, error = asyncio.run(
-            OktaService._retry(
-                self.okta_client.update_group,
-                groupId,
-                OktaGroupType({"profile": {"name": name, "description": description}}),
-            )
-        )
-        if error is not None:
-            raise Exception(error)
-        assert group is not None
+        async def _update_group(groupId: str, name: str, description: str) -> Group:
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-        return Group(group)
+                group, _, error = await OktaService._retry(
+                    self.okta_client.update_group,
+                    groupId,
+                    OktaGroupType({"profile": {"name": name, "description": description}}),
+                )
+
+            if error is not None:
+                raise Exception(error)
+            
+            assert group is not None
+
+            return Group(group)
+        
+        return asyncio.run(_update_group(groupId, name, description))
 
     async def async_add_user_to_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot add user to groupId of {groupId}")
             return
+        
         if userId is None or userId == "":
-            logger.warning(f"cannot add user to userId of {userId}")
+            logger.warning(f"cannot add user with userId of {userId}")
             return
-        _, error = await OktaService._retry(self.okta_client.add_user_to_group, groupId, userId)
+        
+        request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+        async with aiohttp.ClientSession() as session:
+            request_executor.set_session(session) 
+
+            _, error = await OktaService._retry(self.okta_client.add_user_to_group, groupId, userId)
+
         if error is not None:
             raise Exception(error)
-        return
 
     def add_user_to_group(self, groupId: str, userId: str) -> None:
-        if groupId is None or groupId == "":
-            logger.warning(f"cannot add user to groupId of {groupId}")
-            return
-        if userId is None or userId == "":
-            logger.warning(f"cannot add user to userId of {userId}")
-            return
-        _, error = asyncio.run(OktaService._retry(self.okta_client.add_user_to_group, groupId, userId))
-        if error is not None:
-            raise Exception(error)
-        return
+        asyncio.run(self.async_add_user_to_group(groupId, userId))
 
     async def async_remove_user_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot remove user from groupId of {groupId}")
             return
+        
         if userId is None or userId == "":
-            logger.warning(f"cannot remove user from userId of {userId}")
+            logger.warning(f"cannot remove user with userId of {userId}")
             return
-        _, error = await OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId)
-        if error is not None:
-            raise Exception(error)
-        return
+        
+        request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+        async with aiohttp.ClientSession() as session:
+            request_executor.set_session(session) 
 
-    def remove_user_from_group(self, groupId: str, userId: str) -> None:
-        if groupId is None or groupId == "":
-            logger.warning(f"cannot remove user from groupId of {groupId}")
-            return
-        if userId is None or userId == "":
-            logger.warning(f"cannot remove user from userId of {userId}")
-            return
-        _, error = asyncio.run(OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId))
+            _, error = await OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId)
 
         if error is not None:
             raise Exception(error)
-
-        return
+        
+    def remove_user_from_group(self, groupId: str, userId: str) -> None:            
+        asyncio.run(self.async_remove_user_from_group(groupId, userId))
 
     # TODO: Implement fetching group membership count for fast syncing
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
     def get_group(self, groupId: str) -> Group:
-        group, _, error = asyncio.run(OktaService._retry(self.okta_client.get_group, groupId))
+        async def _get_group(groupId: str) -> Group:
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-        if error is not None:
-            raise Exception(error)
+                group, _, error = await OktaService._retry(self.okta_client.get_group, groupId)
 
-        assert group is not None
+            if error is not None:
+                raise Exception(error)
 
-        return Group(group)
+            assert group is not None
+
+            return Group(group)
+        
+        return asyncio.run(_get_group(groupId))
 
     DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
 
     def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
         async def _list_groups(query_params: dict[str, str]) -> list[Group]:
-            groups, resp, error = await OktaService._retry(self.okta_client.list_groups, query_params=query_params)
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-            if error is not None:
-                raise Exception(error)
-            assert groups is not None and resp is not None
+                groups, resp, error = await OktaService._retry(self.okta_client.list_groups, query_params=query_params)
 
-            while resp.has_next():
-                more_groups, _ = await OktaService._retry(resp.next)
-                groups.extend(more_groups)
+                if error is not None:
+                    raise Exception(error)
+                assert groups is not None and resp is not None
+
+                while resp.has_next():
+                    more_groups, _ = await OktaService._retry(resp.next)
+                    groups.extend(more_groups)
+
             return list(map(lambda group: Group(group), groups))
 
         return asyncio.run(_list_groups(query_params))
@@ -241,46 +282,59 @@ class OktaService:
 
     def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
         async def _list_group_rules(query_params: dict[str, str]) -> list[OktaGroupRuleType]:
-            group_rules, resp, error = await OktaService._retry(
-                self.okta_client.list_group_rules, query_params=query_params
-            )
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
 
-            if error is not None:
-                raise Exception(error)
+                group_rules, resp, error = await OktaService._retry(
+                    self.okta_client.list_group_rules, query_params=query_params
+                )
 
-            assert group_rules is not None and resp is not None
+                if error is not None:
+                    raise Exception(error)
 
-            while resp.has_next():
-                more_group_rules, _ = await OktaService._retry(resp.next)
-                group_rules.extend(more_group_rules)
+                assert group_rules is not None and resp is not None
+
+                while resp.has_next():
+                    more_group_rules, _ = await OktaService._retry(resp.next)
+                    group_rules.extend(more_group_rules)
+            
             return group_rules
 
         return asyncio.run(_list_group_rules(query_params))
 
     def list_users_for_group(self, groupId: str) -> list[User]:
         async def _list_users_for_group(groupId: str) -> list[User]:
-            users, resp, error = await OktaService._retry(self.okta_client.list_group_users, groupId)
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
+            
+                users, resp, error = await OktaService._retry(self.okta_client.list_group_users, groupId)
 
-            if error is not None:
-                raise Exception(error)
-            assert users is not None and resp is not None
+                if error is not None:
+                    raise Exception(error)
+                assert users is not None and resp is not None
 
-            while resp.has_next():
-                more_users, _ = await OktaService._retry(resp.next)
-                users.extend(more_users)
+                while resp.has_next():
+                    more_users, _ = await OktaService._retry(resp.next)
+                    users.extend(more_users)
+
             return list(map(lambda user: User(user), users))
 
         return asyncio.run(_list_users_for_group(groupId))
 
     async def async_delete_group(self, groupId: str) -> None:
-        _, error = await OktaService._retry(self.okta_client.delete_group, groupId)
+        request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
+        async with aiohttp.ClientSession() as session:
+            request_executor.set_session(session)
+
+            _, error = await OktaService._retry(self.okta_client.delete_group, groupId)
+            
         if error is not None:
             raise Exception(error)
 
     def delete_group(self, groupId: str) -> None:
-        _, error = asyncio.run(OktaService._retry(self.okta_client.delete_group, groupId))
-        if error is not None:
-            raise Exception(error)
+        asyncio.run(self.async_delete_group(groupId))
 
     # Below are custom API endpoints that are not supported by the Okta Python SDK
     # https://github.com/okta/okta-sdk-python#call-other-api-endpoints
@@ -299,7 +353,7 @@ class OktaService:
         if not self.use_group_owners_api:
             return
 
-        request_executor = self.okta_client.get_request_executor()
+        request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
 
         request, error = await request_executor.create_request(
             method="POST",
@@ -312,7 +366,9 @@ class OktaService:
         if error is not None:
             raise Exception(error)
 
-        _, error = await OktaService._retry(request_executor.execute, request)
+        async with aiohttp.ClientSession() as session:
+            request_executor.set_session(session) 
+            _, error = await OktaService._retry(request_executor.execute, request)
 
         # Ignore error if owner is already assigned to group
         if error is not None and not error.message.endswith("Provided owner is already assigned to this group"):
@@ -334,7 +390,7 @@ class OktaService:
         if not self.use_group_owners_api:
             return
 
-        request_executor = self.okta_client.get_request_executor()
+        request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
 
         request, error = await request_executor.create_request(
             method="DELETE",
@@ -347,7 +403,9 @@ class OktaService:
         if error is not None:
             raise Exception(error)
 
-        _, error = await OktaService._retry(request_executor.execute, request)
+        async with aiohttp.ClientSession() as session:
+            request_executor.set_session(session) 
+            _, error = await OktaService._retry(request_executor.execute, request)
 
         if error is not None:
             raise Exception(error)
@@ -363,7 +421,7 @@ class OktaService:
             return []
 
         async def _list_owners_for_group(groupId: str) -> list[User]:
-            request_executor = self.okta_client.get_request_executor()
+            request_executor: OktaRequestExecutor = self.okta_client.get_request_executor()
 
             request, error = await request_executor.create_request(
                 method="GET",
@@ -376,7 +434,9 @@ class OktaService:
             if error is not None:
                 raise Exception(error)
 
-            response, error = await OktaService._retry(request_executor.execute, request, OktaUserType)
+            async with aiohttp.ClientSession() as session:
+                request_executor.set_session(session) 
+                response, error = await OktaService._retry(request_executor.execute, request, OktaUserType)
 
             if error is not None:
                 raise Exception(error)
