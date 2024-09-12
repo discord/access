@@ -101,7 +101,11 @@ npx openapi-codegen gen api
 We use tox to run our tests, which should be installed into the python venv from
 our `requirements.txt`.
 
-Invoke the tests using `tox -e test` and `tox -e lint` to run the linter.
+Invoke the tests using `tox -e test`.
+
+## Linting
+
+Run `tox -e ruff` and `tox -e mypy` to run the linters.
 
 ## Production Setup
 
