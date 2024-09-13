@@ -165,8 +165,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   const columns: GridColDef[] = [
-    {field: 'groupName', headerName: 'Group Name', flex: 1},
     {field: 'roleName', headerName: 'Role Name', flex: 1},
+    {field: 'groupName', headerName: 'Group Name', flex: 1},
     {field: 'groupType', headerName: 'Group Type', flex: 1},
     {field: 'memberOrOwner', headerName: 'Member or Owner', flex: 1},
     {field: 'started', headerName: 'Started', flex: 1},

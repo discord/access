@@ -280,6 +280,7 @@ export default function ExpiringRoless() {
               </TableCell>
             </TableRow>
             <TableRow>
+              <TableCell>Role Name</TableCell>
               <TableCell>
                 <TableSortLabel
                   active={orderBy === 'moniker'}
@@ -288,7 +289,6 @@ export default function ExpiringRoless() {
                   Group Name
                 </TableSortLabel>
               </TableCell>
-              <TableCell>Role Name</TableCell>
               <TableCell>Group Type</TableCell>
               <TableCell>Member or Owner</TableCell>
               <TableCell>
@@ -320,23 +320,6 @@ export default function ExpiringRoless() {
                 <TableCell>
                   {(row.group?.deleted_at ?? null) != null ? (
                     <Link
-                      to={`/groups/${row.group?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/groups/${row.group?.name ?? ''}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {(row.group?.deleted_at ?? null) != null ? (
-                    <Link
                       to={`/roles/${row.role_group?.id ?? ''}`}
                       sx={{textDecoration: 'line-through', color: 'inherit'}}
                       component={RouterLink}>
@@ -348,6 +331,23 @@ export default function ExpiringRoless() {
                       sx={{textDecoration: 'none', color: 'inherit'}}
                       component={RouterLink}>
                       {row.role_group?.name ?? ''}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {(row.group?.deleted_at ?? null) != null ? (
+                    <Link
+                      to={`/groups/${row.group?.id ?? ''}`}
+                      sx={{textDecoration: 'line-through', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.group?.name ?? ''}
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/groups/${row.group?.name ?? ''}`}
+                      sx={{textDecoration: 'none', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.group?.name ?? ''}
                     </Link>
                   )}
                 </TableCell>
