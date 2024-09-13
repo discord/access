@@ -280,7 +280,7 @@ export default function ExpiringRoless() {
               </TableCell>
             </TableRow>
             <TableRow>
-            <TableCell>Role Name</TableCell>
+              <TableCell>Role Name</TableCell>
               <TableCell>
                 <TableSortLabel
                   active={orderBy === 'moniker'}
