@@ -9,10 +9,10 @@ python-dateutil==2.9.0.post0
 
 # Database
 Flask-SQLAlchemy==3.1.1
-SQLAlchemy==2.0.34
+SQLAlchemy==2.0.35
 Flask-Migrate==4.0.7
 sqlalchemy-json==0.7.0
-cloud-sql-python-connector==1.12.0
+cloud-sql-python-connector==1.12.1
 pg8000==1.31.2
 
 # API and Models
@@ -32,7 +32,7 @@ flask-oidc==2.2.0
 requests==2.32.3
 
 # Error Reporting
-sentry-sdk[flask]==2.13.0
+sentry-sdk[flask]==2.14.0
 
 # Okta
 okta==2.9.8
@@ -41,9 +41,9 @@ okta==2.9.8
 pluggy==1.5.0
 
 # Test - TODO: Move test packages to separate file
-tox==4.18.1
+tox==4.20.0
 # Lint
-ruff==0.6.4
+ruff==0.6.7
 # Typing
 mypy==1.11.2
 types-google-cloud-ndb==2.3.0.20240813
