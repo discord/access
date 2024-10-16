@@ -110,6 +110,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
         "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         "font-src": ["'self'", "https://fonts.gstatic.com"],
         "connect-src": ["'self'", "*.ingest.sentry.io"],
+        "worker-src": ["'self'", "blob:"],  # Required for Sentry Session Replay
         "frame-ancestors": ["'none'"],
     }
 

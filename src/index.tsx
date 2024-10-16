@@ -7,6 +7,13 @@ import CssBaseline from '@mui/material/CssBaseline';
 import {AdapterDayjs} from '@mui/x-date-pickers/AdapterDayjs';
 import {LocalizationProvider} from '@mui/x-date-pickers';
 import * as Sentry from '@sentry/react';
+import {
+  createBrowserRouter,
+  createRoutesFromChildren,
+  matchRoutes,
+  useLocation,
+  useNavigationType,
+} from 'react-router-dom';
 
 import App from './App';
 import Error from './pages/Error';
@@ -62,8 +69,19 @@ if (['production', 'staging'].includes(process.env.NODE_ENV)) {
   Sentry.init({
     dsn: 'https://user@example.ingest.sentry.io/1234567',
     release: process.env.REACT_APP_SENTRY_RELEASE,
-    integrations: [new Sentry.BrowserTracing()],
-    tracesSampleRate: 1.0,
+    integrations: [
+      Sentry.reactRouterV6BrowserTracingIntegration({
+        useEffect: React.useEffect,
+        useLocation,
+        useNavigationType,
+        createRoutesFromChildren,
+        matchRoutes,
+      }),
+      Sentry.replayIntegration(),
+    ],
+    tracesSampleRate: 0.1,
+    replaysSessionSampleRate: 0,
+    replaysOnErrorSampleRate: 1.0,
     tunnel: '/api/bugs/sentry',
   });
 }
