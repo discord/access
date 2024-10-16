@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {Link as RouterLink, Route, Routes} from 'react-router-dom';
+import * as Sentry from '@sentry/react';
 
 import {styled} from '@mui/material/styles';
 import Link from '@mui/material/Link';
@@ -94,6 +95,8 @@ function Dashboard() {
     setOpen(!open);
   };
 
+  const SentryRoutes = Sentry.withSentryReactRouterV6Routing(Routes);
+
   return (
     <Box sx={{display: 'flex'}}>
       <AppBar position="absolute" open={open}>
@@ -161,7 +164,7 @@ function Dashboard() {
         }}>
         <Toolbar />
         <Container maxWidth="xl" sx={{mt: 4, mb: 4}}>
-          <Routes>
+          <SentryRoutes>
             <Route path="/" element={<Home />} />
             <Route path="/users" element={<ListUsers />} />
             <Route path="/users/:id" element={<ReadUser />} />
@@ -181,7 +184,7 @@ function Dashboard() {
             <Route path="/tags" element={<ListTags />} />
             <Route path="/tags/:id" element={<ReadTag />} />
             <Route path="*" element={<NotFound />} />
-          </Routes>
+          </SentryRoutes>
         </Container>
       </Box>
     </Box>
