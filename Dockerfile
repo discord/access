@@ -29,7 +29,7 @@ RUN sentry-cli releases finalize ${SENTRY_RELEASE}
 RUN touch sentry
 
 # Build step #3: build the API with the client as static files
-FROM python:3.12 as false
+FROM python:3.13 as false
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 COPY --from=build-step /app/build ./build

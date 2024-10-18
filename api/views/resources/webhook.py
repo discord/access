@@ -48,7 +48,7 @@ class OktaWebhookResource(MethodResource):
             # Verify that the event is from the IGA actor ID
             actorId = event.get("actor", {}).get("id")
             if current_app.config["OKTA_IGA_ACTOR_ID"] is None or actorId != current_app.config["OKTA_IGA_ACTOR_ID"]:
-                current_app.logger.warn("Okta webhook event is not from Okta IGA user agent: %s", actorId)
+                current_app.logger.warning("Okta webhook event is not from Okta IGA user agent: %s", actorId)
                 continue
 
             # Verify that the event is a group membership change
@@ -57,7 +57,7 @@ class OktaWebhookResource(MethodResource):
                 "group.user_membership.add",
                 "group.user_membership.remove",
             ):
-                current_app.logger.warn("Okta webhook event type is unexpected: %s", eventType)
+                current_app.logger.warning("Okta webhook event type is unexpected: %s", eventType)
                 continue
 
             user = None
@@ -79,7 +79,7 @@ class OktaWebhookResource(MethodResource):
                     )
 
             if user is None or group is None:
-                current_app.logger.warn(
+                current_app.logger.warning(
                     "Could not find active user or group in target: %s",
                     json.dumps(targets),
                 )
