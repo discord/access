@@ -3,7 +3,7 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:22-alpine as build-step
+FROM node:23-alpine as build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 ENV PATH /app/node_modules/.bin:$PATH
