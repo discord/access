@@ -1,7 +1,7 @@
 # Flask
 click==8.1.7
 Flask==3.0.3
-Werkzeug==3.0.4
+Werkzeug==3.0.6
 gunicorn==23.0.0
 six==1.16.0
 python-dotenv==1.0.1
@@ -9,15 +9,15 @@ python-dateutil==2.9.0.post0
 
 # Database
 Flask-SQLAlchemy==3.1.1
-SQLAlchemy==2.0.35
+SQLAlchemy==2.0.36
 Flask-Migrate==4.0.7
 sqlalchemy-json==0.7.0
-cloud-sql-python-connector==1.12.1
+cloud-sql-python-connector==1.13.0
 pg8000==1.31.2
 
 # API and Models
 Flask-RESTful==0.3.10
-marshmallow==3.22.0
+marshmallow==3.23.0
 marshmallow-sqlalchemy==1.1.0
 flask-marshmallow==1.2.1
 flask-apispec==0.11.4
@@ -26,13 +26,13 @@ flask-apispec==0.11.4
 Flask-Cors==5.0.0
 flask-talisman==1.1.0
 PyJWT==2.9.0
-flask-oidc==2.2.0
+flask-oidc==2.2.2
 
 # Requests
 requests==2.32.3
 
 # Error Reporting
-sentry-sdk[flask]==2.16.0
+sentry-sdk[flask]==2.17.0
 
 # Okta
 okta==2.9.8
@@ -41,11 +41,11 @@ okta==2.9.8
 pluggy==1.5.0
 
 # Test - TODO: Move test packages to separate file
-tox==4.21.2
+tox==4.23.2
 # Lint
-ruff==0.6.9
+ruff==0.7.1
 # Typing
-mypy==1.11.2
+mypy==1.13.0
 types-google-cloud-ndb==2.3.0.20240813
 types-Flask-Cors==5.0.0.20240902
 types-Flask-Migrate==4.0.0.20240311
