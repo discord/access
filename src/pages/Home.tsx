@@ -119,13 +119,19 @@ interface AccordionMakerProps {
 }
 
 function AccordionMaker(props: AccordionMakerProps) {
+  const [expanded, setExpanded] = React.useState<string | false>(false);
+
+  const handleChange = (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
+    setExpanded(newExpanded ? panel : false);
+  };
+
   return (
     <>
       <Typography variant="h4" color="primary" sx={{margin: '15px 0'}}>
         {sections[props.which][0]}
       </Typography>
       {Object.entries(guide[props.which]).map(([key, value]: [string, string]) => (
-        <Accordion>
+        <Accordion expanded={expanded === key} onChange={handleChange(key)}>
           <AccordionSummary
             expandIcon={<ExpandMoreIcon />}
             aria-controls={'panel-content' + key}
