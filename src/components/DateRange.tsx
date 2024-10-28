@@ -116,8 +116,8 @@ function ButtonField(props: ButtonFieldProps) {
           fontSize: '12px',
           color: theme.palette.text.secondary,
           position: 'absolute',
-          // TODO [amyjchen] MAKE IT MATCH THE TABLE
-          backgroundColor: theme.palette.background.default,
+          // HACK: Match dark mode MUI Paper at elevation 1, which is where this is currently used
+          backgroundColor: theme.palette.mode === 'light' ? theme.palette.background.default : '#1E1E1E',
           marginLeft: '5px',
           paddingX: '3px',
           zIndex: '2',
