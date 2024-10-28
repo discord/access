@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
+import {Link as RouterLink, useParams} from 'react-router-dom';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -26,12 +26,10 @@ import {useGetAppById} from '../../../api/apiComponents';
 import {App, OktaUserGroupMember} from '../../../api/apiSchemas';
 
 import {useCurrentUser} from '../../../authentication';
-import CreateUpdateGroup from '../../groups/CreateUpdate';
-import CreateUpdateApp from '../CreateUpdate';
-import DeleteApp from '../Delete';
 import NotFound from '../../NotFound';
 import Loading from '../../../components/Loading';
-import AppsHeader from './header';
+import AppsHeader from './AppsHeader';
+import {AppsAdminActionGroup} from './AppsAdminActionGroup';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -61,7 +59,6 @@ export const ReadApp = () => {
   const currentUser = useCurrentUser();
 
   const {id} = useParams();
-  const navigate = useNavigate();
 
   const {data, isError, isLoading} = useGetAppById({
     pathParams: {appId: id ?? ''},
@@ -83,22 +80,11 @@ export const ReadApp = () => {
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <AppsHeader app={app} moveTooltip={moveTooltip} />
-          {isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '') ? (
-            <Grid item xs={12}>
-              <Paper
-                sx={{
-                  p: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                }}>
-                <CreateUpdateGroup
-                  defaultGroupType={'app_group'}
-                  currentUser={currentUser}
-                  app={app}></CreateUpdateGroup>
-              </Paper>
-            </Grid>
-          ) : null}
+          <AppsHeader app={app} moveTooltip={moveTooltip} currentUser={currentUser} />
+          {isAccessAdmin(currentUser) ||
+            (isAppOwnerGroupOwner(currentUser, app.id ?? '') && (
+              <AppsAdminActionGroup app={app} currentUser={currentUser} />
+            ))}
           {app.active_owner_app_groups?.map((appGroup) => (
             <React.Fragment key={appGroup.id}>
               <Grid item xs={6} key={appGroup.id + 'owners'}>

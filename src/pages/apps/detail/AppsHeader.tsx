@@ -2,20 +2,19 @@ import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip} from '@mui/material'
 import {grey} from '@mui/material/colors';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
-import {App} from '../../../api/apiSchemas';
+import {App, OktaUser} from '../../../api/apiSchemas';
 import {useNavigate} from 'react-router-dom';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
-import {useCurrentUser} from '../../../authentication';
 import {MoveTooltip} from '.';
 
 interface AppsHeaderProps {
   app: App;
   moveTooltip: MoveTooltip;
+  currentUser: OktaUser;
 }
 
-const AppsHeader: React.FC<AppsHeaderProps> = ({app, moveTooltip}) => {
-  const currentUser = useCurrentUser();
+const AppsHeader: React.FC<AppsHeaderProps> = ({app, moveTooltip, currentUser}) => {
   const navigate = useNavigate();
 
   const classNames = `app-detail-header app-detail-header ${app.name}`;
