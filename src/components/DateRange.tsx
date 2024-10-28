@@ -98,8 +98,8 @@ function ButtonField(props: ButtonFieldProps) {
           aria-label={ariaLabel}
           onClick={() => setOpen?.((prev) => !prev)}
           sx={{
-            color: theme.palette.text.disabled,
-            borderColor: theme.palette.text.disabled,
+            color: theme.palette.text.secondary,
+            borderColor: theme.palette.action.disabled,
             height: '48.5px',
             minWidth: '245px',
             fontSize: '15px',
@@ -107,7 +107,7 @@ function ButtonField(props: ButtonFieldProps) {
             zIndex: '1',
             padding: '0 8px',
           }}>
-          {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.disabled}} />
+          {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.secondary}} />
         </Button>
       </Box>
       <Typography

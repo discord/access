@@ -47,7 +47,6 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {grey} from '@mui/material/colors';
 import {DarkMode, LightMode} from '@mui/icons-material';
 
 const drawerWidth: number = 240;
