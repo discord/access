@@ -136,7 +136,7 @@ function AccordionMaker(props: AccordionMakerProps) {
             expandIcon={<ExpandMoreIcon />}
             aria-controls={'panel-content' + key}
             id={'panel-header' + key}
-            sx={{fontWeight: 500, color: grey[900]}}>
+            sx={{fontWeight: 500}}>
             {key}
           </AccordionSummary>
           <AccordionDetails>

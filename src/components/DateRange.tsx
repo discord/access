@@ -78,6 +78,7 @@ function ButtonField(props: ButtonFieldProps) {
     inputProps: {'aria-label': ariaLabel} = {},
   } = props;
 
+  const theme = useTheme();
   let displayString = '';
 
   if (rangeSelected) {
@@ -97,8 +98,8 @@ function ButtonField(props: ButtonFieldProps) {
           aria-label={ariaLabel}
           onClick={() => setOpen?.((prev) => !prev)}
           sx={{
-            color: grey[600],
-            borderColor: grey[300],
+            color: theme.palette.text.disabled,
+            borderColor: theme.palette.text.disabled,
             height: '48.5px',
             minWidth: '245px',
             fontSize: '15px',
@@ -106,17 +107,19 @@ function ButtonField(props: ButtonFieldProps) {
             zIndex: '1',
             padding: '0 8px',
           }}>
-          {displayString} <EventIcon sx={{marginLeft: '20px', color: grey[500]}} />
+          {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.disabled}} />
         </Button>
       </Box>
       <Typography
         component={'span'}
         sx={{
           fontSize: '12px',
-          color: grey[600],
+          color: theme.palette.text.secondary,
           position: 'absolute',
-          backgroundColor: 'white',
+          // TODO [amyjchen] MAKE IT MATCH THE TABLE
+          backgroundColor: theme.palette.background.default,
           marginLeft: '5px',
+          paddingX: '3px',
           zIndex: '2',
           top: '0.01%',
           left: '1%',

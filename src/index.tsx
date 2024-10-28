@@ -33,30 +33,6 @@ declare module '@mui/material/Button' {
   }
 }
 
-// See https://discord.com/branding
-let theme = createTheme({
-  palette: {
-    primary: {
-      main: '#5865F2',
-    },
-    secondary: {
-      main: '#EB459E',
-    },
-    error: {
-      main: '#ED4245',
-    },
-    warning: {
-      main: '#FEE75C',
-    },
-    success: {
-      main: '#57F287',
-    },
-    primary_extra_light: {
-      main: '#A5B2FF',
-    },
-  },
-});
-
 if (['production', 'staging'].includes(process.env.NODE_ENV)) {
   // Use a placeholder DSN as we'll be using the tunnel to proxy all Sentry React errors
   Sentry.init({
@@ -74,14 +50,9 @@ createRoot(document.getElementById('root')!).render(
     <Sentry.ErrorBoundary fallback={<Error />} showDialog>
       <BrowserRouter>
         <QueryClientProvider client={queryClient}>
-          <ThemeProvider theme={theme}>
-            <LocalizationProvider dateAdapter={AdapterDayjs}>
-              <React.Fragment>
-                <CssBaseline />
-                <App />
-              </React.Fragment>
-            </LocalizationProvider>
-          </ThemeProvider>
+          <LocalizationProvider dateAdapter={AdapterDayjs}>
+            <App />
+          </LocalizationProvider>
         </QueryClientProvider>
       </BrowserRouter>
     </Sentry.ErrorBoundary>

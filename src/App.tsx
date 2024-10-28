@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {Link as RouterLink, Route, Routes} from 'react-router-dom';
 
-import {styled} from '@mui/material/styles';
+import {createTheme, styled, ThemeProvider} from '@mui/material/styles';
 import Link from '@mui/material/Link';
 import MuiDrawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
@@ -37,6 +37,18 @@ import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
+import {
+  CssBaseline,
+  PaletteMode,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import {grey} from '@mui/material/colors';
+import {DarkMode, LightMode} from '@mui/icons-material';
 
 const drawerWidth: number = 240;
 
@@ -88,7 +100,33 @@ const Drawer = styled(MuiDrawer, {
   },
 }));
 
-function Dashboard() {
+function ThemeToggle({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
+  const theme = useTheme();
+  return (
+    <ToggleButtonGroup>
+      <Tooltip title="Light Mode">
+        <ToggleButton
+          value="left"
+          selected={theme.palette.mode === 'light'}
+          onClick={() => setThemeMode('light')}
+          aria-label="Light mode">
+          <LightMode />
+        </ToggleButton>
+      </Tooltip>
+      <Tooltip title="Dark Mode">
+        <ToggleButton
+          value="right"
+          selected={theme.palette.mode === 'dark'}
+          onClick={() => setThemeMode('dark')}
+          aria-label="Dark mode">
+          <DarkMode />
+        </ToggleButton>
+      </Tooltip>
+    </ToggleButtonGroup>
+  );
+}
+
+function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
   const [open, setOpen] = React.useState(true);
   const toggleDrawer = () => {
     setOpen(!open);
@@ -149,6 +187,9 @@ function Dashboard() {
         <List component="nav">
           <NavItems open={open} />
         </List>
+        <Stack marginTop="auto" p={2}>
+          <ThemeToggle setThemeMode={setThemeMode} />
+        </Stack>
       </Drawer>
       <Box
         component="main"
@@ -189,6 +230,47 @@ function Dashboard() {
 }
 
 export default function App() {
+  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+  const initialMode = prefersDarkMode ? 'dark' : 'light';
+  const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+  // See https://discord.com/branding
+  let theme = React.useMemo(
+    () =>
+      createTheme({
+        palette: {
+          mode,
+          primary: {
+            main: '#5865F2',
+          },
+          secondary: {
+            main: '#EB459E',
+          },
+          error: {
+            main: '#ED4245',
+          },
+          warning: {
+            main: '#FEE75C',
+          },
+          success: {
+            main: '#57F287',
+          },
+          primary_extra_light: {
+            main: '#A5B2FF',
+          },
+        },
+        typography: {
+          h1: {
+            color: mode === 'dark' ? grey[100] : grey[900],
+          },
+        },
+      }),
+    [mode],
+  );
   useCurrentUser();
-  return <Dashboard />;
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Dashboard setThemeMode={setMode} />
+    </ThemeProvider>
+  );
 }

@@ -38,9 +38,11 @@ import CreateUpdateTag from './CreateUpdate';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
+import {useTheme} from '@mui/material';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
+  const theme = useTheme();
 
   const {id} = useParams();
   const navigate = useNavigate();
@@ -149,7 +151,7 @@ export default function ReadTag() {
                     label="Disabled"
                     sx={{
                       marginTop: '10px',
-                      bgcolor: grey[500],
+                      bgcolor: theme.palette.grey[500],
                     }}
                   />
                 </Box>
