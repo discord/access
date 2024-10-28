@@ -258,11 +258,6 @@ export default function App() {
             main: '#A5B2FF',
           },
         },
-        typography: {
-          h1: {
-            color: mode === 'dark' ? grey[100] : grey[900],
-          },
-        },
       }),
     [mode],
   );
