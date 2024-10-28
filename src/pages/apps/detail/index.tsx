@@ -31,7 +31,7 @@ import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
 import NotFound from '../../NotFound';
 import Loading from '../../../components/Loading';
-import AppHeader from './app_header';
+import AppsHeader from './header';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -83,7 +83,7 @@ export const ReadApp = () => {
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <AppHeader app={app} moveTooltip={moveTooltip} />
+          <AppsHeader app={app} moveTooltip={moveTooltip} />
           {isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '') ? (
             <Grid item xs={12}>
               <Paper

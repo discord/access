@@ -31,7 +31,7 @@ import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
 import NotFound from './pages/NotFound';
-import {ReadApp} from './pages/apps/app_detail';
+import {ReadApp} from './pages/apps/detail';
 import ReadGroup from './pages/groups/Read';
 import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';
@@ -95,7 +95,7 @@ function Dashboard() {
   };
 
   return (
-    <Box sx={{display: 'flex'}}>
+    <Box sx={{display: 'flex', minWidth: '20rem', overflowX: 'hidden'}}>
       <AppBar position="absolute" open={open}>
         <Toolbar
           sx={{

@@ -9,12 +9,12 @@ import TagIcon from '@mui/icons-material/LocalOffer';
 import {useCurrentUser} from '../../../authentication';
 import {MoveTooltip} from '.';
 
-interface AppHeaderProps {
+interface AppsHeaderProps {
   app: App;
   moveTooltip: MoveTooltip;
 }
 
-const AppHeader: React.FC<AppHeaderProps> = ({app, moveTooltip}) => {
+const AppsHeader: React.FC<AppsHeaderProps> = ({app, moveTooltip}) => {
   const currentUser = useCurrentUser();
   const navigate = useNavigate();
 
@@ -25,7 +25,8 @@ const AppHeader: React.FC<AppHeaderProps> = ({app, moveTooltip}) => {
       <Paper
         sx={{
           p: 2,
-          height: 240,
+          height: '15rem',
+          minWidth: '20rem',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -73,4 +74,4 @@ const AppHeader: React.FC<AppHeaderProps> = ({app, moveTooltip}) => {
   );
 };
 
-export default AppHeader;
+export default AppsHeader;
