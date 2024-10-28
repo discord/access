@@ -103,7 +103,7 @@ const Drawer = styled(MuiDrawer, {
 function ThemeToggle({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
   const theme = useTheme();
   return (
-    <ToggleButtonGroup>
+    <ToggleButtonGroup size="small">
       <Tooltip title="Light Mode">
         <ToggleButton
           value="left"
