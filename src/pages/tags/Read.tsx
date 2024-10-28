@@ -25,8 +25,6 @@ import DeleteIcon from '@mui/icons-material/Close';
 import Disabled from '@mui/icons-material/PauseCircle';
 import Enabled from '@mui/icons-material/TaskAlt';
 
-import {grey} from '@mui/material/colors';
-
 import {useGetTagById, usePutGroupById, usePutAppById} from '../../api/apiComponents';
 import {App, AppGroup, PolymorphicGroup, Tag} from '../../api/apiSchemas';
 
@@ -146,12 +144,11 @@ export default function ReadTag() {
               ) : (
                 <Box>
                   <Chip
-                    color="primary"
                     icon={<Disabled />}
                     label="Disabled"
                     sx={{
                       marginTop: '10px',
-                      bgcolor: theme.palette.grey[500],
+                      bgcolor: (theme) => theme.palette.action.disabledBackground,
                     }}
                   />
                 </Box>
