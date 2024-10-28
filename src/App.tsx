@@ -31,7 +31,7 @@ import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
 import NotFound from './pages/NotFound';
-import ReadApp from './pages/apps/Read';
+import {ReadApp} from './pages/apps/app_detail';
 import ReadGroup from './pages/groups/Read';
 import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';

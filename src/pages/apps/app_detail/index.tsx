@@ -19,22 +19,19 @@ import TableRow from '@mui/material/TableRow';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import TagIcon from '@mui/icons-material/LocalOffer';
+import Ending from '../../../components/Ending';
+import {groupBy, displayUserName} from '../../../helpers';
+import {isAccessAdmin, isAppOwnerGroupOwner} from '../../../authorization';
+import {useGetAppById} from '../../../api/apiComponents';
+import {App, OktaUserGroupMember} from '../../../api/apiSchemas';
 
-import {grey} from '@mui/material/colors';
-
-import Ending from '../../components/Ending';
-import {groupBy, displayUserName} from '../../helpers';
-import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {useGetAppById} from '../../api/apiComponents';
-import {App, OktaUserGroupMember} from '../../api/apiSchemas';
-
-import {useCurrentUser} from '../../authentication';
-import CreateUpdateGroup from '../groups/CreateUpdate';
-import CreateUpdateApp from './CreateUpdate';
-import DeleteApp from './Delete';
-import NotFound from '../NotFound';
-import Loading from '../../components/Loading';
+import {useCurrentUser} from '../../../authentication';
+import CreateUpdateGroup from '../../groups/CreateUpdate';
+import CreateUpdateApp from '../CreateUpdate';
+import DeleteApp from '../Delete';
+import NotFound from '../../NotFound';
+import Loading from '../../../components/Loading';
+import AppHeader from './app_header';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -51,7 +48,16 @@ function groupMemberships(
   return groupBy(memberships ?? [], 'active_user.id');
 }
 
-export default function ReadApp() {
+export type Modifier = {
+  name: string;
+  options: {};
+};
+
+export type MoveTooltip = {
+  modifiers: Modifier[];
+};
+
+export const ReadApp = () => {
   const currentUser = useCurrentUser();
 
   const {id} = useParams();
@@ -71,61 +77,13 @@ export default function ReadApp() {
 
   const app = data ?? ({} as App);
 
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
+  const moveTooltip: MoveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
   return (
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                textAlign: 'center',
-                position: 'relative',
-              }}>
-              <Typography variant="h3" sx={{margin: '5px 40px 0px 10px'}}>
-                {app.name}
-              </Typography>
-              <Typography variant="h5" sx={{margin: '5px 40px 0px 10px'}}>
-                {app.description}
-              </Typography>
-              {app.active_app_tags ? (
-                <Box>
-                  {app.active_app_tags.map((tagMap) => (
-                    <Chip
-                      key={'tag' + tagMap.active_tag!.id}
-                      label={tagMap.active_tag!.name}
-                      color="primary"
-                      onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
-                      icon={<TagIcon />}
-                      sx={{
-                        margin: '2px',
-                        marginTop: '5px',
-                        bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
-                      }}
-                    />
-                  ))}
-                </Box>
-              ) : null}
-              <Stack style={{position: 'absolute', right: '10px'}}>
-                <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <CreateUpdateApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
-                <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <DeleteApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
-              </Stack>
-            </Paper>
-          </Grid>
+          <AppHeader app={app} moveTooltip={moveTooltip} />
           {isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '') ? (
             <Grid item xs={12}>
               <Paper
@@ -513,4 +471,4 @@ export default function ReadApp() {
       </Container>
     </React.Fragment>
   );
-}
+};
