@@ -59,6 +59,7 @@ import {
   GroupMember,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -437,13 +438,7 @@ export default function ReadGroup() {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow key="roleownersgroups">
-                          <TableCell>
-                            <Typography variant="body2" color="grey">
-                              None
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry />
                       )}
                     </TableBody>
                     <TableFooter>

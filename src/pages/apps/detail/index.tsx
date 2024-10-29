@@ -30,6 +30,7 @@ import NotFound from '../../NotFound';
 import Loading from '../../../components/Loading';
 import AppsHeader from './AppsHeader';
 import {AppsAdminActionGroup} from './AppsAdminActionGroup';
+import {EmptyListEntry} from '../../../components/EmptyListEntry';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -53,18 +54,6 @@ export type Modifier = {
 
 export type MoveTooltip = {
   modifiers: Modifier[];
-};
-
-export const EmptyListEntry = () => {
-  return (
-    <TableRow>
-      <TableCell>
-        <Typography variant="body2" color="grey">
-          None
-        </Typography>
-      </TableCell>
-    </TableRow>
-  );
 };
 
 export const ReadApp = () => {
@@ -262,7 +251,7 @@ export const ReadApp = () => {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
