@@ -95,9 +95,6 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const getBackgroundColor = (color: string, mode: string) =>
-  mode === 'dark' ? darken(color, 0.7) : lighten(color, 0.7);
-
 const getHoverBackgroundColor = (color: string, mode: string) =>
   mode === 'dark' ? darken(color, 0.6) : lighten(color, 0.6);
 
@@ -107,32 +104,38 @@ const getSelectedBackgroundColor = (color: string, mode: string) =>
 const getSelectedHoverBackgroundColor = (color: string, mode: string) =>
   mode === 'dark' ? darken(color, 0.4) : lighten(color, 0.4);
 
-const StyledDataGrid = styled(DataGrid)(({theme}) => ({
-  '& .super-app-theme--Expired': {
-    backgroundColor: getBackgroundColor(red[200], theme.palette.mode),
-    '&:hover': {
-      backgroundColor: getHoverBackgroundColor(red[200], theme.palette.mode),
+const StyledDataGrid = styled(DataGrid)(
+  ({
+    theme: {
+      palette: {highlight, mode},
     },
-    '&.Mui-selected': {
-      backgroundColor: getSelectedBackgroundColor(red[200], theme.palette.mode),
+  }) => ({
+    '& .super-app-theme--Expired': {
+      backgroundColor: highlight.danger.main,
       '&:hover': {
-        backgroundColor: getSelectedHoverBackgroundColor(red[200], theme.palette.mode),
+        backgroundColor: getHoverBackgroundColor(red[200], mode),
+      },
+      '&.Mui-selected': {
+        backgroundColor: getSelectedBackgroundColor(red[200], mode),
+        '&:hover': {
+          backgroundColor: getSelectedHoverBackgroundColor(red[200], mode),
+        },
       },
     },
-  },
-  '& .super-app-theme--Soon': {
-    backgroundColor: getBackgroundColor(yellow[200], theme.palette.mode),
-    '&:hover': {
-      backgroundColor: getHoverBackgroundColor(yellow[200], theme.palette.mode),
-    },
-    '&.Mui-selected': {
-      backgroundColor: getSelectedBackgroundColor(yellow[200], theme.palette.mode),
+    '& .super-app-theme--Soon': {
+      backgroundColor: highlight.success.main,
       '&:hover': {
-        backgroundColor: getSelectedHoverBackgroundColor(yellow[200], theme.palette.mode),
+        backgroundColor: getHoverBackgroundColor(yellow[200], mode),
+      },
+      '&.Mui-selected': {
+        backgroundColor: getSelectedBackgroundColor(yellow[200], mode),
+        '&:hover': {
+          backgroundColor: getSelectedHoverBackgroundColor(yellow[200], mode),
+        },
       },
     },
-  },
-}));
+  }),
+);
 
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;

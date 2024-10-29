@@ -27,7 +27,6 @@ import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 dayjs.extend(RelativeTime);
 
@@ -196,11 +195,11 @@ export default function ListRequests() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: ({palette: {mode}}) =>
+                  bgcolor: ({palette: {highlight}}) =>
                     row.status == 'APPROVED'
-                      ? CUSTOM_COLORS.highlight['success'][mode]
+                      ? highlight.success.main
                       : row.status == 'REJECTED'
-                        ? CUSTOM_COLORS.highlight['danger'][mode]
+                        ? highlight.danger.main
                         : 'inherit',
                 }}>
                 <TableCell>

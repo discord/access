@@ -34,7 +34,6 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {displayUserName, perPage} from '../../helpers';
-import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -306,11 +305,11 @@ export default function ExpiringGroups() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: ({palette: {mode}}) =>
+                  bgcolor: ({palette: {highlight}}) =>
                     dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? CUSTOM_COLORS.highlight.warning[mode]
+                      ? highlight.warning.main
                       : dayjs(row.ended_at).isBefore(dayjs())
-                        ? CUSTOM_COLORS.highlight.danger[mode]
+                        ? highlight.danger.main
                         : null,
                 }}>
                 <TableCell>

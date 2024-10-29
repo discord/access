@@ -39,11 +39,13 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
   }
 
   if (isSelected) {
-    style = {backgroundColor: 'primary_extra_light.main'};
+    style = {backgroundColor: 'primary.light'};
   } else if (start) {
-    style = {background: `linear-gradient(90deg, white 50%, ${theme.palette.primary_extra_light.main} 50%)`};
+    style = {
+      background: `linear-gradient(90deg, transparent 50%, ${theme.palette.primary.light} 50%)`,
+    };
   } else if (end) {
-    style = {background: `linear-gradient(90deg, ${theme.palette.primary_extra_light.main} 50%, white 50%)`};
+    style = {background: `linear-gradient(90deg, ${theme.palette.primary.light} 50%, transparent 50%)`};
   }
 
   return (

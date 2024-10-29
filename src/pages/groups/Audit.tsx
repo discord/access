@@ -34,7 +34,6 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -299,10 +298,10 @@ export default function AuditGroup() {
               <TableRow
                 key={row.id}
                 sx={{
-                  backgroundColor: ({palette: {mode}}) =>
+                  backgroundColor: ({palette}) =>
                     Object.values(row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)))
-                      ? CUSTOM_COLORS.highlight['success'][mode]
-                      : CUSTOM_COLORS.highlight['danger'][mode],
+                      ? palette.highlight.warning.main
+                      : palette.highlight.danger.main,
                 }}>
                 <TableCell>
                   {(row.user?.deleted_at ?? null) != null ? (

@@ -32,7 +32,6 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -279,10 +278,10 @@ export default function AuditUser() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: ({palette: {mode}}) =>
+                  bgcolor: ({palette: {highlight}}) =>
                     row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
-                      ? CUSTOM_COLORS.highlight.success[mode]
-                      : CUSTOM_COLORS.highlight.danger[mode],
+                      ? highlight.success.main
+                      : highlight.danger.main,
                 }}>
                 <TableCell>
                   {(row.group?.deleted_at ?? null) != null ? (

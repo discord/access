@@ -38,6 +38,7 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import {
+  alpha,
   CssBaseline,
   PaletteMode,
   Stack,
@@ -48,6 +49,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode} from '@mui/icons-material';
+import {lightGreen, red, yellow} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
 
@@ -193,8 +195,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
       <Box
         component="main"
         sx={{
-          backgroundColor: (theme) =>
-            theme.palette.mode === 'light' ? theme.palette.grey[100] : theme.palette.grey[900],
+          backgroundColor: (theme) => theme.palette.highlight.success.light,
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
@@ -232,34 +233,50 @@ export default function App() {
   const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
   const initialMode = prefersDarkMode ? 'dark' : 'light';
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+
   // See https://discord.com/branding
-  let theme = React.useMemo(
-    () =>
-      createTheme({
-        palette: {
-          mode,
-          primary: {
-            main: '#5865F2',
-          },
-          secondary: {
-            main: '#EB459E',
-          },
-          error: {
-            main: '#ED4245',
-          },
-          warning: {
-            main: '#FEE75C',
-          },
-          success: {
-            main: '#57F287',
-          },
-          primary_extra_light: {
-            main: '#A5B2FF',
-          },
+  let theme = React.useMemo(() => {
+    const base = createTheme({
+      palette: {
+        mode,
+        primary: {
+          main: '#5865F2',
+          light: '#A5B2FF',
         },
-      }),
-    [mode],
-  );
+        secondary: {
+          main: '#EB459E',
+        },
+        error: {
+          main: '#ED4245',
+        },
+        warning: {
+          main: '#FEE75C',
+        },
+        success: {
+          main: '#57F287',
+        },
+      },
+    });
+    return createTheme(base, {
+      palette: {
+        highlight: {
+          success: base.palette.augmentColor({
+            color: {main: mode === 'light' ? lightGreen[100] : alpha(lightGreen[500], 0.3)},
+            name: 'success',
+          }),
+          warning: base.palette.augmentColor({
+            color: {main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3)},
+            name: 'warning',
+          }),
+          danger: base.palette.augmentColor({
+            color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
+            name: 'danger',
+          }),
+        },
+      },
+    });
+  }, [mode]);
+
   useCurrentUser();
   return (
     <ThemeProvider theme={theme}>
