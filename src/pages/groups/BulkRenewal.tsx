@@ -17,14 +17,11 @@ import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import {red, yellow} from '@mui/material/colors';
-import {darken, lighten, styled} from '@mui/material/styles';
-
 import AccessRequestIcon from '@mui/icons-material/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
-import {DataGrid, GridColDef, GridRowSelectionModel} from '@mui/x-data-grid';
+import {GridColDef, GridRowSelectionModel} from '@mui/x-data-grid';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -32,6 +29,7 @@ import {displayUserName, minTagTimeGroups, requiredReasonGroups} from '../../hel
 
 import {usePutGroupMembersById, PutGroupMembersByIdError, PutGroupMembersByIdVariables} from '../../api/apiComponents';
 import {GroupMember, OktaUserGroupMember, PolymorphicGroup, RoleGroupMap, RoleGroup} from '../../api/apiSchemas';
+import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 
 interface Data {
   id: number;
@@ -91,48 +89,6 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
-const getHoverBackgroundColor = (color: string, mode: string) =>
-  mode === 'dark' ? darken(color, 0.6) : lighten(color, 0.6);
-
-const getSelectedBackgroundColor = (color: string, mode: string) =>
-  mode === 'dark' ? darken(color, 0.5) : lighten(color, 0.5);
-
-const getSelectedHoverBackgroundColor = (color: string, mode: string) =>
-  mode === 'dark' ? darken(color, 0.4) : lighten(color, 0.4);
-
-const StyledDataGrid = styled(DataGrid)(
-  ({
-    theme: {
-      palette: {highlight, mode},
-    },
-  }) => ({
-    '& .super-app-theme--Expired': {
-      backgroundColor: highlight.danger.main,
-      '&:hover': {
-        backgroundColor: getHoverBackgroundColor(red[200], mode),
-      },
-      '&.Mui-selected': {
-        backgroundColor: getSelectedBackgroundColor(red[200], mode),
-        '&:hover': {
-          backgroundColor: getSelectedHoverBackgroundColor(red[200], mode),
-        },
-      },
-    },
-    '& .super-app-theme--Soon': {
-      backgroundColor: highlight.warning.main,
-      '&:hover': {
-        backgroundColor: getHoverBackgroundColor(highlight.warning.main, mode),
-      },
-      '&.Mui-selected': {
-        backgroundColor: getSelectedBackgroundColor(highlight.warning.main, mode),
-        '&:hover': {
-          backgroundColor: getSelectedHoverBackgroundColor(highlight.warning.main, mode),
-        },
-      },
-    },
-  }),
-);
 
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;
@@ -448,7 +404,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
               ) : null}
             </Grid>
           </Grid>
-          <StyledDataGrid
+          <BulkRenewalDataGrid
             rows={props.rows.map((row) => createData(row))}
             rowHeight={40}
             columns={columns}
