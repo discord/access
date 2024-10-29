@@ -5,8 +5,7 @@ import {
   NumberInputProps as NumInputProps,
   numberInputClasses,
 } from '@mui/base/Unstable_NumberInput';
-import {styled} from '@mui/system';
-import {grey} from '@mui/material/colors';
+import {styled} from '@mui/material/styles';
 
 const NumInput = React.forwardRef(function CustomNumberInput(
   props: NumInputProps,
@@ -66,7 +65,7 @@ const InputAdornment = styled('div')(
     align-items: center;
     justify-content: center;
     grid-row: 1/3;
-    color: ${theme.palette.mode === 'dark' ? grey[500] : grey[700]};
+    color: ${theme.palette.text.secondary};
   `,
 );
 
@@ -74,11 +73,8 @@ const InputRoot = styled('div')(
   ({theme}) => `
     font-family: 'IBM Plex Sans', sans-serif;
     font-weight: 400;
-    border-radius: 8px;
-    color: ${theme.palette.mode === 'dark' ? grey[300] : grey[900]};
-    background: ${theme.palette.mode === 'dark' ? grey[900] : '#fff'};
-    border: 1px solid ${theme.palette.mode === 'dark' ? grey[700] : grey[200]};
-    box-shadow: 0px 2px 4px ${theme.palette.mode === 'dark' ? 'rgba(0,0,0, 0.5)' : 'rgba(0,0,0, 0.05)'};
+    border-radius: 4px;
+    border: 1px solid ${theme.palette.action.disabled};
     display: grid;
     grid-template-columns: auto 1fr auto 19px;
     grid-template-rows: 1fr 1fr;
@@ -86,12 +82,12 @@ const InputRoot = styled('div')(
     padding: 4px;
   
     &.${numberInputClasses.focused} {
-      border-color: ${theme.palette.primary.main};
-      box-shadow: 0 0 0 3px ${theme.palette.primary_extra_light.main};
+      border: 1px solid transparent;
+      outline: 2px solid ${theme.palette.primary.main};
     }
   
-    &:hover {
-      border-color: ${theme.palette.primary.main};
+    &:hover:not(.${numberInputClasses.focused}) {
+      border-color: ${theme.palette.action.active};
     }
   
     // firefox
@@ -108,7 +104,7 @@ const InputElement = styled('input')(
     font-weight: 400;
     line-height: 1.5;
     grid-row: 1/3;
-    color: ${theme.palette.mode === 'dark' ? grey[300] : grey[900]};
+    color: ${theme.palette.text.primary};
     background: inherit;
     border: none;
     border-radius: inherit;
@@ -131,58 +127,30 @@ const Button = styled('button')(
     font-size: 0.875rem;
     line-height: 1;
     box-sizing: border-box;
-    background: ${theme.palette.mode === 'dark' ? grey[900] : 'white'};
-    border: 0;
-    color: ${theme.palette.mode === 'dark' ? grey[300] : grey[900]};
+    border: 1px solid ${theme.palette.action.disabled};
     transition-property: all;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 120ms;
+    color: ${theme.palette.text.primary};
+    background-color: transparent;
+    grid-column: 4/5;
   
     &:hover {
-      background: ${theme.palette.mode === 'dark' ? grey[800] : grey[50]};
-      border-color: ${theme.palette.mode === 'dark' ? grey[600] : grey[300]};
+      background: ${theme.palette.action.hover};
       cursor: pointer;
     }
   
     &.${numberInputClasses.incrementButton} {
-      grid-column: 4/5;
       grid-row: 1/2;
       border-top-left-radius: 4px;
       border-top-right-radius: 4px;
-      border: 1px solid;
-      border-bottom: 0;
-      border-color: ${grey[200]};
-      background: ${theme.palette.mode === 'dark' ? grey[900] : undefined};
-      color: ${theme.palette.mode === 'dark' ? grey[200] : grey[600]};
-  
-      &:hover {
-        cursor: pointer;
-        color: #FFF;
-        background: ${theme.palette.primary.main};
-        border-color: ${theme.palette.primary.main};
-      }
+      border-bottom: 0px;
     }
   
     &.${numberInputClasses.decrementButton} {
-      grid-column: 4/5;
       grid-row: 2/3;
       border-bottom-left-radius: 4px;
       border-bottom-right-radius: 4px;
-      border: 1px solid;
-      border-color: ${theme.palette.mode === 'dark' ? grey[700] : grey[200]};
-      background: ${theme.palette.mode === 'dark' ? grey[900] : undefined};
-      color: ${theme.palette.mode === 'dark' ? grey[200] : grey[600]};
-  
-      &:hover {
-        cursor: pointer;
-        color: #FFF;
-        background: ${theme.palette.primary.main};
-        border-color: ${theme.palette.primary.main};
-      }
-    }
-  
-    & .arrow {
-      transform: translateY(-1px);
     }
   
     & .arrow {
