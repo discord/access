@@ -240,7 +240,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
           )}
         </TableBody>
         <TableFooter>
-          <TableRow></TableRow>
+          <TableRow />
         </TableFooter>
       </Table>
     </TableContainer>

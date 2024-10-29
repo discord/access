@@ -2,14 +2,15 @@ import {TableRow, TableCell, Typography, TableCellProps} from '@mui/material';
 
 interface EmptyListEntryProps {
   cellProps?: TableCellProps;
+  customText?: string;
 }
 
-export const EmptyListEntry: React.FC<EmptyListEntryProps> = ({cellProps}) => {
+export const EmptyListEntry: React.FC<EmptyListEntryProps> = ({cellProps, customText}) => {
   return (
     <TableRow>
       <TableCell {...cellProps}>
         <Typography variant="body2" color="grey">
-          None
+          {customText || 'None'}
         </Typography>
       </TableCell>
     </TableRow>

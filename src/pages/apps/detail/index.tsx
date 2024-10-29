@@ -167,7 +167,7 @@ export const ReadApp = () => {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
