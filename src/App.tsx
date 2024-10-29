@@ -195,7 +195,8 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
       <Box
         component="main"
         sx={{
-          backgroundColor: (theme) => theme.palette.highlight.success.light,
+          backgroundColor: (theme) =>
+            theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
