@@ -101,28 +101,32 @@ const Drawer = styled(MuiDrawer, {
   },
 }));
 
-function ThemeToggle({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
+function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMode) => void; condensed: boolean}) {
   const theme = useTheme();
   return (
     <ToggleButtonGroup size="small">
-      <Tooltip title="Light Mode">
-        <ToggleButton
-          value="left"
-          selected={theme.palette.mode === 'light'}
-          onClick={() => setThemeMode('light')}
-          aria-label="Light mode">
-          <LightMode />
-        </ToggleButton>
-      </Tooltip>
-      <Tooltip title="Dark Mode">
-        <ToggleButton
-          value="right"
-          selected={theme.palette.mode === 'dark'}
-          onClick={() => setThemeMode('dark')}
-          aria-label="Dark mode">
-          <DarkMode />
-        </ToggleButton>
-      </Tooltip>
+      {(theme.palette.mode != 'light' || !condensed) && (
+        <Tooltip title="Light Mode">
+          <ToggleButton
+            value="left"
+            selected={theme.palette.mode === 'light'}
+            onClick={() => setThemeMode('light')}
+            aria-label="Light mode">
+            <LightMode />
+          </ToggleButton>
+        </Tooltip>
+      )}
+      {(theme.palette.mode != 'dark' || !condensed) && (
+        <Tooltip title="Dark Mode">
+          <ToggleButton
+            value="right"
+            selected={theme.palette.mode === 'dark'}
+            onClick={() => setThemeMode('dark')}
+            aria-label="Dark mode">
+            <DarkMode />
+          </ToggleButton>
+        </Tooltip>
+      )}
     </ToggleButtonGroup>
   );
 }
@@ -189,7 +193,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
           <NavItems open={open} />
         </List>
         <Stack marginTop="auto" p={2}>
-          <ThemeToggle setThemeMode={setThemeMode} />
+          <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
         </Stack>
       </Drawer>
       <Box
