@@ -21,8 +21,6 @@ import Typography from '@mui/material/Typography';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
 
-import {grey} from '@mui/material/colors';
-
 import Ending from '../../components/Ending';
 import {groupBy, displayUserName} from '../../helpers';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -106,7 +104,8 @@ export default function ReadApp() {
                       sx={{
                         margin: '2px',
                         marginTop: '5px',
-                        bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
+                        bgcolor: (theme) =>
+                          tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
                       }}
                     />
                   ))}
@@ -150,7 +149,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -161,7 +160,7 @@ export default function ReadApp() {
                                 App Owners
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Can manage app and implicitly own all app groups
                             </Typography>
                           </Stack>
@@ -220,7 +219,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>
@@ -240,7 +239,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -251,7 +250,7 @@ export default function ReadApp() {
                                 App Owners Group Members
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Members of Owners Okta Group
                             </Typography>
                           </Stack>
@@ -310,7 +309,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>
@@ -334,7 +333,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column">
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -345,7 +344,7 @@ export default function ReadApp() {
                                 {appGroup.name} Group Owners
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Can manage membership of Group
                             </Typography>
                           </Stack>
@@ -404,7 +403,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               All app owners are implicitly app group owners
                             </Typography>
                           </TableCell>
@@ -424,7 +423,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column">
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -435,7 +434,7 @@ export default function ReadApp() {
                                 {appGroup.name} Group Members
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Members of App Okta Group
                             </Typography>
                           </Stack>
@@ -494,7 +493,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>

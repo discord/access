@@ -246,7 +246,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addRolesText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
@@ -254,7 +254,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                 ' days.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {disallowOwnerAdd && !isAccessAdmin(currentUser)
               ? 'Certain roles cannot be added to this group due to tag constraints.'
               : null}
