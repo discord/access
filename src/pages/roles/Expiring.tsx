@@ -18,7 +18,6 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import {red, yellow} from '@mui/material/colors';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -33,6 +32,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {displayUserName, perPage} from '../../helpers';
+import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -310,11 +310,11 @@ export default function ExpiringRoless() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor:
+                  bgcolor: ({palette: {mode}}) =>
                     dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? yellow[100]
+                      ? CUSTOM_COLORS.highlight.warning[mode]
                       : dayjs(row.ended_at).isBefore(dayjs())
-                        ? red[100]
+                        ? CUSTOM_COLORS.highlight.danger[mode]
                         : null,
                 }}>
                 <TableCell>

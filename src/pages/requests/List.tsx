@@ -18,7 +18,6 @@ import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Autocomplete from '@mui/material/Autocomplete';
-import {lightGreen, red} from '@mui/material/colors';
 
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -28,6 +27,7 @@ import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 dayjs.extend(RelativeTime);
 
@@ -196,7 +196,12 @@ export default function ListRequests() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: row.status == 'APPROVED' ? lightGreen[100] : row.status == 'REJECTED' ? red[100] : 'inherit',
+                  bgcolor: ({palette: {mode}}) =>
+                    row.status == 'APPROVED'
+                      ? CUSTOM_COLORS.highlight['success'][mode]
+                      : row.status == 'REJECTED'
+                        ? CUSTOM_COLORS.highlight['danger'][mode]
+                        : 'inherit',
                 }}>
                 <TableCell>
                   {(row.requester?.deleted_at ?? null) != null ? (

@@ -20,7 +20,6 @@ import TextField from '@mui/material/TextField';
 import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
-import {lightGreen, red} from '@mui/material/colors';
 
 import dayjs from 'dayjs';
 
@@ -33,6 +32,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import {CUSTOM_COLORS} from '../../components/CustomColors';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -279,7 +279,10 @@ export default function AuditUser() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)) ? lightGreen[100] : red[100],
+                  bgcolor: ({palette: {mode}}) =>
+                    row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
+                      ? CUSTOM_COLORS.highlight.success[mode]
+                      : CUSTOM_COLORS.highlight.danger[mode],
                 }}>
                 <TableCell>
                   {(row.group?.deleted_at ?? null) != null ? (
