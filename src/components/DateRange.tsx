@@ -10,7 +10,7 @@ import EventIcon from '@mui/icons-material/Event';
 import {Dayjs} from 'dayjs';
 
 import {DatePicker, DatePickerProps} from '@mui/x-date-pickers/DatePicker';
-import {PickersDay, PickersDayProps, pickersDayClasses} from '@mui/x-date-pickers/PickersDay';
+import {PickersDay, PickersDayProps} from '@mui/x-date-pickers/PickersDay';
 import {UseDateFieldProps} from '@mui/x-date-pickers/DateField';
 import {BaseSingleInputFieldProps, DateValidationError, FieldSection} from '@mui/x-date-pickers/models';
 
@@ -33,13 +33,15 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
 
   let selectedClass = '';
   let style = {};
+  let dayStyle = {};
 
   if (rangeSelected && props.day.isSame(endDate!, 'day')) {
     selectedClass = 'Mui-selected';
   }
 
   if (isSelected) {
-    style = {backgroundColor: 'primary.light'};
+    style = {backgroundColor: theme.palette.primary.light};
+    dayStyle = {color: theme.palette.common.black};
   } else if (start) {
     style = {
       background: `linear-gradient(90deg, transparent 50%, ${theme.palette.primary.light} 50%)`,
@@ -50,7 +52,7 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
 
   return (
     <Box component={'div'} sx={style} key={props.day.toString()}>
-      <PickersDay className={selectedClass} {...rest} />
+      <PickersDay className={selectedClass} sx={dayStyle} {...rest} />
     </Box>
   );
 }
