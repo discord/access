@@ -294,13 +294,13 @@ export default function AuditGroup() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row, i) => (
+            {rows.map((row) => (
               <TableRow
                 key={row.id}
                 sx={{
                   backgroundColor: ({palette}) =>
                     Object.values(row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)))
-                      ? palette.highlight.warning.main
+                      ? palette.highlight.success.main
                       : palette.highlight.danger.main,
                 }}>
                 <TableCell>
