@@ -55,6 +55,18 @@ export type MoveTooltip = {
   modifiers: Modifier[];
 };
 
+export const EmptyListEntry = () => {
+  return (
+    <TableRow>
+      <TableCell>
+        <Typography variant="body2" color="grey">
+          None
+        </Typography>
+      </TableCell>
+    </TableRow>
+  );
+};
+
 export const ReadApp = () => {
   const currentUser = useCurrentUser();
 
@@ -162,13 +174,7 @@ export const ReadApp = () => {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow>
-                          <TableCell>
-                            <Typography variant="body2" color="grey">
-                              None
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry />
                       )}
                     </TableBody>
                     <TableFooter>
@@ -252,13 +258,7 @@ export const ReadApp = () => {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow>
-                          <TableCell>
-                            <Typography variant="body2" color="grey">
-                              None
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry />
                       )}
                     </TableBody>
                     <TableFooter>
@@ -356,7 +356,7 @@ export const ReadApp = () => {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -436,17 +436,11 @@ export const ReadApp = () => {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow>
-                          <TableCell>
-                            <Typography variant="body2" color="grey">
-                              None
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry />
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
