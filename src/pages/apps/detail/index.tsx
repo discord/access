@@ -1,6 +1,7 @@
-import React, {useEffect, useState} from 'react';
+import React from 'react';
 import {Link as RouterLink, useParams} from 'react-router-dom';
 
+import {Accordion, AccordionDetails, AccordionSummary} from '@mui/material';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
@@ -31,6 +32,7 @@ import Loading from '../../../components/Loading';
 import AppsHeader from './AppsHeader';
 import {AppsAdminActionGroup} from './AppsAdminActionGroup';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -65,6 +67,12 @@ export const ReadApp = () => {
     pathParams: {appId: id ?? ''},
   });
 
+  const [expanded, setExpanded] = React.useState<string | false>(false);
+
+  const handleChange = (panel: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
+    setExpanded(isExpanded ? panel : false);
+  };
+
   if (isError) {
     return <NotFound />;
   }
@@ -73,7 +81,7 @@ export const ReadApp = () => {
     return <Loading />;
   }
 
-  const app = data ?? ({} as App);
+  const app: App = data ?? ({} as App);
 
   const moveTooltip: MoveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
@@ -82,16 +90,15 @@ export const ReadApp = () => {
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <AppsHeader app={app} moveTooltip={moveTooltip} currentUser={currentUser} />
-          {isAccessAdmin(currentUser) ||
-            (isAppOwnerGroupOwner(currentUser, app.id ?? '') && (
-              <AppsAdminActionGroup app={app} currentUser={currentUser} />
-            ))}
+          {(isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '')) && (
+            <AppsAdminActionGroup app={app} currentUser={currentUser} />
+          )}
           {app.active_owner_app_groups?.map((appGroup) => (
             <React.Fragment key={appGroup.id}>
               <Grid item xs={6} key={appGroup.id + 'owners'}>
-                <TableContainer component={Paper}>
-                  <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
-                    <TableHead>
+                <Accordion expanded={expanded === 'app-owners'} onChange={handleChange('app-owners')}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Table>
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column" spacing={1}>
@@ -103,7 +110,7 @@ export const ReadApp = () => {
                                   color: 'inherit',
                                 }}
                                 component={RouterLink}>
-                                App Owners
+                                {appGroup.name}
                               </Link>
                             </Typography>
                             <Typography variant="body1" color="grey">
@@ -123,54 +130,63 @@ export const ReadApp = () => {
                           </Box>
                         </TableCell>
                       </TableRow>
-                      <TableRow>
-                        <TableCell>Name</TableCell>
-                        <TableCell>Email</TableCell>
-                        <TableCell>Ending</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length > 0 ? (
-                        Object.entries(groupMemberships(appGroup.active_user_ownerships))
-                          .sort(sortGroupMembers)
-                          .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                            <TableRow key={userId}>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {displayUserName(users[0].active_user)}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {users[0].active_user?.email.toLowerCase()}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Ending memberships={users} />
-                              </TableCell>
-                            </TableRow>
-                          ))
-                      ) : (
-                        <EmptyListEntry />
-                      )}
-                    </TableBody>
-                    <TableFooter>
-                      <TableRow />
-                    </TableFooter>
-                  </Table>
-                </TableContainer>
+                    </Table>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <TableContainer component={Paper}>
+                      <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Name</TableCell>
+                            <TableCell>Email</TableCell>
+                            <TableCell>Ending</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length > 0 ? (
+                            Object.entries(groupMemberships(appGroup.active_user_ownerships))
+                              .sort(sortGroupMembers)
+                              .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                <TableRow key={userId}>
+                                  <TableCell>
+                                    <Link
+                                      to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                      sx={{
+                                        textDecoration: 'none',
+                                        color: 'inherit',
+                                      }}
+                                      component={RouterLink}>
+                                      {displayUserName(users[0].active_user)}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Link
+                                      to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                      sx={{
+                                        textDecoration: 'none',
+                                        color: 'inherit',
+                                      }}
+                                      component={RouterLink}>
+                                      {users[0].active_user?.email.toLowerCase()}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Ending memberships={users} />
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                          ) : (
+                            <EmptyListEntry />
+                          )}
+                        </TableBody>
+
+                        <TableFooter>
+                          <TableRow />
+                        </TableFooter>
+                      </Table>
+                    </TableContainer>
+                  </AccordionDetails>
+                </Accordion>
               </Grid>
               <Grid item xs={6} key={appGroup.id + 'members'}>
                 <TableContainer component={Paper}>
@@ -335,13 +351,7 @@ export const ReadApp = () => {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow>
-                          <TableCell>
-                            <Typography variant="body2" color="grey">
-                              All app owners are implicitly app group owners
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry customText={'All app owners are implicitly app group owners'} />
                       )}
                     </TableBody>
                     <TableFooter>
