@@ -36,11 +36,9 @@ import CreateUpdateTag from './CreateUpdate';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
-import {useTheme} from '@mui/material';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
-  const theme = useTheme();
 
   const {id} = useParams();
   const navigate = useNavigate();

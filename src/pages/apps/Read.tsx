@@ -21,8 +21,6 @@ import Typography from '@mui/material/Typography';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
 
-import {grey} from '@mui/material/colors';
-
 import Ending from '../../components/Ending';
 import {groupBy, displayUserName} from '../../helpers';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -106,7 +104,8 @@ export default function ReadApp() {
                       sx={{
                         margin: '2px',
                         marginTop: '5px',
-                        bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
+                        bgcolor: (theme) =>
+                          tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
                       }}
                     />
                   ))}

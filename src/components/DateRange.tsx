@@ -14,8 +14,6 @@ import {PickersDay, PickersDayProps, pickersDayClasses} from '@mui/x-date-picker
 import {UseDateFieldProps} from '@mui/x-date-pickers/DateField';
 import {BaseSingleInputFieldProps, DateValidationError, FieldSection} from '@mui/x-date-pickers/models';
 
-import {grey} from '@mui/material/colors';
-
 function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDate?: Dayjs; rangeSelected: boolean}) {
   const {startDate, endDate, rangeSelected, ...rest} = props;
 

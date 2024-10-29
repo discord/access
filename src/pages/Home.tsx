@@ -18,8 +18,6 @@ import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
 
-import {grey} from '@mui/material/colors';
-
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
   general: ['Welcome to Access!', 'Overview', <GeneralIcon />],

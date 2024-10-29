@@ -32,8 +32,6 @@ import DeleteIcon from '@mui/icons-material/Close';
 import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
 
-import {grey} from '@mui/material/colors';
-
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from './CreateUpdate';
 import DeleteGroup from './Delete';
@@ -258,7 +256,8 @@ export default function ReadGroup() {
                         icon={<TagIcon />}
                         sx={{
                           margin: '10px 2px 0 2px',
-                          bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
+                          bgcolor: (theme) =>
+                            tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
                         }}
                       />
                     ))}
