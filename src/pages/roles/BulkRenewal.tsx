@@ -386,12 +386,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       <FormContainer<CreateRequestForm> onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Bulk Renew Role Access</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? 'Access to one or more selected groups is limited to ' + Math.floor(timeLimit / 86400) + ' days.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {display_owner_add_constraint
               ? 'Due to group constraints, some roles may not be renewed since you are both a member of the role and an owner of the group. Please reach out to another group owner to renew the role membership to the group.'
               : null}

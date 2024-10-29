@@ -12,4 +12,8 @@ declare module '@mui/material/styles' {
       [variant: string]: PaletteOptions['primary'];
     };
   }
+
+  interface TypeText {
+    accent: string;
+  }
 }

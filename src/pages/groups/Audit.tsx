@@ -198,7 +198,7 @@ export default function AuditGroup() {
           <TableHead>
             <TableRow>
               <TableCell colSpan={2}>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   {(group.deleted_at ?? null) != null ? (
                     <Link
                       to={`/groups/${group.id}`}

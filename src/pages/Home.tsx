@@ -125,7 +125,7 @@ function AccordionMaker(props: AccordionMakerProps) {
 
   return (
     <>
-      <Typography variant="h4" color="primary" sx={{margin: '15px 0'}}>
+      <Typography variant="h4" color="text.accent" sx={{margin: '15px 0'}}>
         {sections[props.which][0]}
       </Typography>
       {Object.entries(guide[props.which]).map(([key, value]: [string, string]) => (
@@ -172,7 +172,7 @@ export default function Home() {
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
-                    <Typography variant="h5" fontWeight={500} color="primary">
+                    <Typography variant="h5" fontWeight={500} color="text.accent">
                       Access User Guides
                     </Typography>
                   </Grid>

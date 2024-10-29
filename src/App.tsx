@@ -176,7 +176,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
               textDecoration: 'none',
             }}>
             <Avatar src="/logo-square.png" variant="square" />
-            <Typography component="h1" variant="h5" sx={{px: 2}}>
+            <Typography component="h1" variant="h5" sx={{px: 2}} color="text.accent">
               ACCESS
             </Typography>
           </Link>
@@ -255,6 +255,9 @@ export default function App() {
         },
         success: {
           main: '#57F287',
+        },
+        text: {
+          accent: mode === 'light' ? '#5865F2' : '#A5B2FF',
         },
       },
     });

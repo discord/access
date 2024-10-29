@@ -193,7 +193,7 @@ export default function AuditRole() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   {(role.deleted_at ?? null) != null ? (
                     <Link
                       to={`/roles/${role.id}`}

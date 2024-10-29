@@ -1,7 +1,7 @@
 import Breadcrumbs from '@mui/material/Breadcrumbs';
 import Typography from '@mui/material/Typography';
 
-import Link, {LinkProps} from '@mui/material/Link';
+import Link from '@mui/material/Link';
 import {Link as RouterLink, useLocation} from 'react-router-dom';
 
 export default function Crumbs() {

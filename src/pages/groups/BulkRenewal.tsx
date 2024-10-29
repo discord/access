@@ -339,7 +339,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       <FormContainer<CreateRequestForm> onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Bulk Renew Group Access</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? 'Access to one or more selected groups is limited to ' + Math.floor(timeLimit / 86400) + ' days.'
               : null}

@@ -172,7 +172,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Tag Constraints
                         </Typography>
                       </Stack>
@@ -217,7 +217,7 @@ export default function ReadTag() {
                   ) : (
                     <TableRow key="owners">
                       <TableCell>
-                        <Typography variant="body2" color="grey">
+                        <Typography variant="body2" color="text.secondary">
                           None
                         </Typography>
                       </TableCell>
@@ -237,7 +237,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={2}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Apps with Tag
                         </Typography>
                       </Stack>
@@ -294,7 +294,7 @@ export default function ReadTag() {
                   ) : (
                     <TableRow key="owners">
                       <TableCell>
-                        <Typography variant="body2" color="grey">
+                        <Typography variant="body2" color="text.secondary">
                           None
                         </Typography>
                       </TableCell>
@@ -314,7 +314,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Groups with Tag
                         </Typography>
                       </Stack>
@@ -397,7 +397,7 @@ export default function ReadTag() {
                   ) : (
                     <TableRow key="owners">
                       <TableCell>
-                        <Typography variant="body2" color="grey">
+                        <Typography variant="body2" color="text.secondary">
                           None
                         </Typography>
                       </TableCell>
