@@ -112,6 +112,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         break;
     }
   };
+
   return (
     <React.Fragment>
       {app_group &&
@@ -119,67 +120,62 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
           <Grid key={appGroup.id} item xs={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 325}} aria-label="app group owners">
-                <TableHead>
-                  <TableRow>
-                    <TableCell colSpan={2}>
-                      <Stack direction="column" spacing={1}>
-                        <Typography variant="h6" color="primary">
-                          <Link
-                            to={`/groups/${appGroup.name}`}
+                <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell colSpan={2}>
+                          <Stack direction="column" spacing={1}>
+                            <Typography variant="h6" color="primary">
+                              <Link
+                                to={`/groups/${appGroup.name}`}
+                                sx={{
+                                  textDecoration: 'none',
+                                  color: 'inherit',
+                                }}
+                                component={RouterLink}>
+                                {appGroup.name}
+                              </Link>
+                            </Typography>
+                            <Typography variant="body1" color="grey">
+                              Can manage app and implicitly own all app groups
+                            </Typography>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>
+                          <Box
                             sx={{
-                              textDecoration: 'none',
-                              color: 'inherit',
-                            }}
-                            component={RouterLink}>
-                            {appGroup.name}
-                          </Link>
-                        </Typography>
-                        <Typography variant="body1" color="grey">
-                          Can manage app and implicitly own all app groups
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          justifyContent: 'flex-end',
-                          alignItems: 'right',
-                        }}>
-                        <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                        Total Owners: {appGroup.active_user_ownerships?.length || 0}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody className="accordion-body">
-                  <TableRow>
-                    <TableCell colSpan={3}>
-                      <Stack direction="column" spacing={1}>
-                        <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                              alignItems: 'right',
+                            }}>
+                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
+                            Total Owners: {appGroup.active_user_ownerships?.length || 0} <br />
+                            Total Members: {appGroup.active_user_memberships?.length || 0}
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    </TableHead>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <TableBody className="accordion-body">
+                      <TableRow>
+                        <TableCell colSpan={3}>
+                          <Stack direction="column" spacing={1}>
                             <Typography gutterBottom variant="body1" component="span">
                               Group Owners
                             </Typography>
-                          </AccordionSummary>
-                          <AccordionDetails>
                             <GroupDetailList member_list={appGroup.active_user_ownerships || []} />
-                          </AccordionDetails>
-                        </Accordion>
-                        <Accordion expanded={memberExpanded} onChange={handleChange('members')}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                             <Typography gutterBottom variant="body1" component="span">
-                              Group Members
+                              Members
                             </Typography>
-                          </AccordionSummary>
-                          <AccordionDetails>
                             <GroupDetailList member_list={appGroup.active_user_memberships || []} />
-                          </AccordionDetails>
-                        </Accordion>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </AccordionDetails>
+                </Accordion>
               </Table>
             </TableContainer>
           </Grid>
