@@ -34,7 +34,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {displayUserName, perPage} from '../../helpers';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -232,23 +232,17 @@ export default function ExpiringGroups() {
             textField: (textFieldProps) => <TextField {...textFieldProps} />,
           }}
         />
-        <Autocomplete
-          size="small"
-          sx={{width: '320px'}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => {
             setSearchInput(newInputValue?.split(';')[0] ?? '');
           }}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
           renderOption={(props, option, state) => {
             const [displayName, email] = option.split(';');
             return (
-              <li {...props}>
+              <li {...props} key={option}>
                 <Grid container alignItems="center">
                   <Grid item>
                     <Box>{displayName}</Box>

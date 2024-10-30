@@ -32,7 +32,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -202,17 +202,11 @@ export default function AuditUser() {
           <ToggleButton value={true}>Active</ToggleButton>
           <ToggleButton value={false}>Inactive</ToggleButton>
         </ToggleButtonGroup>
-        <Autocomplete
-          size="small"
-          sx={{width: 320}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => row.name)}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
         />
       </TableTopBar>
       <Table sx={{minWidth: 650}} size="small" aria-label="groups">

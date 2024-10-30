@@ -27,7 +27,7 @@ import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 dayjs.extend(RelativeTime);
 
@@ -128,11 +128,7 @@ export default function ListRequests() {
     <TableContainer component={Paper}>
       <TableTopBar title="Access Requests">
         <CreateRequest currentUser={currentUser}></CreateRequest>
-        <Autocomplete
-          size="small"
-          sx={{width: '320px'}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map(
             (row) =>
               row.id +
@@ -152,8 +148,6 @@ export default function ListRequests() {
             setSearchInput(newInputValue?.split(';')[0] ?? '');
           }}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
           renderOption={(props, option, state) => {
             const [id, displayName, ownership, group, status, resolver] = option.split(';');
             return (

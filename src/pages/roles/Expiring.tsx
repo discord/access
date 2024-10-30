@@ -32,7 +32,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {displayUserName, perPage} from '../../helpers';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -252,17 +252,11 @@ export default function ExpiringRoless() {
             textField: (textFieldProps) => <TextField {...textFieldProps} />,
           }}
         />
-        <Autocomplete
-          sx={{width: 320}}
-          size="small"
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => row.name)}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
         />
       </TableTopBar>
       <Table sx={{minWidth: 650}} size="small" aria-label="roles">

@@ -22,7 +22,7 @@ import CreateUpdateTag from './CreateUpdate';
 import {perPage} from '../../helpers';
 import {useGetTags} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListTags() {
   const navigate = useNavigate();
@@ -107,17 +107,11 @@ export default function ListTags() {
     <TableContainer component={Paper}>
       <TableTopBar title="Tags">
         <CreateUpdateTag currentUser={currentUser}></CreateUpdateTag>
-        <Autocomplete
-          size="small"
-          sx={{width: 320}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => row.name)}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
         />
       </TableTopBar>
       <Table sx={{minWidth: 650}} size="small" aria-label="apps">

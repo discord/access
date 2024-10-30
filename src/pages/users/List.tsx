@@ -23,7 +23,7 @@ import TablePaginationActions from '../../components/actions/TablePaginationActi
 import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
 import {Stack} from '@mui/material';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListUsers() {
   const navigate = useNavigate();
@@ -106,11 +106,7 @@ export default function ListUsers() {
   return (
     <TableContainer component={Paper}>
       <TableTopBar title="Users">
-        <Autocomplete
-          size="small"
-          sx={{width: '320px'}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
           onInputChange={(event, newInputValue) => {
             setSearchInput(newInputValue?.split(';')[0] ?? '');
@@ -118,11 +114,10 @@ export default function ListUsers() {
           onChange={handleSearchSubmit}
           defaultValue={searchQuery}
           key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
           renderOption={(props, option, state) => {
             const [displayName, email] = option.split(';');
             return (
-              <li {...props}>
+              <li {...props} key={option}>
                 <Grid container alignItems="center">
                   <Grid item>
                     <Box>{displayName}</Box>

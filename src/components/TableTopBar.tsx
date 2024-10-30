@@ -1,8 +1,27 @@
 import {Launch} from '@mui/icons-material';
-import {IconButton, Link, Stack, Typography} from '@mui/material';
+import {Autocomplete, AutocompleteProps, IconButton, Stack, TextField, Typography} from '@mui/material';
 
 import * as React from 'react';
 import {useNavigate} from 'react-router-dom';
+
+export function TableTopBarAutocomplete({
+  defaultValue,
+  filterOptions = (x) => x,
+  ...restProps
+}: Omit<AutocompleteProps<any, any, any, any>, 'renderInput'>) {
+  return (
+    <Autocomplete
+      key={defaultValue}
+      defaultValue={defaultValue}
+      size="small"
+      sx={{width: 320}}
+      freeSolo
+      filterOptions={filterOptions}
+      renderInput={(params) => <TextField {...params} label="Search" />}
+      {...restProps}
+    />
+  );
+}
 
 interface TableTopBarProps {
   title: string;
@@ -20,6 +39,7 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
       paddingX={2}
       gap={4}
       justifyContent="space-between"
+      flexWrap="wrap"
       alignItems="flex-end">
       <Stack direction="row" gap={1} alignItems="center">
         <Typography component="h5" variant="h5" color="text.accent">
@@ -31,7 +51,7 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
           </IconButton>
         )}
       </Stack>
-      <Stack direction="row" gap={1} alignItems="center">
+      <Stack direction="row" flexWrap="wrap" gap={1} alignItems="center">
         {children}
       </Stack>
     </Stack>

@@ -24,7 +24,7 @@ import CreateUpdateApp from './CreateUpdate';
 import {perPage} from '../../helpers';
 import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListApps() {
   const navigate = useNavigate();
@@ -112,17 +112,11 @@ export default function ListApps() {
           Tags
         </Button>
         <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>
-        <Autocomplete
-          size="small"
-          sx={{width: '320px'}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => row.name)}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
         />
       </TableTopBar>
       <Table sx={{minWidth: 650}} size="small" aria-label="apps">

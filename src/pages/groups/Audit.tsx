@@ -34,7 +34,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar from '../../components/TableTopBar';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -205,23 +205,17 @@ export default function AuditGroup() {
           <ToggleButton value={true}>Active</ToggleButton>
           <ToggleButton value={false}>Inactive</ToggleButton>
         </ToggleButtonGroup>
-        <Autocomplete
-          size="small"
-          sx={{width: 320}}
-          freeSolo
-          filterOptions={(x) => x}
+        <TableTopBarAutocomplete
           options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
           onChange={handleSearchSubmit}
           onInputChange={(event, newInputValue) => {
             setSearchInput(newInputValue?.split(';')[0] ?? '');
           }}
           defaultValue={searchQuery}
-          key={searchQuery}
-          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
           renderOption={(props, option, state) => {
             const [displayName, email] = option.split(';');
             return (
-              <li {...props}>
+              <li {...props} key={option}>
                 <Grid container alignItems="center">
                   <Grid item>
                     <Box>{displayName}</Box>
@@ -235,7 +229,6 @@ export default function AuditGroup() {
           }}
         />
       </TableTopBar>
-
       <Table sx={{minWidth: 650}} size="small" aria-label="groups">
         <TableHead>
           <TableRow>
