@@ -22,6 +22,7 @@ import CreateUpdateTag from './CreateUpdate';
 import {perPage} from '../../helpers';
 import {useGetTags} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListTags() {
   const navigate = useNavigate();
@@ -103,91 +104,67 @@ export default function ListTags() {
   };
 
   return (
-    <React.Fragment>
-      <TableContainer component={Paper}>
-        <Table sx={{minWidth: 650}} size="small" aria-label="apps">
-          <TableHead>
-            <TableRow>
+    <TableContainer component={Paper}>
+      <TableTopBar title="Tags">
+        <CreateUpdateTag currentUser={currentUser}></CreateUpdateTag>
+        <TableTopBarAutocomplete
+          options={searchRows.map((row) => row.name)}
+          onChange={handleSearchSubmit}
+          onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
+          defaultValue={searchQuery}
+        />
+      </TableTopBar>
+      <Table sx={{minWidth: 650}} size="small" aria-label="apps">
+        <TableHead>
+          <TableRow>
+            <TableCell>Name</TableCell>
+            <TableCell>Description</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
               <TableCell>
-                <Typography component="h5" variant="h5" color="text.accent">
-                  Tags
-                </Typography>
+                <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                  {row.name}
+                </Link>
               </TableCell>
-              <TableCell align="right">
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'flex-start',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                  }}>
-                  <Box sx={{marginRight: 2, width: '200px'}}>
-                    <CreateUpdateTag currentUser={currentUser}></CreateUpdateTag>
-                  </Box>
-                  <Autocomplete
-                    fullWidth
-                    freeSolo
-                    filterOptions={(x) => x}
-                    options={searchRows.map((row) => row.name)}
-                    onChange={handleSearchSubmit}
-                    onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
-                    defaultValue={searchQuery}
-                    key={searchQuery}
-                    renderInput={(params) => <TextField {...params} label={'Search' as any} />}
-                  />
-                </Box>
+              <TableCell>
+                <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                  {(row.description ?? '').length > 115
+                    ? row.description?.substring(0, 114) + '...'
+                    : row.description ?? ''}
+                </Link>
               </TableCell>
             </TableRow>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Description</TableCell>
+          ))}
+          {emptyRows > 0 && (
+            <TableRow style={{height: 33 * emptyRows}}>
+              <TableCell colSpan={6} />
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {(row.description ?? '').length > 115
-                      ? row.description?.substring(0, 114) + '...'
-                      : row.description ?? ''}
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-            {emptyRows > 0 && (
-              <TableRow style={{height: 33 * emptyRows}}>
-                <TableCell colSpan={6} />
-              </TableRow>
-            )}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TablePagination
-                rowsPerPageOptions={perPage}
-                colSpan={3}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </TableContainer>
-    </React.Fragment>
+          )}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TablePagination
+              rowsPerPageOptions={perPage}
+              colSpan={3}
+              count={totalRows}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              SelectProps={{
+                inputProps: {
+                  'aria-label': 'rows per page',
+                },
+                native: true,
+              }}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              ActionsComponent={TablePaginationActions}
+            />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </TableContainer>
   );
 }
