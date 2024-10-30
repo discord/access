@@ -39,9 +39,9 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
     <React.Fragment>
       {app_group &&
         app_group?.map((appGroup) => (
-          <Grid xs={12} item key={appGroup.id}>
+          <Grid key={appGroup.id} item xs={12}>
             <TableContainer component={Paper}>
-              <Table sx={{minWidth: 325}} aria-label="app group owners" size="medium">
+              <Table sx={{minWidth: 325}} aria-label="app group owners">
                 <TableHead>
                   <TableRow>
                     <TableCell colSpan={2}>
@@ -77,16 +77,18 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                 </TableHead>
                 <TableBody className="accordion-body">
                   <TableRow>
-                    <Accordion expanded={expanded === 'owners'} onChange={handleChange('owners')}>
-                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>OwnerList</AccordionSummary>
-                      <AccordionDetails>Owners list goes here</AccordionDetails>
-                    </Accordion>
-                  </TableRow>
-                  <TableRow>
-                    <Accordion expanded={expanded === 'members'} onChange={handleChange('members')}>
-                      <AccordionSummary expandIcon={<ExpandMoreIcon />}>MemberList</AccordionSummary>
-                      <AccordionDetails>Members list goes here</AccordionDetails>
-                    </Accordion>
+                    <TableCell colSpan={3}>
+                      <Stack direction="column" spacing={1}>
+                        <Accordion expanded={expanded === 'owners'} onChange={handleChange('owners')}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>OwnerList</AccordionSummary>
+                          <AccordionDetails>Owners list goes here</AccordionDetails>
+                        </Accordion>
+                        <Accordion expanded={expanded === 'members'} onChange={handleChange('members')}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>MemberList</AccordionSummary>
+                          <AccordionDetails>Members list goes here</AccordionDetails>
+                        </Accordion>
+                      </Stack>
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
