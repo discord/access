@@ -32,6 +32,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import TableTopBar from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -189,229 +190,205 @@ export default function AuditUser() {
   };
 
   return (
-    <React.Fragment>
-      <TableContainer component={Paper}>
-        <Table sx={{minWidth: 650}} size="small" aria-label="groups">
-          <TableHead>
-            <TableRow>
-              <TableCell colSpan={2}>
-                <Typography component="h5" variant="h5" color="text.accent">
-                  {(user.deleted_at ?? null) != null ? (
+    <TableContainer component={Paper}>
+      <TableTopBar
+        title={`User Audit: ${displayUserName(user)}`}
+        link={user.deleted_at != null ? `/users/${user.id}` : `/users/${user.email.toLowerCase()}`}>
+        <ToggleButtonGroup size="small" exclusive value={filterOwner} onChange={handleOwnerOrMember}>
+          <ToggleButton value={false}>Member</ToggleButton>
+          <ToggleButton value={true}>Owner</ToggleButton>
+        </ToggleButtonGroup>
+        <ToggleButtonGroup size="small" exclusive value={filterActive} onChange={handleActiveOrInactive}>
+          <ToggleButton value={true}>Active</ToggleButton>
+          <ToggleButton value={false}>Inactive</ToggleButton>
+        </ToggleButtonGroup>
+        <Autocomplete
+          size="small"
+          sx={{width: 320}}
+          freeSolo
+          filterOptions={(x) => x}
+          options={searchRows.map((row) => row.name)}
+          onChange={handleSearchSubmit}
+          onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
+          defaultValue={searchQuery}
+          key={searchQuery}
+          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
+        />
+      </TableTopBar>
+      <Table sx={{minWidth: 650}} size="small" aria-label="groups">
+        <TableHead>
+          <TableRow>
+            <TableCell>
+              <TableSortLabel
+                active={orderBy === 'moniker'}
+                direction={orderBy === 'moniker' ? orderDirection : 'desc'}
+                onClick={handleSortChange('moniker')}>
+                Group Name
+              </TableSortLabel>
+            </TableCell>
+            <TableCell>Group Type</TableCell>
+            <TableCell>Member or Owner</TableCell>
+            <TableCell>Direct or via Role</TableCell>
+            <TableCell>
+              <TableSortLabel
+                active={orderBy === 'created_at'}
+                direction={orderBy === 'created_at' ? orderDirection : 'desc'}
+                onClick={handleSortChange('created_at')}>
+                Started
+              </TableSortLabel>
+            </TableCell>
+            <TableCell>Added by</TableCell>
+            <TableCell>
+              <TableSortLabel
+                active={orderBy === 'ended_at'}
+                direction={orderBy === 'ended_at' ? orderDirection : 'desc'}
+                onClick={handleSortChange('ended_at')}>
+                Ending
+              </TableSortLabel>
+            </TableCell>
+            <TableCell>Removed by</TableCell>
+            <TableCell align="center">Access Request</TableCell>
+            <TableCell align="center">Justification</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              sx={{
+                bgcolor: ({palette: {highlight}}) =>
+                  row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
+                    ? highlight.success.main
+                    : highlight.danger.main,
+              }}>
+              <TableCell>
+                {(row.group?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/groups/${row.group?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.group?.name ?? ''}
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/groups/${row.group?.name ?? ''}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.group?.name ?? ''}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>
+                {(row.group?.deleted_at ?? null) != null ? (
+                  displayGroupType(row.group)
+                ) : (
+                  <Link
+                    to={`/groups/${row.group?.name ?? ''}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayGroupType(row.group)}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
+              <TableCell>
+                {row.role_group_mapping == null ? (
+                  <Chip key="direct" label="Direct" color="primary" />
+                ) : (
+                  <Chip
+                    label={row.role_group_mapping?.role_group?.name}
+                    color="primary"
+                    onClick={() => navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
+                  />
+                )}
+              </TableCell>
+              <TableCell>
+                <Started memberships={[row]} />
+              </TableCell>
+              <TableCell>
+                {(row.created_actor?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/users/${row.created_actor?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.created_actor)}
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/users/${(row.created_actor?.email ?? '').toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.created_actor)}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>
+                <Ending memberships={[row]} />
+              </TableCell>
+              <TableCell>
+                {row.ended_at != null && dayjs().isAfter(dayjs(row.ended_at)) ? (
+                  (row.ended_actor?.deleted_at ?? null) != null ? (
                     <Link
-                      to={`/users/${user.id}`}
+                      to={`/users/${row.ended_actor?.id ?? ''}`}
                       sx={{textDecoration: 'line-through', color: 'inherit'}}
                       component={RouterLink}>
-                      {displayUserName(user)}
+                      {displayUserName(row.ended_actor)}
                     </Link>
                   ) : (
                     <Link
-                      to={`/users/${user.email.toLowerCase()}`}
+                      to={`/users/${(row.ended_actor?.email ?? '').toLowerCase()}`}
                       sx={{textDecoration: 'none', color: 'inherit'}}
                       component={RouterLink}>
-                      {displayUserName(user)}
+                      {displayUserName(row.ended_actor)}
                     </Link>
-                  )}{' '}
-                  Audit
-                </Typography>
+                  )
+                ) : (
+                  ''
+                )}
               </TableCell>
-              <TableCell>
-                <ToggleButtonGroup exclusive value={filterOwner} onChange={handleOwnerOrMember}>
-                  <ToggleButton value={false}>Member</ToggleButton>
-                  <ToggleButton value={true}>Owner</ToggleButton>
-                </ToggleButtonGroup>
+              <TableCell align="center">
+                {row.access_request != null ? (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    to={`/requests/${row.access_request?.id ?? ''}`}
+                    component={RouterLink}>
+                    View
+                  </Button>
+                ) : null}
               </TableCell>
-              <TableCell colSpan={2}>
-                <ToggleButtonGroup exclusive value={filterActive} onChange={handleActiveOrInactive}>
-                  <ToggleButton value={true}>Active</ToggleButton>
-                  <ToggleButton value={false}>Inactive</ToggleButton>
-                </ToggleButtonGroup>
-              </TableCell>
-              <TableCell align="right" colSpan={5}>
-                <Autocomplete
-                  freeSolo
-                  filterOptions={(x) => x}
-                  options={searchRows.map((row) => row.name)}
-                  onChange={handleSearchSubmit}
-                  onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
-                  defaultValue={searchQuery}
-                  key={searchQuery}
-                  renderInput={(params) => <TextField {...params} label={'Search' as any} />}
-                />
+              <TableCell align="center">
+                {row.created_reason ? <CreatedReason created_reason={row.created_reason} /> : null}
               </TableCell>
             </TableRow>
-            <TableRow>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'moniker'}
-                  direction={orderBy === 'moniker' ? orderDirection : 'desc'}
-                  onClick={handleSortChange('moniker')}>
-                  Group Name
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>Group Type</TableCell>
-              <TableCell>Member or Owner</TableCell>
-              <TableCell>Direct or via Role</TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'created_at'}
-                  direction={orderBy === 'created_at' ? orderDirection : 'desc'}
-                  onClick={handleSortChange('created_at')}>
-                  Started
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>Added by</TableCell>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'ended_at'}
-                  direction={orderBy === 'ended_at' ? orderDirection : 'desc'}
-                  onClick={handleSortChange('ended_at')}>
-                  Ending
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>Removed by</TableCell>
-              <TableCell align="center">Access Request</TableCell>
-              <TableCell align="center">Justification</TableCell>
+          ))}
+          {emptyRows > 0 && (
+            <TableRow style={{height: 33 * emptyRows}}>
+              <TableCell colSpan={9} />
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow
-                key={row.id}
-                sx={{
-                  bgcolor: ({palette: {highlight}}) =>
-                    row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
-                      ? highlight.success.main
-                      : highlight.danger.main,
-                }}>
-                <TableCell>
-                  {(row.group?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/groups/${row.group?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/groups/${row.group?.name ?? ''}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {(row.group?.deleted_at ?? null) != null ? (
-                    displayGroupType(row.group)
-                  ) : (
-                    <Link
-                      to={`/groups/${row.group?.name ?? ''}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayGroupType(row.group)}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
-                <TableCell>
-                  {row.role_group_mapping == null ? (
-                    <Chip key="direct" label="Direct" color="primary" />
-                  ) : (
-                    <Chip
-                      label={row.role_group_mapping?.role_group?.name}
-                      color="primary"
-                      onClick={() => navigate(`/roles/${row.role_group_mapping?.role_group?.name}`)}
-                    />
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Started memberships={[row]} />
-                </TableCell>
-                <TableCell>
-                  {(row.created_actor?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/users/${row.created_actor?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.created_actor)}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/users/${(row.created_actor?.email ?? '').toLowerCase()}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.created_actor)}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Ending memberships={[row]} />
-                </TableCell>
-                <TableCell>
-                  {row.ended_at != null && dayjs().isAfter(dayjs(row.ended_at)) ? (
-                    (row.ended_actor?.deleted_at ?? null) != null ? (
-                      <Link
-                        to={`/users/${row.ended_actor?.id ?? ''}`}
-                        sx={{textDecoration: 'line-through', color: 'inherit'}}
-                        component={RouterLink}>
-                        {displayUserName(row.ended_actor)}
-                      </Link>
-                    ) : (
-                      <Link
-                        to={`/users/${(row.ended_actor?.email ?? '').toLowerCase()}`}
-                        sx={{textDecoration: 'none', color: 'inherit'}}
-                        component={RouterLink}>
-                        {displayUserName(row.ended_actor)}
-                      </Link>
-                    )
-                  ) : (
-                    ''
-                  )}
-                </TableCell>
-                <TableCell align="center">
-                  {row.access_request != null ? (
-                    <Button
-                      variant="contained"
-                      size="small"
-                      to={`/requests/${row.access_request?.id ?? ''}`}
-                      component={RouterLink}>
-                      View
-                    </Button>
-                  ) : null}
-                </TableCell>
-                <TableCell align="center">
-                  {row.created_reason ? <CreatedReason created_reason={row.created_reason} /> : null}
-                </TableCell>
-              </TableRow>
-            ))}
-            {emptyRows > 0 && (
-              <TableRow style={{height: 33 * emptyRows}}>
-                <TableCell colSpan={9} />
-              </TableRow>
-            )}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
-                colSpan={9}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </TableContainer>
-    </React.Fragment>
+          )}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TablePagination
+              rowsPerPageOptions={[5, 10, 20]}
+              colSpan={9}
+              count={totalRows}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              SelectProps={{
+                inputProps: {
+                  'aria-label': 'rows per page',
+                },
+                native: true,
+              }}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              ActionsComponent={TablePaginationActions}
+            />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </TableContainer>
   );
 }

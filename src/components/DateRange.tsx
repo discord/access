@@ -91,9 +91,10 @@ function ButtonField(props: ButtonFieldProps) {
 
   return (
     <Box component={'div'} sx={{position: 'relative'}}>
-      <Box component={'div'} sx={{marginTop: '7px'}}>
+      <Box component={'div'}>
         <Button
           variant="outlined"
+          size="medium"
           id={id}
           disabled={disabled}
           ref={ref}
@@ -102,12 +103,10 @@ function ButtonField(props: ButtonFieldProps) {
           sx={{
             color: theme.palette.text.secondary,
             borderColor: theme.palette.action.disabled,
-            height: '48.5px',
             minWidth: '245px',
             fontSize: '15px',
             position: 'relative',
             zIndex: '1',
-            padding: '0 8px',
           }}>
           {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.secondary}} />
         </Button>
@@ -125,6 +124,7 @@ function ButtonField(props: ButtonFieldProps) {
           zIndex: '2',
           top: '0.01%',
           left: '1%',
+          transform: 'translateY(-7px)',
         }}>
         Ending Date Range
       </Typography>

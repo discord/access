@@ -34,6 +34,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import {displayUserName, perPage} from '../../helpers';
+import TableTopBar from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -205,229 +206,217 @@ export default function ExpiringGroups() {
   };
 
   return (
-    <React.Fragment>
-      <TableContainer component={Paper}>
-        <Table sx={{minWidth: 650}} size="small" aria-label="roles">
-          <TableHead>
-            <TableRow>
+    <TableContainer component={Paper}>
+      <TableTopBar title="Expiring Groups">
+        <BulkRenewal
+          rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+          ownAccess={userId == '@me' || userId == currentUser.id}
+        />
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={filterActive}
+          onChange={handleActiveOrInactive}
+          defaultValue={'true'}>
+          <ToggleButton value={true}>Active</ToggleButton>
+          <ToggleButton value={false}>Inactive</ToggleButton>
+        </ToggleButtonGroup>
+        <DateRangePicker
+          startDate={startDate}
+          setStartDate={handleSetStartDate}
+          endDate={endDate}
+          setEndDate={handleSetEndDate}
+          datesPicked={datesPicked}
+          setDatesPicked={setDatesPicked}
+          slots={{
+            textField: (textFieldProps) => <TextField {...textFieldProps} />,
+          }}
+        />
+        <Autocomplete
+          size="small"
+          sx={{width: '320px'}}
+          freeSolo
+          filterOptions={(x) => x}
+          options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+          onChange={handleSearchSubmit}
+          onInputChange={(event, newInputValue) => {
+            setSearchInput(newInputValue?.split(';')[0] ?? '');
+          }}
+          defaultValue={searchQuery}
+          key={searchQuery}
+          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
+          renderOption={(props, option, state) => {
+            const [displayName, email] = option.split(';');
+            return (
+              <li {...props}>
+                <Grid container alignItems="center">
+                  <Grid item>
+                    <Box>{displayName}</Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {email}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </li>
+            );
+          }}
+        />
+      </TableTopBar>
+      <Table sx={{minWidth: 650}} size="small" aria-label="roles">
+        <TableHead>
+          <TableRow>
+            <TableCell>
+              <TableSortLabel
+                active={orderBy === 'moniker'}
+                direction={orderBy === 'moniker' ? orderDirection : 'desc'}
+                onClick={handleSortChange('moniker')}>
+                User Name
+              </TableSortLabel>
+            </TableCell>
+            <TableCell>User Email</TableCell>
+            <TableCell>Group Name</TableCell>
+            <TableCell>Member or Owner</TableCell>
+            <TableCell>
+              <TableSortLabel>Started</TableSortLabel>
+            </TableCell>
+            <TableCell>Added by</TableCell>
+            <TableCell colSpan={2}>
+              <TableSortLabel
+                active={orderBy === 'ended_at'}
+                direction={orderBy === 'ended_at' ? orderDirection : 'asc'}
+                onClick={handleSortChange('ended_at')}>
+                Ending
+              </TableSortLabel>
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.id}
+              sx={{
+                bgcolor: ({palette: {highlight}}) =>
+                  dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+                    ? highlight.warning.main
+                    : dayjs(row.ended_at).isBefore(dayjs())
+                      ? highlight.danger.main
+                      : null,
+              }}>
               <TableCell>
-                <Typography component="h5" variant="h5" color="text.accent">
-                  Expiring Groups
-                </Typography>
-              </TableCell>
-              <TableCell>
-                <BulkRenewal
-                  rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
-                  ownAccess={userId == '@me' || userId == currentUser.id}
-                />
-              </TableCell>
-              <TableCell>
-                <ToggleButtonGroup
-                  exclusive
-                  value={filterActive}
-                  onChange={handleActiveOrInactive}
-                  defaultValue={'true'}>
-                  <ToggleButton value={true}>Active</ToggleButton>
-                  <ToggleButton value={false}>Inactive</ToggleButton>
-                </ToggleButtonGroup>
-              </TableCell>
-              <TableCell colSpan={2}>
-                <DateRangePicker
-                  startDate={startDate}
-                  setStartDate={handleSetStartDate}
-                  endDate={endDate}
-                  setEndDate={handleSetEndDate}
-                  datesPicked={datesPicked}
-                  setDatesPicked={setDatesPicked}
-                  slots={{
-                    textField: (textFieldProps) => <TextField {...textFieldProps} />,
-                  }}
-                />
-              </TableCell>
-              <TableCell align="right" colSpan={3}>
-                <Autocomplete
-                  freeSolo
-                  filterOptions={(x) => x}
-                  options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
-                  onChange={handleSearchSubmit}
-                  onInputChange={(event, newInputValue) => {
-                    setSearchInput(newInputValue?.split(';')[0] ?? '');
-                  }}
-                  defaultValue={searchQuery}
-                  key={searchQuery}
-                  renderInput={(params) => <TextField {...params} label={'Search' as any} />}
-                  renderOption={(props, option, state) => {
-                    const [displayName, email] = option.split(';');
-                    return (
-                      <li {...props}>
-                        <Grid container alignItems="center">
-                          <Grid item>
-                            <Box>{displayName}</Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {email}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-                      </li>
-                    );
-                  }}
-                />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
-                <TableSortLabel
-                  active={orderBy === 'moniker'}
-                  direction={orderBy === 'moniker' ? orderDirection : 'desc'}
-                  onClick={handleSortChange('moniker')}>
-                  User Name
-                </TableSortLabel>
-              </TableCell>
-              <TableCell>User Email</TableCell>
-              <TableCell>Group Name</TableCell>
-              <TableCell>Member or Owner</TableCell>
-              <TableCell>
-                <TableSortLabel>Started</TableSortLabel>
-              </TableCell>
-              <TableCell>Added by</TableCell>
-              <TableCell colSpan={2}>
-                <TableSortLabel
-                  active={orderBy === 'ended_at'}
-                  direction={orderBy === 'ended_at' ? orderDirection : 'asc'}
-                  onClick={handleSortChange('ended_at')}>
-                  Ending
-                </TableSortLabel>
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow
-                key={row.id}
-                sx={{
-                  bgcolor: ({palette: {highlight}}) =>
-                    dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? highlight.warning.main
-                      : dayjs(row.ended_at).isBefore(dayjs())
-                        ? highlight.danger.main
-                        : null,
-                }}>
-                <TableCell>
-                  {(row.user?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/users/${row.user?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.user)}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/users/${(row.user?.email ?? '').toLowerCase()}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.user)}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {(row.user?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/users/${row.user?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.user?.email.toLowerCase()}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/users/${(row.user?.email ?? '').toLowerCase()}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.user?.email.toLowerCase()}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {(row.group?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/groups/${row.group?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/groups/${row.group?.name ?? ''}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {row.group?.name ?? ''}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
-                <TableCell>
-                  <Started memberships={[row]} />
-                </TableCell>
-                <TableCell>
-                  {(row.created_actor?.deleted_at ?? null) != null ? (
-                    <Link
-                      to={`/users/${row.created_actor?.id ?? ''}`}
-                      sx={{textDecoration: 'line-through', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.created_actor)}
-                    </Link>
-                  ) : (
-                    <Link
-                      to={`/users/${(row.created_actor?.email ?? '').toLowerCase()}`}
-                      sx={{textDecoration: 'none', color: 'inherit'}}
-                      component={RouterLink}>
-                      {displayUserName(row.created_actor)}
-                    </Link>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Ending memberships={[row]} />
-                </TableCell>
-                {userId == '@me' || currentUser.id == row.user.id ? (
-                  <TableCell align="center">
-                    <CreateRequest currentUser={row.user} group={row.group} owner={row.is_owner} renew={true} />
-                  </TableCell>
-                ) : ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
-                  <TableCell align="center">
-                    <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} select={row.id} />
-                  </TableCell>
+                {(row.user?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/users/${row.user?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.user)}
+                  </Link>
                 ) : (
-                  <TableCell></TableCell>
+                  <Link
+                    to={`/users/${(row.user?.email ?? '').toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.user)}
+                  </Link>
                 )}
-              </TableRow>
-            ))}
-            {emptyRows > 0 && (
-              <TableRow style={{height: 33 * emptyRows}}>
-                <TableCell colSpan={9} />
-              </TableRow>
-            )}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TablePagination
-                rowsPerPageOptions={perPage}
-                colSpan={9}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
+              </TableCell>
+              <TableCell>
+                {(row.user?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/users/${row.user?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.user?.email.toLowerCase()}
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/users/${(row.user?.email ?? '').toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.user?.email.toLowerCase()}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>
+                {(row.group?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/groups/${row.group?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.group?.name ?? ''}
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/groups/${row.group?.name ?? ''}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.group?.name ?? ''}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
+              <TableCell>
+                <Started memberships={[row]} />
+              </TableCell>
+              <TableCell>
+                {(row.created_actor?.deleted_at ?? null) != null ? (
+                  <Link
+                    to={`/users/${row.created_actor?.id ?? ''}`}
+                    sx={{textDecoration: 'line-through', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.created_actor)}
+                  </Link>
+                ) : (
+                  <Link
+                    to={`/users/${(row.created_actor?.email ?? '').toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row.created_actor)}
+                  </Link>
+                )}
+              </TableCell>
+              <TableCell>
+                <Ending memberships={[row]} />
+              </TableCell>
+              {userId == '@me' || currentUser.id == row.user.id ? (
+                <TableCell align="center">
+                  <CreateRequest currentUser={row.user} group={row.group} owner={row.is_owner} renew={true} />
+                </TableCell>
+              ) : ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
+                <TableCell align="center">
+                  <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} select={row.id} />
+                </TableCell>
+              ) : (
+                <TableCell></TableCell>
+              )}
             </TableRow>
-          </TableFooter>
-        </Table>
-      </TableContainer>
-    </React.Fragment>
+          ))}
+          {emptyRows > 0 && (
+            <TableRow style={{height: 33 * emptyRows}}>
+              <TableCell colSpan={9} />
+            </TableRow>
+          )}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TablePagination
+              rowsPerPageOptions={perPage}
+              colSpan={9}
+              count={totalRows}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              SelectProps={{
+                inputProps: {
+                  'aria-label': 'rows per page',
+                },
+                native: true,
+              }}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              ActionsComponent={TablePaginationActions}
+            />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </TableContainer>
   );
 }

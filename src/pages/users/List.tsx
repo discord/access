@@ -22,6 +22,8 @@ import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
+import {Stack} from '@mui/material';
+import TableTopBar from '../../components/TableTopBar';
 
 export default function ListUsers() {
   const navigate = useNavigate();
@@ -102,110 +104,102 @@ export default function ListUsers() {
   };
 
   return (
-    <React.Fragment>
-      <TableContainer component={Paper}>
-        <Table sx={{minWidth: 650}} size="small" aria-label="users">
-          <TableHead>
-            <TableRow>
+    <TableContainer component={Paper}>
+      <TableTopBar title="Users">
+        <Autocomplete
+          size="small"
+          sx={{width: '320px'}}
+          freeSolo
+          filterOptions={(x) => x}
+          options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+          onInputChange={(event, newInputValue) => {
+            setSearchInput(newInputValue?.split(';')[0] ?? '');
+          }}
+          onChange={handleSearchSubmit}
+          defaultValue={searchQuery}
+          key={searchQuery}
+          renderInput={(params) => <TextField {...params} label={'Search' as any} />}
+          renderOption={(props, option, state) => {
+            const [displayName, email] = option.split(';');
+            return (
+              <li {...props}>
+                <Grid container alignItems="center">
+                  <Grid item>
+                    <Box>{displayName}</Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {email}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </li>
+            );
+          }}
+        />
+      </TableTopBar>
+      <Table sx={{minWidth: 650}} size="small" aria-label="users">
+        <TableHead>
+          <TableRow>
+            <TableCell></TableCell>
+            <TableCell>Name</TableCell>
+            <TableCell>Email</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
               <TableCell>
-                <Typography component="h5" variant="h5" color="text.accent">
-                  Users
-                </Typography>
+                <Link
+                  to={`/users/${row.email.toLowerCase()}`}
+                  sx={{textDecoration: 'none', color: 'inherit'}}
+                  component={RouterLink}>
+                  <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
+                </Link>
               </TableCell>
-              <TableCell></TableCell>
-              <TableCell align="right">
-                <Autocomplete
-                  freeSolo
-                  filterOptions={(x) => x}
-                  options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
-                  onInputChange={(event, newInputValue) => {
-                    setSearchInput(newInputValue?.split(';')[0] ?? '');
-                  }}
-                  onChange={handleSearchSubmit}
-                  defaultValue={searchQuery}
-                  key={searchQuery}
-                  renderInput={(params) => <TextField {...params} label={'Search' as any} />}
-                  renderOption={(props, option, state) => {
-                    const [displayName, email] = option.split(';');
-                    return (
-                      <li {...props}>
-                        <Grid container alignItems="center">
-                          <Grid item>
-                            <Box>{displayName}</Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {email}
-                            </Typography>
-                          </Grid>
-                        </Grid>
-                      </li>
-                    );
-                  }}
-                />
+              <TableCell>
+                <Link
+                  to={`/users/${row.email.toLowerCase()}`}
+                  sx={{textDecoration: 'none', color: 'inherit'}}
+                  component={RouterLink}>
+                  {displayUserName(row)}
+                </Link>
+              </TableCell>
+              <TableCell>
+                <Link
+                  to={`/users/${row.email.toLowerCase()}`}
+                  sx={{textDecoration: 'none', color: 'inherit'}}
+                  component={RouterLink}>
+                  {row.email.toLowerCase()}
+                </Link>
               </TableCell>
             </TableRow>
-            <TableRow>
-              <TableCell></TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Email</TableCell>
+          ))}
+          {emptyRows > 0 && (
+            <TableRow style={{height: 37 * emptyRows}}>
+              <TableCell colSpan={6} />
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row)}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.email.toLowerCase()}
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-            {emptyRows > 0 && (
-              <TableRow style={{height: 37 * emptyRows}}>
-                <TableCell colSpan={6} />
-              </TableRow>
-            )}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TablePagination
-                rowsPerPageOptions={perPage}
-                colSpan={3}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </TableContainer>
-    </React.Fragment>
+          )}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TablePagination
+              rowsPerPageOptions={perPage}
+              colSpan={3}
+              count={totalRows}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              SelectProps={{
+                inputProps: {
+                  'aria-label': 'rows per page',
+                },
+                native: true,
+              }}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              ActionsComponent={TablePaginationActions}
+            />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </TableContainer>
   );
 }
