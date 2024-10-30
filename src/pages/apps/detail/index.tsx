@@ -87,194 +87,36 @@ export const ReadApp = () => {
   return (
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           <AppsHeader app={app} moveTooltip={moveTooltip} currentUser={currentUser} />
           {(isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '')) && (
             <AppsAdminActionGroup app={app} currentUser={currentUser} />
           )}
-
+          <Grid item xs={12} spacing={0}>
+            <Box
+              component={'main'}
+              sx={{
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
+              }}>
+              <Typography variant="h5" sx={{px: 2}} color="text.accent">
+                Owner Group
+              </Typography>
+            </Box>
+          </Grid>
           <AppsAccordionListGroup app_group={app.active_owner_app_groups} />
-          {app.active_owner_app_groups?.map((appGroup) => (
-            <React.Fragment key={appGroup.id}>
-              <Grid item xs={6} key={appGroup.id + 'owners'}>
-                <Accordion expanded={expanded === 'app-owners'} onChange={handleChange('app-owners')}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Table>
-                      <TableRow>
-                        <TableCell colSpan={2}>
-                          <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
-                              <Link
-                                to={`/groups/${appGroup.name}`}
-                                sx={{
-                                  textDecoration: 'none',
-                                  color: 'inherit',
-                                }}
-                                component={RouterLink}>
-                                {appGroup.name}
-                              </Link>
-                            </Typography>
-                            <Typography variant="body1" color="grey">
-                              Can manage app and implicitly own all app groups
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total Owners: {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    </Table>
-                  </AccordionSummary>
-                  <AccordionDetails>
-                    <TableContainer component={Paper}>
-                      <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Name</TableCell>
-                            <TableCell>Email</TableCell>
-                            <TableCell>Ending</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length > 0 ? (
-                            Object.entries(groupMemberships(appGroup.active_user_ownerships))
-                              .sort(sortGroupMembers)
-                              .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                                <TableRow key={userId}>
-                                  <TableCell>
-                                    <Link
-                                      to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                      sx={{
-                                        textDecoration: 'none',
-                                        color: 'inherit',
-                                      }}
-                                      component={RouterLink}>
-                                      {displayUserName(users[0].active_user)}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Link
-                                      to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                      sx={{
-                                        textDecoration: 'none',
-                                        color: 'inherit',
-                                      }}
-                                      component={RouterLink}>
-                                      {users[0].active_user?.email.toLowerCase()}
-                                    </Link>
-                                  </TableCell>
-                                  <TableCell>
-                                    <Ending memberships={users} />
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                          ) : (
-                            <EmptyListEntry />
-                          )}
-                        </TableBody>
-
-                        <TableFooter>
-                          <TableRow />
-                        </TableFooter>
-                      </Table>
-                    </TableContainer>
-                  </AccordionDetails>
-                </Accordion>
-              </Grid>
-              <Grid item xs={6} key={appGroup.id + 'members'}>
-                <TableContainer component={Paper}>
-                  <Table sx={{minWidth: 325}} size="small" aria-label="app owner members">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell colSpan={2}>
-                          <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
-                              <Link
-                                to={`/groups/${appGroup.name}`}
-                                sx={{
-                                  textDecoration: 'none',
-                                  color: 'inherit',
-                                }}
-                                component={RouterLink}>
-                                App Owners Group Members
-                              </Link>
-                            </Typography>
-                            <Typography variant="body1" color="grey">
-                              Members of Owners Okta Group
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total Members: {Object.keys(groupMemberships(appGroup.active_user_memberships)).length}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Name</TableCell>
-                        <TableCell>Email</TableCell>
-                        <TableCell>Ending</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {Object.keys(groupMemberships(appGroup.active_user_memberships)).length > 0 ? (
-                        Object.entries(groupMemberships(appGroup.active_user_memberships))
-                          .sort(sortGroupMembers)
-                          .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                            <TableRow key={userId}>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {displayUserName(users[0].active_user)}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {users[0].active_user?.email.toLowerCase()}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Ending memberships={users} />
-                              </TableCell>
-                            </TableRow>
-                          ))
-                      ) : (
-                        <EmptyListEntry />
-                      )}
-                    </TableBody>
-                    <TableFooter>
-                      <TableRow />
-                    </TableFooter>
-                  </Table>
-                </TableContainer>
-              </Grid>
-            </React.Fragment>
-          ))}
+          <Grid item xs={12} spacing={0}>
+            <Box
+              component={'main'}
+              sx={{
+                backgroundColor: (theme) =>
+                  theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
+              }}>
+              <Typography variant="h5" sx={{px: 2}} color="text.accent">
+                App Groups
+              </Typography>
+            </Box>
+          </Grid>
           {app.active_non_owner_app_groups?.map((appGroup) => (
             <React.Fragment key={appGroup.id}>
               <Grid item xs={6} key={appGroup.id + 'owners'}>

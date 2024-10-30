@@ -28,12 +28,89 @@ import {Link as RouterLink, useParams} from 'react-router-dom';
 interface AppAccordionListGroupProps {
   app_group?: AppGroup[];
 }
+interface GroupDetailListProps {
+  member_list: OktaUserGroupMember[];
+}
+
+const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list}) => {
+  const sortGroupMembers = (
+    [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
+    [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+  ): number => {
+    let aEmail = aUsers[0].active_user?.email ?? '';
+    let bEmail = bUsers[0].active_user?.email ?? '';
+    return aEmail.localeCompare(bEmail);
+  };
+
+  return (
+    <TableContainer component={Paper}>
+      <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
+        <TableHead>
+          <TableRow>
+            <TableCell>Name</TableCell>
+            <TableCell>Email</TableCell>
+            <TableCell>Ending</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {member_list.length > 0 ? (
+            member_list.map((member: OktaUserGroupMember) => (
+              <TableRow key={member.active_user?.id}>
+                <TableCell>
+                  <Link
+                    to={`/users/${member.active_user?.email.toLowerCase()}`}
+                    sx={{
+                      textDecoration: 'none',
+                      color: 'inherit',
+                    }}
+                    component={RouterLink}>
+                    {displayUserName(member.active_user)}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link
+                    to={`/users/${member.active_user?.email.toLowerCase()}`}
+                    sx={{
+                      textDecoration: 'none',
+                      color: 'inherit',
+                    }}
+                    component={RouterLink}>
+                    {member.active_user?.email.toLowerCase()}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Ending memberships={member_list} />
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <EmptyListEntry />
+          )}
+        </TableBody>
+
+        <TableFooter>
+          <TableRow />
+        </TableFooter>
+      </Table>
+    </TableContainer>
+  );
+};
 
 export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({app_group}) => {
-  const [expanded, setExpanded] = React.useState<string | false>(false);
+  const [groupExpanded, setGroupExpanded] = React.useState<boolean>(false);
+  const [memberExpanded, setMemberExpanded] = React.useState<boolean>(false);
 
   const handleChange = (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
-    setExpanded(newExpanded ? panel : false);
+    switch (panel) {
+      case 'members':
+        setMemberExpanded(!memberExpanded);
+        break;
+      case 'owners':
+        setGroupExpanded(!groupExpanded);
+        break;
+      default:
+        break;
+    }
   };
   return (
     <React.Fragment>
@@ -79,13 +156,25 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="column" spacing={1}>
-                        <Accordion expanded={expanded === 'owners'} onChange={handleChange('owners')}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>OwnerList</AccordionSummary>
-                          <AccordionDetails>Owners list goes here</AccordionDetails>
+                        <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Typography gutterBottom variant="body1" component="span">
+                              Group Owners
+                            </Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <GroupDetailList member_list={appGroup.active_user_ownerships || []} />
+                          </AccordionDetails>
                         </Accordion>
-                        <Accordion expanded={expanded === 'members'} onChange={handleChange('members')}>
-                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>MemberList</AccordionSummary>
-                          <AccordionDetails>Members list goes here</AccordionDetails>
+                        <Accordion expanded={memberExpanded} onChange={handleChange('members')}>
+                          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                            <Typography gutterBottom variant="body1" component="span">
+                              Group Members
+                            </Typography>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <GroupDetailList member_list={appGroup.active_user_memberships || []} />
+                          </AccordionDetails>
                         </Accordion>
                       </Stack>
                     </TableCell>
