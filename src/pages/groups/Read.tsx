@@ -10,9 +10,6 @@ import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import Link from '@mui/material/Link';
 import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemAvatar from '@mui/material/ListItemAvatar';
-import ListItemText from '@mui/material/ListItemText';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -25,7 +22,6 @@ import TableFooter from '@mui/material/TableFooter';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import AppIcon from '@mui/icons-material/AppShortcut';
 import AuditGroupIcon from '@mui/icons-material/History';
 import AuditRoleIcon from '@mui/icons-material/Diversity2';
 import DeleteIcon from '@mui/icons-material/Close';
@@ -57,6 +53,9 @@ import {
   GroupMember,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
+import {Diversity3 as RoleIcon} from '@mui/icons-material';
+import AppGroupInfo from './AppGroupInfo';
+import AvatarButton from '../../components/AvatarButton';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -214,27 +213,18 @@ export default function ReadGroup() {
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Grid container spacing={1}>
-                <Grid
-                  item
-                  xs={8.5}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
+          <Grid item sm={12}>
+            <Paper sx={{py: 4, px: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack alignItems="center" direction="column" gap={1}>
+                  <Stack direction="row" gap={4}>
+                    <AvatarButton
+                      icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
+                      text={displayGroupType(group)}
+                    />
+                    {group.type == 'app_group' && <AppGroupInfo group={group as AppGroup} />}
+                    {!group.is_managed && <ExternallyManaged group={group} />}
+                  </Stack>
                   <Typography variant="h3">
                     {group.deleted_at != null ? (
                       <>
@@ -261,102 +251,36 @@ export default function ReadGroup() {
                       />
                     ))}
                   </Box>
-                </Grid>
-                <Grid
-                  item
-                  xs={0.5}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
-                  <Stack style={{position: 'absolute', right: '2px'}}>
-                    <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
-                      <div>
-                        <CreateUpdateGroup currentUser={currentUser} group={group} />
-                      </div>
-                    </Tooltip>
-                    <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
-                      <div>
-                        <DeleteGroup currentUser={currentUser} group={group} />
-                      </div>
-                    </Tooltip>
-                    <Tooltip
-                      title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
-                      placement="right"
-                      PopperProps={moveTooltip}>
-                      <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
-                        <AuditGroupIcon />
+                </Stack>
+                <Divider />
+                <Stack direction="row" justifyContent="center">
+                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                    <div>
+                      <CreateUpdateGroup currentUser={currentUser} group={group} />
+                    </div>
+                  </Tooltip>
+                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                    <div>
+                      <DeleteGroup currentUser={currentUser} group={group} />
+                    </div>
+                  </Tooltip>
+                  <Tooltip
+                    title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
+                    placement="right"
+                    PopperProps={moveTooltip}>
+                    <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
+                      <AuditGroupIcon />
+                    </IconButton>
+                  </Tooltip>
+                  {group.type == 'role_group' ? (
+                    <Tooltip title="Role audit" placement="right" PopperProps={moveTooltip}>
+                      <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
+                        <AuditRoleIcon />
                       </IconButton>
                     </Tooltip>
-                    {group.type == 'role_group' ? (
-                      <Tooltip title="Role audit" placement="right" PopperProps={moveTooltip}>
-                        <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
-                          <AuditRoleIcon />
-                        </IconButton>
-                      </Tooltip>
-                    ) : null}
-                  </Stack>
-                </Grid>
-                <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
-                <Grid
-                  item
-                  xs={3}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                  <List
-                    sx={{
-                      width: '100%',
-                      maxWidth: 360,
-                    }}>
-                    <ListItem key="grouptype">
-                      <ListItemAvatar>
-                        <Avatar sx={{bgcolor: 'primary.main'}}>
-                          <GroupIcon />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText primary={displayGroupType(group)} />
-                    </ListItem>
-                    {group.type == 'app_group' ? (
-                      ((group ?? {}) as AppGroup).app?.deleted_at != null ? (
-                        <ListItem key="appgroupapp">
-                          <ListItemAvatar>
-                            <Avatar sx={{bgcolor: 'primary.main'}}>
-                              <AppIcon />
-                            </Avatar>
-                          </ListItemAvatar>
-                          <ListItemText
-                            sx={{textDecoration: 'line-through'}}
-                            primary={((group ?? {}) as AppGroup).app?.name}
-                          />
-                        </ListItem>
-                      ) : (
-                        <ListItem
-                          key="appgroupapp"
-                          component={RouterLink}
-                          to={`/apps/${((group ?? {}) as AppGroup).app?.name}`}
-                          sx={{textDecoration: 'none', color: 'inherit'}}>
-                          <ListItemAvatar>
-                            <Avatar sx={{bgcolor: 'primary.main'}}>
-                              <AppIcon />
-                            </Avatar>
-                          </ListItemAvatar>
-                          <ListItemText primary={((group ?? {}) as AppGroup).app?.name} />
-                        </ListItem>
-                      )
-                    ) : (
-                      ''
-                    )}
-                    {!group.is_managed ? <ExternallyManaged group={group} /> : ''}
-                  </List>
-                </Grid>
-              </Grid>
+                  ) : null}
+                </Stack>
+              </Stack>
             </Paper>
           </Grid>
           {group.type == 'role_group' ? (

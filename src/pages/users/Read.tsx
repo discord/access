@@ -66,7 +66,7 @@ function ProfileToCard({user}: ProfileToCardProps) {
           {Object.entries(user.profile)
             .filter(([_, v]) => v != null)
             .map(([key, value]: [string, string]) => (
-              <ListItem key={key} sx={{paddingY: 0}}>
+              <ListItem key={key} sx={{padding: 0}}>
                 <ListItemText primary={key} secondary={value} />
               </ListItem>
             ))}
@@ -92,14 +92,14 @@ function ReportingToCard({user}: ReportingToCardProps) {
             <ListItem
               component={RouterLink}
               to={`/users/${user.manager.email.toLowerCase()}`}
-              sx={{textDecoration: 'none', color: 'inherit'}}>
+              sx={{textDecoration: 'none', color: 'inherit', padding: 0}}>
               <ListItemAvatar>
                 <UserAvatar name={displayUserName(user.manager)} size={32} variant={'body1'} />
               </ListItemAvatar>
               <ListItemText primary={displayUserName(user.manager)} secondary={user.manager.profile?.Title ?? '—'} />
             </ListItem>
           ) : (
-            <ListItem alignItems="flex-start">
+            <ListItem alignItems="flex-start" sx={{padding: 0}}>
               <ListItemText primary="No-one" />
             </ListItem>
           )}
@@ -455,40 +455,11 @@ export default function ReadUser() {
     <React.Fragment>
       <Container maxWidth="xl" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
-            <Paper
-              sx={{
-                p: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: 240,
-              }}>
-              <UserAvatar name={displayUserName(user)} size={220} variant={'h1'} />
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={7} lg={9} alignItems="center">
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                alignText: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-              }}>
-              <Grid container>
-                <Grid
-                  item
-                  xs={12}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
+          <Grid item xs={12} md={12} lg={12} alignItems="center">
+            <Paper sx={{py: 4, px: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack alignItems="center" direction="column" gap={1}>
+                  <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />
                   <Typography variant="h3">
                     {user.deleted_at != null ? (
                       <>
@@ -499,15 +470,16 @@ export default function ReadUser() {
                     )}
                   </Typography>
                   <Typography variant="h5">{user.email?.toLowerCase()}</Typography>
-                  <Stack style={{position: 'absolute', right: '2px'}}>
-                    <Tooltip title="Audit" placement="right" PopperProps={moveTooltip}>
-                      <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
-                        <AuditIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Grid>
-              </Grid>
+                </Stack>
+                <Divider />
+                <Stack justifyContent="center" direction="row" gap={1}>
+                  <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
+                    <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
+                      <AuditIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </Stack>
             </Paper>
           </Grid>
           <Grid item container xs={12} lg={3} spacing={3} alignContent={'flex-start'} order={{xs: 2, lg: 3}}>
