@@ -111,7 +111,7 @@ export default function ListApps() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   Applications
                 </Typography>
               </TableCell>

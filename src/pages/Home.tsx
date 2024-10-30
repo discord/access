@@ -18,8 +18,6 @@ import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
 
-import {grey} from '@mui/material/colors';
-
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
   general: ['Welcome to Access!', 'Overview', <GeneralIcon />],
@@ -127,7 +125,7 @@ function AccordionMaker(props: AccordionMakerProps) {
 
   return (
     <>
-      <Typography variant="h4" color="primary" sx={{margin: '15px 0'}}>
+      <Typography variant="h4" color="text.accent" sx={{margin: '15px 0'}}>
         {sections[props.which][0]}
       </Typography>
       {Object.entries(guide[props.which]).map(([key, value]: [string, string]) => (
@@ -136,7 +134,7 @@ function AccordionMaker(props: AccordionMakerProps) {
             expandIcon={<ExpandMoreIcon />}
             aria-controls={'panel-content' + key}
             id={'panel-header' + key}
-            sx={{fontWeight: 500, color: grey[900]}}>
+            sx={{fontWeight: 500}}>
             {key}
           </AccordionSummary>
           <AccordionDetails>
@@ -174,7 +172,7 @@ export default function Home() {
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
-                    <Typography variant="h5" fontWeight={500} color="primary">
+                    <Typography variant="h5" fontWeight={500} color="text.accent">
                       Access User Guides
                     </Typography>
                   </Grid>

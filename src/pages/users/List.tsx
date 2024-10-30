@@ -108,7 +108,7 @@ export default function ListUsers() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   Users
                 </Typography>
               </TableCell>

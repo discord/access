@@ -10,11 +10,9 @@ import EventIcon from '@mui/icons-material/Event';
 import {Dayjs} from 'dayjs';
 
 import {DatePicker, DatePickerProps} from '@mui/x-date-pickers/DatePicker';
-import {PickersDay, PickersDayProps, pickersDayClasses} from '@mui/x-date-pickers/PickersDay';
+import {PickersDay, PickersDayProps} from '@mui/x-date-pickers/PickersDay';
 import {UseDateFieldProps} from '@mui/x-date-pickers/DateField';
 import {BaseSingleInputFieldProps, DateValidationError, FieldSection} from '@mui/x-date-pickers/models';
-
-import {grey} from '@mui/material/colors';
 
 function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDate?: Dayjs; rangeSelected: boolean}) {
   const {startDate, endDate, rangeSelected, ...rest} = props;
@@ -35,22 +33,26 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
 
   let selectedClass = '';
   let style = {};
+  let dayStyle = {};
 
   if (rangeSelected && props.day.isSame(endDate!, 'day')) {
     selectedClass = 'Mui-selected';
   }
 
   if (isSelected) {
-    style = {backgroundColor: 'primary_extra_light.main'};
+    style = {backgroundColor: theme.palette.primary.light};
+    dayStyle = {color: theme.palette.common.black};
   } else if (start) {
-    style = {background: `linear-gradient(90deg, white 50%, ${theme.palette.primary_extra_light.main} 50%)`};
+    style = {
+      background: `linear-gradient(90deg, transparent 50%, ${theme.palette.primary.light} 50%)`,
+    };
   } else if (end) {
-    style = {background: `linear-gradient(90deg, ${theme.palette.primary_extra_light.main} 50%, white 50%)`};
+    style = {background: `linear-gradient(90deg, ${theme.palette.primary.light} 50%, transparent 50%)`};
   }
 
   return (
     <Box component={'div'} sx={style} key={props.day.toString()}>
-      <PickersDay className={selectedClass} {...rest} />
+      <PickersDay className={selectedClass} sx={dayStyle} {...rest} />
     </Box>
   );
 }
@@ -78,6 +80,7 @@ function ButtonField(props: ButtonFieldProps) {
     inputProps: {'aria-label': ariaLabel} = {},
   } = props;
 
+  const theme = useTheme();
   let displayString = '';
 
   if (rangeSelected) {
@@ -97,8 +100,8 @@ function ButtonField(props: ButtonFieldProps) {
           aria-label={ariaLabel}
           onClick={() => setOpen?.((prev) => !prev)}
           sx={{
-            color: grey[600],
-            borderColor: grey[300],
+            color: theme.palette.text.secondary,
+            borderColor: theme.palette.action.disabled,
             height: '48.5px',
             minWidth: '245px',
             fontSize: '15px',
@@ -106,17 +109,19 @@ function ButtonField(props: ButtonFieldProps) {
             zIndex: '1',
             padding: '0 8px',
           }}>
-          {displayString} <EventIcon sx={{marginLeft: '20px', color: grey[500]}} />
+          {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.secondary}} />
         </Button>
       </Box>
       <Typography
         component={'span'}
         sx={{
           fontSize: '12px',
-          color: grey[600],
+          color: theme.palette.text.secondary,
           position: 'absolute',
-          backgroundColor: 'white',
+          // HACK: Match dark mode MUI Paper at elevation 1, which is where this is currently used
+          backgroundColor: theme.palette.mode === 'light' ? theme.palette.background.default : '#1E1E1E',
           marginLeft: '5px',
+          paddingX: '3px',
           zIndex: '2',
           top: '0.01%',
           left: '1%',

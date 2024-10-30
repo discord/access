@@ -109,7 +109,7 @@ export default function ListTags() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   Tags
                 </Typography>
               </TableCell>

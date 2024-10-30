@@ -233,7 +233,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       <FormContainer<AddGroupsForm> onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addGroupsText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'one or more selected groups is limited to ' +
@@ -241,7 +241,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                 ' days.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {disallowedGroups.length != 0 && !isAccessAdmin(currentUser)
               ? 'Some groups may not be added due to group tag constraints.'
               : null}

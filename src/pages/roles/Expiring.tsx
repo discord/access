@@ -18,7 +18,6 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import {red, yellow} from '@mui/material/colors';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -216,7 +215,7 @@ export default function ExpiringRoless() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   Expiring Roles
                 </Typography>
               </TableCell>
@@ -310,11 +309,11 @@ export default function ExpiringRoless() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor:
+                  bgcolor: ({palette: {highlight}}) =>
                     dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? yellow[100]
+                      ? highlight.warning.main
                       : dayjs(row.ended_at).isBefore(dayjs())
-                        ? red[100]
+                        ? highlight.danger.main
                         : null,
                 }}>
                 <TableCell>

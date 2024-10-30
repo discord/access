@@ -248,7 +248,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
@@ -256,7 +256,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 ' days.'
               : null}
           </Typography>
-          <Typography variant="subtitle1" color="primary">
+          <Typography variant="subtitle1" color="text.accent">
             {disallow_owner_add && !isAccessAdmin(props.currentUser)
               ? 'Owners may not add themselves as ' + (props.owner ? 'owners' : 'members') + ' of this group.'
               : null}

@@ -25,8 +25,6 @@ import DeleteIcon from '@mui/icons-material/Close';
 import Disabled from '@mui/icons-material/PauseCircle';
 import Enabled from '@mui/icons-material/TaskAlt';
 
-import {grey} from '@mui/material/colors';
-
 import {useGetTagById, usePutGroupById, usePutAppById} from '../../api/apiComponents';
 import {App, AppGroup, PolymorphicGroup, Tag} from '../../api/apiSchemas';
 
@@ -145,12 +143,11 @@ export default function ReadTag() {
               ) : (
                 <Box>
                   <Chip
-                    color="primary"
                     icon={<Disabled />}
                     label="Disabled"
                     sx={{
                       marginTop: '10px',
-                      bgcolor: grey[500],
+                      bgcolor: (theme) => theme.palette.action.disabledBackground,
                     }}
                   />
                 </Box>
@@ -176,7 +173,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Tag Constraints
                         </Typography>
                       </Stack>
@@ -235,7 +232,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={2}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Apps with Tag
                         </Typography>
                       </Stack>
@@ -306,7 +303,7 @@ export default function ReadTag() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           Groups with Tag
                         </Typography>
                       </Stack>

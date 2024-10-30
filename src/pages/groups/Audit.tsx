@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 
 import {Link as RouterLink, useParams, useSearchParams, useNavigate} from 'react-router-dom';
 import Link from '@mui/material/Link';
@@ -22,7 +22,6 @@ import TextField from '@mui/material/TextField';
 import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
-import {lightGreen, red} from '@mui/material/colors';
 
 import dayjs from 'dayjs';
 
@@ -199,7 +198,7 @@ export default function AuditGroup() {
           <TableHead>
             <TableRow>
               <TableCell colSpan={2}>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   {(group.deleted_at ?? null) != null ? (
                     <Link
                       to={`/groups/${group.id}`}
@@ -299,7 +298,10 @@ export default function AuditGroup() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)) ? lightGreen[100] : red[100],
+                  backgroundColor: ({palette}) =>
+                    Object.values(row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)))
+                      ? palette.highlight.success.main
+                      : palette.highlight.danger.main,
                 }}>
                 <TableCell>
                   {(row.user?.deleted_at ?? null) != null ? (

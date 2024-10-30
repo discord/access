@@ -32,8 +32,6 @@ import DeleteIcon from '@mui/icons-material/Close';
 import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
 
-import {grey} from '@mui/material/colors';
-
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from './CreateUpdate';
 import DeleteGroup from './Delete';
@@ -259,7 +257,8 @@ export default function ReadGroup() {
                         icon={<TagIcon />}
                         sx={{
                           margin: '10px 2px 0 2px',
-                          bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
+                          bgcolor: (theme) =>
+                            tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
                         }}
                       />
                     ))}
@@ -370,7 +369,7 @@ export default function ReadGroup() {
                     <TableHead>
                       <TableRow>
                         <TableCell>
-                          <Typography variant="h6" color="primary">
+                          <Typography variant="h6" color="text.accent">
                             Groups Owned by Role Membership
                           </Typography>
                         </TableCell>
@@ -453,7 +452,7 @@ export default function ReadGroup() {
                     <TableHead>
                       <TableRow>
                         <TableCell>
-                          <Typography variant="h6" color="primary">
+                          <Typography variant="h6" color="text.accent">
                             Groups with Members granted by Role Membership
                           </Typography>
                         </TableCell>
@@ -523,7 +522,7 @@ export default function ReadGroup() {
                       ) : (
                         <TableRow key="rolemembergroup">
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>
@@ -545,10 +544,10 @@ export default function ReadGroup() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           {group.type == 'role_group' ? 'Role Owners' : 'Group Owners'}
                         </Typography>
-                        <Typography variant="body1" color="grey">
+                        <Typography variant="body1" color="text.secondary">
                           {group.type == 'role_group'
                             ? 'Can manage description and membership of Role'
                             : 'Can manage description and membership of Group'}
@@ -709,7 +708,7 @@ export default function ReadGroup() {
                   ) : (
                     <TableRow key="owners">
                       <TableCell>
-                        <Typography variant="body2" color="grey">
+                        <Typography variant="body2" color="text.secondary">
                           None
                         </Typography>
                       </TableCell>
@@ -729,10 +728,10 @@ export default function ReadGroup() {
                   <TableRow>
                     <TableCell colSpan={3}>
                       <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           {group.type == 'role_group' ? 'Role Members' : 'Group Members'}
                         </Typography>
-                        <Typography variant="body1" color="grey">
+                        <Typography variant="body1" color="text.secondary">
                           {group.type == 'role_group' ? 'Members of Okta Group for Role' : 'Members of Okta Group'}
                         </Typography>
                       </Stack>
@@ -879,7 +878,7 @@ export default function ReadGroup() {
                   ) : (
                     <TableRow key="member">
                       <TableCell>
-                        <Typography variant="body2" color="grey">
+                        <Typography variant="body2" color="text.secondary">
                           None
                         </Typography>
                       </TableCell>

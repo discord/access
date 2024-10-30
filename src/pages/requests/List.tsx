@@ -18,7 +18,6 @@ import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Autocomplete from '@mui/material/Autocomplete';
-import {lightGreen, red} from '@mui/material/colors';
 
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -131,7 +130,7 @@ export default function ListRequests() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   Access Requests
                 </Typography>
               </TableCell>
@@ -196,7 +195,12 @@ export default function ListRequests() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: row.status == 'APPROVED' ? lightGreen[100] : row.status == 'REJECTED' ? red[100] : 'inherit',
+                  bgcolor: ({palette: {highlight}}) =>
+                    row.status == 'APPROVED'
+                      ? highlight.success.main
+                      : row.status == 'REJECTED'
+                        ? highlight.danger.main
+                        : 'inherit',
                 }}>
                 <TableCell>
                   {(row.requester?.deleted_at ?? null) != null ? (

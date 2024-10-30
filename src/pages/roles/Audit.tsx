@@ -18,7 +18,6 @@ import TextField from '@mui/material/TextField';
 import Autocomplete from '@mui/material/Autocomplete';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
-import {lightGreen, red} from '@mui/material/colors';
 
 import dayjs from 'dayjs';
 
@@ -194,7 +193,7 @@ export default function AuditRole() {
           <TableHead>
             <TableRow>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
+                <Typography component="h5" variant="h5" color="text.accent">
                   {(role.deleted_at ?? null) != null ? (
                     <Link
                       to={`/roles/${role.id}`}
@@ -275,7 +274,10 @@ export default function AuditRole() {
               <TableRow
                 key={row.id}
                 sx={{
-                  bgcolor: row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)) ? lightGreen[100] : red[100],
+                  bgcolor: ({palette: {highlight}}) =>
+                    row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
+                      ? highlight.success.main
+                      : highlight.danger.main,
                 }}>
                 <TableCell>
                   {(row.group?.deleted_at ?? null) != null ? (

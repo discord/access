@@ -141,7 +141,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
-              <Typography variant="h6" color="primary">
+              <Typography variant="h6" color="text.accent">
                 Owner of Group or Roles
               </Typography>
             </TableCell>
@@ -278,7 +278,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
-              <Typography variant="h6" color="primary">
+              <Typography variant="h6" color="text.accent">
                 Member of Groups or Roles
               </Typography>
             </TableCell>
@@ -375,7 +375,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
           ) : (
             <TableRow>
               <TableCell>
-                <Typography variant="body2" color="grey">
+                <Typography variant="body2" color="text.secondary">
                   None
                 </Typography>
               </TableCell>
