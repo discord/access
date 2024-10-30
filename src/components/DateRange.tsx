@@ -91,26 +91,24 @@ function ButtonField(props: ButtonFieldProps) {
 
   return (
     <Box component={'div'} sx={{position: 'relative'}}>
-      <Box component={'div'}>
-        <Button
-          variant="outlined"
-          size="medium"
-          id={id}
-          disabled={disabled}
-          ref={ref}
-          aria-label={ariaLabel}
-          onClick={() => setOpen?.((prev) => !prev)}
-          sx={{
-            color: theme.palette.text.secondary,
-            borderColor: theme.palette.action.disabled,
-            minWidth: '245px',
-            fontSize: '15px',
-            position: 'relative',
-            zIndex: '1',
-          }}>
-          {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.secondary}} />
-        </Button>
-      </Box>
+      <Button
+        variant="outlined"
+        size="medium"
+        id={id}
+        disabled={disabled}
+        ref={ref}
+        aria-label={ariaLabel}
+        onClick={() => setOpen?.((prev) => !prev)}
+        sx={{
+          color: theme.palette.text.secondary,
+          borderColor: theme.palette.action.disabled,
+          minWidth: '245px',
+          fontSize: '15px',
+          position: 'relative',
+          zIndex: '1',
+        }}>
+        {displayString} <EventIcon sx={{marginLeft: '20px', color: theme.palette.text.secondary}} />
+      </Button>
       <Typography
         component={'span'}
         sx={{
