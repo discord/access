@@ -11,7 +11,17 @@ from okta.models.user_profile import UserProfile
 from okta.models.user_schema import UserSchema
 from sqlalchemy.orm import joinedload
 
-from api.models import AccessRequest, AccessRequestStatus, App, AppGroup, OktaGroup, OktaUser, RoleGroup, Tag
+from api.models import (
+    AccessRequest,
+    AccessRequestStatus,
+    App,
+    AppGroup,
+    OktaGroup,
+    OktaUser,
+    RoleGroup,
+    RoleRequest,
+    Tag,
+)
 
 
 class GroupProfileFactory(factory.Factory):
@@ -229,6 +239,15 @@ class AccessRequestFactory(factory.Factory):
 
     class Meta:
         model = AccessRequest
+
+
+class RoleRequestFactory(factory.Factory):
+    id = factory.Faker("pystr")
+    status = AccessRequestStatus.PENDING
+    request_reason = factory.Faker("paragraph", nb_sentences=5)
+
+    class Meta:
+        model = RoleRequest
 
 
 class TagFactory(factory.Factory):

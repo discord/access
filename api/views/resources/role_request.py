@@ -15,6 +15,7 @@ from api.models import (
     OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
+    RoleGroup,
     RoleRequest,
 )
 from api.operations import (
@@ -373,6 +374,12 @@ class AccessRequestList(MethodResource):
             abort(
                 400,
                 "Groups not managed by Access cannot be modified",
+            )
+
+        if type(group) is RoleGroup:
+            abort(
+                400,
+                "Role requests may only be made for groups and app groups (not roles).",
             )
 
         existing_role_requests = (
