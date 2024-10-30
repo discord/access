@@ -51,7 +51,7 @@ class CreateRoleRequest:
 
         self.requested_group = (
             db.session.query(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+            .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
             .first()
@@ -105,19 +105,20 @@ class CreateRoleRequest:
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
             approvers = get_access_owners()
 
-        group = (
-            db.session.query(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
-                ),
-            )
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.requested_group.id)
-            .first()
-        )
+        # TODO clean up?
+        # group = (
+        #     db.session.query(OktaGroup)
+        #     .options(
+        #         selectin_polymorphic(OktaGroup, [AppGroup]),
+        #         joinedload(AppGroup.app),
+        #         selectinload(OktaGroup.active_group_tags).options(
+        #             joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
+        #         ),
+        #     )
+        #     .filter(OktaGroup.deleted_at.is_(None))
+        #     .filter(OktaGroup.id == self.requested_group.id)
+        #     .first()
+        # )
 
         # Audit logging
         context = has_request_context()
@@ -132,7 +133,7 @@ class CreateRoleRequest:
                     else None,
                     "current_user_id": self.requester.id,
                     "current_user_email": self.requester.email,
-                    "group": group,
+                    "group": self.requested_group,
                     "role_request": role_request, # TODO may need to pull out requester_role
                     "requester": self.requester,
                     "group_owners": approvers,
@@ -142,7 +143,8 @@ class CreateRoleRequest:
 
         conditional_access_responses = self.conditional_access_hook.role_request_created(
             role_request=role_request,
-            group=group,
+            role=self.requester_role,
+            group=self.requested_group,
             group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
             requester=self.requester,
             requester_role=self.requester_role,
@@ -166,10 +168,10 @@ class CreateRoleRequest:
 
                 return role_request
 
-        self.notification_hook.role_request_created(
+        self.notification_hook.access_role_request_created(
             role_request=role_request,
             role = self.requester_role,
-            group=group,
+            group=self.requested_group,
             requester=self.requester,
             approvers=approvers,
         )

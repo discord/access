@@ -45,6 +45,8 @@ class ApproveRoleRequest:
 
         self.notify = notify
 
+        self.notify_requester = notify_requester
+
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> RoleRequest:
@@ -58,7 +60,7 @@ class ApproveRoleRequest:
 
         # Don't allow approving a request if the reason is invalid and required
         valid, _ = CheckForReason(
-            group=self.role_request.requested_group,
+            group=self.role_request.requester_role_id,
             reason=self.approval_reason,
             members_to_add=[self.role_request.requested_group_id] if not self.role_request.request_ownership else [],
             owners_to_add=[self.role_request.requested_group_id] if self.role_request.request_ownership else [],
@@ -112,7 +114,6 @@ class ApproveRoleRequest:
                 owner_groups_to_add=[self.role_request.requested_group_id]
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
-                notify=self.notify,
             ).execute()
         else:
             ModifyRoleGroup(
@@ -121,8 +122,22 @@ class ApproveRoleRequest:
                 groups_to_add=[self.role_request.requested_group_id]
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
-                notify=self.notify,
             ).execute()
 
+
+        if self.notify:
+            requester = db.session.get(OktaUser, self.role_request.requester_user_id)
+            requester_role = db.session.get(OktaGroup, self.role_request.requester_role)
+
+            approvers = get_all_possible_request_approvers(self.role_request)
+
+            self.notification_hook.role_request_completed(
+                role_request=self.role_request,
+                role = requester_role,
+                group=group,
+                requester=requester,
+                approvers=approvers,
+                notify_requester=True,
+            )
+
         return self.role_request
-        

@@ -93,7 +93,7 @@ class RejectRoleRequest:
 
             approvers = get_all_possible_request_approvers(self.role_request)
 
-            self.notification_hook.role_request_completed(
+            self.notification_hook.access_role_request_completed(
                 role_request=self.role_request,
                 role = requester_role,
                 group=group,

@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, Tag
+from api.models import AccessRequest, OktaGroup, OktaUser, Tag, RoleRequest
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
@@ -31,6 +31,12 @@ class ConditionalAccessPluginSpec:
     ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the access request."""
 
+    @hookspec
+    def role_request_created(
+        self, role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
+    ) -> Optional[ConditionalAccessResponse]:
+        """Automatically approve, deny, or continue the access request."""
+
 
 @hookimpl(wrapper=True)
 def access_request_created(
@@ -43,7 +49,23 @@ def access_request_created(
         # Log and do not raise since request failures should not
         # break the flow. The access request can still be manually
         # approved or denied
-        logger.exception("Failed to execute request created callback")
+        logger.exception("Failed to execute access request created callback")
+
+    return []
+
+
+@hookimpl(wrapper=True)
+def role_request_created(
+    role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
+) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
+    try:
+        # Trigger exception if it exists
+        return (yield)
+    except Exception:
+        # Log and do not raise since request failures should not
+        # break the flow. The access request can still be manually
+        # approved or denied
+        logger.exception("Failed to execute role request created callback")
 
     return []
 

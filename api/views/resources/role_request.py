@@ -29,10 +29,10 @@ from api.operations.constraints import (
 )
 from api.pagination import paginate
 from api.views.schemas import (
-    RoleRequestPaginationSchema,
-    RoleRequestSchema,
     CreateRoleRequestSchema,
     ResolveRoleRequestSchema,
+    RoleRequestPaginationSchema,
+    RoleRequestSchema,
     SearchRoleRequestPaginationRequestSchema,
 )
 
@@ -106,7 +106,7 @@ class RoleRequestResource(MethodResource):
             .filter(RoleRequest.id == role_request_id)
             .first_or_404()
         )
-        return schema.dump(access_request)
+        return schema.dump(role_request)
 
     @FlaskApiSpecDecorators.request_schema(ResolveRoleRequestSchema)
     @FlaskApiSpecDecorators.response_schema(RoleRequestSchema)
@@ -120,21 +120,21 @@ class RoleRequestResource(MethodResource):
         role_request_args = ResolveRoleRequestSchema().load(request.get_json())
 
         # Check if the current user is the user who created the request (they can always reject their own requests)
-        if role_request.requester_user_id == g.current_user_id: # TODO or if current user/requester in role?
+        if role_request.requester_user_id == g.current_user_id:
             if role_request_args["approved"]:
                 abort(403, "Users cannot approve their own requests")
-        # Otherwise check if the current user can manage the requested group for the access request
+        # Otherwise check if the current user can manage the requested group for the role request
         elif not AuthorizationHelpers.can_manage_group(role_request.active_requested_group):
             abort(403, "Current user is not allowed to perform this action")
 
         # Check group tags to see if a reason is required for approval
         if role_request_args["approved"]:
             valid, err_message = CheckForReason(
-                group=role_request.active_requested_group,
+                group=role_request.requester_role_id,
                 reason=role_request_args.get("reason"),
-                members_to_add=[role_request.requester_user_id] if not role_request.request_ownership else [], # TODO change to requester role members
-                owners_to_add=[role_request.requester_user_id] if role_request.request_ownership else [], # TODO change to requester role members
-            ).execute_for_group()
+                members_to_add=[role_request.requested_group_id] if not role_request.request_ownership else [],
+                owners_to_add=[role_request.requested_group_id] if role_request.request_ownership else [],
+            ).execute_for_role()
             if not valid:
                 abort(400, err_message)
 
@@ -196,35 +196,42 @@ class RoleRequestResource(MethodResource):
             )
         ).dump(role_request)
 
-___________________________________________________________________________________________________________________
 
 class AccessRequestList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(SearchAccessRequestPaginationRequestSchema, location="query")
-    @FlaskApiSpecDecorators.response_schema(AccessRequestPaginationSchema)
+    @FlaskApiSpecDecorators.request_schema(SearchRoleRequestPaginationRequestSchema, location="query")
+    @FlaskApiSpecDecorators.response_schema(RoleRequestPaginationSchema)
     def get(self) -> ResponseReturnValue:
-        search_args = SearchAccessRequestPaginationRequestSchema().load(request.args)
+        search_args = SearchRoleRequestPaginationRequestSchema().load(request.args)
 
-        query = AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).order_by(AccessRequest.created_at.desc())
+        query = RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).order_by(RoleRequest.created_at.desc())
 
         if "status" in search_args:
-            query = query.filter(AccessRequest.status == search_args["status"])
+            query = query.filter(RoleRequest.status == search_args["status"])
 
         if "requester_user_id" in search_args:
             if search_args["requester_user_id"] == "@me":
-                query = query.filter(AccessRequest.requester_user_id == g.current_user_id)
+                query = query.filter(RoleRequest.requester_user_id == g.current_user_id)
             else:
                 requester_alias = aliased(OktaUser)
-                query = query.join(AccessRequest.requester.of_type(requester_alias)).filter(
+                query = query.join(RoleRequest.requester.of_type(requester_alias)).filter(
                     db.or_(
-                        AccessRequest.requester_user_id == search_args["requester_user_id"],
+                        RoleRequest.requester_user_id == search_args["requester_user_id"],
                         requester_alias.email.ilike(search_args["requester_user_id"]),
                     )
                 )
 
-        if "requested_group_id" in search_args:
-            query = query.join(AccessRequest.requested_group).filter(
+        if "requester_role_id" in search_args:
+            query = query.join(RoleRequest.requester_role).filter(
                 db.or_(
-                    AccessRequest.requested_group_id == search_args["requested_group_id"],
+                    RoleRequest.requester_role_id == search_args["requester_role_id"],
+                    OktaGroup.name.ilike(search_args["requester_role_id"]),
+                )
+            )
+
+        if "requested_group_id" in search_args:
+            query = query.join(RoleRequest.requested_group).filter(
+                db.or_(
+                    RoleRequest.requested_group_id == search_args["requested_group_id"],
                     OktaGroup.name.ilike(search_args["requested_group_id"]),
                 )
             )
@@ -266,7 +273,7 @@ class AccessRequestList(MethodResource):
                     .subquery()
                 )
 
-                query = query.join(AccessRequest.requested_group).filter(
+                query = query.join(RoleRequest.requested_group).filter(
                     db.or_(
                         OktaGroup.id.in_(groups_owned_subquery),
                         OktaGroup.id.in_(app_groups_owned_subquery),
@@ -277,12 +284,12 @@ class AccessRequestList(MethodResource):
 
         if "resolver_user_id" in search_args:
             if search_args["resolver_user_id"] == "@me":
-                query = query.filter(AccessRequest.resolver_user_id == g.current_user_id)
+                query = query.filter(RoleRequest.resolver_user_id == g.current_user_id)
             else:
                 resolver_alias = aliased(OktaUser)
-                query = query.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).filter(
+                query = query.outerjoin(RoleRequest.resolver.of_type(resolver_alias)).filter(
                     db.or_(
-                        AccessRequest.resolver_user_id == search_args["resolver_user_id"],
+                        RoleRequest.resolver_user_id == search_args["resolver_user_id"],
                         resolver_alias.email.ilike(search_args["resolver_user_id"]),
                     )
                 )
@@ -293,13 +300,14 @@ class AccessRequestList(MethodResource):
             requester_alias = aliased(OktaUser)
             resolver_alias = aliased(OktaUser)
             query = (
-                query.join(AccessRequest.requester.of_type(requester_alias))
-                .join(AccessRequest.requested_group)
-                .outerjoin(AccessRequest.resolver.of_type(resolver_alias))
+                query.join(RoleRequest.requester.of_type(requester_alias))
+                .join(RoleRequest.requester_role)
+                .join(RoleRequest.requested_group)
+                .outerjoin(RoleRequest.resolver.of_type(resolver_alias))
                 .filter(
                     db.or_(
-                        AccessRequest.id.like(f"{search_args['q']}%"),
-                        cast(AccessRequest.status, String).ilike(like_search),
+                        RoleRequest.id.like(f"{search_args['q']}%"),
+                        cast(RoleRequest.status, String).ilike(like_search),
                         requester_alias.email.ilike(like_search),
                         requester_alias.first_name.ilike(like_search),
                         requester_alias.last_name.ilike(like_search),
@@ -318,7 +326,7 @@ class AccessRequestList(MethodResource):
 
         return paginate(
             query,
-            AccessRequestSchema(
+            RoleRequestSchema(
                 many=True,
                 only=(
                     "id",
@@ -333,6 +341,9 @@ class AccessRequestList(MethodResource):
                     "requester.last_name",
                     "requester.display_name",
                     "requester.deleted_at",
+                    "requester_role.id",
+                    "requester_role.name",
+                    "requester_role.deleted_at",
                     "requested_group.id",
                     "requested_group.type",
                     "requested_group.name",
@@ -346,21 +357,22 @@ class AccessRequestList(MethodResource):
             ),
         )
 
-    @FlaskApiSpecDecorators.request_schema(CreateAccessRequestSchema)
-    @FlaskApiSpecDecorators.response_schema(AccessRequestSchema)
+    @FlaskApiSpecDecorators.request_schema(CreateRoleRequestSchema)
+    @FlaskApiSpecDecorators.response_schema(RoleRequestSchema)
     def post(self) -> ResponseReturnValue:
-        access_request_args = CreateAccessRequestSchema().load(request.get_json())
+        role_request_args = CreateRoleRequestSchema().load(request.get_json())
 
+        # Ensure requester not deleted and owns the role group
         if (
             OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == g.current_user_id).first()
-            is None
+            is None or not AuthorizationHelpers.can_manage_group(role_request_args["requester_role_id"])
         ):
             abort(403, "Current user is not allowed to perform this action")
 
         group = (
-            db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            db.session.query(with_polymorphic(OktaGroup, [AppGroup]))
             .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == access_request_args["group_id"])
+            .filter(OktaGroup.id == role_request_args["group_id"])
             .first_or_404()
         )
 
@@ -370,38 +382,40 @@ class AccessRequestList(MethodResource):
                 "Groups not managed by Access cannot be modified",
             )
 
-        existing_access_requests = (
-            AccessRequest.query.filter(AccessRequest.requester_user_id == g.current_user_id)
-            .filter(AccessRequest.requested_group_id == access_request_args["group_id"])
-            .filter(AccessRequest.request_ownership == access_request_args["group_owner"])
-            .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-            .filter(AccessRequest.resolved_at.is_(None))
+        existing_role_requests = (
+            RoleRequest.query.filter(RoleRequest.requester_user_id == g.current_user_id)
+            .filter(RoleRequest.requester_role_id == role_request_args["requester_role_id"])
+            .filter(RoleRequest.requested_group_id == role_request_args["group_id"])
+            .filter(RoleRequest.request_ownership == role_request_args["group_owner"])
+            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+            .filter(RoleRequest.resolved_at.is_(None))
             .all()
         )
-        for existing_access_request in existing_access_requests:
-            RejectAccessRequest(
-                access_request=existing_access_request,
-                rejection_reason="Closed due to duplicate access request creation",
+        for existing_role_request in existing_role_requests:
+            RejectRoleRequest(
+                role_request=existing_role_request,
+                rejection_reason="Closed due to duplicate role request creation",
                 notify_requester=False,
                 current_user_id=g.current_user_id,
             ).execute()
 
-        access_request = CreateAccessRequest(
+        role_request = CreateRoleRequest(
             requester_user=g.current_user_id,
-            requested_group=access_request_args["group_id"],
-            request_ownership=access_request_args["group_owner"],
-            request_reason=access_request_args.get("reason"),
-            request_ending_at=access_request_args.get("ending_at"),
+            requester_role=role_request_args["requester_role_id"],
+            requested_group=role_request_args["group_id"],
+            request_ownership=role_request_args["group_owner"],
+            request_reason=role_request_args.get("reason"),
+            request_ending_at=role_request_args.get("ending_at"),
         ).execute()
 
-        if access_request is None:
+        if role_request is None:
             abort(400, "Groups not managed by Access cannot be modified")
 
-        access_request = (
-            AccessRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(AccessRequest.id == access_request.id).first()
+        role_request = (
+            RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request.id).first()
         )
         return (
-            AccessRequestSchema(
+            RoleRequestSchema(
                 only=(
                     "id",
                     "created_at",
@@ -417,11 +431,14 @@ class AccessRequestList(MethodResource):
                     "requester.last_name",
                     "requester.display_name",
                     "requester.deleted_at",
+                    "requester_role.id",
+                    "requester_role.name",
+                    "requester_role.deleted_at",
                     "requested_group.id",
                     "requested_group.type",
                     "requested_group.name",
                     "requested_group.deleted_at",
                 ),
-            ).dump(access_request),
+            ).dump(role_request),
             201,
         )
