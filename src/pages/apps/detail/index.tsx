@@ -3,7 +3,6 @@ import {Link as RouterLink, useParams} from 'react-router-dom';
 
 import {Accordion, AccordionDetails, AccordionSummary} from '@mui/material';
 import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
@@ -17,7 +16,6 @@ import TableContainer from '@mui/material/TableContainer';
 import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import Ending from '../../../components/Ending';
@@ -33,6 +31,7 @@ import AppsHeader from './AppsHeader';
 import {AppsAdminActionGroup} from './AppsAdminActionGroup';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import {AppsAccordionListGroup} from './AppsAccordionListGroup';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -93,6 +92,8 @@ export const ReadApp = () => {
           {(isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '')) && (
             <AppsAdminActionGroup app={app} currentUser={currentUser} />
           )}
+
+          <AppsAccordionListGroup app_group={app.active_owner_app_groups} />
           {app.active_owner_app_groups?.map((appGroup) => (
             <React.Fragment key={appGroup.id}>
               <Grid item xs={6} key={appGroup.id + 'owners'}>
