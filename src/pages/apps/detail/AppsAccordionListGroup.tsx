@@ -30,9 +30,10 @@ interface AppAccordionListGroupProps {
 }
 interface GroupDetailListProps {
   member_list: OktaUserGroupMember[];
+  title?: string;
 }
 
-const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list}) => {
+const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) => {
   const sortGroupMembers = (
     [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
     [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
@@ -43,56 +44,64 @@ const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list}) => {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Email</TableCell>
-            <TableCell>Ending</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {member_list.length > 0 ? (
-            member_list.map((member: OktaUserGroupMember) => (
-              <TableRow key={member.active_user?.id}>
-                <TableCell>
-                  <Link
-                    to={`/users/${member.active_user?.email.toLowerCase()}`}
-                    sx={{
-                      textDecoration: 'none',
-                      color: 'inherit',
-                    }}
-                    component={RouterLink}>
-                    {displayUserName(member.active_user)}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/users/${member.active_user?.email.toLowerCase()}`}
-                    sx={{
-                      textDecoration: 'none',
-                      color: 'inherit',
-                    }}
-                    component={RouterLink}>
-                    {member.active_user?.email.toLowerCase()}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Ending memberships={member_list} />
-                </TableCell>
-              </TableRow>
-            ))
-          ) : (
-            <EmptyListEntry />
-          )}
-        </TableBody>
+    <Stack direction="column" spacing={1}>
+      {title && (
+        <Typography variant="body1" component={'div'}>
+          {title}
+        </Typography>
+      )}
 
-        <TableFooter>
-          <TableRow />
-        </TableFooter>
-      </Table>
-    </TableContainer>
+      <TableContainer component={Paper}>
+        <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Email</TableCell>
+              <TableCell>Ending</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {member_list.length > 0 ? (
+              member_list.map((member: OktaUserGroupMember) => (
+                <TableRow key={member.active_user?.id}>
+                  <TableCell>
+                    <Link
+                      to={`/users/${member.active_user?.email.toLowerCase()}`}
+                      sx={{
+                        textDecoration: 'none',
+                        color: 'inherit',
+                      }}
+                      component={RouterLink}>
+                      {displayUserName(member.active_user)}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      to={`/users/${member.active_user?.email.toLowerCase()}`}
+                      sx={{
+                        textDecoration: 'none',
+                        color: 'inherit',
+                      }}
+                      component={RouterLink}>
+                      {member.active_user?.email.toLowerCase()}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Ending memberships={member_list} />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <EmptyListEntry />
+            )}
+          </TableBody>
+
+          <TableFooter>
+            <TableRow />
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </Stack>
   );
 };
 
@@ -119,64 +128,64 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         app_group?.map((appGroup) => (
           <Grid key={appGroup.id} item xs={12}>
             <TableContainer component={Paper}>
-              <Table sx={{minWidth: 325}} aria-label="app group owners">
-                <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell colSpan={2}>
-                          <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
-                              <Link
-                                to={`/groups/${appGroup.name}`}
-                                sx={{
-                                  textDecoration: 'none',
-                                  color: 'inherit',
-                                }}
-                                component={RouterLink}>
-                                {appGroup.name}
-                              </Link>
-                            </Typography>
-                            <Typography variant="body1" color="grey">
-                              Can manage app and implicitly own all app groups
-                            </Typography>
-                          </Stack>
-                        </TableCell>
-                        <TableCell>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total Owners: {appGroup.active_user_ownerships?.length || 0} <br />
-                            Total Members: {appGroup.active_user_memberships?.length || 0}
-                          </Box>
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                  </AccordionSummary>
-                  <AccordionDetails>
+              <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Box
+                    sx={{
+                      display: 'inline-flex',
+                      flexGrow: 1,
+                    }}>
+                    <Stack
+                      direction="column"
+                      spacing={1}
+                      sx={{
+                        flexGrow: 0.95,
+                      }}>
+                      <Typography variant="h6" color="primary">
+                        <Link
+                          to={`/groups/${appGroup.name}`}
+                          sx={{
+                            textDecoration: 'none',
+                            color: 'inherit',
+                          }}
+                          component={RouterLink}>
+                          {appGroup.name}
+                        </Link>
+                      </Typography>
+                      <Typography variant="body1" color="grey">
+                        Can manage app and implicitly own all app groups
+                      </Typography>
+                    </Stack>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        alignItems: 'right',
+                      }}>
+                      <Divider sx={{mx: 2}} orientation="vertical" flexItem />
+                      Total Owners: {appGroup.active_user_ownerships?.length || 0} <br />
+                      Total Members: {appGroup.active_user_memberships?.length || 0}
+                    </Box>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Table sx={{minWidth: 325}} aria-label="app group owners">
                     <TableBody className="accordion-body">
                       <TableRow>
                         <TableCell colSpan={3}>
-                          <Stack direction="column" spacing={1}>
-                            <Typography gutterBottom variant="body1" component="span">
-                              Group Owners
-                            </Typography>
-                            <GroupDetailList member_list={appGroup.active_user_ownerships || []} />
-                            <Typography gutterBottom variant="body1" component="span">
-                              Members
-                            </Typography>
-                            <GroupDetailList member_list={appGroup.active_user_memberships || []} />
+                          <Stack direction="row" useFlexGap spacing={10} flexWrap={'wrap'}>
+                            <GroupDetailList
+                              member_list={appGroup.active_user_ownerships || []}
+                              title={'Group Owners'}
+                            />
+                            <GroupDetailList member_list={appGroup.active_user_memberships || []} title={'Members'} />
                           </Stack>
                         </TableCell>
                       </TableRow>
                     </TableBody>
-                  </AccordionDetails>
-                </Accordion>
-              </Table>
+                  </Table>
+                </AccordionDetails>
+              </Accordion>
             </TableContainer>
           </Grid>
         ))}
