@@ -37,6 +37,7 @@ class ModifyRoleGroups:
         sync_to_okta: bool = True,
         current_user_id: Optional[str] = None,
         created_reason: str = "",
+        notify: bool = False
     ):
         if isinstance(role_group, str):
             self.role = (

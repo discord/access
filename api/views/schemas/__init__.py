@@ -1,8 +1,6 @@
 from api.views.schemas.access_requests import (
     CreateAccessRequestSchema,
-    CreateRoleRequestSchema,
     ResolveAccessRequestSchema,
-    ResolveRoleRequestSchema,
 )
 from api.views.schemas.audit_logs import AuditLogSchema, EventType
 from api.views.schemas.core_schemas import (
@@ -42,6 +40,10 @@ from api.views.schemas.pagination import (
     UserPaginationSchema,
 )
 from api.views.schemas.role_memberships import RoleMemberSchema
+from api.views.schemas.role_requests import {
+    CreateRoleRequestSchema,
+    ResolveRoleRequestSchema,
+}
 
 __all__ = [
     "AccessRequestPaginationSchema",

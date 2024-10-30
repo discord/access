@@ -11,6 +11,7 @@ from api.views.schemas.core_schemas import (
     PolymorphicGroupSchema,
     RoleGroupMapSchema,
     RoleGroupSchema,
+    RoleRequestSchema,
     TagSchema,
 )
 
