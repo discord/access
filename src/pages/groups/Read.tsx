@@ -820,7 +820,13 @@ export default function ReadGroup() {
                           </TableCell>
                           {group.type != 'role_group' ? (
                             <TableCell>
-                              <Stack direction="row" spacing={1}>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                sx={{
+                                  flexWrap: 'wrap',
+                                  rowGap: '.5rem',
+                                }}>
                                 {users.sort(sortOktaUserGroupMembers).map((user) =>
                                   user.active_role_group_mapping == null ? (
                                     <Chip
