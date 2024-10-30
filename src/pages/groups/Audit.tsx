@@ -34,7 +34,7 @@ import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import Ending from '../../components/Ending';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'created_at' | 'ended_at';
 type OrderDirection = 'asc' | 'desc';
@@ -212,21 +212,7 @@ export default function AuditGroup() {
             setSearchInput(newInputValue?.split(';')[0] ?? '');
           }}
           defaultValue={searchQuery}
-          renderOption={(props, option, state) => {
-            const [displayName, email] = option.split(';');
-            return (
-              <li {...props} key={option}>
-                <Grid container alignItems="center">
-                  <Grid item>
-                    <Box>{displayName}</Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {email}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </li>
-            );
-          }}
+          renderOption={renderUserOption}
         />
       </TableTopBar>
       <Table sx={{minWidth: 650}} size="small" aria-label="groups">
