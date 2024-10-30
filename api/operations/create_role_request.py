@@ -4,17 +4,17 @@ from datetime import datetime
 from typing import Optional
 
 from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from sqlalchemy.orm import joinedload, selectin_polymorphic  # , selectinload
 
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
+    # OktaGroupTagMap,
     OktaUser,
     RoleGroup,
-    RoleRequest
+    RoleRequest,
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
@@ -134,7 +134,7 @@ class CreateRoleRequest:
                     "current_user_id": self.requester.id,
                     "current_user_email": self.requester.email,
                     "group": self.requested_group,
-                    "role_request": role_request, # TODO may need to pull out requester_role
+                    "role_request": role_request,  # TODO may need to pull out requester_role
                     "requester": self.requester,
                     "group_owners": approvers,
                 }
@@ -145,7 +145,7 @@ class CreateRoleRequest:
             role_request=role_request,
             role=self.requester_role,
             group=self.requested_group,
-            group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
+            group_tags=[active_tag_map.enabled_active_tag for active_tag_map in self.requested_group.active_group_tags],
             requester=self.requester,
             requester_role=self.requester_role,
         )
@@ -170,7 +170,7 @@ class CreateRoleRequest:
 
         self.notification_hook.access_role_request_created(
             role_request=role_request,
-            role = self.requester_role,
+            role=self.requester_role,
             group=self.requested_group,
             requester=self.requester,
             approvers=approvers,

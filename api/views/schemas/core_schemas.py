@@ -18,6 +18,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
     Tag,
 )
 

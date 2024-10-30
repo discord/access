@@ -5,7 +5,6 @@ from api.views.schemas.access_requests import (
 from api.views.schemas.audit_logs import AuditLogSchema, EventType
 from api.views.schemas.core_schemas import (
     AccessRequestSchema,
-    RoleRequestSchema,
     AppGroupSchema,
     AppSchema,
     AppTagMapSchema,
@@ -16,6 +15,7 @@ from api.views.schemas.core_schemas import (
     PolymorphicGroupSchema,
     RoleGroupMapSchema,
     RoleGroupSchema,
+    RoleRequestSchema,
     TagSchema,
 )
 from api.views.schemas.delete_message import DeleteMessageSchema
@@ -40,10 +40,7 @@ from api.views.schemas.pagination import (
     UserPaginationSchema,
 )
 from api.views.schemas.role_memberships import RoleMemberSchema
-from api.views.schemas.role_requests import {
-    CreateRoleRequestSchema,
-    ResolveRoleRequestSchema,
-}
+from api.views.schemas.role_requests import CreateRoleRequestSchema, ResolveRoleRequestSchema
 
 __all__ = [
     "AccessRequestPaginationSchema",

@@ -5,7 +5,7 @@ from sqlalchemy import nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
-from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
+from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
 from api.models.access_request import get_all_possible_request_approvers
 from api.plugins import get_notification_hook
 from api.views.schemas import AuditLogSchema, EventType
@@ -81,7 +81,7 @@ class RejectRoleRequest:
                     "current_user_id": self.rejecter_id,
                     "current_user_email": email,
                     "group": group,
-                    "role_request": self.role_request, # TODO might need to change to separate out requester role
+                    "role_request": self.role_request,  # TODO might need to change to separate out requester role
                     "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
                 }
             )
@@ -95,7 +95,7 @@ class RejectRoleRequest:
 
             self.notification_hook.access_role_request_completed(
                 role_request=self.role_request,
-                role = requester_role,
+                role=requester_role,
                 group=group,
                 requester=requester,
                 approvers=approvers,

@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
+from api.models.access_request import get_all_possible_request_approvers
 from api.operations.constraints import CheckForReason
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins import get_notification_hook
@@ -23,7 +24,9 @@ class ApproveRoleRequest:
         notify: bool = True,
     ):
         self.role_request = (
-            RoleRequest.query.options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
+            RoleRequest.query.options(
+                joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role)
+            )
             .filter(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
             .first()
         )
@@ -44,8 +47,6 @@ class ApproveRoleRequest:
         self.ending_at = ending_at
 
         self.notify = notify
-
-        self.notify_requester = notify_requester
 
         self.notification_hook = get_notification_hook()
 
@@ -101,29 +102,28 @@ class ApproveRoleRequest:
                     "current_user_id": self.approver_id,
                     "current_user_email": self.approver_email,
                     "group": group,
-                    "role_request": role_request, # TODO may need to pull out requester_role
+                    "role_request": self.role_request,  # TODO may need to pull out requester_role
                     "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
                 }
             )
         )
 
         if self.role_request.request_ownership:
-            ModifyRoleGroup(
+            ModifyRoleGroups(
                 role_group=self.role_request.requester_role,
                 groups_added_ended_at=self.ending_at,
-                owner_groups_to_add=[self.role_request.requested_group_id]
+                owner_groups_to_add=[self.role_request.requested_group_id],
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
             ).execute()
         else:
-            ModifyRoleGroup(
+            ModifyRoleGroups(
                 role_group=self.role_request.requester_role,
                 groups_added_ended_at=self.ending_at,
-                groups_to_add=[self.role_request.requested_group_id]
+                groups_to_add=[self.role_request.requested_group_id],
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
             ).execute()
-
 
         if self.notify:
             requester = db.session.get(OktaUser, self.role_request.requester_user_id)
@@ -133,7 +133,7 @@ class ApproveRoleRequest:
 
             self.notification_hook.role_request_completed(
                 role_request=self.role_request,
-                role = requester_role,
+                role=requester_role,
                 group=group,
                 requester=requester,
                 approvers=approvers,

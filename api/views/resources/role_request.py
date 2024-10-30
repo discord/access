@@ -15,8 +15,6 @@ from api.models import (
     OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
-    RoleGroup,
-    RoleGroupMap,
     RoleRequest,
 )
 from api.operations import (
@@ -102,9 +100,7 @@ class RoleRequestResource(MethodResource):
             )
         )
         role_request = (
-            RoleRequest.query.options(DEFAULT_LOAD_OPTIONS)
-            .filter(RoleRequest.id == role_request_id)
-            .first_or_404()
+            RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request_id).first_or_404()
         )
         return schema.dump(role_request)
 
@@ -150,20 +146,18 @@ class RoleRequestResource(MethodResource):
             ApproveRoleRequest(
                 role_request=role_request,
                 approver_user=g.current_user_id,
-                approval_reason=access_request_args.get("reason"),
-                ending_at=access_request_args.get("ending_at"),
+                approval_reason=role_request_args.get("reason"),
+                ending_at=role_request_args.get("ending_at"),
             ).execute()
         else:
             RejectRoleRequest(
                 role_request=role_request,
-                rejection_reason=access_request_args.get("reason"),
+                rejection_reason=role_request_args.get("reason"),
                 notify_requester=role_request.requester_user_id != g.current_user_id,
                 current_user_id=g.current_user_id,
             ).execute()
 
-        role_request = (
-            RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request.id).first()
-        )
+        role_request = RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request.id).first()
         return RoleRequestSchema(
             only=(
                 "id",
@@ -363,10 +357,9 @@ class AccessRequestList(MethodResource):
         role_request_args = CreateRoleRequestSchema().load(request.get_json())
 
         # Ensure requester not deleted and owns the role group
-        if (
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == g.current_user_id).first()
-            is None or not AuthorizationHelpers.can_manage_group(role_request_args["requester_role_id"])
-        ):
+        if OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(
+            OktaUser.id == g.current_user_id
+        ).first() is None or not AuthorizationHelpers.can_manage_group(role_request_args["requester_role_id"]):
             abort(403, "Current user is not allowed to perform this action")
 
         group = (
@@ -411,9 +404,7 @@ class AccessRequestList(MethodResource):
         if role_request is None:
             abort(400, "Groups not managed by Access cannot be modified")
 
-        role_request = (
-            RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request.id).first()
-        )
+        role_request = RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request.id).first()
         return (
             RoleRequestSchema(
                 only=(

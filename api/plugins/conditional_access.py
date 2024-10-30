@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, Tag, RoleRequest
+from api.models import AccessRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
