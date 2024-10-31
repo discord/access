@@ -216,8 +216,11 @@ export default function ReadGroup() {
           <Grid item sm={12}>
             <Paper sx={{py: 4, px: 2}}>
               <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" gap={1}>
-                  <Stack direction="row" gap={4}>
+                <Stack
+                  alignItems={{sm: 'center', md: 'flex-start'}}
+                  direction={{sm: 'column', md: 'row-reverse'}}
+                  gap={1}>
+                  <Stack direction={{sm: 'row', md: 'column'}} gap={2}>
                     <AvatarButton
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
@@ -225,32 +228,37 @@ export default function ReadGroup() {
                     {group.type == 'app_group' && <AppGroupInfo group={group as AppGroup} />}
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
-                  <Typography variant="h3">
-                    {group.deleted_at != null ? (
-                      <>
-                        <s>{group.name}</s> is Deleted
-                      </>
-                    ) : (
-                      group.name
-                    )}
-                  </Typography>
-                  <Typography variant="h5">{group.description}</Typography>
-                  <Box>
-                    {group.active_group_tags?.map((tagMap) => (
-                      <Chip
-                        key={'tag' + tagMap.active_tag!.id}
-                        label={tagMap.active_tag!.name}
-                        color="primary"
-                        onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
-                        variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
-                        icon={<TagIcon />}
-                        sx={{
-                          margin: '10px 2px 0 2px',
-                          bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
-                        }}
-                      />
-                    ))}
-                  </Box>
+                  <Stack alignItems="center" direction="column" gap={1} flexGrow={1} paddingLeft={{sm: 0, md: '100px'}}>
+                    <Typography variant="h3" align="center">
+                      {group.deleted_at != null ? (
+                        <>
+                          <s>{group.name}</s> is Deleted
+                        </>
+                      ) : (
+                        group.name
+                      )}
+                    </Typography>
+                    <Typography variant="h5" align="center">
+                      {group.description}
+                    </Typography>
+                    <Box>
+                      {group.active_group_tags?.map((tagMap) => (
+                        <Chip
+                          key={'tag' + tagMap.active_tag!.id}
+                          label={tagMap.active_tag!.name}
+                          color="primary"
+                          onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+                          variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
+                          icon={<TagIcon />}
+                          sx={{
+                            margin: '10px 2px 0 2px',
+                            bgcolor: (theme) =>
+                              tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Stack>
                 </Stack>
                 <Divider />
                 <Stack direction="row" justifyContent="center">
