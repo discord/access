@@ -1,24 +1,14 @@
+import {PaletteMode, useTheme} from '@mui/material';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 
-function stringToColor(string: string) {
-  let hash = 0;
-  let i;
-
-  /* eslint-disable no-bitwise */
-  for (i = 0; i < string.length; i += 1) {
-    hash = string.charCodeAt(i) + ((hash << 5) - hash);
+function stringToColor(string: string, mode: PaletteMode) {
+  const hue = string.split('').reduce((acc, curr) => curr.charCodeAt(0) + acc, 0) % 360;
+  if (mode === 'dark') {
+    return `hsl(${hue}, 65%, 70%)`;
+  } else {
+    return `hsl(${hue}, 65%, 55%)`;
   }
-
-  let color = '#';
-
-  for (i = 0; i < 3; i += 1) {
-    const value = (hash >> (i * 8)) & 0xff;
-    color += `00${value.toString(16)}`.slice(-2);
-  }
-  /* eslint-enable no-bitwise */
-
-  return color;
 }
 
 interface UserAvatarProps {
@@ -28,13 +18,16 @@ interface UserAvatarProps {
 }
 
 export default function UserAvatar(props: UserAvatarProps) {
+  const {
+    palette: {mode},
+  } = useTheme();
   const splitName = props.name.split(' ');
 
   return (
     <Avatar
       alt={props.name}
       sx={{
-        bgcolor: stringToColor(props.name),
+        bgcolor: stringToColor(props.name, mode),
         width: props.size ?? 24,
         height: props.size ?? 24,
       }}
