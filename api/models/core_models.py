@@ -215,6 +215,14 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
+    all_resolved_role_requests: Mapped[List["AccessRequest"]] = db.relationship(
+        "RoleRequest",
+        primaryjoin="OktaUser.id == RoleRequest.resolver_user_id",
+        back_populates="resolver",
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
     pending_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
         "AccessRequest",
         primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, "
@@ -376,12 +384,18 @@ class OktaGroup(db.Model):
 
     # requests to join group
     all_role_requests_to: Mapped[List["RoleRequest"]] = db.relationship(
-        "RoleRequest", back_populates="requested_group", lazy="raise_on_sql"
+        "RoleRequest",
+        back_populates="requested_group",
+        primaryjoin="OktaGroup.id == RoleRequest.requested_group_id",
+        lazy="raise_on_sql",
     )
 
     # request by role group to join group
     all_role_requests_from: Mapped[List["RoleRequest"]] = db.relationship(
-        "RoleRequest", back_populates="requester_role", lazy="raise_on_sql"
+        "RoleRequest",
+        back_populates="requester_role",
+        primaryjoin="OktaGroup.id == RoleRequest.requester_role_id",
+        lazy="raise_on_sql",
     )
 
     pending_role_requests: Mapped[List["RoleRequest"]] = db.relationship(
