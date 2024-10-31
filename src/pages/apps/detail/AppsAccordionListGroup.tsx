@@ -174,7 +174,12 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                     <TableBody className="accordion-body">
                       <TableRow>
                         <TableCell colSpan={2}>
-                          <Stack direction="row" useFlexGap spacing={6} flexWrap={'wrap'}>
+                          <Stack
+                            direction="row"
+                            useFlexGap
+                            flexWrap={'wrap'}
+                            justifyContent={'space-between'}
+                            gap={'2rem'}>
                             <GroupDetailList
                               member_list={
                                 appGroup.active_user_ownerships?.filter(
