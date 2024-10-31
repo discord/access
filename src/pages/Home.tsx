@@ -129,7 +129,7 @@ function AccordionMaker(props: AccordionMakerProps) {
         {sections[props.which][0]}
       </Typography>
       {Object.entries(guide[props.which]).map(([key, value]: [string, string]) => (
-        <Accordion key={key} expanded={expanded === key} onChange={handleChange(key)}>
+        <Accordion expanded={expanded === key} onChange={handleChange(key)}>
           <AccordionSummary
             expandIcon={<ExpandMoreIcon />}
             aria-controls={'panel-content' + key}
@@ -179,7 +179,7 @@ export default function Home() {
                 </Grid>
               </Grid>
               {Object.entries(sections).map(([key, [title, buttonTitle, icon]]) => (
-                <Grid key={key} item xs={12}>
+                <Grid item xs={12}>
                   <Button
                     variant="contained"
                     size="large"
