@@ -25,9 +25,6 @@ import Ending from '../../../components/Ending';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {Link as RouterLink, useParams} from 'react-router-dom';
 
-interface AppAccordionListGroupProps {
-  app_group?: AppGroup[];
-}
 interface GroupDetailListProps {
   member_list: OktaUserGroupMember[];
   title?: string;
@@ -105,6 +102,10 @@ const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) =
   );
 };
 
+interface AppAccordionListGroupProps {
+  app_group?: AppGroup[];
+}
+
 export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({app_group}) => {
   const [groupExpanded, setGroupExpanded] = React.useState<boolean>(false);
   const [memberExpanded, setMemberExpanded] = React.useState<boolean>(false);
@@ -169,16 +170,27 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails>
-                  <Table sx={{minWidth: 325}} aria-label="app group owners">
+                  <Table aria-label="app group owners">
                     <TableBody className="accordion-body">
                       <TableRow>
-                        <TableCell colSpan={3}>
-                          <Stack direction="row" useFlexGap spacing={10} flexWrap={'wrap'}>
+                        <TableCell colSpan={2}>
+                          <Stack direction="row" useFlexGap spacing={6} flexWrap={'wrap'}>
                             <GroupDetailList
-                              member_list={appGroup.active_user_ownerships || []}
+                              member_list={
+                                appGroup.active_user_ownerships?.filter(
+                                  (value, index, array) => array.indexOf(value) === index,
+                                ) || []
+                              }
                               title={'Group Owners'}
                             />
-                            <GroupDetailList member_list={appGroup.active_user_memberships || []} title={'Members'} />
+                            <GroupDetailList
+                              member_list={
+                                appGroup.active_user_memberships?.filter(
+                                  (value, index, array) => array.indexOf(value) === index,
+                                ) || []
+                              }
+                              title={'Members'}
+                            />
                           </Stack>
                         </TableCell>
                       </TableRow>
@@ -191,85 +203,4 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         ))}
     </React.Fragment>
   );
-  /*
-  return (
-    <React.Fragment>
-      <Grid item xs= key={group_id + 'owners'}>
-        <TableContainer component={Paper}>
-          <Table sx={{minWidth: 325}} size="small" aria-label="app group owners">
-            <TableHead>
-              <TableRow>
-                <TableCell colSpan={2}>
-                  <Stack direction="column">
-                    <Typography variant="h6" color="primary">
-                      <Link
-                        to={`/groups/${appGroup.name}`}
-                        sx={{
-                          textDecoration: 'none',
-                          color: 'inherit',
-                        }}
-                        component={RouterLink}>
-                        {appGroup.name} Group Owners
-                      </Link>
-                    </Typography>
-                    <Typography variant="body1" color="grey">
-                      Can manage membership of Group
-                    </Typography>
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'flex-end',
-                      alignItems: 'right',
-                    }}>
-                    <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                    Total Owners: {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length}
-                  </Box>
-                </TableCell>
-              </TableRow>
-                <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Ending</TableCell>
-                </TableRow>
-                </TableHead>
-                <TableBody>
-                  {Object.keys(groupMemberships(appGroup.active_user_ownerships)).length > 0 ? (
-                        Object.entries(groupMemberships(appGroup.active_user_ownerships))
-                          .sort(sortGroupMembers)
-                          .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                            <TableRow key={userId}>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {displayUserName(users[0].active_user)}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Link
-                                  to={`/users/${users[0].active_user?.email.toLowerCase()}`}
-                                  sx={{
-                                    textDecoration: 'none',
-                                    color: 'inherit',
-                                  }}
-                                  component={RouterLink}>
-                                  {users[0].active_user?.email.toLowerCase()}
-                                </Link>
-                              </TableCell>
-                              <TableCell>
-                                <Ending memberships={users} />
-                              </TableCell>
-                            </TableRow>
-                
-                </TableBody>
-          </React.Fragment>
-  )
-  */
 };

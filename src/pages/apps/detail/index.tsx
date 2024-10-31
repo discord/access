@@ -83,9 +83,6 @@ export const ReadApp = () => {
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={2}>
           <AppsHeader app={app} moveTooltip={moveTooltip} currentUser={currentUser} />
-          {(isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '')) && (
-            <AppsAdminActionGroup app={app} currentUser={currentUser} />
-          )}
           <Grid item xs={12} spacing={0}>
             <Box
               component={'main'}
@@ -106,13 +103,17 @@ export const ReadApp = () => {
                 backgroundColor: (theme) =>
                   theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
               }}>
-              <Typography variant="h5" sx={{px: 2}} color="text.accent">
+              <Typography variant="h5" sx={{px: 2, margin: '.5rem 0'}} color="text.accent">
                 App Groups
               </Typography>
+              {(isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '')) && (
+                <AppsAdminActionGroup app={app} currentUser={currentUser} />
+              )}
             </Box>
           </Grid>
           {app.active_non_owner_app_groups?.map((appGroup) => (
-            <React.Fragment key={appGroup.id}>
+            <AppsAccordionListGroup app_group={[appGroup]} />
+            /*<React.Fragment key={appGroup.id}>
               <Grid item xs={6} key={appGroup.id + 'owners'}>
                 <TableContainer component={Paper}>
                   <Table sx={{minWidth: 325}} size="small" aria-label="app group owners">
@@ -282,6 +283,7 @@ export const ReadApp = () => {
                 </TableContainer>
               </Grid>
             </React.Fragment>
+          ))}*/
           ))}
         </Grid>
       </Container>
