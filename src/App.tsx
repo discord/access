@@ -235,9 +235,20 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
 }
 
 export default function App() {
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
-  const initialMode = prefersDarkMode ? 'dark' : 'light';
+  const storedTheme = localStorage.getItem('user-color-scheme') as 'light' | 'dark' | null;
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+  const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+
+  const setPersistentMode = (mode: PaletteMode) => {
+    // if set back to system setting, defer to system setting
+    if (systemTheme === mode) {
+      localStorage.removeItem('user-color-scheme');
+    } else {
+      localStorage.setItem('user-color-scheme', mode);
+    }
+    setMode(mode);
+  };
 
   // See https://discord.com/branding
   let theme = React.useMemo(() => {
@@ -289,7 +300,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Dashboard setThemeMode={setMode} />
+      <Dashboard setThemeMode={setPersistentMode} />
     </ThemeProvider>
   );
 }
