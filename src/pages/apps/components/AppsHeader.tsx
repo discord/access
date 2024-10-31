@@ -6,26 +6,23 @@ import {App, OktaUser} from '../../../api/apiSchemas';
 import {useNavigate} from 'react-router-dom';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
-import {MoveTooltip} from '.';
-
 interface AppsHeaderProps {
   app: App;
-  moveTooltip: MoveTooltip;
   currentUser: OktaUser;
 }
 
-const AppsHeader: React.FC<AppsHeaderProps> = ({app, moveTooltip, currentUser}) => {
+const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
   const navigate = useNavigate();
+  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
   const classNames = `app-detail-header app-detail-header ${app.name}`;
 
   return (
-    <Grid item xs={12} className={classNames}>
+    <Grid item xs={12}>
       <Paper
         sx={{
           p: 2,
-          height: '15rem',
-          minWidth: '20rem',
+          height: 240,
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
@@ -50,7 +47,7 @@ const AppsHeader: React.FC<AppsHeaderProps> = ({app, moveTooltip, currentUser}) 
                 sx={{
                   margin: '2px',
                   marginTop: '5px',
-                  bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
+                  bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
                 }}
               />
             ))}
