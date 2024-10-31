@@ -103,12 +103,12 @@ export default function ReadApp() {
                 </Stack>
                 <Divider />
                 <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
+                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
                     <div>
                       <CreateUpdateApp currentUser={currentUser} app={app} />
                     </div>
                   </Tooltip>
-                  <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
+                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
                     <div>
                       <DeleteApp currentUser={currentUser} app={app} />
                     </div>

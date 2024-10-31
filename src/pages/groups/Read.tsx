@@ -278,14 +278,14 @@ export default function ReadGroup() {
                   </Tooltip>
                   <Tooltip
                     title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
-                    placement="right"
+                    placement="top"
                     PopperProps={moveTooltip}>
                     <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
                       <AuditGroupIcon />
                     </IconButton>
                   </Tooltip>
                   {group.type == 'role_group' ? (
-                    <Tooltip title="Role audit" placement="right" PopperProps={moveTooltip}>
+                    <Tooltip title="Role audit" placement="top" PopperProps={moveTooltip}>
                       <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
                         <AuditRoleIcon />
                       </IconButton>
