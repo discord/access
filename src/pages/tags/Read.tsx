@@ -125,7 +125,7 @@ export default function ReadTag() {
                   <Typography variant="h3" textAlign="center">
                     {tag.name}
                   </Typography>
-                  <Typography variant="subtitle1" textAlign="center">
+                  <Typography variant="h5" textAlign="center">
                     {tag.description}
                   </Typography>
                   {tag.enabled ? (
