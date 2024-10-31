@@ -122,10 +122,12 @@ export default function ReadTag() {
             <Paper sx={{py: 4, px: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
-                  <Typography variant="h3" sx={{wordBreak: 'break-all'}}>
+                  <Typography variant="h3" textAlign="center">
                     {tag.name}
                   </Typography>
-                  <Typography variant="subtitle1">{tag.description}</Typography>
+                  <Typography variant="subtitle1" textAlign="center">
+                    {tag.description}
+                  </Typography>
                   {tag.enabled ? (
                     <Box>
                       <Chip color="primary" icon={<Enabled />} label="Enabled" sx={{marginTop: '10px'}} />

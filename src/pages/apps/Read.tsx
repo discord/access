@@ -79,8 +79,12 @@ export default function ReadApp() {
             <Paper sx={{py: 4, px: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
-                  <Typography variant="h3">{app.name}</Typography>
-                  <Typography variant="h5">{app.description}</Typography>
+                  <Typography variant="h3" textAlign="center">
+                    {app.name}
+                  </Typography>
+                  <Typography variant="h5" textAlign="center">
+                    {app.description}
+                  </Typography>
                   {app.active_app_tags ? (
                     <Box>
                       {app.active_app_tags.map((tagMap) => (

@@ -460,7 +460,7 @@ export default function ReadUser() {
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
                   <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />
-                  <Typography variant="h3">
+                  <Typography variant="h3" textAlign="center">
                     {user.deleted_at != null ? (
                       <>
                         <s>{displayUserName(user)}</s> is Deleted
@@ -469,7 +469,9 @@ export default function ReadUser() {
                       displayUserName(user)
                     )}
                   </Typography>
-                  <Typography variant="h5">{user.email?.toLowerCase()}</Typography>
+                  <Typography variant="h5" textAlign="center">
+                    {user.email?.toLowerCase()}
+                  </Typography>
                 </Stack>
                 <Divider />
                 <Stack justifyContent="center" direction="row" gap={1}>
