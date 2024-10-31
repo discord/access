@@ -107,20 +107,10 @@ interface AppAccordionListGroupProps {
 }
 
 export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({app_group}) => {
-  const [groupExpanded, setGroupExpanded] = React.useState<boolean>(false);
-  const [memberExpanded, setMemberExpanded] = React.useState<boolean>(false);
+  const [expanded, setExpanded] = React.useState<string | boolean>(false);
 
-  const handleChange = (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
-    switch (panel) {
-      case 'members':
-        setMemberExpanded(!memberExpanded);
-        break;
-      case 'owners':
-        setGroupExpanded(!groupExpanded);
-        break;
-      default:
-        break;
-    }
+  const handleChange = (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
+    setExpanded(newExpanded ? id : false);
   };
 
   return (
@@ -129,7 +119,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         app_group?.map((appGroup) => (
           <Grid key={appGroup.id} item xs={12}>
             <TableContainer component={Paper}>
-              <Accordion expanded={groupExpanded} onChange={handleChange('owners')}>
+              <Accordion expanded={expanded === appGroup.name} onChange={handleChange(appGroup.name)}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Box
                     sx={{
