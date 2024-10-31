@@ -48,7 +48,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {DarkMode, LightMode} from '@mui/icons-material';
+import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
 import {lightGreen, red, yellow} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
@@ -102,17 +102,45 @@ const Drawer = styled(MuiDrawer, {
 }));
 
 function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMode) => void; condensed: boolean}) {
+  const [storedTheme, setStoredTheme] = React.useState(
+    localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null,
+  );
   const theme = useTheme();
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+
+  const handleThemeOverride = (theme: PaletteMode) => {
+    setThemeMode(theme);
+    localStorage.setItem('user-set-color-scheme', theme);
+    setStoredTheme(theme);
+  };
+
+  const handleSystemDefault = () => {
+    setThemeMode(systemTheme);
+    localStorage.removeItem('user-set-color-scheme');
+    setStoredTheme(null);
+  };
+
   return (
     <ToggleButtonGroup size="small">
       {(theme.palette.mode != 'light' || !condensed) && (
         <Tooltip title="Light Mode">
           <ToggleButton
             value="left"
-            selected={theme.palette.mode === 'light'}
-            onClick={() => setThemeMode('light')}
+            selected={storedTheme === 'light'}
+            onClick={() => handleThemeOverride('light')}
             aria-label="Light mode">
             <LightMode />
+          </ToggleButton>
+        </Tooltip>
+      )}
+      {!condensed && (
+        <Tooltip title="System Default">
+          <ToggleButton
+            value="center"
+            selected={storedTheme == null}
+            onClick={handleSystemDefault}
+            aria-label="System Default">
+            <Monitor />
           </ToggleButton>
         </Tooltip>
       )}
@@ -120,8 +148,8 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
         <Tooltip title="Dark Mode">
           <ToggleButton
             value="right"
-            selected={theme.palette.mode === 'dark'}
-            onClick={() => setThemeMode('dark')}
+            selected={storedTheme === 'dark'}
+            onClick={() => handleThemeOverride('dark')}
             aria-label="Dark mode">
             <DarkMode />
           </ToggleButton>
@@ -235,20 +263,10 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
 }
 
 export default function App() {
-  const storedTheme = localStorage.getItem('user-color-scheme') as 'light' | 'dark' | null;
+  const storedTheme = localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null;
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
   const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
-
-  const setPersistentMode = (mode: PaletteMode) => {
-    // if set back to system setting, defer to system setting
-    if (systemTheme === mode) {
-      localStorage.removeItem('user-color-scheme');
-    } else {
-      localStorage.setItem('user-color-scheme', mode);
-    }
-    setMode(mode);
-  };
 
   // See https://discord.com/branding
   let theme = React.useMemo(() => {
@@ -300,7 +318,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Dashboard setThemeMode={setPersistentMode} />
+      <Dashboard setThemeMode={setMode} />
     </ThemeProvider>
   );
 }
