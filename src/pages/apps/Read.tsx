@@ -104,8 +104,7 @@ export default function ReadApp() {
                       sx={{
                         margin: '2px',
                         marginTop: '5px',
-                        bgcolor: (theme) =>
-                          tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
+                        bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
                       }}
                     />
                   ))}
