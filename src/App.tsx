@@ -307,7 +307,6 @@ export default function App() {
               ...(ownerState.variant === 'outlined' &&
                 ownerState.color === 'primary' && {
                   color: theme.palette.text.accent,
-                  borderColor: theme.palette.text.accent,
                 }),
             }),
           },
