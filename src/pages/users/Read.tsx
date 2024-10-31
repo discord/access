@@ -111,7 +111,7 @@ function ReportingToCard({user}: ReportingToCardProps) {
 
 interface OwnerTableProps {
   user: OktaUser;
-  ownerships: Map<string, Array<OktaUserGroupMember>>;
+  ownerships: Record<string, OktaUserGroupMember[]>;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -254,7 +254,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
 
 interface MemberTableProps {
   user: OktaUser;
-  memberships: Map<string, Array<OktaUserGroupMember>>;
+  memberships: Record<string, OktaUserGroupMember[]>;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -422,14 +422,8 @@ export default function ReadUser() {
 
   const user = data ?? ({} as OktaUser);
 
-  const ownerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    user.active_group_ownerships ?? [],
-    'active_group.id',
-  );
-  const memberships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    user.active_group_memberships ?? [],
-    'active_group.id',
-  );
+  const ownerships = groupBy(user.active_group_ownerships, (m) => m.active_user?.id);
+  const memberships = groupBy(user.active_group_memberships, (m) => m.active_user?.id);
 
   const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({

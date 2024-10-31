@@ -25,29 +25,16 @@ export function displayUserName(user: OktaUser | undefined) {
   return user.display_name != null ? user.display_name : user.first_name + ' ' + user.last_name;
 }
 
-// https://stackoverflow.com/a/8817461
-export function deepFind(obj: any, path: string) {
-  var paths = path.split('.'),
-    current = obj,
-    i;
-
-  for (i = 0; i < paths.length; ++i) {
-    if (current[paths[i]] == undefined) {
-      return undefined;
-    } else {
-      current = current[paths[i]];
-    }
-  }
-  return current;
-}
-
 // https://stackoverflow.com/a/34890276
-export function groupBy(xs: Array<any>, key: string) {
-  return xs.reduce(function (rv, x) {
-    const newKey = deepFind(x, key);
-    (rv[newKey] = rv[newKey] || []).push(x);
-    return rv;
-  }, {});
+export function groupBy<T>(xs: T[] | undefined, keyFn: (item: T) => string | undefined) {
+  return (xs ?? []).reduce(
+    (rv, x) => {
+      const newKey = keyFn(x) ?? '';
+      (rv[newKey] = rv[newKey] || []).push(x);
+      return rv;
+    },
+    {} as Record<string, T[]>,
+  );
 }
 
 export function getActiveTagsFromGroups(groups: PolymorphicGroup[]) {
