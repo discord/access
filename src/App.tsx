@@ -105,7 +105,7 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
   const [storedTheme, setStoredTheme] = React.useState(
     localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null,
   );
-  const theme = useTheme();
+  const currentTheme = useTheme();
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
 
   const handleThemeOverride = (theme: PaletteMode) => {
@@ -122,7 +122,7 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
 
   return (
     <ToggleButtonGroup size="small">
-      {(theme.palette.mode != 'light' || !condensed) && (
+      {(currentTheme.palette.mode != 'light' || !condensed) && (
         <Tooltip title="Light Mode">
           <ToggleButton
             value="left"
@@ -144,7 +144,7 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
           </ToggleButton>
         </Tooltip>
       )}
-      {(theme.palette.mode != 'dark' || !condensed) && (
+      {(currentTheme.palette.mode != 'dark' || !condensed) && (
         <Tooltip title="Dark Mode">
           <ToggleButton
             value="right"
