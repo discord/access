@@ -48,7 +48,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {DarkMode, LightMode} from '@mui/icons-material';
+import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
 import {lightGreen, red, yellow} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
@@ -102,26 +102,54 @@ const Drawer = styled(MuiDrawer, {
 }));
 
 function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMode) => void; condensed: boolean}) {
-  const theme = useTheme();
+  const [storedTheme, setStoredTheme] = React.useState(
+    localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null,
+  );
+  const currentTheme = useTheme();
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+
+  const handleThemeOverride = (theme: PaletteMode) => {
+    setThemeMode(theme);
+    localStorage.setItem('user-set-color-scheme', theme);
+    setStoredTheme(theme);
+  };
+
+  const handleSystemDefault = () => {
+    setThemeMode(systemTheme);
+    localStorage.removeItem('user-set-color-scheme');
+    setStoredTheme(null);
+  };
+
   return (
     <ToggleButtonGroup size="small">
-      {(theme.palette.mode != 'light' || !condensed) && (
+      {(currentTheme.palette.mode != 'light' || !condensed) && (
         <Tooltip title="Light Mode">
           <ToggleButton
             value="left"
-            selected={theme.palette.mode === 'light'}
-            onClick={() => setThemeMode('light')}
+            selected={storedTheme === 'light'}
+            onClick={() => handleThemeOverride('light')}
             aria-label="Light mode">
             <LightMode />
           </ToggleButton>
         </Tooltip>
       )}
-      {(theme.palette.mode != 'dark' || !condensed) && (
+      {!condensed && (
+        <Tooltip title="System Default">
+          <ToggleButton
+            value="center"
+            selected={storedTheme == null}
+            onClick={handleSystemDefault}
+            aria-label="System Default">
+            <Monitor />
+          </ToggleButton>
+        </Tooltip>
+      )}
+      {(currentTheme.palette.mode != 'dark' || !condensed) && (
         <Tooltip title="Dark Mode">
           <ToggleButton
             value="right"
-            selected={theme.palette.mode === 'dark'}
-            onClick={() => setThemeMode('dark')}
+            selected={storedTheme === 'dark'}
+            onClick={() => handleThemeOverride('dark')}
             aria-label="Dark mode">
             <DarkMode />
           </ToggleButton>
@@ -235,8 +263,9 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
 }
 
 export default function App() {
-  const prefersDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
-  const initialMode = prefersDarkMode ? 'dark' : 'light';
+  const storedTheme = localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null;
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+  const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
 
   // See https://discord.com/branding
@@ -262,6 +291,25 @@ export default function App() {
         },
         text: {
           accent: mode === 'light' ? '#5865F2' : '#A5B2FF',
+        },
+      },
+      components: {
+        MuiChip: {
+          styleOverrides: {
+            colorPrimary: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                  borderColor: theme.palette.text.accent,
+                }),
+            }),
+            deleteIcon: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                }),
+            }),
+          },
         },
       },
     });

@@ -257,8 +257,7 @@ export default function ReadGroup() {
                         icon={<TagIcon />}
                         sx={{
                           margin: '10px 2px 0 2px',
-                          bgcolor: (theme) =>
-                            tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabledBackground,
+                          bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
                         }}
                       />
                     ))}
