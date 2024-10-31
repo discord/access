@@ -293,6 +293,26 @@ export default function App() {
           accent: mode === 'light' ? '#5865F2' : '#A5B2FF',
         },
       },
+      components: {
+        MuiChip: {
+          styleOverrides: {
+            colorPrimary: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                  borderColor: theme.palette.text.accent,
+                }),
+            }),
+            deleteIcon: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                  borderColor: theme.palette.text.accent,
+                }),
+            }),
+          },
+        },
+      },
     });
     return createTheme(base, {
       palette: {
