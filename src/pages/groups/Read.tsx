@@ -1,7 +1,6 @@
 import React from 'react';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
@@ -9,7 +8,6 @@ import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import Link from '@mui/material/Link';
-import List from '@mui/material/List';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -54,7 +52,7 @@ import {
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 import {Diversity3 as RoleIcon} from '@mui/icons-material';
-import AppGroupInfo from './AppGroupInfo';
+import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 
 function sortGroupMembers(
@@ -216,19 +214,25 @@ export default function ReadGroup() {
           <Grid item sm={12}>
             <Paper sx={{py: 4, px: 2}}>
               <Stack direction="column" gap={2}>
-                <Stack
-                  alignItems={{sm: 'center', md: 'flex-start'}}
-                  direction={{sm: 'column', md: 'row-reverse'}}
-                  gap={1}>
-                  <Stack direction={{sm: 'row', md: 'column'}} gap={2}>
+                <Stack direction={{sm: 'column', md: 'row-reverse'}} gap={1}>
+                  <Stack
+                    direction={{sm: 'row', md: 'column'}}
+                    gap={2}
+                    justifyContent={{sm: 'center', md: 'flex-start'}}>
                     <AvatarButton
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
                     />
-                    {group.type == 'app_group' && <AppGroupInfo group={group as AppGroup} />}
+                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroup} />}
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
-                  <Stack alignItems="center" direction="column" gap={1} flexGrow={1} paddingLeft={{sm: 0, md: '100px'}}>
+                  <Stack
+                    alignItems="center"
+                    justifyContent="center"
+                    direction="column"
+                    gap={1}
+                    flexGrow={1}
+                    paddingLeft={{sm: 0, md: '100px'}}>
                     <Typography variant="h3" align="center">
                       {group.deleted_at != null ? (
                         <>

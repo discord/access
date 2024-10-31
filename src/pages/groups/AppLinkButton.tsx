@@ -4,7 +4,7 @@ import {AppGroup} from '../../api/apiSchemas';
 import AppIcon from '@mui/icons-material/AppShortcut';
 import AvatarButton from '../../components/AvatarButton';
 
-export default function AppGroupInfo({group}: {group: AppGroup}) {
+export default function AppLink({group}: {group: AppGroup}) {
   const navigate = useNavigate();
   const deleted = group.app?.deleted_at != null;
   return (
