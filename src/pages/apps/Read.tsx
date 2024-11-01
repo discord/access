@@ -76,7 +76,7 @@ export default function ReadApp() {
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper sx={{py: 4, px: 2}}>
+            <Paper sx={{py: 2, px: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
                   <Typography variant="h3" textAlign="center">
