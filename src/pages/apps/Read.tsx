@@ -25,7 +25,7 @@ import Ending from '../../components/Ending';
 import {groupBy, displayUserName} from '../../helpers';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {useGetAppById} from '../../api/apiComponents';
-import {App, OktaUserGroupMember} from '../../api/apiSchemas';
+import {App, AppGroup, OktaUserGroupMember} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from '../groups/CreateUpdate';
@@ -42,6 +42,12 @@ export default function ReadApp() {
   const {data, isError, isLoading} = useGetAppById({
     pathParams: {appId: id ?? ''},
   });
+  const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>(data?.active_non_owner_app_groups || []);
+  const app = data ?? ({} as App);
+
+  React.useEffect(() => {
+    setNonOwnerAppGroups(app?.active_non_owner_app_groups || []);
+  }, [data]);
 
   if (isError) {
     return <NotFound />;
@@ -51,10 +57,6 @@ export default function ReadApp() {
     return <Loading />;
   }
 
-  const app = data ?? ({} as App);
-
-  const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
-
   return (
     <React.Fragment>
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
@@ -63,9 +65,9 @@ export default function ReadApp() {
           {app.active_owner_app_groups && (
             <AppsAccordionListGroup app_group={app.active_owner_app_groups} list_group_title={'Owner Group'} />
           )}
-          <AppsAdminActionGroup app={app} currentUser={currentUser} />
-          {app.active_non_owner_app_groups && (
-            <AppsAccordionListGroup app_group={app.active_non_owner_app_groups} list_group_title={'App Group(s)'} />
+          <AppsAdminActionGroup app={app} currentUser={currentUser} onSearchSubmit={setNonOwnerAppGroups} />
+          {nonOwnerAppGroups && (
+            <AppsAccordionListGroup app_group={nonOwnerAppGroups} list_group_title={'App Group(s)'} />
           )}
         </Grid>
       </Container>
