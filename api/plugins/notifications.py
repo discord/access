@@ -151,6 +151,7 @@ def access_role_request_created(
         # to process their request from the UI
         logger.exception("Failed to execute role request created notification callback")
 
+
 @hookimpl(wrapper=True)
 def access_role_request_completed(
     role_request: RoleRequest,
