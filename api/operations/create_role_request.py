@@ -61,8 +61,6 @@ class CreateRoleRequest:
         self.request_reason = request_reason
         self.request_ending_at = request_ending_at
 
-        self.request_approvers = db.session.query()
-
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 

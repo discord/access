@@ -4,7 +4,7 @@ from api.extensions import Api, docs
 from api.views.resources import RoleRequestList, RoleRequestResource
 
 bp_name = "api-role-requests"
-bp_url_prefix = "/api/role_requests"
+bp_url_prefix = "/api/role-requests"
 bp = Blueprint(bp_name, __name__, url_prefix=bp_url_prefix)
 
 api = Api(bp)
