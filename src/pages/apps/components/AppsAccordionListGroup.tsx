@@ -111,9 +111,14 @@ const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) =
 interface AppAccordionListGroupProps {
   app_group?: AppGroup[];
   list_group_title?: string;
+  list_group_description?: string;
 }
 
-export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({app_group, list_group_title}) => {
+export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
+  app_group,
+  list_group_title,
+  list_group_description,
+}) => {
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
 
   const handleChange = (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
@@ -133,6 +138,11 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         {list_group_title && (
           <Typography variant="h5" component={'div'}>
             {list_group_title}
+          </Typography>
+        )}
+        {list_group_description && (
+          <Typography variant="body1" component={'div'}>
+            {list_group_description}
           </Typography>
         )}
         {app_group &&

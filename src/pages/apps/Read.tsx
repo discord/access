@@ -63,11 +63,18 @@ export default function ReadApp() {
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />
           {app.active_owner_app_groups && (
-            <AppsAccordionListGroup app_group={app.active_owner_app_groups} list_group_title={'Owner Group'} />
+            <AppsAccordionListGroup
+              app_group={app.active_owner_app_groups}
+              list_group_title={'Owner Group'}
+              list_group_description={'Members can manage all app groups as implicit owners'}
+            />
           )}
           <AppsAdminActionGroup app={app} currentUser={currentUser} onSearchSubmit={setNonOwnerAppGroups} />
           {nonOwnerAppGroups && (
-            <AppsAccordionListGroup app_group={nonOwnerAppGroups} list_group_title={'App Group(s)'} />
+            <AppsAccordionListGroup
+              app_group={nonOwnerAppGroups}
+              list_group_title={nonOwnerAppGroups.length > 1 ? 'App Groups' : 'App Group'}
+            />
           )}
         </Grid>
       </Container>
