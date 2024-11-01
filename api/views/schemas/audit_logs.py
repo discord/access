@@ -75,8 +75,8 @@ class AuditLogSchema(Schema):
         RoleRequestSchema,
         only=(
             "id",
-            "requester_role.id", # TODO see if this works
-            "requester_role.name", # TODO see if this works
+            "requester_role.id",
+            "requester_role.name",
             "request_reason",
             "request_ending_at",
             "request_ownership",

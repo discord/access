@@ -81,7 +81,7 @@ class RejectRoleRequest:
                     "current_user_id": self.rejecter_id,
                     "current_user_email": email,
                     "group": group,
-                    "role_request": self.role_request,  # TODO might need to change to separate out requester role
+                    "role_request": self.role_request,
                     "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
                 }
             )
@@ -89,7 +89,7 @@ class RejectRoleRequest:
 
         if self.notify:
             requester = db.session.get(OktaUser, self.role_request.requester_user_id)
-            requester_role = db.session.get(OktaGroup, self.role_request.requester_role)
+            requester_role = db.session.get(OktaGroup, self.role_request.requester_role_id)
 
             approvers = get_all_possible_request_approvers(self.role_request)
 

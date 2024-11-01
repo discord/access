@@ -80,6 +80,14 @@ class ApproveRoleRequest:
         if not self.role_request.active_requested_group.is_managed:
             return self.role_request
 
+        self.role_request.status = AccessRequestStatus.APPROVED
+        self.role_request.resolved_at = db.func.now()
+        self.role_request.resolver_user_id = self.approver_id
+        self.role_request.resolution_reason = self.approval_reason
+        self.role_request.approval_ending_at = self.ending_at
+
+        db.session.commit()
+
         # Audit logging
         group = (
             db.session.query(OktaGroup)
@@ -102,7 +110,7 @@ class ApproveRoleRequest:
                     "current_user_id": self.approver_id,
                     "current_user_email": self.approver_email,
                     "group": group,
-                    "role_request": self.role_request,  # TODO may need to pull out requester_role
+                    "role_request": self.role_request,
                     "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
                 }
             )
@@ -127,11 +135,11 @@ class ApproveRoleRequest:
 
         if self.notify:
             requester = db.session.get(OktaUser, self.role_request.requester_user_id)
-            requester_role = db.session.get(OktaGroup, self.role_request.requester_role)
+            requester_role = db.session.get(OktaGroup, self.role_request.requester_role_id)
 
             approvers = get_all_possible_request_approvers(self.role_request)
 
-            self.notification_hook.role_request_completed(
+            self.notification_hook.access_role_request_completed(
                 role_request=self.role_request,
                 role=requester_role,
                 group=group,

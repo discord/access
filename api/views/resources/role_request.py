@@ -192,7 +192,7 @@ class RoleRequestResource(MethodResource):
         ).dump(role_request)
 
 
-class AccessRequestList(MethodResource):
+class RoleRequestList(MethodResource):
     @FlaskApiSpecDecorators.request_schema(SearchRoleRequestPaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(RoleRequestPaginationSchema)
     def get(self) -> ResponseReturnValue:
@@ -219,7 +219,7 @@ class AccessRequestList(MethodResource):
             query = query.join(RoleRequest.requester_role).filter(
                 db.or_(
                     RoleRequest.requester_role_id == search_args["requester_role_id"],
-                    OktaGroup.name.ilike(search_args["requester_role_id"]),
+                    RoleGroup.name.ilike(search_args["requester_role_id"]),
                 )
             )
 
@@ -356,11 +356,17 @@ class AccessRequestList(MethodResource):
     @FlaskApiSpecDecorators.response_schema(RoleRequestSchema)
     def post(self) -> ResponseReturnValue:
         role_request_args = CreateRoleRequestSchema().load(request.get_json())
+        requester_role = (
+            db.session.query(RoleGroup)
+            .filter(RoleGroup.deleted_at.is_(None))
+            .filter(RoleGroup.id == role_request_args["role_id"])
+            .first_or_404()
+        )
 
         # Ensure requester not deleted and owns the role group
         if OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(
             OktaUser.id == g.current_user_id
-        ).first() is None or not AuthorizationHelpers.can_manage_group(role_request_args["requester_role_id"]):
+        ).first() is None or not AuthorizationHelpers.can_manage_group(requester_role):
             abort(403, "Current user is not allowed to perform this action")
 
         group = (
@@ -384,7 +390,7 @@ class AccessRequestList(MethodResource):
 
         existing_role_requests = (
             RoleRequest.query.filter(RoleRequest.requester_user_id == g.current_user_id)
-            .filter(RoleRequest.requester_role_id == role_request_args["requester_role_id"])
+            .filter(RoleRequest.requester_role_id == role_request_args["role_id"])
             .filter(RoleRequest.requested_group_id == role_request_args["group_id"])
             .filter(RoleRequest.request_ownership == role_request_args["group_owner"])
             .filter(RoleRequest.status == AccessRequestStatus.PENDING)
@@ -401,7 +407,7 @@ class AccessRequestList(MethodResource):
 
         role_request = CreateRoleRequest(
             requester_user=g.current_user_id,
-            requester_role=role_request_args["requester_role_id"],
+            requester_role=role_request_args["role_id"],
             requested_group=role_request_args["group_id"],
             request_ownership=role_request_args["group_owner"],
             request_reason=role_request_args.get("reason"),
