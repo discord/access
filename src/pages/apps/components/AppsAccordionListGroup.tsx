@@ -26,12 +26,26 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {Link as RouterLink, useParams} from 'react-router-dom';
 
 interface GroupDetailListProps {
-  member_set: Set<OktaUserGroupMember>;
+  member_list: any[];
   title?: string;
 }
 
-const GroupDetailList: React.FC<GroupDetailListProps> = ({member_set, title}) => {
-  const member_list = Array.from(member_set);
+function sortGroupMembers(
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+): number {
+  let aEmail = aUsers[0].active_user?.email ?? '';
+  let bEmail = bUsers[0].active_user?.email ?? '';
+  return aEmail.localeCompare(bEmail);
+}
+
+function groupMemberships(
+  memberships: Array<OktaUserGroupMember> | undefined,
+): Map<string, Array<OktaUserGroupMember>> {
+  return groupBy(memberships ?? [], 'active_user.id');
+}
+
+const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) => {
   return (
     <Stack direction="column" spacing={1}>
       {title && (
@@ -123,9 +137,14 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
         )}
         {app_group &&
           app_group?.map((appGroup) => {
-            const members = new Set(appGroup.active_user_memberships);
-            const owners = new Set(appGroup.active_user_ownerships);
-            console.log(`App ${appGroup.name}`, members, owners);
+            const owners = Object.entries(groupMemberships(appGroup.active_user_ownerships))
+              .sort(sortGroupMembers)
+              .map((memberList) => memberList[1][0]);
+
+            const members = Object.entries(groupMemberships(appGroup.active_user_memberships))
+              .sort(sortGroupMembers)
+              .map((memberList) => memberList[1][0]);
+
             return (
               <TableContainer component={Paper}>
                 <Accordion expanded={expanded[appGroup.name] || false} onChange={handleChange(appGroup.name)}>
@@ -163,8 +182,8 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                           alignItems: 'right',
                         }}>
                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                        Owners: {owners.size || 0} <br />
-                        Members: {members.size || 0}
+                        Owners: {owners.length || 0} <br />
+                        Members: {members.length || 0}
                       </Box>
                     </Box>
                   </AccordionSummary>
@@ -179,8 +198,8 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({ap
                               flexWrap={'wrap'}
                               justifyContent={'space-between'}
                               gap={'2rem'}>
-                              <GroupDetailList member_set={owners} title={'Group Owners'} />
-                              <GroupDetailList member_set={members} title={'Members'} />
+                              <GroupDetailList member_list={owners} title={'Group Owners'} />
+                              <GroupDetailList member_list={members} title={'Members'} />
                             </Stack>
                           </TableCell>
                         </TableRow>
