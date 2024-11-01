@@ -215,10 +215,7 @@ export default function ReadGroup() {
             <Paper sx={{py: 4, px: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack direction={{sm: 'column', md: 'row-reverse'}} gap={1}>
-                  <Stack
-                    direction={{sm: 'row', md: 'column'}}
-                    gap={2}
-                    justifyContent={{sm: 'center', md: 'flex-start'}}>
+                  <Stack direction={{sm: 'row', md: 'column'}} gap={2} justifyContent="center">
                     <AvatarButton
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
