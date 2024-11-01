@@ -79,7 +79,7 @@ export default function ReadApp() {
           <Grid item xs={12}>
             <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" gap={1}>
+                <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
                   <Typography variant="h3" textAlign="center">
                     {app.name}
                   </Typography>

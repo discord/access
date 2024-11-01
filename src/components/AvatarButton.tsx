@@ -12,7 +12,15 @@ export default function AvatarButton({icon, text, strikethrough, onClick}: Avata
   return (
     <ButtonBase
       disabled={onClick == null}
-      sx={{display: 'flex', flexDirection: 'column', gap: 0.5, p: 0.5, borderRadius: 2, width: 100}}
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.5,
+        p: 0.5,
+        borderRadius: 2,
+        width: 100,
+        wordBreak: 'break-word',
+      }}
       onClick={onClick}>
       <Avatar sx={{bgcolor: 'primary.main'}}>{icon}</Avatar>
       {text && (

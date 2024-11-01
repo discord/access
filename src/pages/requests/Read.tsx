@@ -408,6 +408,7 @@ export default function ReadRequest() {
                   xs={8}
                   sx={{
                     textAlign: 'center',
+                    wordBreak: 'break-word',
                   }}>
                   <Typography variant="h4">
                     {(accessRequest.requester?.deleted_at ?? null) != null ? (

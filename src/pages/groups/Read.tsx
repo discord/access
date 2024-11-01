@@ -229,6 +229,7 @@ export default function ReadGroup() {
                     direction="column"
                     gap={1}
                     flexGrow={1}
+                    sx={{wordBreak: 'break-word'}}
                     paddingLeft={{sm: 0, md: '100px'}}>
                     <Typography variant="h3" align="center">
                       {group.deleted_at != null ? (

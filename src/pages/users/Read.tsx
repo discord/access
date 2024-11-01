@@ -458,7 +458,7 @@ export default function ReadUser() {
           <Grid item xs={12} alignItems="center">
             <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" gap={1}>
+                <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
                   <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />
                   <Typography variant="h3" textAlign="center">
                     {user.deleted_at != null ? (
