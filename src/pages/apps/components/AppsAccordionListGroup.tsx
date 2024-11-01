@@ -120,12 +120,12 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
           flexDirection: 'column',
           gap: '1.25rem',
         }}>
-        {list_group_title && (
+        {(app_group?.length || (0 > 0 && list_group_title)) && (
           <Typography variant="h5" component={'div'}>
             {list_group_title}
           </Typography>
         )}
-        {list_group_description && (
+        {(app_group?.length || (0 > 0 && list_group_description)) && (
           <Typography variant="body1" component={'div'}>
             {list_group_description}
           </Typography>
