@@ -122,7 +122,7 @@ export default function ReadTag() {
           <Grid item xs={12}>
             <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
-                <Stack alignItems="center" direction="column" gap={1}>
+                <Stack alignItems="center" direction="column" sx={{wordBreak: 'break-word'}} gap={1}>
                   <Typography variant="h3" textAlign="center">
                     {tag.name}
                   </Typography>
