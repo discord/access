@@ -10,30 +10,19 @@ import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
 import Link from '@mui/material/Avatar';
-import ListItemAvatar from '@mui/material/ListItemAvatar';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
 
 import ExternalIcon from '@mui/icons-material/Outbound';
 
 import {useGetGroupById} from '../../api/apiComponents';
 import {PolymorphicGroup} from '../../api/apiSchemas';
+import AvatarButton from '../../components/AvatarButton';
 
 interface ExternallyManagedButtonProps {
   setOpen(open: boolean): any;
 }
 
 function ExternallyManagedButton(props: ExternallyManagedButtonProps) {
-  return (
-    <ListItemButton key="managedexternally" onClick={() => props.setOpen(true)}>
-      <ListItemAvatar>
-        <Avatar sx={{bgcolor: 'primary.main'}}>
-          <ExternalIcon />
-        </Avatar>
-      </ListItemAvatar>
-      <ListItemText primary="Managed Externally" />
-    </ListItemButton>
-  );
+  return <AvatarButton icon={<ExternalIcon />} onClick={() => props.setOpen(true)} text="Managed Externally" />;
 }
 
 interface RuleLinksProps {

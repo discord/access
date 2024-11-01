@@ -1,7 +1,6 @@
 import React from 'react';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
-import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
@@ -9,10 +8,6 @@ import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import Link from '@mui/material/Link';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemAvatar from '@mui/material/ListItemAvatar';
-import ListItemText from '@mui/material/ListItemText';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -25,7 +20,6 @@ import TableFooter from '@mui/material/TableFooter';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import AppIcon from '@mui/icons-material/AppShortcut';
 import AuditGroupIcon from '@mui/icons-material/History';
 import AuditRoleIcon from '@mui/icons-material/Diversity2';
 import DeleteIcon from '@mui/icons-material/Close';
@@ -57,6 +51,9 @@ import {
   GroupMember,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
+import {Diversity3 as RoleIcon} from '@mui/icons-material';
+import AppLinkButton from './AppLinkButton';
+import AvatarButton from '../../components/AvatarButton';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -212,151 +209,88 @@ export default function ReadGroup() {
 
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-              <Grid container spacing={1}>
-                <Grid
-                  item
-                  xs={8.5}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
-                  <Typography variant="h3">
-                    {group.deleted_at != null ? (
-                      <>
-                        <s>{group.name}</s> is Deleted
-                      </>
-                    ) : (
-                      group.name
-                    )}
-                  </Typography>
-                  <Typography variant="h5">{group.description}</Typography>
-                  <Box>
-                    {group.active_group_tags?.map((tagMap) => (
-                      <Chip
-                        key={'tag' + tagMap.active_tag!.id}
-                        label={tagMap.active_tag!.name}
-                        color="primary"
-                        onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
-                        variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
-                        icon={<TagIcon />}
-                        sx={{
-                          margin: '10px 2px 0 2px',
-                          bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
-                        }}
-                      />
-                    ))}
-                  </Box>
-                </Grid>
-                <Grid
-                  item
-                  xs={0.5}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
-                  <Stack style={{position: 'absolute', right: '2px'}}>
-                    <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
-                      <div>
-                        <CreateUpdateGroup currentUser={currentUser} group={group} />
-                      </div>
-                    </Tooltip>
-                    <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
-                      <div>
-                        <DeleteGroup currentUser={currentUser} group={group} />
-                      </div>
-                    </Tooltip>
-                    <Tooltip
-                      title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
-                      placement="right"
-                      PopperProps={moveTooltip}>
-                      <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
-                        <AuditGroupIcon />
+          <Grid item sm={12}>
+            <Paper sx={{p: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack direction={{sm: 'column', md: 'row-reverse'}} gap={1}>
+                  <Stack direction={{sm: 'row', md: 'column'}} gap={2} justifyContent="center">
+                    <AvatarButton
+                      icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
+                      text={displayGroupType(group)}
+                    />
+                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroup} />}
+                    {!group.is_managed && <ExternallyManaged group={group} />}
+                  </Stack>
+                  <Stack
+                    alignItems="center"
+                    justifyContent="center"
+                    direction="column"
+                    gap={1}
+                    flexGrow={1}
+                    sx={{wordBreak: 'break-word'}}
+                    paddingLeft={{sm: 0, md: '100px'}}>
+                    <Typography variant="h3" align="center">
+                      {group.deleted_at != null ? (
+                        <>
+                          <s>{group.name}</s> is Deleted
+                        </>
+                      ) : (
+                        group.name
+                      )}
+                    </Typography>
+                    <Typography variant="h5" align="center">
+                      {group.description}
+                    </Typography>
+                    <Box>
+                      {group.active_group_tags?.map((tagMap) => (
+                        <Chip
+                          key={'tag' + tagMap.active_tag!.id}
+                          label={tagMap.active_tag!.name}
+                          color="primary"
+                          onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+                          variant={tagMap.active_app_tag_mapping ? 'outlined' : 'filled'}
+                          icon={<TagIcon />}
+                          sx={{
+                            margin: '10px 2px 0 2px',
+                            bgcolor: (theme) =>
+                              tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  </Stack>
+                </Stack>
+                <Divider />
+                <Stack direction="row" justifyContent="center">
+                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                    <div>
+                      <CreateUpdateGroup currentUser={currentUser} group={group} />
+                    </div>
+                  </Tooltip>
+                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                    <div>
+                      <DeleteGroup currentUser={currentUser} group={group} />
+                    </div>
+                  </Tooltip>
+                  <Tooltip
+                    title={group.type == 'role_group' ? 'Users audit' : 'Audit'}
+                    placement="top"
+                    PopperProps={moveTooltip}>
+                    <IconButton aria-label="audit" to={`/groups/${id}/audit`} component={RouterLink}>
+                      <AuditGroupIcon />
+                    </IconButton>
+                  </Tooltip>
+                  {group.type == 'role_group' ? (
+                    <Tooltip title="Role audit" placement="top" PopperProps={moveTooltip}>
+                      <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
+                        <AuditRoleIcon />
                       </IconButton>
                     </Tooltip>
-                    {group.type == 'role_group' ? (
-                      <Tooltip title="Role audit" placement="right" PopperProps={moveTooltip}>
-                        <IconButton aria-label="audit" to={`/roles/${id}/audit`} component={RouterLink}>
-                          <AuditRoleIcon />
-                        </IconButton>
-                      </Tooltip>
-                    ) : null}
-                  </Stack>
-                </Grid>
-                <Divider orientation="vertical" flexItem sx={{mr: '-1px'}} />
-                <Grid
-                  item
-                  xs={3}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                  <List
-                    sx={{
-                      width: '100%',
-                      maxWidth: 360,
-                    }}>
-                    <ListItem key="grouptype">
-                      <ListItemAvatar>
-                        <Avatar sx={{bgcolor: 'primary.main'}}>
-                          <GroupIcon />
-                        </Avatar>
-                      </ListItemAvatar>
-                      <ListItemText primary={displayGroupType(group)} />
-                    </ListItem>
-                    {group.type == 'app_group' ? (
-                      ((group ?? {}) as AppGroup).app?.deleted_at != null ? (
-                        <ListItem key="appgroupapp">
-                          <ListItemAvatar>
-                            <Avatar sx={{bgcolor: 'primary.main'}}>
-                              <AppIcon />
-                            </Avatar>
-                          </ListItemAvatar>
-                          <ListItemText
-                            sx={{textDecoration: 'line-through'}}
-                            primary={((group ?? {}) as AppGroup).app?.name}
-                          />
-                        </ListItem>
-                      ) : (
-                        <ListItem
-                          key="appgroupapp"
-                          component={RouterLink}
-                          to={`/apps/${((group ?? {}) as AppGroup).app?.name}`}
-                          sx={{textDecoration: 'none', color: 'inherit'}}>
-                          <ListItemAvatar>
-                            <Avatar sx={{bgcolor: 'primary.main'}}>
-                              <AppIcon />
-                            </Avatar>
-                          </ListItemAvatar>
-                          <ListItemText primary={((group ?? {}) as AppGroup).app?.name} />
-                        </ListItem>
-                      )
-                    ) : (
-                      ''
-                    )}
-                    {!group.is_managed ? <ExternallyManaged group={group} /> : ''}
-                  </List>
-                </Grid>
-              </Grid>
+                  ) : null}
+                </Stack>
+              </Stack>
             </Paper>
           </Grid>
           {group.type == 'role_group' ? (

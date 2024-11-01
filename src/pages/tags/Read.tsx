@@ -114,54 +114,55 @@ export default function ReadTag() {
     disallow_self_add_membership: 'Owners may not add selves as members?',
   };
 
+  const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                textAlign: 'center',
-                position: 'relative',
-              }}>
-              <Typography variant="h3" sx={{margin: '5px 40px 0px 10px'}}>
-                {tag.name}
-              </Typography>
-              <Typography variant="h5" sx={{margin: '5px 40px 0px 10px'}}>
-                {tag.description}
-              </Typography>
-              {tag.enabled ? (
-                <Box>
-                  <Chip color="primary" icon={<Enabled />} label="Enabled" sx={{marginTop: '10px'}} />
-                </Box>
-              ) : (
-                <Box>
-                  <Chip
-                    icon={<Disabled />}
-                    label="Disabled"
-                    sx={{
-                      marginTop: '10px',
-                      bgcolor: (theme) => theme.palette.action.disabledBackground,
-                    }}
-                  />
-                </Box>
-              )}
-              <Stack style={{position: 'absolute', right: '10px'}}>
-                <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <CreateUpdateTag currentUser={currentUser} tag={tag} />
-                  </div>
-                </Tooltip>
-                <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <DeleteTag currentUser={currentUser} tag={tag} />
-                  </div>
-                </Tooltip>
+            <Paper sx={{p: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack alignItems="center" direction="column" sx={{wordBreak: 'break-word'}} gap={1}>
+                  <Typography variant="h3" textAlign="center">
+                    {tag.name}
+                  </Typography>
+                  <Typography variant="h5" textAlign="center">
+                    {tag.description}
+                  </Typography>
+                  {tag.enabled ? (
+                    <Box>
+                      <Chip color="primary" icon={<Enabled />} label="Enabled" sx={{marginTop: '10px'}} />
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Chip
+                        icon={<Disabled />}
+                        label="Disabled"
+                        sx={{
+                          marginTop: '10px',
+                          bgcolor: (theme) => theme.palette.action.disabledBackground,
+                        }}
+                      />
+                    </Box>
+                  )}
+                </Stack>
+                {hasActions && (
+                  <>
+                    <Divider />
+                    <Stack direction="row" justifyContent="center">
+                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <CreateUpdateTag currentUser={currentUser} tag={tag} />
+                        </div>
+                      </Tooltip>
+                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <DeleteTag currentUser={currentUser} tag={tag} />
+                        </div>
+                      </Tooltip>
+                    </Stack>
+                  </>
+                )}
               </Stack>
             </Paper>
           </Grid>
