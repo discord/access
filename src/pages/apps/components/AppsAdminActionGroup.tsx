@@ -2,7 +2,8 @@ import {Autocomplete, Grid, Paper, Stack, TextField} from '@mui/material';
 import CreateUpdateGroup from '../../groups/CreateUpdate';
 import {OktaUser, App, AppGroup} from '../../../api/apiSchemas';
 import {renderUserOption} from '../../../components/TableTopBar';
-import {displayUserName} from '../../../helpers';
+import {displayUserName, sortGroupMemberRecords, sortGroupMembers} from '../../../helpers';
+import React from 'react';
 
 interface AppsAdminActionGroupProps {
   currentUser: OktaUser;
@@ -56,7 +57,9 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({curre
             size="small"
             sx={{width: 320}}
             renderInput={(params) => <TextField {...params} label="Search" />}
-            options={Object.values(allMembers).map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            options={sortGroupMemberRecords(allMembers).map(
+              (row) => displayUserName(row) + ';' + row.email.toLowerCase(),
+            )}
             onChange={handleSearchSubmit}
             renderOption={renderUserOption}
             autoHighlight

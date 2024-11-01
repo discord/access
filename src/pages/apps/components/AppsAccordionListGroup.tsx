@@ -19,7 +19,7 @@ import {
 } from '@mui/material';
 import {App, AppGroup, OktaUserGroupMember} from '../../../api/apiSchemas';
 import React from 'react';
-import {displayUserName, groupBy} from '../../../helpers';
+import {displayUserName, groupBy, groupMemberships, sortGroupMembers} from '../../../helpers';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
 import Ending from '../../../components/Ending';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -28,21 +28,6 @@ import {Link as RouterLink, useParams} from 'react-router-dom';
 interface GroupDetailListProps {
   member_list: any[];
   title?: string;
-}
-
-function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
-): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
-  return aEmail.localeCompare(bEmail);
-}
-
-function groupMemberships(
-  memberships: Array<OktaUserGroupMember> | undefined,
-): Map<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], 'active_user.id');
 }
 
 const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) => {
