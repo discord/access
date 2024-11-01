@@ -185,7 +185,13 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                     <Ending memberships={groups} />
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        flexWrap: 'wrap',
+                        rowGap: '.5rem',
+                      }}>
                       {groups.map((group) =>
                         group.active_role_group_mapping == null ? (
                           <Chip
@@ -328,7 +334,13 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                     <Ending memberships={groups} />
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        flexWrap: 'wrap',
+                        rowGap: '.5rem',
+                      }}>
                       {groups.map((group) =>
                         group.active_role_group_mapping == null ? (
                           <Chip
