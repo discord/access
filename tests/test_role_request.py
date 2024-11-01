@@ -370,7 +370,7 @@ def test_create_role_request(
     assert data["request_ownership"] == role_request.request_ownership
 
 
-# Try to create an access request when not the role owner or Access admin, then become owner and try again
+# Try to create an role request when not the role owner or Access admin, then become owner and try again
 def test_create_role_request_not_role_owner(
     app: Flask, client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
