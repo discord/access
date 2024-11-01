@@ -22,13 +22,13 @@ export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
       <Paper sx={{p: 2}}>
         <Stack direction="column" gap={2}>
           <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
-            <Typography variant="h3" sx={{margin: '5px 40px 0px 10px'}}>
+            <Typography variant="h3" textAlign={'center'}>
               {app.name}
             </Typography>
-            <Typography variant="h5" sx={{margin: '5px 40px 0px 10px'}}>
+            <Typography variant="h5" textAlign={'center'}>
               {app.description}
             </Typography>
-            {app.active_app_tags ? (
+            {app.active_app_tags && (
               <Box>
                 {app.active_app_tags.map((tagMap) => (
                   <Chip
@@ -38,32 +38,32 @@ export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
                     onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
                     icon={<TagIcon />}
                     sx={{
-                      margin: '2px',
-                      marginTop: '5px',
+                      margin: '.125rem',
+                      marginTop: '.3125rem',
                       bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
                     }}
                   />
                 ))}
               </Box>
-            ) : null}
-            {hasActions && (
-              <>
-                <Divider />
-                <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <CreateUpdateApp currentUser={currentUser} app={app} />
-                    </div>
-                  </Tooltip>
-                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <DeleteApp currentUser={currentUser} app={app} />
-                    </div>
-                  </Tooltip>
-                </Stack>
-              </>
             )}
           </Stack>
+          {hasActions && (
+            <>
+              <Divider />
+              <Stack direction="row" justifyContent="center">
+                <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                  <div>
+                    <CreateUpdateApp currentUser={currentUser} app={app} />
+                  </div>
+                </Tooltip>
+                <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                  <div>
+                    <DeleteApp currentUser={currentUser} app={app} />
+                  </div>
+                </Tooltip>
+              </Stack>
+            </>
+          )}
         </Stack>
       </Paper>
     </Grid>
