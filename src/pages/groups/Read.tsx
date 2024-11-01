@@ -209,10 +209,10 @@ export default function ReadGroup() {
 
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item sm={12}>
-            <Paper sx={{py: 2, px: 2}}>
+            <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack direction={{sm: 'column', md: 'row-reverse'}} gap={1}>
                   <Stack direction={{sm: 'row', md: 'column'}} gap={2} justifyContent="center">

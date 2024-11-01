@@ -114,12 +114,13 @@ export default function ReadTag() {
     disallow_self_add_membership: 'Owners may not add selves as members?',
   };
 
+  const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper sx={{py: 2, px: 2}}>
+            <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
                   <Typography variant="h3" textAlign="center">
@@ -145,19 +146,23 @@ export default function ReadTag() {
                     </Box>
                   )}
                 </Stack>
-                <Divider />
-                <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <CreateUpdateTag currentUser={currentUser} tag={tag} />
-                    </div>
-                  </Tooltip>
-                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <DeleteTag currentUser={currentUser} tag={tag} />
-                    </div>
-                  </Tooltip>
-                </Stack>
+                {hasActions && (
+                  <>
+                    <Divider />
+                    <Stack direction="row" justifyContent="center">
+                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <CreateUpdateTag currentUser={currentUser} tag={tag} />
+                        </div>
+                      </Tooltip>
+                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <DeleteTag currentUser={currentUser} tag={tag} />
+                        </div>
+                      </Tooltip>
+                    </Stack>
+                  </>
+                )}
               </Stack>
             </Paper>
           </Grid>

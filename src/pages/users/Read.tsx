@@ -453,10 +453,10 @@ export default function ReadUser() {
 
   return (
     <React.Fragment>
-      <Container maxWidth="xl" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="xl" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} alignItems="center">
-            <Paper sx={{py: 2, px: 2}}>
+            <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
                   <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />

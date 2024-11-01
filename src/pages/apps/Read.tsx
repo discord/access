@@ -71,12 +71,13 @@ export default function ReadApp() {
 
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
+  const hasActions = isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app?.id ?? '');
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper sx={{py: 2, px: 2}}>
+            <Paper sx={{p: 2}}>
               <Stack direction="column" gap={2}>
                 <Stack alignItems="center" direction="column" gap={1}>
                   <Typography variant="h3" textAlign="center">
@@ -105,19 +106,23 @@ export default function ReadApp() {
                     </Box>
                   ) : null}
                 </Stack>
-                <Divider />
-                <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <CreateUpdateApp currentUser={currentUser} app={app} />
-                    </div>
-                  </Tooltip>
-                  <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <DeleteApp currentUser={currentUser} app={app} />
-                    </div>
-                  </Tooltip>
-                </Stack>
+                {hasActions && (
+                  <>
+                    <Divider />
+                    <Stack direction="row" justifyContent="center">
+                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <CreateUpdateApp currentUser={currentUser} app={app} />
+                        </div>
+                      </Tooltip>
+                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <DeleteApp currentUser={currentUser} app={app} />
+                        </div>
+                      </Tooltip>
+                    </Stack>
+                  </>
+                )}
               </Stack>
             </Paper>
           </Grid>
