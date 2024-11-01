@@ -1,6 +1,8 @@
-import {Grid, Paper} from '@mui/material';
+import {Autocomplete, Grid, Paper, Stack, TextField} from '@mui/material';
 import CreateUpdateGroup from '../../groups/CreateUpdate';
-import {OktaUser, App} from '../../../api/apiSchemas';
+import {OktaUser, App, AppGroup} from '../../../api/apiSchemas';
+import {renderUserOption} from '../../../components/TableTopBar';
+import {displayUserName} from '../../../helpers';
 
 interface AppsAdminActionGroupProps {
   currentUser: OktaUser;
@@ -8,6 +10,30 @@ interface AppsAdminActionGroupProps {
 }
 
 export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({currentUser, app}) => {
+  const allMembers: Record<string, OktaUser> = {};
+  const memberGroups: Record<string, AppGroup[]> = {};
+  [app.active_owner_app_groups, app.active_non_owner_app_groups].forEach((appGroupList) => {
+    (appGroupList ?? []).forEach((appGroup) => {
+      [appGroup.active_user_ownerships, appGroup.active_user_memberships].forEach((memberList) => {
+        (memberList ?? []).forEach((member) => {
+          const activeUser = member.active_user;
+          if (activeUser) {
+            allMembers[activeUser.id] = activeUser;
+            (memberGroups[activeUser.email.toLowerCase()] ||= []).push(appGroup);
+          }
+        });
+      });
+    });
+  });
+
+  const handleSearchSubmit = (_: unknown, newValue: string | null) => {
+    const email = newValue?.split(';')[1] ?? '';
+    const appGroups = memberGroups[email] ?? [];
+
+    // TODO: Expand/highlight/whatever user in appGroups
+    console.log(email, appGroups);
+  };
+
   return (
     <Grid item xs={12} className={'app-detail app-detail-admin-action-group'}>
       <Paper
@@ -16,7 +42,20 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({curre
           display: 'flex',
           alignItems: 'center',
         }}>
-        <CreateUpdateGroup defaultGroupType={'app_group'} currentUser={currentUser} app={app}></CreateUpdateGroup>
+        <Stack direction="row" width="100%" justifyContent="space-between">
+          <CreateUpdateGroup defaultGroupType={'app_group'} currentUser={currentUser} app={app} />
+          <Autocomplete
+            size="small"
+            sx={{width: 320}}
+            renderInput={(params) => <TextField {...params} label="Search" />}
+            options={Object.values(allMembers).map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            onChange={handleSearchSubmit}
+            renderOption={renderUserOption}
+            autoHighlight
+            autoSelect
+            clearOnEscape
+          />
+        </Stack>
       </Paper>
     </Grid>
   );
