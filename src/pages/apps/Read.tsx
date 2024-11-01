@@ -33,24 +33,7 @@ import CreateUpdateApp from './CreateUpdate';
 import DeleteApp from './Delete';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
-import AppsHeader from './components/AppsHeader';
-import {AppsAdminActionGroup} from './components/AppsAdminActionGroup';
-import {AppsAccordionListGroup} from './components/AppsAccordionListGroup';
-
-function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
-): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
-  return aEmail.localeCompare(bEmail);
-}
-
-function groupMemberships(
-  memberships: Array<OktaUserGroupMember> | undefined,
-): Map<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], 'active_user.id');
-}
+import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
@@ -77,9 +60,13 @@ export default function ReadApp() {
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />
-          {app.active_owner_app_groups && <AppsAccordionListGroup app_group={app.active_owner_app_groups} />}
+          {app.active_owner_app_groups && (
+            <AppsAccordionListGroup app_group={app.active_owner_app_groups} list_group_title={'Owner Group'} />
+          )}
           <AppsAdminActionGroup app={app} currentUser={currentUser} />
-          {app.active_non_owner_app_groups && <AppsAccordionListGroup app_group={app.active_non_owner_app_groups} />}
+          {app.active_non_owner_app_groups && (
+            <AppsAccordionListGroup app_group={app.active_non_owner_app_groups} list_group_title={'App Group(s)'} />
+          )}
         </Grid>
       </Container>
     </React.Fragment>

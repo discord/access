@@ -11,7 +11,7 @@ interface AppsHeaderProps {
   currentUser: OktaUser;
 }
 
-const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
+export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
   const navigate = useNavigate();
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
