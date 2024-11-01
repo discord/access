@@ -59,7 +59,7 @@ export default function ReadApp() {
 
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />
           {app.active_owner_app_groups && (
