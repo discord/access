@@ -66,7 +66,7 @@ export default function ReadApp() {
             <AppsAccordionListGroup
               app_group={app.active_owner_app_groups}
               list_group_title={'Owner Group'}
-              list_group_description={'Members can manage all app groups as implicit owners'}
+              list_group_description={'Owners can manage all app groups as implicit owners'}
             />
           )}
           <AppsAdminActionGroup app={app} currentUser={currentUser} onSearchSubmit={setNonOwnerAppGroups} />
