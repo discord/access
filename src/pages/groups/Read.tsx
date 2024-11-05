@@ -145,23 +145,20 @@ export default function ReadGroup() {
     directRoleOwnerships.has(user.active_user!.id) ? null : allOwnerships.add(user);
   });
 
-  let ownerships: Map<string, Array<OktaUserGroupMember>> = groupBy(Array.from(allOwnerships), 'active_user.id');
+  let ownerships = groupBy(Array.from(allOwnerships), (m) => m.active_user?.id);
 
-  const memberships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    group.active_user_memberships ?? [],
-    'active_user.id',
-  );
+  const memberships = groupBy(group.active_user_memberships, (m) => m.active_user?.id);
 
-  let role_associated_group_owners = new Map<String, Array<RoleGroupMap>>();
-  let role_associated_group_members = new Map<String, Array<RoleGroupMap>>();
+  let role_associated_group_owners: Record<string, RoleGroupMap[]> = {};
+  let role_associated_group_members: Record<string, RoleGroupMap[]> = {};
   if (group.type == 'role_group') {
     role_associated_group_owners = groupBy(
-      (group as RoleGroup).active_role_associated_group_owner_mappings ?? [],
-      'active_group.id',
+      (group as RoleGroup).active_role_associated_group_owner_mappings,
+      (g) => g.active_group?.id,
     );
     role_associated_group_members = groupBy(
-      (group as RoleGroup).active_role_associated_group_member_mappings ?? [],
-      'active_group.id',
+      (group as RoleGroup).active_role_associated_group_member_mappings,
+      (g) => g.active_group?.id,
     );
   }
 

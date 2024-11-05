@@ -43,10 +43,8 @@ function sortGroupMembers(
   return aEmail.localeCompare(bEmail);
 }
 
-function groupMemberships(
-  memberships: Array<OktaUserGroupMember> | undefined,
-): Map<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], 'active_user.id');
+function groupMemberships(memberships: Array<OktaUserGroupMember> | undefined) {
+  return groupBy(memberships, (m) => m.active_user?.id);
 }
 
 export default function ReadApp() {

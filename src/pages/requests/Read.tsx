@@ -255,10 +255,7 @@ export default function ReadRequest() {
     }));
   }
 
-  const ownerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    group.active_user_ownerships ?? [],
-    'active_user.id',
-  );
+  const ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
 
   const {data: appData} = useGetAppById(
     {
@@ -276,7 +273,7 @@ export default function ReadRequest() {
   const appOwnershipsArray = (app.active_owner_app_groups ?? [])
     .map((appGroup) => appGroup.active_user_ownerships ?? [])
     .flat();
-  const appOwnerships: Map<string, Array<OktaUserGroupMember>> = groupBy(appOwnershipsArray, 'active_user.id');
+  const appOwnerships = groupBy(appOwnershipsArray, (m) => m.active_user?.id);
 
   const {data: accessAppData} = useGetAppById(
     {
@@ -295,9 +292,9 @@ export default function ReadRequest() {
 
   const accessApp = accessAppData ?? ({} as App);
 
-  const accessAppOwnerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
+  const accessAppOwnerships = groupBy(
     (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_ownerships ?? []).flat(),
-    'active_user.id',
+    (m) => m.active_user?.id,
   );
 
   if (isError) {
