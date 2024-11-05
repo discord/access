@@ -13,7 +13,7 @@ services:
       - postgres
 
   postgres:
-    image: postgres:latest
+    image: postgres:16
     container_name: postgres
     env_file:
       - .env.psql
