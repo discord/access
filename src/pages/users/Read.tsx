@@ -422,7 +422,7 @@ export default function ReadUser() {
 
   const user = data ?? ({} as OktaUser);
 
-  const ownerships = groupBy(user.active_group_ownerships, (m) => m.active_user?.id);
+  const ownerships = groupBy(user.active_group_ownerships, (m) => m.active_group?.id);
   const memberships = groupBy(user.active_group_memberships, (m) => m.active_group?.id);
 
   const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
