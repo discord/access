@@ -16,13 +16,13 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
-import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateGroup from './CreateUpdate';
 import {displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
+import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListGroups() {
   const navigate = useNavigate();
@@ -104,102 +104,76 @@ export default function ListGroups() {
   };
 
   return (
-    <React.Fragment>
-      <TableContainer component={Paper}>
-        <Table sx={{minWidth: 650}} size="small" aria-label="groups">
-          <TableHead>
-            <TableRow>
+    <TableContainer component={Paper}>
+      <TableTopBar title="Groups">
+        <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
+          Tags
+        </Button>
+        <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>
+        <TableTopBarAutocomplete
+          options={searchRows.map((row) => row.name)}
+          onChange={handleSearchSubmit}
+          onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
+          defaultValue={searchQuery}
+        />
+      </TableTopBar>
+      <Table sx={{minWidth: 650}} size="small" aria-label="groups">
+        <TableHead>
+          <TableRow>
+            <TableCell>Name</TableCell>
+            <TableCell>Type</TableCell>
+            <TableCell colSpan={2}>Description</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
               <TableCell>
-                <Typography component="h5" variant="h5" color="primary">
-                  Groups
-                </Typography>
+                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                  {row.name}
+                </Link>
               </TableCell>
               <TableCell>
-                <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
-                  Tags
-                </Button>
+                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                  {displayGroupType(row)}
+                </Link>
               </TableCell>
-              <TableCell sx={{mx: 2, width: '210px'}}>
-                <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>
-              </TableCell>
-              <TableCell align="right">
-                <Autocomplete
-                  freeSolo
-                  filterOptions={(x) => x}
-                  options={searchRows.map((row) => row.name)}
-                  onChange={handleSearchSubmit}
-                  onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
-                  defaultValue={searchQuery}
-                  key={searchQuery}
-                  renderInput={(params) => <TextField {...params} label={'Search' as any} />}
-                />
+              <TableCell colSpan={2}>
+                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                  {(row.description?.length ?? 0) > 115
+                    ? row.description?.substring(0, 114) + '...' ?? ''
+                    : row.description}
+                </Link>
               </TableCell>
             </TableRow>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell colSpan={2}>Description</TableCell>
+          ))}
+          {emptyRows > 0 && (
+            <TableRow style={{height: 33 * emptyRows}}>
+              <TableCell colSpan={6} />
             </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayGroupType(row)}
-                  </Link>
-                </TableCell>
-                <TableCell colSpan={2}>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {(row.description?.length ?? 0) > 115
-                      ? row.description?.substring(0, 114) + '...' ?? ''
-                      : row.description}
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-            {emptyRows > 0 && (
-              <TableRow style={{height: 33 * emptyRows}}>
-                <TableCell colSpan={6} />
-              </TableRow>
-            )}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TablePagination
-                rowsPerPageOptions={perPage}
-                colSpan={4}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </TableContainer>
-    </React.Fragment>
+          )}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <TablePagination
+              rowsPerPageOptions={perPage}
+              colSpan={4}
+              count={totalRows}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              SelectProps={{
+                inputProps: {
+                  'aria-label': 'rows per page',
+                },
+                native: true,
+              }}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              ActionsComponent={TablePaginationActions}
+            />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </TableContainer>
   );
 }

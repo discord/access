@@ -24,7 +24,7 @@ export default function NotFound() {
         <Grid item xs={12}>
           <Grid container justifyContent="center">
             <Grid item>
-              <Typography component="h2" variant="h3" color="primary">
+              <Typography component="h2" variant="h3" color="text.accent">
                 An Unrecoverable Error Occurred
               </Typography>
             </Grid>

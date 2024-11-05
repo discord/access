@@ -66,7 +66,7 @@ function ProfileToCard({user}: ProfileToCardProps) {
           {Object.entries(user.profile)
             .filter(([_, v]) => v != null)
             .map(([key, value]: [string, string]) => (
-              <ListItem key={key} sx={{paddingY: 0}}>
+              <ListItem key={key} sx={{padding: 0}}>
                 <ListItemText primary={key} secondary={value} />
               </ListItem>
             ))}
@@ -92,14 +92,14 @@ function ReportingToCard({user}: ReportingToCardProps) {
             <ListItem
               component={RouterLink}
               to={`/users/${user.manager.email.toLowerCase()}`}
-              sx={{textDecoration: 'none', color: 'inherit'}}>
+              sx={{textDecoration: 'none', color: 'inherit', padding: 0}}>
               <ListItemAvatar>
                 <UserAvatar name={displayUserName(user.manager)} size={32} variant={'body1'} />
               </ListItemAvatar>
               <ListItemText primary={displayUserName(user.manager)} secondary={user.manager.profile?.Title ?? '—'} />
             </ListItem>
           ) : (
-            <ListItem alignItems="flex-start">
+            <ListItem alignItems="flex-start" sx={{padding: 0}}>
               <ListItemText primary="No-one" />
             </ListItem>
           )}
@@ -111,7 +111,7 @@ function ReportingToCard({user}: ReportingToCardProps) {
 
 interface OwnerTableProps {
   user: OktaUser;
-  ownerships: Map<string, Array<OktaUserGroupMember>>;
+  ownerships: Record<string, OktaUserGroupMember[]>;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -140,7 +140,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
-              <Typography variant="h6" color="primary">
+              <Typography variant="h6" color="text.accent">
                 Owner of Group or Roles
               </Typography>
             </TableCell>
@@ -185,7 +185,13 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                     <Ending memberships={groups} />
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        flexWrap: 'wrap',
+                        rowGap: '.5rem',
+                      }}>
                       {groups.map((group) =>
                         group.active_role_group_mapping == null ? (
                           <Chip
@@ -237,7 +243,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
           ) : (
             <TableRow>
               <TableCell>
-                <Typography variant="body2" color="grey">
+                <Typography variant="body2" color="text.secondary">
                   None
                 </Typography>
               </TableCell>
@@ -254,7 +260,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
 
 interface MemberTableProps {
   user: OktaUser;
-  memberships: Map<string, Array<OktaUserGroupMember>>;
+  memberships: Record<string, OktaUserGroupMember[]>;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -283,7 +289,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
-              <Typography variant="h6" color="primary">
+              <Typography variant="h6" color="text.accent">
                 Member of Groups or Roles
               </Typography>
             </TableCell>
@@ -328,7 +334,13 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                     <Ending memberships={groups} />
                   </TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      sx={{
+                        flexWrap: 'wrap',
+                        rowGap: '.5rem',
+                      }}>
                       {groups.map((group) =>
                         group.active_role_group_mapping == null ? (
                           <Chip
@@ -380,7 +392,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
           ) : (
             <TableRow>
               <TableCell>
-                <Typography variant="body2" color="grey">
+                <Typography variant="body2" color="text.secondary">
                   None
                 </Typography>
               </TableCell>
@@ -422,14 +434,8 @@ export default function ReadUser() {
 
   const user = data ?? ({} as OktaUser);
 
-  const ownerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    user.active_group_ownerships ?? [],
-    'active_group.id',
-  );
-  const memberships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    user.active_group_memberships ?? [],
-    'active_group.id',
-  );
+  const ownerships = groupBy(user.active_group_ownerships, (m) => m.active_group?.id);
+  const memberships = groupBy(user.active_group_memberships, (m) => m.active_group?.id);
 
   const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({
@@ -453,43 +459,14 @@ export default function ReadUser() {
 
   return (
     <React.Fragment>
-      <Container maxWidth="xl" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="xl" sx={{my: 4}}>
         <Grid container spacing={3}>
-          <Grid item xs={12} md={5} lg={3}>
-            <Paper
-              sx={{
-                p: 2,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: 240,
-              }}>
-              <UserAvatar name={displayUserName(user)} size={220} variant={'h1'} />
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={7} lg={9} alignItems="center">
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                alignText: 'center',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-              }}>
-              <Grid container>
-                <Grid
-                  item
-                  xs={12}
-                  sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    position: 'relative',
-                  }}>
-                  <Typography variant="h3">
+          <Grid item xs={12} alignItems="center">
+            <Paper sx={{p: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
+                  <UserAvatar name={displayUserName(user)} size={100} variant={'h3'} />
+                  <Typography variant="h3" textAlign="center">
                     {user.deleted_at != null ? (
                       <>
                         <s>{displayUserName(user)}</s> is Deleted
@@ -498,16 +475,19 @@ export default function ReadUser() {
                       displayUserName(user)
                     )}
                   </Typography>
-                  <Typography variant="h5">{user.email?.toLowerCase()}</Typography>
-                  <Stack style={{position: 'absolute', right: '2px'}}>
-                    <Tooltip title="Audit" placement="right" PopperProps={moveTooltip}>
-                      <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
-                        <AuditIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                </Grid>
-              </Grid>
+                  <Typography variant="h5" textAlign="center">
+                    {user.email?.toLowerCase()}
+                  </Typography>
+                </Stack>
+                <Divider />
+                <Stack justifyContent="center" direction="row" gap={1}>
+                  <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
+                    <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
+                      <AuditIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              </Stack>
             </Paper>
           </Grid>
           <Grid item container xs={12} lg={3} spacing={3} alignContent={'flex-start'} order={{xs: 2, lg: 3}}>

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {Link as RouterLink, Route, Routes} from 'react-router-dom';
 
-import {styled} from '@mui/material/styles';
+import {createTheme, styled, ThemeProvider} from '@mui/material/styles';
 import Link from '@mui/material/Link';
 import MuiDrawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
@@ -37,6 +37,19 @@ import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
+import {
+  alpha,
+  CssBaseline,
+  PaletteMode,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
+import {lightGreen, red, yellow} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
 
@@ -88,7 +101,65 @@ const Drawer = styled(MuiDrawer, {
   },
 }));
 
-function Dashboard() {
+function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMode) => void; condensed: boolean}) {
+  const [storedTheme, setStoredTheme] = React.useState(
+    localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null,
+  );
+  const currentTheme = useTheme();
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+
+  const handleThemeOverride = (theme: PaletteMode) => {
+    setThemeMode(theme);
+    localStorage.setItem('user-set-color-scheme', theme);
+    setStoredTheme(theme);
+  };
+
+  const handleSystemDefault = () => {
+    setThemeMode(systemTheme);
+    localStorage.removeItem('user-set-color-scheme');
+    setStoredTheme(null);
+  };
+
+  return (
+    <ToggleButtonGroup size="small">
+      {(currentTheme.palette.mode != 'light' || !condensed) && (
+        <Tooltip title="Light Mode">
+          <ToggleButton
+            value="left"
+            selected={storedTheme === 'light'}
+            onClick={() => handleThemeOverride('light')}
+            aria-label="Light mode">
+            <LightMode />
+          </ToggleButton>
+        </Tooltip>
+      )}
+      {!condensed && (
+        <Tooltip title="System Default">
+          <ToggleButton
+            value="center"
+            selected={storedTheme == null}
+            onClick={handleSystemDefault}
+            aria-label="System Default">
+            <Monitor />
+          </ToggleButton>
+        </Tooltip>
+      )}
+      {(currentTheme.palette.mode != 'dark' || !condensed) && (
+        <Tooltip title="Dark Mode">
+          <ToggleButton
+            value="right"
+            selected={storedTheme === 'dark'}
+            onClick={() => handleThemeOverride('dark')}
+            aria-label="Dark mode">
+            <DarkMode />
+          </ToggleButton>
+        </Tooltip>
+      )}
+    </ToggleButtonGroup>
+  );
+}
+
+function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
   const [open, setOpen] = React.useState(true);
   const toggleDrawer = () => {
     setOpen(!open);
@@ -137,7 +208,7 @@ function Dashboard() {
               textDecoration: 'none',
             }}>
             <Avatar src="/logo-square.png" variant="square" />
-            <Typography component="h1" variant="h5" sx={{px: 2}}>
+            <Typography component="h1" variant="h5" sx={{px: 2}} color="text.accent">
               ACCESS
             </Typography>
           </Link>
@@ -149,12 +220,15 @@ function Dashboard() {
         <List component="nav">
           <NavItems open={open} />
         </List>
+        <Stack marginTop="auto" p={2}>
+          <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
+        </Stack>
       </Drawer>
       <Box
         component="main"
         sx={{
           backgroundColor: (theme) =>
-            theme.palette.mode === 'light' ? theme.palette.grey[100] : theme.palette.grey[900],
+            theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
@@ -189,6 +263,81 @@ function Dashboard() {
 }
 
 export default function App() {
+  const storedTheme = localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null;
+  const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+  const initialMode = storedTheme ?? systemTheme;
+  const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+
+  // See https://discord.com/branding
+  let theme = React.useMemo(() => {
+    const base = createTheme({
+      palette: {
+        mode,
+        primary: {
+          main: '#5865F2',
+          light: '#A5B2FF',
+        },
+        secondary: {
+          main: '#EB459E',
+        },
+        error: {
+          main: '#ED4245',
+        },
+        warning: {
+          main: '#FEE75C',
+        },
+        success: {
+          main: '#57F287',
+        },
+        text: {
+          accent: mode === 'light' ? '#5865F2' : '#A5B2FF',
+        },
+      },
+      components: {
+        MuiChip: {
+          styleOverrides: {
+            colorPrimary: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                  borderColor: theme.palette.text.accent,
+                }),
+            }),
+            deleteIcon: ({ownerState, theme}) => ({
+              ...(ownerState.variant === 'outlined' &&
+                ownerState.color === 'primary' && {
+                  color: theme.palette.text.accent,
+                }),
+            }),
+          },
+        },
+      },
+    });
+    return createTheme(base, {
+      palette: {
+        highlight: {
+          success: base.palette.augmentColor({
+            color: {main: mode === 'light' ? lightGreen[100] : alpha(lightGreen[500], 0.3)},
+            name: 'success',
+          }),
+          warning: base.palette.augmentColor({
+            color: {main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3)},
+            name: 'warning',
+          }),
+          danger: base.palette.augmentColor({
+            color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
+            name: 'danger',
+          }),
+        },
+      },
+    });
+  }, [mode]);
+
   useCurrentUser();
-  return <Dashboard />;
+  return (
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Dashboard setThemeMode={setMode} />
+    </ThemeProvider>
+  );
 }

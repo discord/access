@@ -330,7 +330,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         Request
       </DialogTitle>
       <DialogContent>
-        <Typography variant="subtitle1" color="primary">
+        <Typography variant="subtitle1" color="text.accent">
           {timeLimit
             ? (owner ? 'Ownership of ' : 'Membership to ') +
               'this group is limited to ' +

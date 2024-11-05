@@ -21,8 +21,6 @@ import Typography from '@mui/material/Typography';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
 
-import {grey} from '@mui/material/colors';
-
 import Ending from '../../components/Ending';
 import {groupBy, displayUserName} from '../../helpers';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
@@ -45,10 +43,8 @@ function sortGroupMembers(
   return aEmail.localeCompare(bEmail);
 }
 
-function groupMemberships(
-  memberships: Array<OktaUserGroupMember> | undefined,
-): Map<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], 'active_user.id');
+function groupMemberships(memberships: Array<OktaUserGroupMember> | undefined) {
+  return groupBy(memberships, (m) => m.active_user?.id);
 }
 
 export default function ReadApp() {
@@ -73,56 +69,58 @@ export default function ReadApp() {
 
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
+  const hasActions = isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app?.id ?? '');
   return (
     <React.Fragment>
-      <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
+      <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
-            <Paper
-              sx={{
-                p: 2,
-                height: 240,
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                textAlign: 'center',
-                position: 'relative',
-              }}>
-              <Typography variant="h3" sx={{margin: '5px 40px 0px 10px'}}>
-                {app.name}
-              </Typography>
-              <Typography variant="h5" sx={{margin: '5px 40px 0px 10px'}}>
-                {app.description}
-              </Typography>
-              {app.active_app_tags ? (
-                <Box>
-                  {app.active_app_tags.map((tagMap) => (
-                    <Chip
-                      key={'tag' + tagMap.active_tag!.id}
-                      label={tagMap.active_tag!.name}
-                      color="primary"
-                      onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
-                      icon={<TagIcon />}
-                      sx={{
-                        margin: '2px',
-                        marginTop: '5px',
-                        bgcolor: tagMap.active_tag!.enabled ? 'primary' : grey[500],
-                      }}
-                    />
-                  ))}
-                </Box>
-              ) : null}
-              <Stack style={{position: 'absolute', right: '10px'}}>
-                <Tooltip title="Edit" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <CreateUpdateApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
-                <Tooltip title="Delete" placement="right" PopperProps={moveTooltip}>
-                  <div>
-                    <DeleteApp currentUser={currentUser} app={app} />
-                  </div>
-                </Tooltip>
+            <Paper sx={{p: 2}}>
+              <Stack direction="column" gap={2}>
+                <Stack alignItems="center" direction="column" gap={1} sx={{wordBreak: 'break-word'}}>
+                  <Typography variant="h3" textAlign="center">
+                    {app.name}
+                  </Typography>
+                  <Typography variant="h5" textAlign="center">
+                    {app.description}
+                  </Typography>
+                  {app.active_app_tags ? (
+                    <Box>
+                      {app.active_app_tags.map((tagMap) => (
+                        <Chip
+                          key={'tag' + tagMap.active_tag!.id}
+                          label={tagMap.active_tag!.name}
+                          color="primary"
+                          onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+                          icon={<TagIcon />}
+                          sx={{
+                            margin: '2px',
+                            marginTop: '5px',
+                            bgcolor: (theme) =>
+                              tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled,
+                          }}
+                        />
+                      ))}
+                    </Box>
+                  ) : null}
+                </Stack>
+                {hasActions && (
+                  <>
+                    <Divider />
+                    <Stack direction="row" justifyContent="center">
+                      <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <CreateUpdateApp currentUser={currentUser} app={app} />
+                        </div>
+                      </Tooltip>
+                      <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
+                        <div>
+                          <DeleteApp currentUser={currentUser} app={app} />
+                        </div>
+                      </Tooltip>
+                    </Stack>
+                  </>
+                )}
               </Stack>
             </Paper>
           </Grid>
@@ -150,7 +148,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -161,7 +159,7 @@ export default function ReadApp() {
                                 App Owners
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Can manage app and implicitly own all app groups
                             </Typography>
                           </Stack>
@@ -220,7 +218,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>
@@ -240,7 +238,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column" spacing={1}>
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -251,7 +249,7 @@ export default function ReadApp() {
                                 App Owners Group Members
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Members of Owners Okta Group
                             </Typography>
                           </Stack>
@@ -310,7 +308,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>
@@ -334,7 +332,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column">
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -345,7 +343,7 @@ export default function ReadApp() {
                                 {appGroup.name} Group Owners
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Can manage membership of Group
                             </Typography>
                           </Stack>
@@ -404,7 +402,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               All app owners are implicitly app group owners
                             </Typography>
                           </TableCell>
@@ -424,7 +422,7 @@ export default function ReadApp() {
                       <TableRow>
                         <TableCell colSpan={2}>
                           <Stack direction="column">
-                            <Typography variant="h6" color="primary">
+                            <Typography variant="h6" color="text.accent">
                               <Link
                                 to={`/groups/${appGroup.name}`}
                                 sx={{
@@ -435,7 +433,7 @@ export default function ReadApp() {
                                 {appGroup.name} Group Members
                               </Link>
                             </Typography>
-                            <Typography variant="body1" color="grey">
+                            <Typography variant="body1" color="text.secondary">
                               Members of App Okta Group
                             </Typography>
                           </Stack>
@@ -494,7 +492,7 @@ export default function ReadApp() {
                       ) : (
                         <TableRow>
                           <TableCell>
-                            <Typography variant="body2" color="grey">
+                            <Typography variant="body2" color="text.secondary">
                               None
                             </Typography>
                           </TableCell>

@@ -255,10 +255,7 @@ export default function ReadRequest() {
     }));
   }
 
-  const ownerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
-    group.active_user_ownerships ?? [],
-    'active_user.id',
-  );
+  const ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
 
   const {data: appData} = useGetAppById(
     {
@@ -276,7 +273,7 @@ export default function ReadRequest() {
   const appOwnershipsArray = (app.active_owner_app_groups ?? [])
     .map((appGroup) => appGroup.active_user_ownerships ?? [])
     .flat();
-  const appOwnerships: Map<string, Array<OktaUserGroupMember>> = groupBy(appOwnershipsArray, 'active_user.id');
+  const appOwnerships = groupBy(appOwnershipsArray, (m) => m.active_user?.id);
 
   const {data: accessAppData} = useGetAppById(
     {
@@ -295,9 +292,9 @@ export default function ReadRequest() {
 
   const accessApp = accessAppData ?? ({} as App);
 
-  const accessAppOwnerships: Map<string, Array<OktaUserGroupMember>> = groupBy(
+  const accessAppOwnerships = groupBy(
     (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_ownerships ?? []).flat(),
-    'active_user.id',
+    (m) => m.active_user?.id,
   );
 
   if (isError) {
@@ -408,6 +405,7 @@ export default function ReadRequest() {
                   xs={8}
                   sx={{
                     textAlign: 'center',
+                    wordBreak: 'break-word',
                   }}>
                   <Typography variant="h4">
                     {(accessRequest.requester?.deleted_at ?? null) != null ? (
@@ -604,7 +602,7 @@ export default function ReadRequest() {
                                 <FormControl fullWidth>
                                   <Grid container>
                                     <Grid item xs={12}>
-                                      <Typography variant="subtitle1" color="primary">
+                                      <Typography variant="subtitle1" color="text.accent">
                                         {timeLimit
                                           ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
@@ -720,7 +718,7 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="primary">
+                                      <Typography variant="h6" color="text.accent">
                                         {accessRequest.requested_group?.name}{' '}
                                         {accessRequest.requested_group?.type == 'role_group'
                                           ? 'Owners'
@@ -777,7 +775,7 @@ export default function ReadRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="grey">
+                                        <Typography variant="body2" color="text.secondary">
                                           None
                                         </Typography>
                                       </TableCell>
@@ -793,7 +791,7 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="primary">
+                                      <Typography variant="h6" color="text.accent">
                                         {((accessRequest.requested_group ?? {}) as AppGroup).app?.name}
                                         {' App Owners'}
                                       </Typography>
@@ -848,7 +846,7 @@ export default function ReadRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="grey">
+                                        <Typography variant="body2" color="text.secondary">
                                           None
                                         </Typography>
                                       </TableCell>
@@ -865,7 +863,7 @@ export default function ReadRequest() {
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
-                                      <Typography variant="h6" color="primary">
+                                      <Typography variant="h6" color="text.accent">
                                         {ACCESS_APP_RESERVED_NAME}
                                         {' Admins'}
                                       </Typography>
@@ -920,7 +918,7 @@ export default function ReadRequest() {
                                   ) : (
                                     <TableRow key="owners">
                                       <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="grey">
+                                        <Typography variant="body2" color="text.secondary">
                                           None
                                         </Typography>
                                       </TableCell>
