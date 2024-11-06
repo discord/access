@@ -15,6 +15,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
@@ -37,6 +38,7 @@ class ModifyRoleGroups:
         sync_to_okta: bool = True,
         current_user_id: Optional[str] = None,
         created_reason: str = "",
+        notify: bool = True,
     ):
         if isinstance(role_group, str):
             self.role = (
@@ -97,6 +99,8 @@ class ModifyRoleGroups:
         )
 
         self.created_reason = created_reason
+
+        self.notify = notify
 
         self.notification_hook = get_notification_hook()
 
@@ -417,6 +421,36 @@ class ModifyRoleGroups:
                     )
                 )
 
+            # Approve any pending role requests for memberships granted by this operation
+            pending_role_requests_query = (
+                RoleRequest.query.filter(RoleRequest.status == AccessRequestStatus.PENDING)
+                .filter(RoleRequest.resolved_at.is_(None))
+                .filter(RoleRequest.requester_role == self.role)
+            )
+
+            added_group_ids = [group.id for group in self.groups_to_add]
+            pending_role_memberships = (
+                pending_role_requests_query.filter(RoleRequest.request_ownership.is_(False))
+                .filter(RoleRequest.requested_group_id.in_(added_group_ids))
+                .all()
+            )
+            for role_request in pending_role_memberships:
+                async_tasks.append(
+                    self._approve_role_request(role_request, role_memberships_added[role_request.requested_group_id])
+                )
+
+            # Approve any pending role requests for ownerships granted by this operation
+            added_owner_group_ids = [group.id for group in self.owner_groups_to_add]
+            pending_role_ownerships = (
+                pending_role_requests_query.filter(RoleRequest.request_ownership.is_(True))
+                .filter(RoleRequest.requested_group_id.in_(added_owner_group_ids))
+                .all()
+            )
+            for role_request in pending_role_ownerships:
+                async_tasks.append(
+                    self._approve_role_request(role_request, role_ownerships_added[role_request.requested_group_id])
+                )
+
             db.session.commit()
 
         # Commit all changes
@@ -486,6 +520,35 @@ class ModifyRoleGroups:
         self.notification_hook.access_request_completed(
             access_request=access_request,
             group=access_request.requested_group,
+            requester=requester,
+            approvers=approvers,
+            notify_requester=True,
+        )
+
+    def _approve_role_request(
+        self, role_request: RoleRequest, added_role_group_map: RoleGroupMap
+    ) -> asyncio.Task[None]:
+        role_request.status = AccessRequestStatus.APPROVED
+        role_request.resolved_at = db.func.now()
+        role_request.resolver_user_id = self.current_user_id
+        role_request.resolution_reason = self.created_reason
+        role_request.approval_ending_at = added_role_group_map.ended_at
+        role_request.approved_membership_id = added_role_group_map.id
+
+        return asyncio.create_task(self._notify_role_request(role_request))
+
+    async def _notify_role_request(self, role_request: RoleRequest) -> None:
+        if not self.notify:
+            return
+
+        requester = db.session.get(OktaUser, role_request.requester_user_id)
+
+        approvers = get_all_possible_request_approvers(role_request)
+
+        self.notification_hook.access_role_request_completed(
+            role_request=role_request,
+            role=role_request.requester_role,
+            group=role_request.requested_group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,

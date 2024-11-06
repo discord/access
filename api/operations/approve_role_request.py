@@ -6,7 +6,6 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
-from api.models.access_request import get_all_possible_request_approvers
 from api.operations.constraints import CheckForReason
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins import get_notification_hook
@@ -80,12 +79,6 @@ class ApproveRoleRequest:
         if not self.role_request.active_requested_group.is_managed:
             return self.role_request
 
-        self.role_request.status = AccessRequestStatus.APPROVED
-        self.role_request.resolved_at = db.func.now()
-        self.role_request.resolver_user_id = self.approver_id
-        self.role_request.resolution_reason = self.approval_reason
-        self.role_request.approval_ending_at = self.ending_at
-
         db.session.commit()
 
         # Audit logging
@@ -123,6 +116,7 @@ class ApproveRoleRequest:
                 owner_groups_to_add=[self.role_request.requested_group_id],
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
+                notify=self.notify,
             ).execute()
         else:
             ModifyRoleGroups(
@@ -131,21 +125,7 @@ class ApproveRoleRequest:
                 groups_to_add=[self.role_request.requested_group_id],
                 current_user_id=self.approver_id,
                 created_reason=self.approval_reason,
+                notify=self.notify,
             ).execute()
-
-        if self.notify:
-            requester = db.session.get(OktaUser, self.role_request.requester_user_id)
-            requester_role = db.session.get(OktaGroup, self.role_request.requester_role_id)
-
-            approvers = get_all_possible_request_approvers(self.role_request)
-
-            self.notification_hook.access_role_request_completed(
-                role_request=self.role_request,
-                role=requester_role,
-                group=group,
-                requester=requester,
-                approvers=approvers,
-                notify_requester=True,
-            )
 
         return self.role_request

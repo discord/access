@@ -296,7 +296,7 @@ class RoleRequestList(MethodResource):
             resolver_alias = aliased(OktaUser)
             query = (
                 query.join(RoleRequest.requester.of_type(requester_alias))
-                .join(RoleRequest.requester_role)
+                # .join(RoleRequest.requester_role)
                 .join(RoleRequest.requested_group)
                 .outerjoin(RoleRequest.resolver.of_type(resolver_alias))
                 .filter(
