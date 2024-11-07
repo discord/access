@@ -455,7 +455,14 @@ def test_get_all_role_request(
     for request in role_requests:
         assert any(u["id"] == request.id for u in results["results"])
 
+    # Should be able to query by requester role and requested group
     rep = client.get(role_requests_url, query_string={"q": role_requests[0].requester_role.name})
+    assert rep.status_code == 200
+
+    results = rep.get_json()
+    assert any(u["id"] == role_requests[0].id for u in results["results"])
+
+    rep = client.get(role_requests_url, query_string={"q": role_requests[0].requested_group.name})
     assert rep.status_code == 200
 
     results = rep.get_json()

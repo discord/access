@@ -294,10 +294,12 @@ class RoleRequestList(MethodResource):
             like_search = f"%{search_args['q']}%"
             requester_alias = aliased(OktaUser)
             resolver_alias = aliased(OktaUser)
+            role = aliased(OktaGroup)
+            group = aliased(OktaGroup)
             query = (
                 query.join(RoleRequest.requester.of_type(requester_alias))
-                # .join(RoleRequest.requester_role)
-                .join(RoleRequest.requested_group)
+                .join(RoleRequest.requester_role.of_type(role))
+                .join(RoleRequest.requested_group.of_type(group))
                 .outerjoin(RoleRequest.resolver.of_type(resolver_alias))
                 .filter(
                     db.or_(
@@ -308,8 +310,10 @@ class RoleRequestList(MethodResource):
                         requester_alias.last_name.ilike(like_search),
                         requester_alias.display_name.ilike(like_search),
                         (requester_alias.first_name + " " + requester_alias.last_name).ilike(like_search),
-                        OktaGroup.name.ilike(like_search),
-                        OktaGroup.description.ilike(like_search),
+                        role.name.ilike(like_search),
+                        role.description.ilike(like_search),
+                        group.name.ilike(like_search),
+                        group.description.ilike(like_search),
                         resolver_alias.email.ilike(like_search),
                         resolver_alias.first_name.ilike(like_search),
                         resolver_alias.last_name.ilike(like_search),
