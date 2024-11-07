@@ -256,10 +256,10 @@ export default function AuditGroup() {
             <TableRow
               key={row.id}
               sx={{
-                backgroundColor: ({palette}) =>
-                  Object.values(row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at)))
-                    ? palette.highlight.success.main
-                    : palette.highlight.danger.main,
+                bgcolor: ({palette: {highlight}}) =>
+                  row.ended_at == null || dayjs().isBefore(dayjs(row.ended_at))
+                    ? highlight.success.main
+                    : highlight.danger.main,
               }}>
               <TableCell>
                 {(row.user?.deleted_at ?? null) != null ? (
