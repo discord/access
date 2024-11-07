@@ -410,16 +410,16 @@ def test_create_role_request_not_role_owner(
     rep = client.post(role_requests_url, json=data)
     assert rep.status_code == 201
 
-    data = rep.get_json()
-    role_request = db.session.get(RoleRequest, data["id"])
+    out = rep.get_json()
+    role_request = db.session.get(RoleRequest, out["id"])
 
-    assert data["requester"]["email"] == user.email
-    assert data["requester_role"]["name"] == role_group.name
-    assert data["requested_group"]["name"] == okta_group.name
+    assert out["requester"]["email"] == user.email
+    assert out["requester_role"]["name"] == role_group.name
+    assert out["requested_group"]["name"] == okta_group.name
     assert role_request.status == AccessRequestStatus.PENDING
-    assert data["status"] == role_request.status
-    assert data["request_reason"] == role_request.request_reason
-    assert data["request_ownership"] == role_request.request_ownership
+    assert out["status"] == role_request.status
+    assert out["request_reason"] == role_request.request_reason
+    assert out["request_ownership"] == role_request.request_ownership
 
 
 def test_get_all_role_request(
