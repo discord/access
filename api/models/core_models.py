@@ -215,6 +215,14 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
+    all_resolved_role_requests: Mapped[List["AccessRequest"]] = db.relationship(
+        "RoleRequest",
+        primaryjoin="OktaUser.id == RoleRequest.resolver_user_id",
+        back_populates="resolver",
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
     pending_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
         "AccessRequest",
         primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, "
@@ -374,6 +382,32 @@ class OktaGroup(db.Model):
         innerjoin=True,
     )
 
+    # requests to join group
+    all_role_requests_to: Mapped[List["RoleRequest"]] = db.relationship(
+        "RoleRequest",
+        back_populates="requested_group",
+        primaryjoin="OktaGroup.id == RoleRequest.requested_group_id",
+        lazy="raise_on_sql",
+    )
+
+    # request by role group to join group
+    all_role_requests_from: Mapped[List["RoleRequest"]] = db.relationship(
+        "RoleRequest",
+        back_populates="requester_role",
+        primaryjoin="OktaGroup.id == RoleRequest.requester_role_id",
+        lazy="raise_on_sql",
+    )
+
+    pending_role_requests: Mapped[List["RoleRequest"]] = db.relationship(
+        "RoleRequest",
+        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, "
+        "RoleRequest.status == 'PENDING', "
+        "RoleRequest.resolved_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
     all_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
         "OktaGroupTagMap",
         back_populates="group",
@@ -477,6 +511,13 @@ class RoleGroupMap(db.Model):
 
     ended_actor: Mapped[OktaUser] = db.relationship(
         "OktaUser", foreign_keys=[ended_actor_id], lazy="raise_on_sql", viewonly=True
+    )
+
+    role_request: Mapped["RoleRequest"] = db.relationship(
+        "RoleRequest",
+        back_populates="approved_membership",
+        lazy="raise_on_sql",
+        uselist=False,
     )
 
     @validates("group")
@@ -720,6 +761,109 @@ class AccessRequest(db.Model):
     approved_membership: Mapped[OktaUserGroupMember] = db.relationship(
         "OktaUserGroupMember",
         back_populates="access_request",
+        foreign_keys=[approved_membership_id],
+        lazy="raise_on_sql",
+    )
+
+
+class RoleRequest(db.Model):
+    # A 20 character random string like Okta IDs
+    id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+
+    status: Mapped[AccessRequestStatus] = mapped_column(
+        db.Enum(AccessRequestStatus),
+        nullable=False,
+        default=AccessRequestStatus.PENDING,
+    )
+
+    # must be an owner of the role
+    requester_user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    # role to be added to the requested group
+    requester_role_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
+    requested_group_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
+    request_ownership: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=False)
+    request_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    request_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+
+    resolver_user_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    resolution_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+
+    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+
+    # See https://stackoverflow.com/a/60840921
+    approved_membership_id: Mapped[Optional[int]] = mapped_column(
+        db.BigInteger().with_variant(db.Integer, "sqlite"),
+        db.ForeignKey("role_group_map.id"),
+    )
+
+    requester: Mapped[OktaUser] = db.relationship(
+        "OktaUser",
+        primaryjoin="OktaUser.id == RoleRequest.requester_user_id",
+        viewonly=True,
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
+    active_requester: Mapped[OktaUser] = db.relationship(
+        "OktaUser",
+        primaryjoin="and_(OktaUser.id == RoleRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
+    requester_role: Mapped[OktaGroup] = db.relationship(
+        "OktaGroup",
+        back_populates="all_role_requests_from",
+        foreign_keys=[requester_role_id],
+        lazy="raise_on_sql",
+    )
+
+    active_requester_role: Mapped[OktaGroup] = db.relationship(
+        "OktaGroup",
+        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
+    requested_group: Mapped[OktaGroup] = db.relationship(
+        "OktaGroup",
+        back_populates="all_role_requests_to",
+        foreign_keys=[requested_group_id],
+        lazy="raise_on_sql",
+    )
+
+    active_requested_group: Mapped[OktaGroup] = db.relationship(
+        "OktaGroup",
+        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+        innerjoin=True,
+    )
+
+    resolver: Mapped[OktaUser] = db.relationship(
+        "OktaUser",
+        back_populates="all_resolved_role_requests",
+        foreign_keys=[resolver_user_id],
+        lazy="raise_on_sql",
+    )
+
+    active_resolver: Mapped[OktaUser] = db.relationship(
+        "OktaUser",
+        primaryjoin="and_(OktaUser.id == RoleRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
+        viewonly=True,
+        lazy="raise_on_sql",
+    )
+
+    approved_membership: Mapped[RoleGroupMap] = db.relationship(
+        "RoleGroupMap",
+        back_populates="role_request",
         foreign_keys=[approved_membership_id],
         lazy="raise_on_sql",
     )

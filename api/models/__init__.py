@@ -10,6 +10,7 @@ from api.models.core_models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
     Tag,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "OktaUserGroupMember",
     "RoleGroup",
     "RoleGroupMap",
+    "RoleRequest",
     "Tag",
 ]

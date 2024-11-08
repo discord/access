@@ -5,7 +5,7 @@ from typing import Generator
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, RoleGroup
+from api.models import AccessRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -50,6 +50,29 @@ class NotificationPluginSpec:
         expiration_datetime: datetime.datetime,
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
+
+    @hookspec
+    def access_role_request_created(
+        self,
+        role_request: RoleRequest,
+        role: RoleGroup,
+        group: OktaGroup,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+    ) -> None:
+        """Notify the approvers of the role request."""
+
+    @hookspec
+    def access_role_request_completed(
+        self,
+        role_request: RoleRequest,
+        role: RoleGroup,
+        group: OktaGroup,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+        notify_requester: bool,
+    ) -> None:
+        """Notify the requester that their role request has been processed."""
 
 
 @hookimpl(wrapper=True)
@@ -110,6 +133,41 @@ def access_expiring_owner(
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for owner notification callback")
+
+
+@hookimpl(wrapper=True)
+def access_role_request_created(
+    role_request: RoleRequest,
+    role: RoleGroup,
+    group: OktaGroup,
+    requester: OktaUser,
+    approvers: list[OktaUser],
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute role request created notification callback")
+
+
+@hookimpl(wrapper=True)
+def access_role_request_completed(
+    role_request: RoleRequest,
+    role: RoleGroup,
+    group: OktaGroup,
+    requester: OktaUser,
+    approvers: list[OktaUser],
+    notify_requester: bool,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute role request completed notification callback")
 
 
 def get_notification_hook() -> pluggy.HookRelay:

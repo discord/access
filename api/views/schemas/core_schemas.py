@@ -18,6 +18,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
     Tag,
 )
 
@@ -1368,6 +1369,77 @@ class AccessRequestSchema(SQLAlchemyAutoSchema):
             "status",
             "requester",
             "active_requester",
+            "requested_group",
+            "requested_group.app",
+            "active_requested_group",
+            "request_ownership",
+            "request_reason",
+            "request_ending_at",
+            "resolver",
+            "active_resolver",
+            "resolution_reason",
+            "approved_membership",
+            "approval_ending_at",
+        )
+
+
+class RoleRequestSchema(SQLAlchemyAutoSchema):
+    requester = fields.Nested(lambda: OktaUserSchema)
+    active_requester = fields.Nested(lambda: OktaUserSchema)
+    requester_role = fields.Nested(lambda: RoleGroupSchema)
+    active_requester_role = fields.Nested(lambda: RoleGroupSchema)
+    requested_group = fields.Nested(lambda: PolymorphicGroupSchema)
+    active_requested_group = fields.Nested(lambda: PolymorphicGroupSchema)
+
+    resolver = fields.Nested(lambda: OktaUserSchema)
+    active_resolver = fields.Nested(lambda: OktaUserSchema)
+
+    approved_membership = fields.Nested(
+        lambda: RoleGroupMapSchema(
+            only=(
+                "is_owner",
+                "ended_at",
+            )
+        ),
+    )
+
+    class Meta:
+        model = RoleRequest
+        sqla_session = db.session
+        load_instance = True
+        include_relationships = True
+        fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "status",
+            "requester",
+            "active_requester",
+            "requester_role",
+            "active_requester_role",
+            "requested_group",
+            "requested_group.app",
+            "active_requested_group",
+            "request_ownership",
+            "request_reason",
+            "request_ending_at",
+            "resolver",
+            "active_resolver",
+            "resolution_reason",
+            "approved_membership",
+            "approval_ending_at",
+        )
+        dump_only = (
+            "id",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "status",
+            "requester",
+            "active_requester",
+            "requester_role",
+            "active_requester_role",
             "requested_group",
             "requested_group.app",
             "active_requested_group",

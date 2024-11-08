@@ -16,6 +16,7 @@ from tests.factories import (
     OktaGroupFactory,
     OktaUserFactory,
     RoleGroupFactory,
+    RoleRequestFactory,
     TagFactory,
 )
 
@@ -25,6 +26,7 @@ register(RoleGroupFactory, "role_group")
 register(AppGroupFactory, "app_group")
 register(AppFactory, "access_app")
 register(AccessRequestFactory, "access_request")
+register(RoleRequestFactory, "role_request")
 register(TagFactory, "tag")
 
 

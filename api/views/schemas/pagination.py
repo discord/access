@@ -11,6 +11,7 @@ from api.views.schemas.core_schemas import (
     PolymorphicGroupSchema,
     RoleGroupMapSchema,
     RoleGroupSchema,
+    RoleRequestSchema,
     TagSchema,
 )
 
@@ -66,6 +67,15 @@ class SearchAccessRequestPaginationRequestSchema(SearchPaginationRequestSchema):
     resolver_user_id = fields.String(load_only=True)
 
 
+class SearchRoleRequestPaginationRequestSchema(SearchPaginationRequestSchema):
+    status = fields.Enum(AccessRequestStatus, load_only=True)
+    requester_user_id = fields.String(load_only=True)
+    requester_role_id = fields.String(load_only=True)
+    requested_group_id = fields.String(load_only=True)
+    assignee_user_id = fields.String(load_only=True)
+    resolver_user_id = fields.String(load_only=True)
+
+
 class PaginationResponseSchema(Schema):
     total = fields.Int(dump_only=True)
     pages = fields.Int(dump_only=True)
@@ -75,6 +85,10 @@ class PaginationResponseSchema(Schema):
 
 class AccessRequestPaginationSchema(PaginationResponseSchema):
     results = fields.Nested(lambda: AccessRequestSchema(many=True), dump_only=True)
+
+
+class RoleRequestPaginationSchema(PaginationResponseSchema):
+    results = fields.Nested(lambda: RoleRequestSchema(many=True), dump_only=True)
 
 
 class AppPaginationSchema(PaginationResponseSchema):

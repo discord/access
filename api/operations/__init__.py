@@ -1,6 +1,9 @@
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.create_access_request import CreateAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.approve_role_request import ApproveRoleRequest
+from api.operations.create_role_request import CreateRoleRequest
+from api.operations.reject_role_request import RejectRoleRequest
 from api.operations.create_group import CreateGroup
 from api.operations.create_app import CreateApp
 from api.operations.create_tag import CreateTag
@@ -20,6 +23,9 @@ __all__ = [
     "CreateAccessRequest",
     "ApproveAccessRequest",
     "RejectAccessRequest",
+    "CreateRoleRequest",
+    "ApproveRoleRequest",
+    "RejectRoleRequest",
     "CreateApp",
     "CreateTag",
     "DeleteApp",

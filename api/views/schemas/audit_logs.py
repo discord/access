@@ -9,6 +9,7 @@ from api.views.schemas.core_schemas import (
     OktaUserSchema,
     PolymorphicGroupSchema,
     RoleGroupSchema,
+    RoleRequestSchema,
     TagSchema,
 )
 
@@ -28,6 +29,9 @@ class EventType(Enum):
     group_modify_tags = "GROUP_MODIFY_TAG"
     group_modify_users = "GROUP_MODIFY_USER"
     role_group_modify = "ROLE_GROUP_MODIFY"
+    role_request_approve = "ROLE_REQUEST_APPROVE"
+    role_request_create = "ROLE_REQUEST_CREATE"
+    role_request_reject = "ROLE_REQUEST_REJECT"
     tag_create = "TAG_CREATE"
     tag_modify = "TAG_MODIFY"
     tag_delete = "TAG_DELETE"
@@ -60,6 +64,19 @@ class AuditLogSchema(Schema):
         AccessRequestSchema,
         only=(
             "id",
+            "request_reason",
+            "request_ending_at",
+            "request_ownership",
+            "resolution_reason",
+            "approval_ending_at",
+        ),
+    )
+    role_request = fields.Nested(
+        RoleRequestSchema,
+        only=(
+            "id",
+            "requester_role.id",
+            "requester_role.name",
             "request_reason",
             "request_ending_at",
             "request_ownership",
