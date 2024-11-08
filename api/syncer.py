@@ -458,6 +458,7 @@ def expiring_access_notifications_user() -> None:
         .all()
     )
 
+    # remove OktaUserGroupMembers from the list where there's a role that grants the same access
     db_memberships_expiring_next_week = [
         member
         for member in db_memberships_expiring_next_week
