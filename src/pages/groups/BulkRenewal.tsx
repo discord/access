@@ -31,6 +31,10 @@ import {usePutGroupMembersById, PutGroupMembersByIdError, PutGroupMembersByIdVar
 import {GroupMember, OktaUserGroupMember, PolymorphicGroup, RoleGroupMap, RoleGroup} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 
+import {UNTIL_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {DEFAULT_ACCESS_TIME_CONFIG} from '../../env-overrides';
+
 interface Data {
   id: number;
   userName: string;
@@ -68,23 +72,9 @@ interface CreateRequestForm {
   reason?: string;
 }
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
+const UNTIL_ID_TO_LABELS = UNTIL_ID_TO_LABELS_CONFIG;
 
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS = UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
@@ -113,7 +103,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [selected, setSelected] = React.useState<OktaUserGroupMember[]>(() =>
     props.select != undefined ? props.rows.filter((r) => r.id == props.select) : [],
   );
-  const [until, setUntil] = React.useState('1209600');
+  const [until, setUntil] = React.useState(DEFAULT_ACCESS_TIME_CONFIG);
 
   const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
     props.rows.filter((r) => r.id == props.select).map((r) => r.id),

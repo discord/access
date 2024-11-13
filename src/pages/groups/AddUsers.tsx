@@ -48,6 +48,10 @@ import {
   requiredReasonGroups,
 } from '../../helpers';
 
+import {UNTIL_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {DEFAULT_ACCESS_TIME_CONFIG} from '../../env-overrides';
+
 dayjs.extend(IsSameOrBefore);
 
 interface AddUsersButtonProps {
@@ -78,30 +82,16 @@ interface AddUsersForm {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
+const UNTIL_ID_TO_LABELS = UNTIL_ID_TO_LABELS_CONFIG;
 
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS = UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
 function AddUsersDialog(props: AddUsersDialogProps) {
   const navigate = useNavigate();
 
-  const [until, setUntil] = React.useState('1209600');
+  const [until, setUntil] = React.useState(DEFAULT_ACCESS_TIME_CONFIG);
   const [userSearchInput, setUserSearchInput] = React.useState('');
   const [users, setUsers] = React.useState<Array<OktaUser>>([]);
   const [requestError, setRequestError] = React.useState('');
@@ -150,7 +140,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   }
 
   let labels = null;
-  let timeLimitUntil = null;
+  let timeLimitUntil: string | null = null;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
       .filter((key) => Number(key) <= timeLimit!)
@@ -162,7 +152,8 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         {} as Record<string, string>,
       );
 
-    timeLimitUntil = timeLimit >= 1209600 ? '1209600' : Object.keys(filteredUntil).at(-1)!;
+    const timeLimitUntil =
+      timeLimit >= parseInt(DEFAULT_ACCESS_TIME_CONFIG) ? DEFAULT_ACCESS_TIME_CONFIG : Object.keys(filteredUntil).at(-1)!;
 
     labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
       id: id,
@@ -244,7 +235,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
       <FormContainer<AddUsersForm>
-        defaultValues={timeLimit ? {until: timeLimitUntil!} : {until: '1209600'}}
+        defaultValues={timeLimit ? {until: timeLimitUntil!} : {until: DEFAULT_ACCESS_TIME_CONFIG.toString()}}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>

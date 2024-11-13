@@ -44,6 +44,10 @@ import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelf} from '../../he
 import {useCurrentUser} from '../../authentication';
 import {group} from 'console';
 
+import {UNTIL_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {DEFAULT_ACCESS_TIME_CONFIG} from '../../env-overrides';
+
 dayjs.extend(IsSameOrBefore);
 
 interface AddGroupsButtonProps {
@@ -79,23 +83,9 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
+const UNTIL_ID_TO_LABELS = UNTIL_ID_TO_LABELS_CONFIG;
 
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS = UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
@@ -121,7 +111,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     props.group.active_user_memberships?.map((membership) => membership.active_user!.id).includes(currentUser.id) ??
     false;
 
-  const [until, setUntil] = React.useState('1209600');
+  const [until, setUntil] = React.useState(DEFAULT_ACCESS_TIME_CONFIG);
   const [groupSearchInput, setGroupSearchInput] = React.useState('');
   const [groups, setGroups] = React.useState<Array<OktaGroup | AppGroup>>([]);
   const [requestError, setRequestError] = React.useState('');

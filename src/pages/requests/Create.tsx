@@ -43,6 +43,10 @@ import {
 import {canManageGroup} from '../../authorization';
 import {minTagTime, minTagTimeGroups} from '../../helpers';
 
+import {UNTIL_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {DEFAULT_ACCESS_TIME_CONFIG} from '../../env-overrides';
+
 dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
@@ -168,23 +172,9 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
+const UNTIL_ID_TO_LABELS = UNTIL_ID_TO_LABELS_CONFIG;
 
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS = UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG;
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
@@ -232,7 +222,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
     ? filterUntilLabels(timeLimit)
-    : ['1209600', UNTIL_OPTIONS];
+    : [DEFAULT_ACCESS_TIME_CONFIG, UNTIL_OPTIONS];
   const [until, setUntil] = React.useState(untilLabels[0]);
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
@@ -320,7 +310,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     <FormContainer<CreateRequestForm>
       defaultValues={{
         group: props.group,
-        until: '1209600',
+        until: DEFAULT_ACCESS_TIME_CONFIG,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>

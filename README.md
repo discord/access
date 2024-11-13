@@ -242,6 +242,14 @@ The `.env.production` file is where you configure the application.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
+**Environment Default Overrides:**
+
+- `UNTIL_ID_TO_LABELS_OVERRIDE`: Allows overriding the default ID to labels mapping. **Example:** `'{"14400":"4 Hours","43200":"12 Hours","432000":"5 Days","1209600":"Two Weeks","2592000":"30 Days","7776000":"90 Days"}'`.
+- `UNTIL_JUST_NUMERIC_ID_TO_LABELS_OVERRIDE`: Allows overriding the default numeric ID to labels mapping. **Example:** `'{"14400":"4 Hours","43200":"12 Hours","432000":"5 Days","1209600":"Two Weeks","2592000":"30 Days","7776000":"90 Days"}'`.
+- `DEFAULT_ACCESS_TIME_OVERRIDE`: Allows overriding the default access time. **Example:** `43200` (in seconds).
+
+Defaults for these overrides can be found in the `src/env-overrides.tsx` file.
+
 **NOTE:**
 
 If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE`. `SECRET_KEY` and `OIDC_CLIENT_SECRETS` do not need to be set and can be removed from your env file.
