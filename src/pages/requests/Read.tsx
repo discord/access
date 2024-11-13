@@ -73,8 +73,10 @@ import {
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 
-import {UNTIL_ID_TO_LABELS_CONFIG} from '../../env-overrides';
-import {UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG} from '../../env-overrides';
+import {
+  UNTIL_ID_TO_LABELS_CONFIG,
+  UNTIL_JUST_NUMERIC_ID_TO_LABELS_CONFIG,
+} from '../../env-overrides';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
