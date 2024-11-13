@@ -108,6 +108,36 @@ def test_individual_expiring_direct_with_role(
     assert expiring_access_notification_spy.call_count == 0
 
 
+# Test with one user who has one direct membership expiring in a week and a role membership for the same group
+def test_individual_expiring_direct_with_role_week(
+    db: SQLAlchemy, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+) -> None:
+    db.session.add(okta_group)
+    db.session.add(role_group)
+    db.session.add(user)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(weeks=1)
+    other_date = datetime.now() + timedelta(days=90)
+
+    ModifyGroupUsers(
+        group=okta_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=other_date, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role_group, groups_added_ended_at=other_date, groups_to_add=[okta_group.id], sync_to_okta=False
+    ).execute()
+
+    hook = get_notification_hook()
+    expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_user")
+
+    expiring_access_notifications_user()
+
+    assert expiring_access_notification_spy.call_count == 0
+
+
 # Test with one owner who owns two groups, each group has a member whose access expires this week
 def test_owner_expiring_access_notifications(db: SQLAlchemy, mocker: MockerFixture) -> None:
     group1 = OktaGroupFactory.create()
