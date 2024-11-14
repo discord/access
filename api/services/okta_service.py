@@ -535,4 +535,16 @@ class Group:
 
 
 def is_managed_group(group: Group, group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]]) -> bool:
+    # Check if 'allow_discord_access' attribute exists as a custom Okta Group Profile attribute and retrieve its value
+    allow_discord_access = getattr(group.profile, "allow_discord_access", None)
+
+    # If 'allow_discord_access' is explicitly set to False, the group should not be managed
+    if allow_discord_access is False:
+        return False
+
+    # If 'allow_discord_access' is True and the group type is OKTA_GROUP, it can be managed even if it has group rules
+    if allow_discord_access is True and group.type == "OKTA_GROUP":
+        return True
+
+    # By default, the group should be of type OKTA_GROUP and should not have any group rules to be managed
     return (group.type == "OKTA_GROUP") and (group.id not in group_ids_with_group_rules)
