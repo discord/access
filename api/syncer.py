@@ -458,6 +458,13 @@ def expiring_access_notifications_user() -> None:
         .all()
     )
 
+    # remove OktaUserGroupMembers from the list where there's a role that grants the same access
+    db_memberships_expiring_next_week = [
+        member
+        for member in db_memberships_expiring_next_week
+        if (member.user_id, member.group_id) not in user_id_group_id_roles
+    ]
+
     grouped_next_week: dict[OktaUser, list[OktaGroup]] = {}
     for membership in db_memberships_expiring_next_week:
         grouped_next_week.setdefault(membership.active_user, []).append(membership.active_group)
