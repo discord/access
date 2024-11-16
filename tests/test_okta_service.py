@@ -23,5 +23,4 @@ def test_is_managed_group_with_allow_discord_access_false(set_okta_group_profile
     group_ids_with_group_rules = {}  # Empty dictionary for group rules
     result = is_managed_group(group, group_ids_with_group_rules)
 
-    print(f"Result of is_managed_group: {result}")  # Debug output
     assert result is False  # Assert that the result is False
