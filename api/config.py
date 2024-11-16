@@ -13,6 +13,9 @@ OKTA_API_TOKEN = os.getenv("OKTA_API_TOKEN")
 OKTA_USE_GROUP_OWNERS_API = os.getenv("OKTA_USE_GROUP_OWNERS_API", "False") == "True"
 CURRENT_OKTA_USER_EMAIL = os.getenv("CURRENT_OKTA_USER_EMAIL", "wumpus@discord.com")
 
+# Optional env var to set a custom Okta Group Profile attribute for Access management inclusion/exclusion
+OKTA_GROUP_PROFILE_CUSTOM_ATTR = os.getenv("OKTA_GROUP_PROFILE_CUSTOM_ATTR")
+
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI")
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = ENV == "development"  # or ENV == "test"

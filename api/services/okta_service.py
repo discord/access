@@ -14,6 +14,7 @@ from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from okta.request_executor import RequestExecutor as OktaRequestExecutor
 
+from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 from api.models import OktaGroup, OktaUser
 
 REQUEST_MAX_RETRIES = 3
@@ -535,16 +536,17 @@ class Group:
 
 
 def is_managed_group(group: Group, group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]]) -> bool:
-    # Check if 'allow_discord_access' attribute exists as a custom Okta Group Profile attribute and retrieve its value
-    allow_discord_access = getattr(group.profile, "allow_discord_access", None)
+    # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
+    if OKTA_GROUP_PROFILE_CUSTOM_ATTR:
+        custom_manage_attr = getattr(group.profile, f"{OKTA_GROUP_PROFILE_CUSTOM_ATTR}", None)
 
-    # If 'allow_discord_access' is explicitly set to False, the group should not be managed
-    if allow_discord_access is False:
-        return False
+        # If OKTA_GROUP_PROFILE_CUSTOM_ATTR is explicitly set to False, the group should not be managed
+        if custom_manage_attr is False:
+            return False
 
-    # If 'allow_discord_access' is True and the group type is OKTA_GROUP, it can be managed even if it has group rules
-    if allow_discord_access is True and group.type == "OKTA_GROUP":
-        return True
+        # If OKTA_GROUP_PROFILE_CUSTOM_ATTR is True and the group type is OKTA_GROUP, it can be managed even if it has group rules
+        if custom_manage_attr is True and group.type == "OKTA_GROUP":
+            return True
 
     # By default, the group should be of type OKTA_GROUP and should not have any group rules to be managed
     return (group.type == "OKTA_GROUP") and (group.id not in group_ids_with_group_rules)
