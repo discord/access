@@ -535,10 +535,14 @@ class Group:
         return okta_group
 
 
-def is_managed_group(group: Group, group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]]) -> bool:
+def is_managed_group(
+    group: Group,
+    group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]],
+    custom_attr: Optional[str] = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+) -> bool:
     # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
-    if OKTA_GROUP_PROFILE_CUSTOM_ATTR:
-        custom_manage_attr = getattr(group.profile, f"{OKTA_GROUP_PROFILE_CUSTOM_ATTR}", None)
+    if custom_attr:
+        custom_manage_attr = getattr(group.profile, custom_attr, None)
 
         # If OKTA_GROUP_PROFILE_CUSTOM_ATTR is explicitly set to False, the group should not be managed
         if custom_manage_attr is False:
