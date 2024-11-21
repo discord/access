@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize Slack client and signature verifier
 slack_token = os.environ["SLACK_BOT_TOKEN"]
-signing_secret = os.environ["SLACK_SIGNING_SECRET"]
 client = WebClient(token=slack_token)
 alerts_channel = os.environ.get("SLACK_ALERTS_CHANNEL")
 CLIENT_ORIGIN_URL = os.environ.get("CLIENT_ORIGIN_URL")  # e.g. "https://discord-access-instance.com"
