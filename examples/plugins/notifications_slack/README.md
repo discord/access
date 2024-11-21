@@ -6,12 +6,12 @@ This plugin integrates Discord access notifications with Slack, allowing users t
 
 Update the Dockerfile used to build the App container includes the following section for installing the notifications plugin before starting gunicorn:
 ```dockerfile
-# Add the specific plugins and install notifications for both final stages
+# Add the specific plugins and install notifications
 WORKDIR /app/plugins
 ADD ./examples/plugins/notifications_slack ./notifications_slack
 RUN pip install -r ./notifications_slack/requirements.txt && pip install ./notifications_slack
 
-# Reset working directory for both final stages
+# Reset working directory
 WORKDIR /app
 
 ENV FLASK_ENV production
