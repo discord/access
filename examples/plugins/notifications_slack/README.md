@@ -4,14 +4,7 @@ This plugin integrates Discord access notifications with Slack, allowing users t
 
 ## Installation
 
-To install the plugin, clone this repository into the `examples/plugins/notifications_slack` directory of your main Discord Access repository:
-```bash
-git clone https://github.com/gemini-oss/discord-access-slack-notifications.git examples/plugins/
-```
-
-**Note**: The `notifications_slack` folder is already included in the repository. Ensure that when you clone, it does not create an additional folder layer.
-
-After cloning, ensure that the Dockerfile used to build the App container includes the following section for installing the notifications plugin before starting gunicorn:
+Update the Dockerfile used to build the App container includes the following section for installing the notifications plugin before starting gunicorn:
 ```dockerfile
 # Add the specific plugins and install notifications for both final stages
 WORKDIR /app/plugins
