@@ -48,13 +48,6 @@ COPY --from=sentry /app/sentry ./sentry
 # Choose whether to include the sentry release push build step or not
 FROM ${PUSH_SENTRY_RELEASE}
 
-WORKDIR /app/plugins
-ADD ./examples/plugins/health_check_plugin ./health_check_plugin
-RUN pip install ./health_check_plugin
-
-# Reset working directory
-WORKDIR /app
-
 ENV FLASK_ENV production
 ENV FLASK_APP api.app:create_app
 ENV SENTRY_RELEASE $SENTRY_RELEASE
