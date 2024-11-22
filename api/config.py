@@ -83,3 +83,6 @@ DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "False") == "True
 
 FLASK_SENTRY_DSN = os.getenv("FLASK_SENTRY_DSN")
 REACT_SENTRY_DSN = os.getenv("REACT_SENTRY_DSN")
+
+# Add APP_VERSION, defaulting to 'Not Defined' if not set
+APP_VERSION = os.getenv("APP_VERSION", "Not Defined")

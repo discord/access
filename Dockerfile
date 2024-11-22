@@ -3,7 +3,7 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:23-alpine AS build-step
+FROM node:22-alpine AS build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 ENV PATH /app/node_modules/.bin:$PATH
@@ -47,6 +47,13 @@ COPY --from=sentry /app/sentry ./sentry
 # Final build step: copy the API and the client from the previous steps
 # Choose whether to include the sentry release push build step or not
 FROM ${PUSH_SENTRY_RELEASE}
+
+WORKDIR /app/plugins
+ADD ./examples/plugins/health_check_plugin ./health_check_plugin
+RUN pip install ./health_check_plugin
+
+# Reset working directory
+WORKDIR /app
 
 ENV FLASK_ENV production
 ENV FLASK_APP api.app:create_app
