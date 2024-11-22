@@ -8,7 +8,7 @@ from sqlalchemy import text
 @click.command("health")
 @with_appcontext
 def health_command() -> None:
-    """Displays application health and metrics in JSON format."""
+    """Displays application database health and metrics in JSON format."""
     from flask import current_app, json
 
     from api.extensions import db
