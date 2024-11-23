@@ -679,6 +679,168 @@ export const useResolveRequestById = (
   );
 };
 
+export type GetRoleRequestsQueryParams = {
+  page?: number;
+  per_page?: number;
+  q?: string;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requester_role_id?: string;
+  requester_user_id?: string;
+  requested_group_id?: string;
+  assignee_user_id?: string;
+  resolver_user_id?: string;
+};
+
+export type GetRoleRequestsError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.RoleRequestPagination;
+}>;
+
+export type GetRoleRequestsVariables = {
+  queryParams?: GetRoleRequestsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchGetRoleRequests = (variables: GetRoleRequestsVariables, signal?: AbortSignal) =>
+  apiFetch<undefined, GetRoleRequestsError, undefined, {}, GetRoleRequestsQueryParams, {}>({
+    url: '/api/role-requests',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetRoleRequests = <TData = Schemas.RoleRequestPagination>(
+  variables: GetRoleRequestsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<undefined, GetRoleRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<undefined, GetRoleRequestsError, TData>({
+    queryKey: queryKeyFn({path: '/api/role-requests', operationId: 'getRoleRequests', variables}),
+    queryFn: ({signal}) => fetchGetRoleRequests({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type CreateRoleRequestError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.RoleRequest;
+}>;
+
+export type CreateRoleRequestVariables = {
+  body: Schemas.CreateRoleRequest;
+} & ApiContext['fetcherOptions'];
+
+export const fetchCreateRoleRequest = (variables: CreateRoleRequestVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.RoleRequest, CreateRoleRequestError, Schemas.CreateRoleRequest, {}, {}, {}>({
+    url: '/api/role-requests',
+    method: 'post',
+    ...variables,
+    signal,
+  });
+
+export const useCreateRoleRequest = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<Schemas.RoleRequest, CreateRoleRequestError, CreateRoleRequestVariables>,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<Schemas.RoleRequest, CreateRoleRequestError, CreateRoleRequestVariables>(
+    (variables: CreateRoleRequestVariables) => fetchCreateRoleRequest({...fetcherOptions, ...variables}),
+    options,
+  );
+};
+
+export type GetRoleRequestByIdPathParams = {
+  roleRequestId: string;
+};
+
+export type GetRoleRequestByIdError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.AccessRequest;
+}>;
+
+export type GetRoleRequestByIdVariables = {
+  pathParams: GetRoleRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchGetRoleRequestById = (variables: GetRoleRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<undefined, GetRoleRequestByIdError, undefined, {}, {}, GetRoleRequestByIdPathParams>({
+    url: '/api/role-requests/{roleRequestId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetRoleRequestById = <TData = Schemas.RoleRequest>(
+  variables: GetRoleRequestByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<undefined, GetRoleRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<undefined, GetRoleRequestByIdError, TData>({
+    queryKey: queryKeyFn({path: '/api/role-requests/{roleRequestId}', operationId: 'getRoleRequestById', variables}),
+    queryFn: ({signal}) => fetchGetRoleRequestById({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type ResolveRoleRequestByIdPathParams = {
+  roleRequestId: string;
+};
+
+export type ResolveRoleRequestByIdError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.RoleRequest;
+}>;
+
+export type ResolveRoleRequestByIdVariables = {
+  body: Schemas.ResolveRoleRequest;
+  pathParams: ResolveRoleRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchResolveRoleRequestById = (variables: ResolveRoleRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.ResolveRoleRequest,
+    ResolveRoleRequestByIdError,
+    Schemas.ResolveRoleRequest,
+    {},
+    {},
+    ResolveRoleRequestByIdPathParams
+  >({
+    url: '/api/role-requests/{roleRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
+
+export const useResolveRoleRequestById = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.ResolveRoleRequest,
+      ResolveRoleRequestByIdError,
+      ResolveRoleRequestByIdVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.ResolveRoleRequest,
+    ResolveRoleRequestByIdError,
+    ResolveRoleRequestByIdVariables
+  >(
+    (variables: ResolveRoleRequestByIdVariables) => fetchResolveRoleRequestById({...fetcherOptions, ...variables}),
+    options,
+  );
+};
+
 export type GetRolesQueryParams = {
   page?: number;
   per_page?: number;
@@ -1102,6 +1264,16 @@ export type QueryOperation =
       path: '/api/requests/{accessRequestId}';
       operationId: 'getRequestById';
       variables: GetRequestByIdVariables;
+    }
+  | {
+      path: '/api/role-requests';
+      operationId: 'getRoleRequests';
+      variables: GetRoleRequestsVariables;
+    }
+  | {
+      path: '/api/role-requests/{roleRequestId}';
+      operationId: 'getRoleRequestById';
+      variables: GetRoleRequestByIdVariables;
     }
   | {
       path: '/api/roles';

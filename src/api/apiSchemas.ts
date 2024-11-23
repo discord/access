@@ -177,6 +177,28 @@ export type CreateAccessRequest = {
   reason?: string;
 };
 
+export type CreateRoleRequest = {
+  /**
+   * @format date-time
+   */
+  ending_at?: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  role_id: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  group_id: string;
+  /**
+   * @default false
+   */
+  group_owner?: boolean;
+  reason?: string;
+};
+
 export type DeleteMessage = {
   deleted?: boolean;
 };
@@ -354,6 +376,15 @@ export type ResolveAccessRequest = {
   reason?: string;
 };
 
+export type ResolveRoleRequest = {
+  approved: boolean;
+  /**
+   * @format date-time
+   */
+  ending_at?: string;
+  reason?: string;
+};
+
 export type GroupRoleAuditPagination = {
   /**
    * @format url
@@ -438,6 +469,69 @@ export type RolePagination = {
    */
   prev?: string;
   results?: RoleGroup[];
+  total?: number;
+};
+
+export type RoleRequest = {
+  active_requester_role?: RoleGroup;
+  active_requested_group?: PolymorphicGroup;
+  active_requester?: OktaUser;
+  active_resolver?: OktaUser;
+  /**
+   * @format date-time
+   */
+  approval_ending_at?: string | null;
+  approved_membership?: OktaUserGroupMember;
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * @maxLength 20
+   */
+  id: string;
+  request_ownership?: boolean;
+  /**
+   * @maxLength 1024
+   */
+  request_reason?: string;
+  /**
+   * @format date-time
+   */
+  request_ending_at?: string | null;
+  requester_role?: RoleGroup;
+  requested_group?: PolymorphicGroup;
+  requester?: OktaUser;
+  /**
+   * @maxLength 1024
+   */
+  resolution_reason?: string;
+  /**
+   * @format date-time
+   */
+  resolved_at?: string | null;
+  resolver?: OktaUser;
+  /**
+   * @maxLength 8
+   */
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /**
+   * @format date-time
+   */
+  updated_at?: string;
+};
+
+export type RoleRequestPagination = {
+  /**
+   * @format url
+   */
+  next?: string;
+  pages?: number;
+  /**
+   * @format url
+   */
+  prev?: string;
+  results?: RoleRequest[];
   total?: number;
 };
 
