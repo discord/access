@@ -37,7 +37,6 @@ Verify Slack notifications are work as designed.
 The plugin requires the following environment variables to be set:
 
 - `SLACK_BOT_TOKEN`: The token for your Slack bot.
-- `SLACK_SIGNING_SECRET`: The signing secret for your Slack app.
 - `SLACK_ALERTS_CHANNEL`: The channel where alerts will be sent. String name like `#alerts-discord-access`
 - `CLIENT_ORIGIN_URL`: The base URL for your application.
 
