@@ -28,11 +28,19 @@ import {useGetRoleRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {OktaUserGroupMember} from '../../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
 
+function userOwnsRoles(user: OktaUserGroupMember[]): boolean {
+  return user.reduce((out, ownership) => {
+    return out || ownership.active_group?.type == 'role_group';
+  }, false);
+}
+
 export default function ListRoleRequests() {
   const currentUser = useCurrentUser();
+  const showCreateRequest = userOwnsRoles(currentUser.active_group_ownerships ?? []);
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -130,7 +138,7 @@ export default function ListRoleRequests() {
   return (
     <TableContainer component={Paper}>
       <TableTopBar title="Role Requests">
-        <CreateRoleRequest currentUser={currentUser}></CreateRoleRequest>
+        {showCreateRequest ? <CreateRoleRequest currentUser={currentUser}></CreateRoleRequest> : <></>}
         <TableTopBarAutocomplete
           options={searchRows.map(
             (row) =>
@@ -265,17 +273,23 @@ export default function ListRoleRequests() {
                 )}
               </TableCell>
               <TableCell>
-                <Link to={`/requests/${row.id}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                <Link
+                  to={`/role-requests/${row.id}`}
+                  sx={{textDecoration: 'none', color: 'inherit'}}
+                  component={RouterLink}>
                   {row.status}
                 </Link>
               </TableCell>
               <TableCell>
-                <Link to={`/requests/${row.id}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
+                <Link
+                  to={`/role-requests/${row.id}`}
+                  sx={{textDecoration: 'none', color: 'inherit'}}
+                  component={RouterLink}>
                   <span title={row.created_at}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
                 </Link>
               </TableCell>
               <TableCell>
-                <Button variant="contained" size="small" to={`/requests/${row.id}`} component={RouterLink}>
+                <Button variant="contained" size="small" to={`/role-requests/${row.id}`} component={RouterLink}>
                   View
                 </Button>
               </TableCell>

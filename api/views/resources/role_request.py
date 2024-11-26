@@ -103,6 +103,8 @@ class RoleRequestResource(MethodResource):
         role_request = (
             RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request_id).first_or_404()
         )
+        print("\n\nhere\n\n")
+        print(role_request)
         return schema.dump(role_request)
 
     @FlaskApiSpecDecorators.request_schema(ResolveRoleRequestSchema)
