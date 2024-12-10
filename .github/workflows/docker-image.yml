@@ -18,6 +18,8 @@ jobs:
       - id: checkout
         name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - id: auth
         name: Authenticate with Google Cloud
