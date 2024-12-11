@@ -41,6 +41,7 @@ import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
+import RoleMembers from './RoleMembers';
 import {
   groupBy,
   displayUserName,
@@ -178,6 +179,8 @@ export default function ReadRoleRequest() {
 
   const roleRequest = data ?? ({} as RoleRequest);
 
+  console.log(roleRequest);
+
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(roleRequest.request_ending_at);
@@ -225,6 +228,8 @@ export default function ReadRoleRequest() {
   const group = groupData ?? ({} as PolymorphicGroup);
 
   const constraints = ComputeConstraints(roleRequest);
+
+  console.log(constraints);
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
@@ -407,24 +412,6 @@ export default function ReadRoleRequest() {
                     textAlign: 'center',
                     wordBreak: 'break-word',
                   }}>
-                  <Typography variant="h5">
-                    {(roleRequest.requester?.deleted_at ?? null) != null ? (
-                      <Link
-                        to={`/users/${roleRequest.requester?.id ?? ''}`}
-                        sx={{textDecoration: 'line-through', color: 'inherit', fontWeight: 500}}
-                        component={RouterLink}>
-                        {displayUserName(roleRequest.requester)}
-                      </Link>
-                    ) : (
-                      <Link
-                        to={`/users/${roleRequest.requester?.email.toLowerCase() ?? ''}`}
-                        sx={{textDecoration: 'none', color: 'inherit', fontWeight: 500}}
-                        component={RouterLink}>
-                        {displayUserName(roleRequest.requester)}
-                      </Link>
-                    )}
-                    {roleRequest.status == 'PENDING' ? ' is requesting that' : ' requested that'}{' '}
-                  </Typography>
                   <Typography variant="h4">
                     {(roleRequest.requester_role?.deleted_at ?? null) != null ? (
                       <Link
@@ -443,16 +430,15 @@ export default function ReadRoleRequest() {
                     )}
                   </Typography>
                   <Typography variant="h5">
-                    is added as
+                    is requesting
                     {roleRequest.request_ownership ? (
                       <>
-                        <> an </>
                         <Box component="span" sx={{color: 'primary.main', fontWeight: 'bold'}}>
-                          owner
+                          <> ownership </>
                         </Box>{' '}
                       </>
                     ) : (
-                      ' a member'
+                      ' membership '
                     )}
                     of
                   </Typography>
@@ -586,10 +572,21 @@ export default function ReadRoleRequest() {
                           ? 'never'
                           : dayjs(roleRequest.request_ending_at).startOf('second').fromNow()}
                       </b>
-                      {'. This will add everyone who is a member of the role to the group.'}
+                      {'.'}
                     </Typography>
                     <Typography variant="body2" sx={{pt: 1}}>
                       <b>Reason:</b> {roleRequest.request_reason ? roleRequest.request_reason : 'No reason given'}
+                    </Typography>
+                  </Paper>
+                  <Paper sx={{p: 2, my: 2}}>
+                    <RoleMembers
+                      rows={roleRequest.requester_role?.active_user_memberships ?? []}
+                      roleName={roleRequest.requester_role?.name ?? ''}
+                      groupName={roleRequest.requested_group?.name ?? ''}
+                      owner={roleRequest.request_ownership ?? false}
+                    />
+                    <Typography display="inline" variant="body1" sx={{pl: 1}}>
+                      If approved, everyone who is a member of the role will be added to the group.
                     </Typography>
                   </Paper>
                 </TimelineContent>

@@ -45,7 +45,11 @@ ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(
 )
 DEFAULT_LOAD_OPTIONS = (
     joinedload(RoleRequest.requester),
-    joinedload(RoleRequest.requester_role),
+    joinedload(RoleRequest.requester_role).options(
+        selectinload(RoleGroup.active_user_memberships).options(
+            joinedload(OktaUserGroupMember.active_user),
+        ),
+    ),
     joinedload(RoleRequest.requested_group).options(
         # Role requests can only be for OktaGroups and AppGroups
         selectin_polymorphic(OktaGroup, [AppGroup]),
@@ -80,6 +84,7 @@ class RoleRequestResource(MethodResource):
                 "requester_role.id",
                 "requester_role.name",
                 "requester_role.deleted_at",
+                "requester_role.active_user_memberships",
                 "requested_group.id",
                 "requested_group.type",
                 "requested_group.name",
@@ -103,8 +108,6 @@ class RoleRequestResource(MethodResource):
         role_request = (
             RoleRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(RoleRequest.id == role_request_id).first_or_404()
         )
-        print("\n\nhere\n\n")
-        print(role_request)
         return schema.dump(role_request)
 
     @FlaskApiSpecDecorators.request_schema(ResolveRoleRequestSchema)
