@@ -248,6 +248,29 @@ If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_D
 
 Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
 
+### Access application configuration overrides
+
+The default config for the application is at `src/config/config.default.json`. 
+
+If you want to override those values, create your own config file containing JSON that overrides values in the default config.
+
+- `ACCESS_TIME_LABELS`: _Optional._ Specifies the time access labels to use for dropdowns on the front end. Contains a JSON object of the format `{"NUM_SECONDS": "LABEL"}`. **Example:** `{"86400": "1 day", "604800": "1 week", "2592000": "1 month"}`.
+- `DEFAULT_ACCESS_TIME`: _Optional._ Specifies the default time access label to use for dropdowns on the front end. Contains a string with a number of seconds corresponding to a key in the access time labels, e.g. `"86400"`.
+
+To use your custom config file, edit `docker-compose.yml` to add a build arg `ACCESS_FILE_CONFIG_PATH` with a local path to your config override file:
+
+```yaml
+services:
+  discord-access:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ACCESS_FILE_CONFIG_PATH: 'path/to/config.production.json'
+```
+
+If `ACCESS_FILE_CONFIG_PATH` is not set as a build arg when building the Docker image, then the default config will be used.
+
 #### Database Setup
 
 After `docker compose up --build`, you can run the following commands to setup the database:
