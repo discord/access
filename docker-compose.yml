@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-#      args:
-#        ACCESS_FILE_CONFIG_PATH: 'src/config/config.empty.json'
+    #      args:
+    #        ACCESS_FILE_CONFIG_PATH: 'src/config/config.empty.json'
     container_name: discord-access
     env_file:
       - .env.production
