@@ -179,7 +179,7 @@ export default function ReadRoleRequest() {
 
   const roleRequest = data ?? ({} as RoleRequest);
 
-  console.log(roleRequest);
+  // console.log(roleRequest);
 
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
@@ -196,6 +196,7 @@ export default function ReadRoleRequest() {
         ? requestedUntilDelta.toString()
         : 'custom';
 
+  // TODO if owner can't add self constraint and owner member of role, set below to false and add note about constraint
   const requestedGroupManager = canManageGroup(currentUser, roleRequest.requested_group);
 
   const complete = (
@@ -229,7 +230,7 @@ export default function ReadRoleRequest() {
 
   const constraints = ComputeConstraints(roleRequest);
 
-  console.log(constraints);
+  // console.log(constraints);
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
@@ -260,7 +261,9 @@ export default function ReadRoleRequest() {
     }));
   }
 
-  const ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+  // TODO if owner can't add self constraint, filter ownerships to remove roleRequest.requester_role?.active_user_memberships
+
+  let ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
 
   const {data: appData} = useGetAppById(
     {
@@ -436,11 +439,11 @@ export default function ReadRoleRequest() {
                         <Box component="span" sx={{color: 'primary.main', fontWeight: 'bold'}}>
                           <> ownership </>
                         </Box>{' '}
+                        of
                       </>
                     ) : (
-                      ' membership '
+                      ' membership to '
                     )}
-                    of
                   </Typography>
                   <Typography variant="h4">
                     {(roleRequest.requested_group?.deleted_at ?? null) != null ? (

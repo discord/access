@@ -114,7 +114,9 @@ class RoleRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(RoleRequestSchema)
     def put(self, role_request_id: str) -> ResponseReturnValue:
         role_request = (
-            RoleRequest.query.options(joinedload(RoleRequest.active_requested_group))
+            RoleRequest.query.options(
+                joinedload(RoleRequest.active_requested_group),
+                joinedload(RoleRequest.requester_role))
             .filter(RoleRequest.id == role_request_id)
             .first_or_404()
         )
