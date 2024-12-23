@@ -69,7 +69,7 @@ Finally, you can run the server:
 flask run
 ```
 
-Go to [http://localhost:6060/api/users/](http://localhost:6060/api/users/) to view the API.
+Go to [http://localhost:6060/api/users](http://localhost:6060/api/users) to view the API.
 
 ### Node
 
