@@ -497,3 +497,9 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python,flask
+
+config.production.json
+config.staging.json
+config.development.json
+config.test.json
+config.override.json

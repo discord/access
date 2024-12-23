@@ -22,7 +22,8 @@
     "react-hook-form": "latest",
     "react-hook-form-mui": "latest",
     "react-router-dom": "latest",
-    "styled-components": "latest"
+    "styled-components": "latest",
+    "webpack": "latest"
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
@@ -51,6 +52,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/styled-components": "latest",
+    "@types/webpack": "latest",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",

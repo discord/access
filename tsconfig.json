@@ -22,9 +22,18 @@
     // Set `sourceRoot` to  `/` to strip the build path prefix from
     // generated source code references. This allows Sentry to match source files
     // relative to your source root folder.
-    "sourceRoot": "/"
+    "sourceRoot": "/",
+    // ensure that ACCESS_CONFIG is made globally available
+    "typeRoots": [
+      "./node_modules/@types",
+      "./src/globals.d.ts"
+    ]
   },
-  "include": ["src/**/*", "mui.d.ts"],
+  "include": [
+    "src/**/*",
+    "mui.d.ts",
+    "src/globals.d.ts"
+  ],
   "paths": {
     "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"]
   }
