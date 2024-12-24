@@ -279,16 +279,52 @@ class RoleRequestList(MethodResource):
 
                 if AuthorizationHelpers.is_access_admin(assignee_user_id):
                     #TODO get all blocked roles, add to admin's list
-                    # blocked_roles = (
-                    #     db.session.query(RoleRequest.id)
-                    #     .options()
-                    # )
-                    # probably: get all open role requests, for each owner, check like below, add in subquery 
+                    # probably: get all open role requests, 
+                    # filter for just tagged groups with matching request type, 
+                    # get each group owner and role member list, 
+                    # create list of request ids where all group owner also role members
+
+                    # get active role requests for ownership where group tagged with owner
+                    # can't add self as owner constraint
+                    tagged_role_requests_owner = [g for g in (
+                        RoleRequest.query
+                        .options(joinedload(RoleRequest.requester_role))
+                        .options(joinedload(RoleRequest.requested_group).options(
+                            selectinload(OktaGroup.active_group_tags)))
+                        .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+                        .filter(RoleRequest.request_ownership.is_(True))
+                        .all()
+                    ) if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.requested_group.active_group_tags],
+                        )
+                    ]
+
+                    # get active role requests for membership where group tagged with owner
+                    # can't add self as member constraint
+                    tagged_role_requests_member = [g for g in (
+                        RoleRequest.query
+                        .options(joinedload(RoleRequest.requester_role))
+                        .options(joinedload(RoleRequest.requested_group).options(
+                            selectinload(OktaGroup.active_group_tags)))
+                        .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+                        .filter(RoleRequest.request_ownership.is_(False))
+                        .all()
+                    ) if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.requested_group.active_group_tags],
+                        )
+                    ]
+
+                    # for each role request with a tagged target group, check to see if all owners blocked 
+                    blocked_requests = []
+                    # TODO
+                    
                     query = query.join(RoleRequest.requested_group).filter(
                         db.or_(
                             OktaGroup.id.in_(groups_owned_subquery),
                             OktaGroup.id.in_(app_groups_owned_subquery),
-                            # OktaGroup.id.in_(blocked_roles)
+                            RoleRequest.id.in_(blocked_requests)
                         )
                     )
 
@@ -336,12 +372,12 @@ class RoleRequestList(MethodResource):
 
                     query = query.filter(
                             ~db.or_(
-                                db.and_( # blocked roles ownership
+                                db.and_( # blocked requests ownership
                                     RoleRequest.requested_group_id.in_(owned_groups_cant_add_self_owner),
                                     RoleRequest.requester_role_id.in_(role_memberships),
                                     RoleRequest.request_ownership.is_(True)
                                 ),
-                                db.and_( #blocked roles membership
+                                db.and_( #blocked requests membership
                                     RoleRequest.requested_group_id.in_(owned_groups_cant_add_self_member),
                                     RoleRequest.requester_role_id.in_(role_memberships),
                                     RoleRequest.request_ownership.is_(False)
