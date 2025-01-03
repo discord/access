@@ -1,52 +1,16 @@
 import React, {useEffect, useState} from 'react';
 import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
 
-import Box from '@mui/material/Box';
-import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
-import Link from '@mui/material/Link';
-import Paper from '@mui/material/Paper';
-import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableFooter from '@mui/material/TableFooter';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
-import Tooltip from '@mui/material/Tooltip';
-import Typography from '@mui/material/Typography';
-
-import TagIcon from '@mui/icons-material/LocalOffer';
-
-import Ending from '../../components/Ending';
-import {groupBy, displayUserName} from '../../helpers';
-import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
+import {groupBy} from '../../helpers';
 import {useGetAppById} from '../../api/apiComponents';
 import {App, AppGroup, OktaUserGroupMember} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
-import CreateUpdateGroup from '../groups/CreateUpdate';
-import CreateUpdateApp from './CreateUpdate';
-import DeleteApp from './Delete';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
-
-function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
-): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
-  return aEmail.localeCompare(bEmail);
-}
-
-function groupMemberships(memberships: Array<OktaUserGroupMember> | undefined) {
-  return groupBy(memberships, (m) => m.active_user?.id);
-}
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();

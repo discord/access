@@ -129,6 +129,6 @@ export function sortGroupMemberRecords(users: Record<string, OktaUser>): OktaUse
 
 export function groupMemberships(
   memberships: Array<OktaUserGroupMember> | undefined,
-): Map<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], 'active_user.id');
+): Record<string, Array<OktaUserGroupMember>> {
+  return groupBy(memberships ?? [], () => 'active_user.id');
 }
