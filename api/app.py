@@ -5,6 +5,7 @@
 import logging
 import sys
 import warnings
+from importlib.metadata import entry_points
 from os import environ
 from typing import Optional
 
@@ -27,6 +28,7 @@ from api.views import (
     exception_views,
     groups_views,
     health_check_views,
+    role_requests_views,
     roles_views,
     tags_views,
     users_views,
@@ -182,6 +184,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     ##########################################
     # Configure flask cli commands
     ##########################################
+    # Register static commands
     app.cli.add_command(manage.init)
     app.cli.add_command(manage.import_from_okta)
     app.cli.add_command(manage.init_builtin_apps)
@@ -189,6 +192,16 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     app.cli.add_command(manage.fix_unmanaged_groups)
     app.cli.add_command(manage.fix_role_memberships)
     app.cli.add_command(manage.notify)
+
+    # Register dynamically loaded commands
+    flask_commands = entry_points(group="flask.commands")
+
+    for entry_point in flask_commands:
+        try:
+            command = entry_point.load()
+            app.cli.add_command(command)
+        except Exception as e:
+            logger.warning(f"Failed to load command '{entry_point.name}': {e}")
 
     ###########################################
     # Configure APISpec for swagger support
@@ -203,7 +216,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     # https://github.com/marshmallow-code/apispec/issues/444
     warnings.filterwarnings("ignore", message="Multiple schemas resolved to the name ")
     # Ignore the following warning because nested schemas may declare less fields via only tuples
-    # than the actual schema has specfieid in the fields tuple
+    # than the actual schema has specified in the fields tuple
     warnings.filterwarnings("ignore", message="Only explicitly-declared fields will be included in the Schema Object")
 
     app.register_blueprint(exception_views.bp)
@@ -220,6 +233,8 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     groups_views.register_docs()
     app.register_blueprint(roles_views.bp)
     roles_views.register_docs()
+    app.register_blueprint(role_requests_views.bp)
+    role_requests_views.register_docs()
     app.register_blueprint(tags_views.bp)
     tags_views.register_docs()
     app.register_blueprint(webhook_views.bp)

@@ -3,7 +3,7 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:23-alpine as build-step
+FROM node:22-alpine AS build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 ENV PATH /app/node_modules/.bin:$PATH
@@ -17,7 +17,7 @@ ENV REACT_APP_API_SERVER_URL ""
 RUN npm run build
 
 # Optional build step #2: upload the source maps by pushing a release to sentry
-FROM getsentry/sentry-cli:2 as sentry
+FROM getsentry/sentry-cli:2 AS sentry
 ARG SENTRY_RELEASE=""
 RUN --mount=type=secret,id=SENTRY_CLI_RC \
   cp /run/secrets/SENTRY_CLI_RC ~/.sentryclirc
@@ -29,7 +29,7 @@ RUN sentry-cli releases finalize ${SENTRY_RELEASE}
 RUN touch sentry
 
 # Build step #3: build the API with the client as static files
-FROM python:3.13 as false
+FROM python:3.13 AS false
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 COPY --from=build-step /app/build ./build
@@ -41,7 +41,7 @@ COPY migrations/ ./migrations/
 RUN pip install -r ./api/requirements.txt
 
 # Build an image that includes the optional sentry release push build step
-FROM false as true
+FROM false AS true
 COPY --from=sentry /app/sentry ./sentry
 
 # Final build step: copy the API and the client from the previous steps

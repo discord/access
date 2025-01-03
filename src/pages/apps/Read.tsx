@@ -35,6 +35,19 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 
+function sortGroupMembers(
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+): number {
+  let aEmail = aUsers[0].active_user?.email ?? '';
+  let bEmail = bUsers[0].active_user?.email ?? '';
+  return aEmail.localeCompare(bEmail);
+}
+
+function groupMemberships(memberships: Array<OktaUserGroupMember> | undefined) {
+  return groupBy(memberships, (m) => m.active_user?.id);
+}
+
 export default function ReadApp() {
   const currentUser = useCurrentUser();
 

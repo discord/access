@@ -13,6 +13,9 @@ OKTA_API_TOKEN = os.getenv("OKTA_API_TOKEN")
 OKTA_USE_GROUP_OWNERS_API = os.getenv("OKTA_USE_GROUP_OWNERS_API", "False") == "True"
 CURRENT_OKTA_USER_EMAIL = os.getenv("CURRENT_OKTA_USER_EMAIL", "wumpus@discord.com")
 
+# Optional env var to set a custom Okta Group Profile attribute for Access management inclusion/exclusion
+OKTA_GROUP_PROFILE_CUSTOM_ATTR = os.getenv("OKTA_GROUP_PROFILE_CUSTOM_ATTR")
+
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI")
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = ENV == "development"  # or ENV == "test"
@@ -80,3 +83,6 @@ DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "False") == "True
 
 FLASK_SENTRY_DSN = os.getenv("FLASK_SENTRY_DSN")
 REACT_SENTRY_DSN = os.getenv("REACT_SENTRY_DSN")
+
+# Add APP_VERSION, defaulting to 'Not Defined' if not set
+APP_VERSION = os.getenv("APP_VERSION", "Not Defined")

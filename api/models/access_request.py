@@ -1,11 +1,11 @@
 from typing import Set
 
 from api.models.app_group import get_access_owners, get_app_managers
-from api.models.core_models import AccessRequest, AppGroup, OktaUser
+from api.models.core_models import AccessRequest, AppGroup, OktaUser, RoleRequest
 from api.models.okta_group import get_group_managers
 
 
-def get_all_possible_request_approvers(access_request: AccessRequest) -> Set[OktaUser]:
+def get_all_possible_request_approvers(access_request: AccessRequest | RoleRequest) -> Set[OktaUser]:
     # This will return the entire set of possible access request approvers
     # to ensure that even if the resolved set of approvers changes
     # we still are able to mark the request as resolved for any users
