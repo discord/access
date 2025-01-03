@@ -58,13 +58,14 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({curre
             sx={{width: 320}}
             renderInput={(params) => <TextField {...params} label="Search" />}
             options={sortGroupMemberRecords(allMembers).map(
-              (row) => displayUserName(row) + ';' + row.email.toLowerCase(),
+              (row) => `${displayUserName(row)} (${row.email.toLowerCase()})`,
             )}
             onChange={handleSearchSubmit}
             renderOption={renderUserOption}
             autoHighlight
             autoSelect
             clearOnEscape
+            freeSolo
           />
         </Stack>
       </Paper>
