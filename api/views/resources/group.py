@@ -118,7 +118,7 @@ class GroupResource(MethodResource):
             )
 
         json_data = request.get_json()
-        if "tags_to_remove" in json_data:
+        if "tags_to_remove" in json_data and type(group) is not AppGroup:
             if len(json_data["tags_to_remove"]) > 0 and not AuthorizationHelpers.is_access_admin():
                 abort(
                     403,
