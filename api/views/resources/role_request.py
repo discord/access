@@ -278,12 +278,6 @@ class RoleRequestList(MethodResource):
                 )
 
                 if AuthorizationHelpers.is_access_admin(assignee_user_id):
-                    #TODO get all blocked roles, add to admin's list
-                    # probably: get all open role requests, 
-                    # filter for just tagged groups with matching request type, 
-                    # get each group owner and role member list, 
-                    # create list of request ids where all group owner also role members
-
                     # get pending role requests for ownership where group tagged with owner
                     # can't add self as owner constraint
                     tagged_role_requests_owner = [g for g in (
@@ -385,7 +379,6 @@ class RoleRequestList(MethodResource):
                         )
                     ]
 
-                    # TODO make this less janky
                     role_memberships = [g.id for g in (
                         RoleGroup.query
                         .options(joinedload(RoleGroup.active_user_memberships))

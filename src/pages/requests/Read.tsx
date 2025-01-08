@@ -293,7 +293,7 @@ export default function ReadRequest() {
   const accessApp = accessAppData ?? ({} as App);
 
   const accessAppOwnerships = groupBy(
-    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_ownerships ?? []).flat(),
+    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
     (m) => m.active_user?.id,
   );
 
@@ -880,7 +880,7 @@ export default function ReadRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {Object.keys(accessAppOwnerships).length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>

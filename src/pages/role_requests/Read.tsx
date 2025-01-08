@@ -199,8 +199,7 @@ export default function ReadRoleRequest() {
         ? requestedUntilDelta.toString()
         : 'custom';
 
-  // TODO if owner can't add self constraint and owner member of role, set below to false and add note about constraint
-  console.log(roleRequest);
+  // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
     ?.map((group) => group.active_group!.id)
     .includes(roleRequest.requested_group?.id);
@@ -280,11 +279,10 @@ export default function ReadRoleRequest() {
     }));
   }
 
-  // TODO if owner can't add self constraint, filter ownerships to remove roleRequest.requester_role?.active_user_memberships
   let ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
-
-  // TODO if admin and all owners blocked, add note
   const ownerIds = Object.keys(ownerships);
+
+  // If Access admin and all group owners are blocked, add a note
   const adminNoteForBlocked = tagged && admin && ownerIds.every((v) => roleMembers.includes(v)) && ownerIds.length > 0;
 
   const {data: appData} = useGetAppById(
@@ -323,7 +321,7 @@ export default function ReadRoleRequest() {
   const accessApp = accessAppData ?? ({} as App);
 
   const accessAppOwnerships = groupBy(
-    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_ownerships ?? []).flat(),
+    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
     (m) => m.active_user?.id,
   );
 
@@ -972,7 +970,7 @@ export default function ReadRoleRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {ownerIds.length}
+                                        Total Owners: {Object.keys(accessAppOwnerships).length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
