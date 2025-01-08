@@ -284,13 +284,15 @@ class RoleRequestList(MethodResource):
                     # get each group owner and role member list, 
                     # create list of request ids where all group owner also role members
 
-                    # get active role requests for ownership where group tagged with owner
+                    # get pending role requests for ownership where group tagged with owner
                     # can't add self as owner constraint
                     tagged_role_requests_owner = [g for g in (
                         RoleRequest.query
-                        .options(joinedload(RoleRequest.requester_role))
+                        .options(joinedload(RoleRequest.requester_role).options(
+                            selectinload(OktaGroup.active_user_memberships)))
                         .options(joinedload(RoleRequest.requested_group).options(
-                            selectinload(OktaGroup.active_group_tags)))
+                            selectinload(OktaGroup.active_group_tags),
+                            selectinload(OktaGroup.active_user_ownerships)))
                         .filter(RoleRequest.status == AccessRequestStatus.PENDING)
                         .filter(RoleRequest.request_ownership.is_(True))
                         .all()
@@ -300,13 +302,15 @@ class RoleRequestList(MethodResource):
                         )
                     ]
 
-                    # get active role requests for membership where group tagged with owner
+                    # get pending role requests for membership where group tagged with owner
                     # can't add self as member constraint
                     tagged_role_requests_member = [g for g in (
                         RoleRequest.query
-                        .options(joinedload(RoleRequest.requester_role))
+                        .options(joinedload(RoleRequest.requester_role).options(
+                            selectinload(OktaGroup.active_user_memberships)))
                         .options(joinedload(RoleRequest.requested_group).options(
-                            selectinload(OktaGroup.active_group_tags)))
+                            selectinload(OktaGroup.active_group_tags),
+                            selectinload(OktaGroup.active_user_ownerships)))
                         .filter(RoleRequest.status == AccessRequestStatus.PENDING)
                         .filter(RoleRequest.request_ownership.is_(False))
                         .all()
@@ -318,8 +322,26 @@ class RoleRequestList(MethodResource):
 
                     # for each role request with a tagged target group, check to see if all owners blocked 
                     blocked_requests = []
-                    # TODO
-                    
+                    for req in tagged_role_requests_owner:
+                        role_members = [m.user_id for m in req.requester_role.active_user_memberships]
+                        blocked = True
+                        for o in req.requested_group.active_user_ownerships:
+                            if o.user_id not in role_members:
+                                blocked = False
+                                break
+                        if blocked:
+                            blocked_requests.append(req.id)
+
+                    for req in tagged_role_requests_member:
+                        role_members = [m.user_id for m in req.requester_role.active_user_memberships]
+                        blocked = True
+                        for o in req.requested_group.active_user_ownerships:
+                            if o.user_id not in role_members:
+                                blocked = False
+                                break
+                        if blocked:
+                            blocked_requests.append(req.id)
+
                     query = query.join(RoleRequest.requested_group).filter(
                         db.or_(
                             OktaGroup.id.in_(groups_owned_subquery),

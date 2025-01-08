@@ -225,6 +225,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   });
   const groupSearchOptions = groupSearchData?.results ?? [];
 
+  console.log(groupSearchOptions);
+
   const updateUntil = (group: PolymorphicGroup | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);
     setOwner(ownerOrMember);
@@ -348,7 +350,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             autocompleteProps={{
               getOptionLabel: (option) => option.name,
               isOptionEqualToValue: (option, value) => option.id == value.id,
-              filterOptions: (options) => options.filter((option) => option.is_managed == true),
+              filterOptions: (options) =>
+                options.filter((option) => option.is_managed == true && option.type != 'role_group'),
               onInputChange: (event, newInputValue, reason) => {
                 if (reason != 'reset') {
                   setGroupSearchInput(newInputValue);

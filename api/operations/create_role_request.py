@@ -61,7 +61,10 @@ class CreateRoleRequest:
 
         self.requested_group = (
             db.session.query(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
+            .options(selectin_polymorphic(OktaGroup, [AppGroup]),
+                     joinedload(AppGroup.app),
+                     selectinload(OktaGroup.active_group_tags).options(
+                         joinedload(OktaGroupTagMap.active_tag)))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
             .first()
@@ -100,7 +103,7 @@ class CreateRoleRequest:
         # Fetch the users to notify
         approvers = get_group_managers(self.requested_group.id)
 
-        requested_group_tags = [tm.tag for tm in self.requested_group.active_group_tags]
+        requested_group_tags = [tm.active_tag for tm in self.requested_group.active_group_tags]
 
         role_memberships = [u.user_id for u in (
             OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.requester_role.id)

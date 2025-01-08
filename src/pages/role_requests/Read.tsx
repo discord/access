@@ -7,10 +7,12 @@ import Grid from '@mui/material/Grid';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
 import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AlertIcon from '@mui/icons-material/Campaign';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
@@ -47,11 +49,12 @@ import {
   displayUserName,
   minTagTime,
   minTagTimeGroups,
+  ownerCantAddSelf,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
 import {useCurrentUser} from '../../authentication';
-import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
+import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
   useGetRoleRequestById,
   useGetGroupById,
@@ -69,6 +72,7 @@ import {
   ResolveRoleRequest,
   RoleGroup,
   RoleRequest,
+  Tag,
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
@@ -167,6 +171,7 @@ export default function ReadRoleRequest() {
   const {id} = useParams();
 
   const currentUser = useCurrentUser();
+  const admin = isAccessAdmin(currentUser);
 
   const [until, setUntil] = React.useState<string | null>(null);
   const [requestError, setRequestError] = React.useState('');
@@ -178,8 +183,6 @@ export default function ReadRoleRequest() {
   });
 
   const roleRequest = data ?? ({} as RoleRequest);
-
-  // console.log(roleRequest);
 
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
@@ -197,7 +200,25 @@ export default function ReadRoleRequest() {
         : 'custom';
 
   // TODO if owner can't add self constraint and owner member of role, set below to false and add note about constraint
-  const requestedGroupManager = canManageGroup(currentUser, roleRequest.requested_group);
+  console.log(roleRequest);
+  const ownedGroup = currentUser.active_group_ownerships
+    ?.map((group) => group.active_group!.id)
+    .includes(roleRequest.requested_group?.id);
+  const roleMembers = roleRequest.requester_role?.active_user_memberships?.map((user) => user.active_user!.id) ?? [];
+  const tags: Tag[] = (roleRequest.requested_group?.active_group_tags ?? []).reduce((out, t) => {
+    if (t.active_tag) {
+      out.push(t.active_tag);
+      return out;
+    } else {
+      return out;
+    }
+  }, new Array<Tag>());
+  const tagged =
+    (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
+    (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
+  const blocked = ownedGroup && roleMembers.includes(currentUser.id) && tagged;
+  const manager = canManageGroup(currentUser, roleRequest.requested_group);
+  const requestedGroupManager = manager && !blocked;
 
   const complete = (
     completedAccessRequest: ResolveRoleRequest | undefined,
@@ -230,8 +251,6 @@ export default function ReadRoleRequest() {
 
   const constraints = ComputeConstraints(roleRequest);
 
-  // console.log(constraints);
-
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
 
@@ -262,8 +281,11 @@ export default function ReadRoleRequest() {
   }
 
   // TODO if owner can't add self constraint, filter ownerships to remove roleRequest.requester_role?.active_user_memberships
-
   let ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+
+  // TODO if admin and all owners blocked, add note
+  const ownerIds = Object.keys(ownerships);
+  const adminNoteForBlocked = tagged && admin && ownerIds.every((v) => roleMembers.includes(v)) && ownerIds.length > 0;
 
   const {data: appData} = useGetAppById(
     {
@@ -502,7 +524,7 @@ export default function ReadRoleRequest() {
                   <TimelineConnector />
                 </TimelineSeparator>
                 <TimelineContent>
-                  <Paper sx={{p: 2, my: 2}}>
+                  <Paper sx={{p: 2, my: 1}}>
                     <Typography variant="body1">
                       {(roleRequest.requester?.deleted_at ?? null) != null ? (
                         <Link
@@ -581,17 +603,48 @@ export default function ReadRoleRequest() {
                       <b>Reason:</b> {roleRequest.request_reason ? roleRequest.request_reason : 'No reason given'}
                     </Typography>
                   </Paper>
-                  <Paper sx={{p: 2, my: 2}}>
-                    <RoleMembers
-                      rows={roleRequest.requester_role?.active_user_memberships ?? []}
-                      roleName={roleRequest.requester_role?.name ?? ''}
-                      groupName={roleRequest.requested_group?.name ?? ''}
-                      owner={roleRequest.request_ownership ?? false}
-                    />
-                    <Typography display="inline" variant="body1" sx={{pl: 1}}>
-                      If approved, everyone who is a member of the role will be added to the group.
-                    </Typography>
-                  </Paper>
+                  {manager && blocked ? (
+                    <Paper sx={{p: 2}}>
+                      <Stack alignItems="center" direction="row" gap={2}>
+                        <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
+                        <Typography display="inline" variant="body1">
+                          <b>
+                            While you own group {group.name}, you are blocked from responding to the request by group
+                            tags. The request has been forwarded to other group owners or Access admins.
+                          </b>
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  ) : (
+                    <>
+                      {adminNoteForBlocked ? (
+                        <Paper sx={{p: 2, mb: 1}}>
+                          <Stack alignItems="center" direction="row" gap={2}>
+                            <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
+                            <Typography display="inline" variant="body1">
+                              <b>
+                                All owners of group {group.name} are blocked from approving this request due to group
+                                tags. As an Access admin, you may respond to it on their behalf.
+                              </b>
+                            </Typography>
+                          </Stack>
+                        </Paper>
+                      ) : (
+                        <></>
+                      )}
+                      <Paper sx={{p: 2}}>
+                        <RoleMembers
+                          rows={roleRequest.requester_role?.active_user_memberships ?? []}
+                          roleName={roleRequest.requester_role?.name ?? ''}
+                          groupName={roleRequest.requested_group?.name ?? ''}
+                          owner={roleRequest.request_ownership ?? false}
+                        />
+                        <Typography display="inline" variant="body1" sx={{pl: 1}}>
+                          If approved, everyone who is a member of the role will be added to the group.
+                        </Typography>
+                      </Paper>
+                    </>
+                  )}
                 </TimelineContent>
               </TimelineItem>
               <TimelineItem>
@@ -749,7 +802,7 @@ export default function ReadRoleRequest() {
                         <Box sx={{my: 2}}>
                           <Paper sx={{p: 2}}>
                             <Typography variant="body1">
-                              Request is <b>pending</b> and can be reviewed by the following owners
+                              Request is <b>pending</b> and can be reviewed by the following owners or by Access admins
                             </Typography>
                           </Paper>
                           {roleRequest.requested_group?.type != 'app_group' ||
@@ -776,13 +829,13 @@ export default function ReadRoleRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {ownerIds.length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                  {Object.keys(ownerships).length > 0 ? (
+                                  {ownerIds.length > 0 ? (
                                     Object.entries(ownerships)
                                       .sort(sortGroupMembers)
                                       .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
@@ -895,7 +948,7 @@ export default function ReadRoleRequest() {
                               </Table>
                             </Paper>
                           ) : null}
-                          {Object.keys(ownerships).length == 0 &&
+                          {ownerIds.length == 0 &&
                           (roleRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0) ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="app owners">
@@ -919,7 +972,7 @@ export default function ReadRoleRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {ownerIds.length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
