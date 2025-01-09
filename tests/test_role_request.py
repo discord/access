@@ -1071,7 +1071,7 @@ def test_time_limit_constraint_tag(
     ApproveRoleRequest(
         role_request=role_request,
         approver_user=access_owner,
-        ending_at=datetime.now()+timedelta(seconds=SEVEN_DAYS_IN_SECONDS)
+        ending_at=datetime.now() + timedelta(seconds=SEVEN_DAYS_IN_SECONDS),
     ).execute()
 
     # Should only be approved for time limit if approved time is higher
@@ -1112,7 +1112,9 @@ def test_owner_cant_add_self_constraint_tag(
     db.session.add(role_group)
     db.session.commit()
 
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id, user2.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id, user2.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
     ModifyGroupUsers(group=app_group, owners_to_add=[user2.id], sync_to_okta=False).execute()
 
     # Add tag

@@ -16,7 +16,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
-    Tag
+    Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
@@ -61,10 +61,11 @@ class CreateRoleRequest:
 
         self.requested_group = (
             db.session.query(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup]),
-                     joinedload(AppGroup.app),
-                     selectinload(OktaGroup.active_group_tags).options(
-                         joinedload(OktaGroupTagMap.active_tag)))
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup]),
+                joinedload(AppGroup.app),
+                selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
+            )
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
             .first()
@@ -105,17 +106,20 @@ class CreateRoleRequest:
 
         requested_group_tags = [tm.active_tag for tm in self.requested_group.active_group_tags]
 
-        role_memberships = [u.user_id for u in (
-            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.requester_role.id)
-            .filter(OktaUserGroupMember.is_owner.is_(False))
-            .filter(
-                db.or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+        role_memberships = [
+            u.user_id
+            for u in (
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.requester_role.id)
+                .filter(OktaUserGroupMember.is_owner.is_(False))
+                .filter(
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    )
                 )
+                .all()
             )
-            .all()
-        )]
+        ]
 
         # If group tagged with disallow self add constraint, filter out approvers who are also members of the role
         if self.request_ownership:
@@ -125,7 +129,6 @@ class CreateRoleRequest:
             )
             if disallow_self_add_owner:
                 approvers = [a for a in approvers if a.id not in role_memberships]
-            
         else:
             disallow_self_add_member = coalesce_constraints(
                 constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
