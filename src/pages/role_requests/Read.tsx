@@ -607,7 +607,7 @@ export default function ReadRoleRequest() {
                         <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
                         <Typography display="inline" variant="body1">
                           <b>
-                            While you own group {group.name}, you are blocked from responding to the request by group
+                            While you own group {group.name}, you are blocked from responding to this request by group
                             tags. The request has been forwarded to other group owners or Access admins.
                           </b>
                         </Typography>

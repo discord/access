@@ -650,8 +650,6 @@ def test_role_request_approvers_tagged(
     tag: Tag,
     mocker: MockerFixture,
 ) -> None:
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
-
     user2 = OktaUserFactory.create()
     user3 = OktaUserFactory.create()
     db.session.add(user)
@@ -679,7 +677,6 @@ def test_role_request_approvers_tagged(
 
     hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
-    request_completed_notification_spy = mocker.patch.object(hook, "access_role_request_completed")
 
     role_request = CreateRoleRequest(
         requester_user=user,
@@ -1065,7 +1062,7 @@ def test_time_limit_constraint_tag(
     _, kwargs = request_created_notification_spy.call_args
     assert kwargs["role_request"] == role_request
     # Ending time is None (more than time limit)
-    assert kwargs["role_request"].request_ending_at == None
+    assert kwargs["role_request"].request_ending_at is None
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
@@ -1147,6 +1144,9 @@ def test_owner_cant_add_self_constraint_tag(
     assert kwargs["role"] == role_group
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
+    # since the only group owner is blocked, the request notification should be forwarded to Access admins
+    assert len(kwargs["approvers"]) == 1
+    assert kwargs["approvers"][0] == access_owner
 
     # user2 owns the group and is a member of the requester role, should fail
     should_fail = ApproveRoleRequest(
