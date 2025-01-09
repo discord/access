@@ -70,18 +70,25 @@ function RoleMembersDialog(props: RoleMembersDialogProps) {
           If the role request is approved, these users will be added as {props.owner ? 'owners' : 'members'} of{' '}
           {props.groupName}.
         </Typography>
-        <BulkRenewalDataGrid
-          rows={props.rows.map((row) => createData(row))}
-          rowHeight={40}
-          columns={columns}
-          columnVisibilityModel={{
-            id: false,
-          }}
-          paginationModel={paginationModel}
-          onPaginationModelChange={setPaginationModel}
-          pageSizeOptions={[5, 10, 20]}
-          getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
-        />
+        {props.rows.length == 0 ? (
+          <Typography sx={{mt: 2}}>
+            There are currently no members in this role. If this request is approved, any members added to the role in
+            the future will be added to your group automatically during the approved access period.
+          </Typography>
+        ) : (
+          <BulkRenewalDataGrid
+            rows={props.rows.map((row) => createData(row))}
+            rowHeight={40}
+            columns={columns}
+            columnVisibilityModel={{
+              id: false,
+            }}
+            paginationModel={paginationModel}
+            onPaginationModelChange={setPaginationModel}
+            pageSizeOptions={[5, 10, 20]}
+            getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
+          />
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Close</Button>
@@ -113,10 +120,6 @@ interface RoleMembersProps {
 
 export default function RoleMembers(props: RoleMembersProps) {
   const [open, setOpen] = React.useState(false);
-
-  if (props.rows.length == 0) {
-    return null;
-  }
 
   return (
     <>

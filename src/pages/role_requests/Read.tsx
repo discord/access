@@ -689,7 +689,11 @@ export default function ReadRoleRequest() {
                                   : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
                               }
                               onSuccess={(formData) => submit(formData)}>
-                              {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+                              {requestError != '' ? (
+                                <Alert severity="error" sx={{my: 1}}>
+                                  {requestError}
+                                </Alert>
+                              ) : null}
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
