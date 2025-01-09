@@ -1019,6 +1019,9 @@ def test_time_limit_constraint_tag(
 ) -> None:
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
+    # Add App
+    db.session.add(access_app)
+
     # Add User
     db.session.add(user)
     db.session.commit()
@@ -1094,6 +1097,9 @@ def test_owner_cant_add_self_constraint_tag(
     mocker: MockerFixture,
 ) -> None:
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    # Add App
+    db.session.add(access_app)
 
     # Add Users
     user2 = OktaUserFactory.create()
