@@ -10,8 +10,7 @@ ENV PATH=/app/node_modules/.bin:$PATH
 COPY craco.config.js package.json package-lock.json tsconfig.json tsconfig.paths.json .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
-ARG ACCESS_FILE_CONFIG_PATH="src/config/config.empty.json"
-COPY $ACCESS_FILE_CONFIG_PATH /app/config.override.json
+COPY ./config ./config
 
 RUN npm install
 RUN touch .env.production

@@ -498,8 +498,9 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python,flask
 
-config.production.json
-config.staging.json
-config.development.json
-config.test.json
-config.override.json
+# try to prevent override config files from being accidentally committed
+config/config.production.json
+config/config.staging.json
+config/config.development.json
+config/config.test.json
+config/config.override.json

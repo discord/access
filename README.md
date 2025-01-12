@@ -248,28 +248,69 @@ If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_D
 
 Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
 
-### Access application configuration overrides
+### Access application configuration
 
-The default config for the application is at `src/config/config.default.json`. 
+_All front-end and back-end configuration overrides are **optional**._
 
-If you want to override those values, create your own config file containing JSON that overrides values in the default config.
+The default config for the application is at [`config/config.default.json`](config/config.default.json).
 
-- `ACCESS_TIME_LABELS`: _Optional._ Specifies the time access labels to use for dropdowns on the front end. Contains a JSON object of the format `{"NUM_SECONDS": "LABEL"}`. **Example:** `{"86400": "1 day", "604800": "1 week", "2592000": "1 month"}`.
-- `DEFAULT_ACCESS_TIME`: _Optional._ Specifies the default time access label to use for dropdowns on the front end. Contains a string with a number of seconds corresponding to a key in the access time labels, e.g. `"86400"`.
+The file is structured with two keys, `FRONTEND` and `BACKEND`, which contain the configuration overrides for the
+front-end and back-end respectively.
 
-To use your custom config file, edit `docker-compose.yml` to add a build arg `ACCESS_FILE_CONFIG_PATH` with a local path to your config override file:
+If you want to override either front-end or back-end values, create your own config file based on 
+[`config/config.default.json`](config/config.default.json). Any values that you don't override will fall back to 
+the values in the default config.
 
-```yaml
-services:
-  discord-access:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        ACCESS_FILE_CONFIG_PATH: 'path/to/config.production.json'
+To use your custom config file, set the `ACCESS_CONFIG_FILE` environment variable to the name of your config
+override file in the project-level `config` directory.
+
+### Sample Usage
+
+To override environment variables, create an override config file in the `config` directory. (You can name
+this file whatever you want because the name of the file is specified by your `ACCESS_CONFIG_FILE` environment
+variable.)
+
+For example, if you want to set the default access time to 5 days in production, you might create a file named
+`config.production.json` in the `config` directory:
+
+```json
+{
+  "FRONTEND": {
+    "DEFAULT_ACCESS_TIME": "432000"
+  }
+}
 ```
 
-If `ACCESS_FILE_CONFIG_PATH` is not set as a build arg when building the Docker image, then the default config will be used.
+Then, in your `.env.production` file, set the `ACCESS_CONFIG_FILE` environment variable to the name of your
+config file:
+
+```
+ACCESS_CONFIG_FILE=config.production.json
+```
+
+This tells the application to use `config.production.json` for configuration overrides.
+
+#### Frontend Configuration
+
+To override values on the front-end, modify these key-value pairs inside the `FRONTEND` key in your custom config file.
+
+| Name                  | Details                                                                                                                                                                     | Example                                                        |
+|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `ACCESS_TIME_LABELS`  | Specifies the time access labels to use for dropdowns on the front end. Contains a JSON object of the format `{"NUM_SECONDS": "LABEL"}`.                                    | `{"86400": "1 day", "604800": "1 week", "2592000": "1 month"}` |
+| `DEFAULT_ACCESS_TIME` | Specifies the default time access label to use for dropdowns on the front end. Contains a string with a number of seconds corresponding to a key in the access time labels. | `"86400"`                                                      | 
+
+The front-end config is loaded in [`craco.config.js`](craco.config.js). See
+[`src/config/loadAccessConfig.js`](src/config/loadAccessConfig.js) for more details.
+
+#### Backend Configuration
+
+To override values on the back-end, modify these key-value pairs inside the `BACKEND` key in your custom config file.
+
+_There are currently no supported back-end configuration overrides but this is planned to change soon._
+
+| Name | Details | Example |
+|------|---------|---------|
+| TBD  | TBD     | TBD     |
 
 #### Database Setup
 
