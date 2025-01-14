@@ -40,6 +40,7 @@ RUN rm ./build/static/js/*.map
 RUN mkdir ./api && mkdir ./migrations
 COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
+COPY ./config ./config
 RUN pip install -r ./api/requirements.txt
 
 # Build an image that includes the optional sentry release push build step

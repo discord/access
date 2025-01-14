@@ -1,22 +1,27 @@
+/*
+ *  JS used in `craco.config.js` to load `ACCESS_CONFIG` as a global variable in the frontend
+ *  If you want to use `AccessConfig` in the frontend, use `accessConfig` in `accessConfig.ts`
+ * */
+
 const fs = require('fs');
 const path = require('path');
 
 const ACCESS_TIME_LABELS = 'ACCESS_TIME_LABELS';
 const DEFAULT_ACCESS_TIME = 'DEFAULT_ACCESS_TIME';
 const FRONTEND = 'FRONTEND';
+const NAME_VALIDATION_PATTERN = 'NAME_VALIDATION_PATTERN';
+const NAME_VALIDATION_ERROR = 'NAME_VALIDATION_ERROR';
 
 class UndefinedConfigError extends Error {
   constructor(key, obj) {
     const message = `'${key}' is not a defined config value in AccessConfig`;
     super(message);
-    this.name = 'UndefinedConfigError';
   }
 }
 
 class AccessConfigValidationError extends Error {
   constructor(message) {
     super(message);
-    this.name = 'ValidationError';
   }
 }
 
@@ -24,7 +29,6 @@ class ConfigFileNotFoundError extends Error {
   constructor(filePath) {
     const message = `Config override file not found: ${filePath}`;
     super(message);
-    this.name = 'ConfigFileNotFoundError';
   }
 }
 
@@ -49,6 +53,14 @@ function validateConfig(accessConfig) {
   }
 }
 
+function validate_override_config(overrideConfig) {
+  if (NAME_VALIDATION_PATTERN in overrideConfig && !(NAME_VALIDATION_ERROR in overrideConfig)) {
+    throw new AccessConfigValidationError(
+      `If ${NAME_VALIDATION_PATTERN} is present, ${NAME_VALIDATION_ERROR} must also be overridden.`,
+    );
+  }
+}
+
 function loadOverrideConfig(accessConfig) {
   const envConfigPath = process.env.ACCESS_CONFIG_FILE
     ? path.resolve(__dirname, '../../config', process.env.ACCESS_CONFIG_FILE)
@@ -57,7 +69,9 @@ function loadOverrideConfig(accessConfig) {
     if (fs.existsSync(envConfigPath)) {
       const envConfig = JSON.parse(fs.readFileSync(envConfigPath, 'utf8'));
       if (FRONTEND in envConfig) {
-        Object.assign(accessConfig, getConfig(envConfig, FRONTEND));
+        const frontendConfig = getConfig(envConfig, FRONTEND);
+        validate_override_config(frontendConfig);
+        Object.assign(accessConfig, frontendConfig);
       }
     } else {
       throw new ConfigFileNotFoundError(envConfigPath);

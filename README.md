@@ -294,10 +294,12 @@ This tells the application to use `config.production.json` for configuration ove
 
 To override values on the front-end, modify these key-value pairs inside the `FRONTEND` key in your custom config file.
 
-| Name                  | Details                                                                                                                                                                     | Example                                                        |
-|-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
-| `ACCESS_TIME_LABELS`  | Specifies the time access labels to use for dropdowns on the front end. Contains a JSON object of the format `{"NUM_SECONDS": "LABEL"}`.                                    | `{"86400": "1 day", "604800": "1 week", "2592000": "1 month"}` |
-| `DEFAULT_ACCESS_TIME` | Specifies the default time access label to use for dropdowns on the front end. Contains a string with a number of seconds corresponding to a key in the access time labels. | `"86400"`                                                      | 
+| Name                      | Details                                                                                                                                                                                                  | Example                                                        |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| `ACCESS_TIME_LABELS`      | Specifies the time access labels to use for dropdowns on the front end. Contains a JSON object of the format `{"NUM_SECONDS": "LABEL"}`.                                                                 | `{"86400": "1 day", "604800": "1 week", "2592000": "1 month"}` |
+| `DEFAULT_ACCESS_TIME`     | Specifies the default time access label to use for dropdowns on the front end. Contains a string with a number of seconds corresponding to a key in the access time labels.                              | `"86400"`                                                      |
+| `NAME_VALIDATION_PATTERN` | Specifies the regex pattern to use for validating role, group, and tag names.  Should include preceding `^` and trailing `$` but is not a regex literal so omit `/`  at beginning and end of the pattern | `"^[a-zA-Z0-9-]*$"`                                            |
+| `NAME_VALIDATION_ERROR`   | Specifies the error message to display when a name does not match the validation pattern.                                                                                                                | `"Name must contain only letters, numbers, and underscores."`  |
 
 The front-end config is loaded in [`craco.config.js`](craco.config.js). See
 [`src/config/loadAccessConfig.js`](src/config/loadAccessConfig.js) for more details.
@@ -306,11 +308,15 @@ The front-end config is loaded in [`craco.config.js`](craco.config.js). See
 
 To override values on the back-end, modify these key-value pairs inside the `BACKEND` key in your custom config file.
 
-_There are currently no supported back-end configuration overrides but this is planned to change soon._
+| Name                      | Details                                                                                                                                                                                            | Example                                                                                |
+|---------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|
+| `NAME_VALIDATION_PATTERN` | PCRE regex used for validating role, group, and tag names. Should not explicitly declare pattern boundaries: depending on context, may be used with or without a preceding `^` and a trailing `$`. | `[A-Z][A-Za-z0-9-]*`                                                                   |
+| `NAME_VALIDATION_ERROR`   | Error message to display when a name does not match the validation pattern.                                                                                                                        | `Name must start with a capital letter and contain only letters, numbers, and hypens.` |
 
-| Name | Details | Example |
-|------|---------|---------|
-| TBD  | TBD     | TBD     |
+The back-end config is loaded in [`api/access_config.py`](api/access_config.py).
+
+See [`api/views/schemas/core_schemas.py`](api/views/schemas/core_schemas.py) for details about how the pattern override
+supplied here will be used.
 
 #### Database Setup
 

@@ -1,8 +1,6 @@
 services:
   discord-access:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: discord-access
     env_file:
       - .env.production

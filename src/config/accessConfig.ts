@@ -1,6 +1,8 @@
 export interface AccessConfig {
   ACCESS_TIME_LABELS: Record<string, string>;
   DEFAULT_ACCESS_TIME: string;
+  NAME_VALIDATION_PATTERN: string;
+  NAME_VALIDATION_ERROR: string;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface
