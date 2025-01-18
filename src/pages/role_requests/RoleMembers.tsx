@@ -124,7 +124,7 @@ export default function RoleMembers(props: RoleMembersProps) {
   return (
     <>
       <RoleMembersButton setOpen={setOpen} />
-      {open ? (
+      {open && (
         <RoleMembersDialog
           setOpen={setOpen}
           rows={props.rows}
@@ -132,7 +132,7 @@ export default function RoleMembers(props: RoleMembersProps) {
           groupName={props.groupName}
           owner={props.owner}
         />
-      ) : null}
+      )}
     </>
   );
 }

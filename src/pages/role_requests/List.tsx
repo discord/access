@@ -138,7 +138,7 @@ export default function ListRoleRequests() {
   return (
     <TableContainer component={Paper}>
       <TableTopBar title="Role Requests">
-        {showCreateRequest ? <CreateRoleRequest currentUser={currentUser}></CreateRoleRequest> : <></>}
+        {showCreateRequest && <CreateRoleRequest currentUser={currentUser}></CreateRoleRequest>}
         <TableTopBarAutocomplete
           options={searchRows.map(
             (row) =>
