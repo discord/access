@@ -9,6 +9,7 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import Divider from '@mui/material/Divider';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import InputLabel from '@mui/material/InputLabel';
@@ -26,14 +27,14 @@ import {displayUserName} from '../../helpers';
 import {OktaUserGroupMember, RoleGroup} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 
-interface Data {
+interface UserData {
   id: string;
   userName: string;
   userEmail: string | undefined;
   ending: string;
 }
 
-function createData(row: OktaUserGroupMember): Data {
+function createUserData(row: OktaUserGroupMember): UserData {
   return {
     id: row.active_user!.id,
     userName: displayUserName(row.active_user),
@@ -63,31 +64,37 @@ function RoleMembersDialog(props: RoleMembersDialogProps) {
   ];
 
   return (
-    <Dialog open fullWidth maxWidth="xl" onClose={() => props.setOpen(false)}>
+    <Dialog open fullWidth maxWidth="md" onClose={() => props.setOpen(false)}>
       <DialogTitle>{props.roleName} Members</DialogTitle>
       <DialogContent>
-        <Typography variant="subtitle1" color="text.accent">
-          If the role request is approved, these users will be added as {props.owner ? 'owners' : 'members'} of{' '}
-          {props.groupName}.
-        </Typography>
         {props.rows.length == 0 ? (
-          <Typography sx={{mt: 2}}>
-            There are currently no members in this role. If this request is approved, any members added to the role in
-            the future will be added to your group automatically during the approved access period.
-          </Typography>
+          <>
+            <Divider sx={{borderRadius: 1, pt: 2}} />
+            <Typography sx={{mt: 2}}>There are currently no members in this role.</Typography>
+            <Typography sx={{mt: 2}} color="text.accent">
+              If this request is approved, any members added to the role in the future will be added as{' '}
+              {props.owner ? 'owners' : 'members'} of {props.groupName} automatically during the approved access period.
+            </Typography>
+          </>
         ) : (
-          <BulkRenewalDataGrid
-            rows={props.rows.map((row) => createData(row))}
-            rowHeight={40}
-            columns={columns}
-            columnVisibilityModel={{
-              id: false,
-            }}
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
-            pageSizeOptions={[5, 10, 20]}
-            getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
-          />
+          <>
+            <Typography variant="subtitle1" color="text.accent">
+              If the role request is approved, these users will be added as {props.owner ? 'owners' : 'members'} of{' '}
+              {props.groupName}.
+            </Typography>
+            <BulkRenewalDataGrid
+              rows={props.rows.map((row) => createUserData(row))}
+              rowHeight={40}
+              columns={columns}
+              columnVisibilityModel={{
+                id: false,
+              }}
+              paginationModel={paginationModel}
+              onPaginationModelChange={setPaginationModel}
+              pageSizeOptions={[5, 10, 20]}
+              getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
+            />
+          </>
         )}
       </DialogContent>
       <DialogActions>

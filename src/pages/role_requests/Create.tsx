@@ -12,7 +12,7 @@ import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
-import RoleRequestIcon from '@mui/icons-material/PendingActions';
+import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
@@ -224,8 +224,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     },
   });
   const groupSearchOptions = groupSearchData?.results ?? [];
-
-  console.log(groupSearchOptions);
 
   const updateUntil = (group: PolymorphicGroup | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);

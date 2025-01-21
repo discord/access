@@ -22,7 +22,7 @@ import ExpiringRolesIcon from '@mui/icons-material/HeartBroken';
 import ExpiringMyAccess from '@mui/icons-material/AccountBox';
 import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
-import RoleRequestIcon from '@mui/icons-material/PendingActions';
+import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 
 interface ListItemLinkProps extends ListItemProps {
   to: string;
