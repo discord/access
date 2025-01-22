@@ -1,4 +1,3 @@
-
 from flask import abort, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -421,7 +420,6 @@ class RoleRequestList(MethodResource):
                             )
                         )
                     )
-            
                 # remove own requests regardless of whether admin
                 query = query.filter(RoleRequest.requester_user_id != assignee_user_id)
 
