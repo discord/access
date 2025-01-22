@@ -11,7 +11,7 @@ import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import AlertIcon from '@mui/icons-material/Campaign';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
@@ -517,7 +517,7 @@ export default function ReadRoleRequest() {
                 <TimelineSeparator>
                   <TimelineConnector />
                   <TimelineDot color="primary">
-                    <AccessRequestIcon />
+                    <RoleRequestIcon />
                   </TimelineDot>
                   <TimelineConnector />
                 </TimelineSeparator>
