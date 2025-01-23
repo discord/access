@@ -72,6 +72,7 @@ import {
 
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -773,13 +774,7 @@ export default function ReadRequest() {
                                         </TableRow>
                                       ))
                                   ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
+                                    <EmptyListEntry cellProps={{colSpan: 3}} />
                                   )}
                                 </TableBody>
                               </Table>

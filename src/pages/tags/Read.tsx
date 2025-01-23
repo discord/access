@@ -36,6 +36,7 @@ import CreateUpdateTag from './CreateUpdate';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -216,17 +217,11 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry />
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -293,17 +288,11 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry />
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -396,17 +385,11 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry />
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>

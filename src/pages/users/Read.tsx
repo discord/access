@@ -38,6 +38,7 @@ import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveG
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
 import {groupBy, displayUserName, displayGroupType} from '../../helpers';
 import {canManageGroup, isGroupOwner} from '../../authorization';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 function sortUserGroups(
   [aGroupId, aGroups]: [string, Array<OktaUserGroupMember>],
@@ -241,17 +242,11 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                 </TableRow>
               ))
           ) : (
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" color="text.secondary">
-                  None
-                </Typography>
-              </TableCell>
-            </TableRow>
+            <EmptyListEntry />
           )}
         </TableBody>
         <TableFooter>
-          <TableRow></TableRow>
+          <TableRow />
         </TableFooter>
       </Table>
     </TableContainer>
