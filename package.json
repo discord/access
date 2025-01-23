@@ -22,8 +22,7 @@
     "react-hook-form": "latest",
     "react-hook-form-mui": "latest",
     "react-router-dom": "latest",
-    "styled-components": "latest",
-    "webpack": "latest"
+    "styled-components": "latest"
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
@@ -58,7 +57,8 @@
     "prettier": "^3.2.5",
     "react-app-alias": "^2.2.2",
     "react-scripts": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "webpack": "latest"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"
