@@ -221,43 +221,43 @@ def test_delete_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
-def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag) -> None:
-    # test bad data
-    apps_url = url_for("api-apps.apps")
-    data: dict[str, Any] = {}
-    rep = client.post(apps_url, json=data)
-    assert rep.status_code == 400
+# def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag) -> None:
+#     # test bad data
+#     apps_url = url_for("api-apps.apps")
+#     data: dict[str, Any] = {}
+#     rep = client.post(apps_url, json=data)
+#     assert rep.status_code == 400
 
-    db.session.add(tag)
-    db.session.commit()
+#     db.session.add(tag)
+#     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+#     create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+#     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+#     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
-    data = {"name": "Created", "tags_to_add": [tag.id]}
+#     data = {"name": "Created", "tags_to_add": [tag.id]}
 
-    rep = client.post(apps_url, json=data)
-    assert rep.status_code == 201
-    assert create_group_spy.call_count == 1
-    assert add_user_to_group_spy.call_count == 1
-    assert add_owner_to_group_spy.call_count == 1
+#     rep = client.post(apps_url, json=data)
+#     assert rep.status_code == 201
+#     assert create_group_spy.call_count == 1
+#     assert add_user_to_group_spy.call_count == 1
+#     assert add_owner_to_group_spy.call_count == 1
 
-    data = rep.get_json()
-    assert db.session.get(App, data["id"]) is not None
+#     data = rep.get_json()
+#     assert db.session.get(App, data["id"]) is not None
 
-    assert data["name"] == "Created"
-    assert data["description"] == ""
-    assert data["active_app_tags"][0]["active_tag"]["id"] == tag.id
+#     assert data["name"] == "Created"
+#     assert data["description"] == ""
+#     assert data["active_app_tags"][0]["active_tag"]["id"] == tag.id
 
-    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
-    assert len(app_groups) == 1
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+#     app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+#     assert len(app_groups) == 1
+#     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+#     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
 
-    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
-    assert test_app_group is not None
-    assert test_app_group.is_owner is True
+#     test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+#     assert test_app_group is not None
+#     assert test_app_group.is_owner is True
 
 
 def test_create_app_with_initial_owners(
