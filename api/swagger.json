@@ -429,6 +429,36 @@
       ],
       "type": "object"
     },
+    "CreateRoleRequest": {
+      "properties": {
+        "ending_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "group_id": {
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string"
+        },
+        "group_owner": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "role_id": {
+        "maxLength": 20,
+        "minLength": 20,
+        "type": "string"
+      },
+      "required": [
+        "group_id",
+        "role_id"
+      ],
+      "type": "object"
+    },
     "DeleteMessage": {
       "properties": {
         "deleted": {
@@ -974,6 +1004,24 @@
       ],
       "type": "object"
     },
+    "ResolveRoleRequest": {
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        },
+        "ending_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved"
+      ],
+      "type": "object"
+    },
     "GroupRoleAuditPagination": {
       "properties": {
         "next": {
@@ -1125,6 +1173,14 @@
           ],
           "readOnly": true
         },
+        "role_request": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleRequest"
+            }
+          ],
+          "readOnly": true
+        },
         "group": {
           "allOf": [
             {
@@ -1248,6 +1304,164 @@
         "results": {
           "items": {
             "$ref": "#/definitions/RoleGroup"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RoleRequest": {
+      "properties": {
+        "active_requested_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_requester_role": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RoleGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "approval_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "approved_membership": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUserGroupMember"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string"
+        },
+        "request_ownership": {
+          "readOnly": true,
+          "type": "boolean"
+        },
+        "request_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "request_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "requested_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "resolution_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED"
+          ],
+          "maxLength": 8,
+          "readOnly": true
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "RoleRequestPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/RoleRequest"
           },
           "readOnly": true,
           "type": "array"
@@ -2072,6 +2286,149 @@
             "description": "",
             "schema": {
               "$ref": "#/definitions/AccessRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/role-requests": {
+      "get": {
+        "operationId": "getRoleRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requester_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requester_role_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requested_group_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "assignee_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "resolver_user_id",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleRequestPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createRoleRequest",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/CreateRoleRequest"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/role-requests/{role_request_id}": {
+      "get": {
+        "operationId": "getRoleRequestById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleRequest"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "resolveRoleRequestById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/ResolveRoleRequest"
+            }
+          },
+          {
+            "in": "path",
+            "name": "role_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/RoleRequest"
             }
           }
         }

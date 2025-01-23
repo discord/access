@@ -13,11 +13,14 @@ from api.models import (
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,
+    OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
+    Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
+from api.models.tag import coalesce_constraints
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
 from api.plugins import get_conditional_access_hook, get_notification_hook
@@ -46,12 +49,23 @@ class CreateRoleRequest:
             self.requester_role = (
                 RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == requester_role).first()
             )
+            # self.requester_role = (
+            #     db.session.query(RoleGroup)
+            #     .options(joinedload(OktaUserGroupMember.user))
+            #     .filter(RoleGroup.deleted_at.is_(None))
+            #     .filter(RoleGroup.id == requester_role)
+            #     .first()
+            # )
         else:
             self.requester_role = requester_role
 
         self.requested_group = (
             db.session.query(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup]),
+                joinedload(AppGroup.app),
+                selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
+            )
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
             .first()
@@ -89,6 +103,39 @@ class CreateRoleRequest:
 
         # Fetch the users to notify
         approvers = get_group_managers(self.requested_group.id)
+
+        requested_group_tags = [tm.active_tag for tm in self.requested_group.active_group_tags]
+
+        role_memberships = [
+            u.user_id
+            for u in (
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.requester_role.id)
+                .filter(OktaUserGroupMember.is_owner.is_(False))
+                .filter(
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    )
+                )
+                .all()
+            )
+        ]
+
+        # If group tagged with disallow self add constraint, filter out approvers who are also members of the role
+        if self.request_ownership:
+            disallow_self_add_owner = coalesce_constraints(
+                constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
+                tags=requested_group_tags,
+            )
+            if disallow_self_add_owner:
+                approvers = [a for a in approvers if a.id not in role_memberships]
+        else:
+            disallow_self_add_member = coalesce_constraints(
+                constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
+                tags=requested_group_tags,
+            )
+            if disallow_self_add_member:
+                approvers = [a for a in approvers if a.id not in role_memberships]
 
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
