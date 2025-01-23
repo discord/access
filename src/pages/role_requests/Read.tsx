@@ -7,10 +7,12 @@ import Grid from '@mui/material/Grid';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
+import Stack from '@mui/material/Stack';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import RoleRequestIcon from '@mui/icons-material/WorkHistory';
+import AlertIcon from '@mui/icons-material/Campaign';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
@@ -41,38 +43,40 @@ import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
+import RoleMembers from './RoleMembers';
 import {
   groupBy,
   displayUserName,
   minTagTime,
   minTagTimeGroups,
+  ownerCantAddSelf,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
 import {useCurrentUser} from '../../authentication';
-import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
+import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
-  useGetRequestById,
+  useGetRoleRequestById,
   useGetGroupById,
   useGetAppById,
-  useResolveRequestById,
-  ResolveRequestByIdError,
-  ResolveRequestByIdVariables,
+  useResolveRoleRequestById,
+  ResolveRoleRequestByIdError,
+  ResolveRoleRequestByIdVariables,
 } from '../../api/apiComponents';
 import {
-  AccessRequest,
-  ResolveAccessRequest,
-  PolymorphicGroup,
-  OktaUserGroupMember,
-  AppGroup,
   App,
+  AppGroup,
   OktaGroup,
+  OktaUserGroupMember,
+  PolymorphicGroup,
+  ResolveRoleRequest,
   RoleGroup,
+  RoleRequest,
+  Tag,
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
-import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -100,14 +104,28 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
+const UNTIL_ID_TO_LABELS: Record<string, string> = {
+  '43200': '12 Hours',
+  '432000': '5 Days',
+  '1209600': 'Two Weeks',
+  '2592000': '30 Days',
+  '7776000': '90 Days',
+  indefinite: 'Indefinite',
+  custom: 'Custom',
+} as const;
+
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
+  '43200': '12 Hours',
+  '432000': '5 Days',
+  '1209600': 'Two Weeks',
+  '2592000': '30 Days',
+  '7776000': '90 Days',
+} as const;
+
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(accessRequest: AccessRequest) {
-  const group = accessRequest.requested_group ?? null;
+function ComputeConstraints(roleRequest: RoleRequest) {
+  const group = roleRequest.requested_group ?? null;
 
   if (group == null) {
     return [null, null];
@@ -115,15 +133,15 @@ function ComputeConstraints(accessRequest: AccessRequest) {
 
   let timeLimit = minTagTime(
     group.active_group_tags ? group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    accessRequest.request_ownership!,
+    roleRequest.request_ownership!,
   );
 
   let reason = requiredReason(
     group.active_group_tags ? group.active_group_tags?.map((tagMap) => tagMap.active_tag!) : [],
-    accessRequest.request_ownership!,
+    roleRequest.request_ownership!,
   );
 
-  if (group.type == 'role_group' && !accessRequest.request_ownership) {
+  if (group.type == 'role_group' && !roleRequest.request_ownership) {
     const active_groups_owners = (group as RoleGroup).active_role_associated_group_owner_mappings?.reduce(
       (out, curr) => {
         curr.active_group ? out.push(curr.active_group) : null;
@@ -148,31 +166,32 @@ function ComputeConstraints(accessRequest: AccessRequest) {
   return [timeLimit, reason];
 }
 
-export default function ReadRequest() {
+export default function ReadRoleRequest() {
   const navigate = useNavigate();
   const {id} = useParams();
 
   const currentUser = useCurrentUser();
+  const admin = isAccessAdmin(currentUser);
 
   const [until, setUntil] = React.useState<string | null>(null);
   const [requestError, setRequestError] = React.useState('');
   const [approved, setApproved] = React.useState<boolean | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  const {data, isError, isLoading} = useGetRequestById({
-    pathParams: {accessRequestId: id ?? ''},
+  const {data, isError, isLoading} = useGetRoleRequestById({
+    pathParams: {roleRequestId: id ?? ''},
   });
 
-  const accessRequest = data ?? ({} as AccessRequest);
+  const roleRequest = data ?? ({} as RoleRequest);
 
-  const ownRequest = accessRequest.requester?.id == currentUser.id;
+  const ownRequest = roleRequest.requester?.id == currentUser.id;
 
-  const requestEndingAt = dayjs(accessRequest.request_ending_at);
+  const requestEndingAt = dayjs(roleRequest.request_ending_at);
   // round the delta to adjust based on partial seconds
   const requestedUntilDelta =
-    accessRequest.request_ending_at == null
+    roleRequest.request_ending_at == null
       ? null
-      : Math.round(requestEndingAt.diff(dayjs(accessRequest.created_at), 'second') / 100) * 100;
+      : Math.round(requestEndingAt.diff(dayjs(roleRequest.created_at), 'second') / 100) * 100;
   const requestedUntil =
     requestedUntilDelta == null
       ? 'indefinite'
@@ -180,12 +199,30 @@ export default function ReadRequest() {
         ? requestedUntilDelta.toString()
         : 'custom';
 
-  const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
+  // Check to see if current user is a blocked group owner
+  const ownedGroup = currentUser.active_group_ownerships
+    ?.map((group) => group.active_group!.id)
+    .includes(roleRequest.requested_group?.id);
+  const roleMembers = roleRequest.requester_role?.active_user_memberships?.map((user) => user.active_user!.id) ?? [];
+  const tags: Tag[] = (roleRequest.requested_group?.active_group_tags ?? []).reduce((out, t) => {
+    if (t.active_tag) {
+      out.push(t.active_tag);
+      return out;
+    } else {
+      return out;
+    }
+  }, new Array<Tag>());
+  const tagged =
+    (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
+    (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
+  const blocked = ownedGroup && roleMembers.includes(currentUser.id) && tagged;
+  const manager = canManageGroup(currentUser, roleRequest.requested_group);
+  const requestedGroupManager = manager && !blocked;
 
   const complete = (
-    completedAccessRequest: ResolveAccessRequest | undefined,
-    error: ResolveRequestByIdError | null,
-    variables: ResolveRequestByIdVariables,
+    completedAccessRequest: ResolveRoleRequest | undefined,
+    error: ResolveRoleRequestByIdError | null,
+    variables: ResolveRoleRequestByIdVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -196,22 +233,22 @@ export default function ReadRequest() {
     }
   };
 
-  const putResolveRequest = useResolveRequestById({
+  const putResolveRequest = useResolveRoleRequestById({
     onSettled: complete,
   });
 
   const {data: groupData} = useGetGroupById(
     {
-      pathParams: {groupId: accessRequest.requested_group?.id ?? ''},
+      pathParams: {groupId: roleRequest.requested_group?.id ?? ''},
     },
     {
-      enabled: accessRequest.requested_group != null && (!requestedGroupManager || ownRequest),
+      enabled: roleRequest.requested_group != null && (!requestedGroupManager || ownRequest),
     },
   );
 
   const group = groupData ?? ({} as PolymorphicGroup);
 
-  const constraints = ComputeConstraints(accessRequest);
+  const constraints = ComputeConstraints(roleRequest);
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
@@ -242,16 +279,20 @@ export default function ReadRequest() {
     }));
   }
 
-  const ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+  let ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+  const ownerIds = Object.keys(ownerships);
+
+  // If Access admin and all group owners are blocked, add a note
+  const adminNoteForBlocked = tagged && admin && ownerIds.every((v) => roleMembers.includes(v)) && ownerIds.length > 0;
 
   const {data: appData} = useGetAppById(
     {
       pathParams: {
-        appId: ((accessRequest.requested_group ?? {}) as AppGroup).app?.id ?? '',
+        appId: ((roleRequest.requested_group ?? {}) as AppGroup).app?.id ?? '',
       },
     },
     {
-      enabled: accessRequest.requested_group?.type == 'app_group' && (!requestedGroupManager || ownRequest),
+      enabled: roleRequest.requested_group?.type == 'app_group' && (!requestedGroupManager || ownRequest),
     },
   );
 
@@ -270,10 +311,10 @@ export default function ReadRequest() {
     },
     {
       enabled:
-        accessRequest.requested_group != null &&
+        roleRequest.requested_group != null &&
         (!requestedGroupManager || ownRequest) &&
         group.active_user_ownerships?.length == 0 &&
-        (accessRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0),
+        (roleRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0),
     },
   );
 
@@ -303,7 +344,7 @@ export default function ReadRequest() {
     const resolveRequest = {
       approved: approved ?? false,
       reason: responseForm.reason ?? '',
-    } as ResolveAccessRequest;
+    } as ResolveRoleRequest;
 
     switch (responseForm.until) {
       case 'indefinite':
@@ -320,7 +361,7 @@ export default function ReadRequest() {
 
     putResolveRequest.mutate({
       body: resolveRequest,
-      pathParams: {accessRequestId: accessRequest.id},
+      pathParams: {roleRequestId: roleRequest.id},
     });
   };
 
@@ -339,26 +380,26 @@ export default function ReadRequest() {
                 height: 240,
               }}>
               <Avatar
-                alt={accessRequest.status}
+                alt={roleRequest.status}
                 sx={{
                   bgcolor:
-                    accessRequest.status == 'PENDING'
+                    roleRequest.status == 'PENDING'
                       ? 'primary.main'
-                      : accessRequest.status == 'APPROVED'
+                      : roleRequest.status == 'APPROVED'
                         ? 'success.main'
                         : 'error.main',
                   width: 220,
                   height: 220,
                 }}
                 variant={'rounded' as any}>
-                {accessRequest.status == 'PENDING' ? (
+                {roleRequest.status == 'PENDING' ? (
                   <PendingIcon
                     sx={{
                       width: 220,
                       height: 220,
                     }}
                   />
-                ) : accessRequest.status == 'APPROVED' ? (
+                ) : roleRequest.status == 'APPROVED' ? (
                   <ApprovedIcon
                     sx={{
                       width: 220,
@@ -395,49 +436,49 @@ export default function ReadRequest() {
                     wordBreak: 'break-word',
                   }}>
                   <Typography variant="h4">
-                    {(accessRequest.requester?.deleted_at ?? null) != null ? (
+                    {(roleRequest.requester_role?.deleted_at ?? null) != null ? (
                       <Link
-                        to={`/users/${accessRequest.requester?.id ?? ''}`}
+                        to={`/groups/${roleRequest.requester_role?.id ?? ''}`}
                         sx={{textDecoration: 'line-through', color: 'inherit', fontWeight: 500}}
                         component={RouterLink}>
-                        {displayUserName(accessRequest.requester)}
+                        {roleRequest.requester_role?.name ?? ''}
                       </Link>
                     ) : (
                       <Link
-                        to={`/users/${accessRequest.requester?.email.toLowerCase() ?? ''}`}
+                        to={`/groups/${roleRequest.requester_role?.name ?? ''}`}
                         sx={{textDecoration: 'none', color: 'inherit', fontWeight: 500}}
                         component={RouterLink}>
-                        {displayUserName(accessRequest.requester)}
+                        {roleRequest.requester_role?.name ?? ''}
                       </Link>
                     )}
                   </Typography>
                   <Typography variant="h5">
-                    {accessRequest.status == 'PENDING' ? 'is requesting' : 'requested'}{' '}
-                    {accessRequest.request_ownership ? (
+                    is requesting
+                    {roleRequest.request_ownership ? (
                       <>
                         <Box component="span" sx={{color: 'primary.main', fontWeight: 'bold'}}>
-                          ownership
+                          <> ownership </>
                         </Box>{' '}
                         of
                       </>
                     ) : (
-                      'membership to'
+                      ' membership to '
                     )}
                   </Typography>
                   <Typography variant="h4">
-                    {(accessRequest.requested_group?.deleted_at ?? null) != null ? (
+                    {(roleRequest.requested_group?.deleted_at ?? null) != null ? (
                       <Link
-                        to={`/groups/${accessRequest.requested_group?.id ?? ''}`}
+                        to={`/groups/${roleRequest.requested_group?.id ?? ''}`}
                         sx={{textDecoration: 'line-through', color: 'inherit', fontWeight: 500}}
                         component={RouterLink}>
-                        {accessRequest.requested_group?.name ?? ''}
+                        {roleRequest.requested_group?.name ?? ''}
                       </Link>
                     ) : (
                       <Link
-                        to={`/groups/${accessRequest.requested_group?.name ?? ''}`}
+                        to={`/groups/${roleRequest.requested_group?.name ?? ''}`}
                         sx={{textDecoration: 'none', color: 'inherit', fontWeight: 500}}
                         component={RouterLink}>
-                        {accessRequest.requested_group?.name ?? ''}
+                        {roleRequest.requested_group?.name ?? ''}
                       </Link>
                     )}
                   </Typography>
@@ -454,7 +495,7 @@ export default function ReadRequest() {
                   }}>
                   <Typography variant="h6">Status</Typography>
                   <Typography variant="h4">
-                    <b>{accessRequest.status}</b>
+                    <b>{roleRequest.status}</b>
                   </Typography>
                 </Grid>
               </Grid>
@@ -469,92 +510,156 @@ export default function ReadRequest() {
               }}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={accessRequest.created_at}>
-                    {dayjs(accessRequest.created_at).startOf('second').fromNow()}
+                  <span title={roleRequest.created_at}>
+                    {dayjs(roleRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>
                 <TimelineSeparator>
                   <TimelineConnector />
                   <TimelineDot color="primary">
-                    <AccessRequestIcon />
+                    <RoleRequestIcon />
                   </TimelineDot>
                   <TimelineConnector />
                 </TimelineSeparator>
                 <TimelineContent>
-                  <Paper sx={{p: 2, my: 2}}>
+                  <Paper sx={{p: 2, my: 1}}>
                     <Typography variant="body1">
-                      {(accessRequest.requester?.deleted_at ?? null) != null ? (
+                      {(roleRequest.requester?.deleted_at ?? null) != null ? (
                         <Link
-                          to={`/users/${accessRequest.requester?.id}`}
+                          to={`/users/${roleRequest.requester?.id}`}
                           sx={{
                             textDecoration: 'line-through',
                             color: 'inherit',
                           }}
                           component={RouterLink}>
-                          <b>{accessRequest.requester?.email.toLowerCase()}</b>
+                          <b>{roleRequest.requester?.email.toLowerCase()}</b>
                         </Link>
                       ) : (
                         <Link
-                          to={`/users/${accessRequest.requester?.email.toLowerCase()}`}
+                          to={`/users/${roleRequest.requester?.email.toLowerCase()}`}
                           sx={{
                             textDecoration: 'none',
                             color: 'inherit',
                           }}
                           component={RouterLink}>
-                          <b>{accessRequest.requester?.email.toLowerCase()}</b>
+                          <b>{roleRequest.requester?.email.toLowerCase()}</b>
                         </Link>
                       )}
-                      {accessRequest.status == 'PENDING' ? ' is requesting ' : ' requested '}
-                      {accessRequest.request_ownership ? 'ownership of ' : 'membership to '}
-                      {(accessRequest.requested_group?.deleted_at ?? null) != null ? (
+                      {roleRequest.status == 'PENDING' ? ' is requesting that ' : ' requested that '}
+                      {(roleRequest.requester_role?.deleted_at ?? null) != null ? (
                         <Link
-                          to={`/groups/${accessRequest.requested_group?.id}`}
+                          to={`/groups/${roleRequest.requester_role?.id}`}
                           sx={{
                             textDecoration: 'line-through',
                             color: 'inherit',
                           }}
                           component={RouterLink}>
-                          <b>{accessRequest.requested_group?.name}</b>
+                          <b>{roleRequest.requester_role?.name}</b>
                         </Link>
                       ) : (
                         <Link
-                          to={`/groups/${accessRequest.requested_group?.name}`}
+                          to={`/groups/${roleRequest.requester_role?.name}`}
                           sx={{
                             textDecoration: 'none',
                             color: 'inherit',
                           }}
                           component={RouterLink}>
-                          <b>{accessRequest.requested_group?.name}</b>
+                          <b>{roleRequest.requester_role?.name}</b>
+                        </Link>
+                      )}{' '}
+                      {roleRequest.request_ownership ? 'is added as an owner of ' : 'is added as a member of '}
+                      {(roleRequest.requested_group?.deleted_at ?? null) != null ? (
+                        <Link
+                          to={`/groups/${roleRequest.requested_group?.id}`}
+                          sx={{
+                            textDecoration: 'line-through',
+                            color: 'inherit',
+                          }}
+                          component={RouterLink}>
+                          <b>{roleRequest.requested_group?.name}</b>
+                        </Link>
+                      ) : (
+                        <Link
+                          to={`/groups/${roleRequest.requested_group?.name}`}
+                          sx={{
+                            textDecoration: 'none',
+                            color: 'inherit',
+                          }}
+                          component={RouterLink}>
+                          <b>{roleRequest.requested_group?.name}</b>
                         </Link>
                       )}{' '}
                       ending{' '}
                       <b>
-                        {accessRequest.request_ending_at == null
+                        {roleRequest.request_ending_at == null
                           ? 'never'
-                          : dayjs(accessRequest.request_ending_at).startOf('second').fromNow()}
+                          : dayjs(roleRequest.request_ending_at).startOf('second').fromNow()}
                       </b>
+                      {'.'}
                     </Typography>
-                    <Typography variant="body2">
-                      <b>Reason:</b> {accessRequest.request_reason ? accessRequest.request_reason : 'No reason given'}
+                    <Typography variant="body2" sx={{pt: 1}}>
+                      <b>Reason:</b> {roleRequest.request_reason ? roleRequest.request_reason : 'No reason given'}
                     </Typography>
                   </Paper>
+                  {manager && blocked ? (
+                    <Paper sx={{p: 2}}>
+                      <Stack alignItems="center" direction="row" gap={2}>
+                        <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
+                        <Typography display="inline" variant="body1">
+                          <b>
+                            While you own group {group.name}, you are blocked from responding to this request by group
+                            tags. The request has been forwarded to other group owners or Access admins.
+                          </b>
+                        </Typography>
+                      </Stack>
+                    </Paper>
+                  ) : (
+                    <>
+                      {adminNoteForBlocked ? (
+                        <Paper sx={{p: 2, mb: 1}}>
+                          <Stack alignItems="center" direction="row" gap={2}>
+                            <AlertIcon fontSize="large" sx={{color: 'primary.main'}} />
+                            <Typography display="inline" variant="body1">
+                              <b>
+                                All owners of group {group.name} are blocked from approving this request due to group
+                                tags. As an Access admin, you may respond to it on their behalf.
+                              </b>
+                            </Typography>
+                          </Stack>
+                        </Paper>
+                      ) : (
+                        <></>
+                      )}
+                      <Paper sx={{p: 2}}>
+                        <RoleMembers
+                          rows={roleRequest.requester_role?.active_user_memberships ?? []}
+                          roleName={roleRequest.requester_role?.name ?? ''}
+                          groupName={roleRequest.requested_group?.name ?? ''}
+                          owner={roleRequest.request_ownership ?? false}
+                        />
+                        <Typography display="inline" variant="body1" sx={{pl: 1}}>
+                          If approved, everyone who is a member of the role will be added to the group.
+                        </Typography>
+                      </Paper>
+                    </>
+                  )}
                 </TimelineContent>
               </TimelineItem>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  {accessRequest.resolved_at != null ? (
-                    <span title={accessRequest.resolved_at}>
-                      {dayjs(accessRequest.resolved_at).startOf('second').fromNow()}
+                  {roleRequest.resolved_at != null ? (
+                    <span title={roleRequest.resolved_at}>
+                      {dayjs(roleRequest.resolved_at).startOf('second').fromNow()}
                     </span>
                   ) : null}
                 </TimelineOppositeContent>
                 <TimelineSeparator>
                   <TimelineConnector />
-                  {accessRequest.status == 'PENDING' ? (
+                  {roleRequest.status == 'PENDING' ? (
                     <TimelineDot color="primary">
                       <PendingIcon />
                     </TimelineDot>
-                  ) : accessRequest.status == 'APPROVED' ? (
+                  ) : roleRequest.status == 'APPROVED' ? (
                     <TimelineDot color="success">
                       <ApprovedIcon />
                     </TimelineDot>
@@ -566,10 +671,10 @@ export default function ReadRequest() {
                   <TimelineConnector />
                 </TimelineSeparator>
                 <TimelineContent>
-                  {accessRequest.status == 'PENDING' ? (
+                  {roleRequest.status == 'PENDING' ? (
                     <>
                       {requestedGroupManager || ownRequest ? (
-                        <Box sx={{my: 2}}>
+                        <Box>
                           <Paper sx={{p: 2}}>
                             <Typography variant="body1">
                               Request is <b>pending</b>,
@@ -584,14 +689,18 @@ export default function ReadRequest() {
                                   : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
                               }
                               onSuccess={(formData) => submit(formData)}>
-                              {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+                              {requestError != '' ? (
+                                <Alert severity="error" sx={{my: 1}}>
+                                  {requestError}
+                                </Alert>
+                              ) : null}
                               {!ownRequest ? (
                                 <FormControl fullWidth>
                                   <Grid container>
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle1" color="text.accent">
                                         {timeLimit
-                                          ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
+                                          ? (roleRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
                                             Math.floor(timeLimit / 86400) +
                                             ' days.'
@@ -619,12 +728,12 @@ export default function ReadRequest() {
                                           {
                                             id: 'owner',
                                             label: 'Owner',
-                                            selected: accessRequest.request_ownership,
+                                            selected: roleRequest.request_ownership,
                                           },
                                           {
                                             id: 'member',
                                             label: 'Member',
-                                            selected: !accessRequest.request_ownership,
+                                            selected: !roleRequest.request_ownership,
                                           },
                                         ]}
                                       />
@@ -695,21 +804,19 @@ export default function ReadRequest() {
                         <Box sx={{my: 2}}>
                           <Paper sx={{p: 2}}>
                             <Typography variant="body1">
-                              Request is <b>pending</b> and can be reviewed by the following owners
+                              Request is <b>pending</b> and can be reviewed by the following owners or by Access admins
                             </Typography>
                           </Paper>
-                          {accessRequest.requested_group?.type != 'app_group' ||
-                          !(accessRequest.requested_group as AppGroup).is_owner ? (
+                          {roleRequest.requested_group?.type != 'app_group' ||
+                          !(roleRequest.requested_group as AppGroup).is_owner ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="group owners">
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
                                       <Typography variant="h6" color="text.accent">
-                                        {accessRequest.requested_group?.name}{' '}
-                                        {accessRequest.requested_group?.type == 'role_group'
-                                          ? 'Owners'
-                                          : 'Group Owners'}
+                                        {roleRequest.requested_group?.name}{' '}
+                                        {roleRequest.requested_group?.type == 'role_group' ? 'Owners' : 'Group Owners'}
                                       </Typography>
                                     </TableCell>
                                   </TableRow>
@@ -724,13 +831,13 @@ export default function ReadRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {ownerIds.length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
-                                  {Object.keys(ownerships).length > 0 ? (
+                                  {ownerIds.length > 0 ? (
                                     Object.entries(ownerships)
                                       .sort(sortGroupMembers)
                                       .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
@@ -772,14 +879,14 @@ export default function ReadRequest() {
                               </Table>
                             </Paper>
                           ) : null}
-                          {accessRequest.requested_group?.type == 'app_group' ? (
+                          {roleRequest.requested_group?.type == 'app_group' ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="app owners">
                                 <TableHead>
                                   <TableRow>
                                     <TableCell colSpan={3}>
                                       <Typography variant="h6" color="text.accent">
-                                        {((accessRequest.requested_group ?? {}) as AppGroup).app?.name}
+                                        {((roleRequest.requested_group ?? {}) as AppGroup).app?.name}
                                         {' App Owners'}
                                       </Typography>
                                     </TableCell>
@@ -843,8 +950,8 @@ export default function ReadRequest() {
                               </Table>
                             </Paper>
                           ) : null}
-                          {Object.keys(ownerships).length == 0 &&
-                          (accessRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0) ? (
+                          {ownerIds.length == 0 &&
+                          (roleRequest.requested_group?.type != 'app_group' || appOwnershipsArray.length == 0) ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="app owners">
                                 <TableHead>
@@ -921,26 +1028,26 @@ export default function ReadRequest() {
                   ) : (
                     <Paper sx={{p: 2, my: 2}}>
                       <Typography variant="body1">
-                        {accessRequest.resolver == null ? (
+                        {roleRequest.resolver == null ? (
                           <b>Access</b>
                         ) : (
                           <Link
-                            to={`/users/${accessRequest.resolver?.email.toLowerCase()}`}
+                            to={`/users/${roleRequest.resolver?.email.toLowerCase()}`}
                             sx={{
                               textDecoration: 'none',
                               color: 'inherit',
                             }}
                             component={RouterLink}>
-                            <b>{accessRequest.resolver?.email.toLowerCase()}</b>
+                            <b>{roleRequest.resolver?.email.toLowerCase()}</b>
                           </Link>
                         )}
-                        {accessRequest.status == 'APPROVED' ? (
+                        {roleRequest.status == 'APPROVED' ? (
                           <>
                             {' approved the request ending '}
                             <b>
-                              {accessRequest.approval_ending_at == null
+                              {roleRequest.approval_ending_at == null
                                 ? 'never'
-                                : dayjs(accessRequest.approval_ending_at).startOf('second').fromNow()}
+                                : dayjs(roleRequest.approval_ending_at).startOf('second').fromNow()}
                             </b>
                           </>
                         ) : (
@@ -949,7 +1056,7 @@ export default function ReadRequest() {
                       </Typography>
                       <Typography variant="body2">
                         <b>Reason:</b>{' '}
-                        {accessRequest.resolution_reason ? accessRequest.resolution_reason : 'No reason given'}
+                        {roleRequest.resolution_reason ? roleRequest.resolution_reason : 'No reason given'}
                       </Typography>
                     </Paper>
                   )}

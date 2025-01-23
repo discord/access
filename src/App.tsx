@@ -27,6 +27,7 @@ import ListApps from './pages/apps/List';
 import ListGroups from './pages/groups/List';
 import ListRequests from './pages/requests/List';
 import ListRoles from './pages/roles/List';
+import ListRoleRequests from './pages/role_requests/List';
 import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
@@ -37,6 +38,7 @@ import ReadTag from './pages/tags/Read';
 import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
+import ReadRoleRequest from './pages/role_requests/Read';
 import {
   alpha,
   CssBaseline,
@@ -254,6 +256,8 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <Route path="/expiring-roles" element={<ExpiringRoles />} />
             <Route path="/tags" element={<ListTags />} />
             <Route path="/tags/:id" element={<ReadTag />} />
+            <Route path="/role-requests" element={<ListRoleRequests />} />
+            <Route path="/role-requests/:id" element={<ReadRoleRequest />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Container>

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from flask import Flask, url_for
@@ -641,6 +641,61 @@ def test_get_all_possible_role_request_approvers(app: Flask, mocker: MockerFixtu
     assert users[2] in approvers
 
 
+def test_role_request_approvers_tagged(
+    app: Flask,
+    db: SQLAlchemy,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    tag: Tag,
+    mocker: MockerFixture,
+) -> None:
+    user2 = OktaUserFactory.create()
+    user3 = OktaUserFactory.create()
+    db.session.add(user)
+    db.session.add(user2)
+    db.session.add(user3)
+    db.session.add(okta_group)
+    db.session.commit()
+
+    # Add role group that user owns
+    db.session.add(role_group)
+    db.session.commit()
+
+    ModifyGroupUsers(group=role_group, members_to_add=[user2.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=okta_group, owners_to_add=[user2.id, user3.id], sync_to_okta=False).execute()
+
+    # Add tag
+    tag.constraints = {
+        Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
+    }
+    db.session.add(tag)
+    db.session.commit()
+
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
+
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_reason="test reason",
+    ).execute()
+
+    assert role_request is not None
+    assert request_created_notification_spy.call_count == 1
+    _, kwargs = request_created_notification_spy.call_args
+    assert kwargs["role_request"] == role_request
+    assert kwargs["role"] == role_group
+    assert kwargs["group"] == okta_group
+    assert kwargs["requester"] == user
+    assert len(kwargs["approvers"]) == 1
+    assert user3 in kwargs["approvers"]
+
+
 def test_resolve_app_role_request_notification(
     app: Flask,
     db: SQLAlchemy,
@@ -950,6 +1005,177 @@ def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
     assert user == kwargs["requester"]
     assert len(kwargs["group_tags"]) == 1
     assert tag in kwargs["group_tags"]
+
+
+def test_time_limit_constraint_tag(
+    app: Flask,
+    db: SQLAlchemy,
+    access_app: App,
+    role_group: RoleGroup,
+    app_group: AppGroup,
+    user: OktaUser,
+    tag: Tag,
+    mocker: MockerFixture,
+) -> None:
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    # Add App
+    db.session.add(access_app)
+
+    # Add User
+    db.session.add(user)
+    db.session.commit()
+
+    # Add app group that no one owns
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+
+    db.session.commit()
+
+    # Add role group that user owns
+    db.session.add(role_group)
+    db.session.commit()
+
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+
+    # Add tag
+    tag.constraints = {
+        Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
+    }
+    db.session.add(tag)
+    db.session.commit()
+
+    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
+
+    # Make request for more than time limit
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=app_group,
+        request_reason="test reason",
+    ).execute()
+
+    assert role_request is not None
+    assert request_created_notification_spy.call_count == 1
+    _, kwargs = request_created_notification_spy.call_args
+    assert kwargs["role_request"] == role_request
+    # Ending time is None (more than time limit)
+    assert kwargs["role_request"].request_ending_at is None
+    assert kwargs["role"] == role_group
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+
+    # Try to approve for more than time limit
+    ApproveRoleRequest(
+        role_request=role_request,
+        approver_user=access_owner,
+        ending_at=datetime.now() + timedelta(seconds=SEVEN_DAYS_IN_SECONDS),
+    ).execute()
+
+    # Should only be approved for time limit if approved time is higher
+    approval = RoleGroupMap.query.filter(RoleGroupMap.role_group == role_group).first()
+    # Make sure approval time is correct (could be a couple milliseconds off from calculated which is okay)
+    approval_time = approval.ended_at.replace(tzinfo=timezone.utc)
+    expected_approval_time = datetime.now(timezone.utc) + timedelta(seconds=THREE_DAYS_IN_SECONDS)
+    assert expected_approval_time > approval_time
+    assert expected_approval_time - approval_time < timedelta(minutes=1)
+
+
+def test_owner_cant_add_self_constraint_tag(
+    app: Flask,
+    db: SQLAlchemy,
+    access_app: App,
+    role_group: RoleGroup,
+    app_group: AppGroup,
+    user: OktaUser,
+    tag: Tag,
+    mocker: MockerFixture,
+) -> None:
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    # Add App
+    db.session.add(access_app)
+
+    # Add Users
+    user2 = OktaUserFactory.create()
+    db.session.add(user)
+    db.session.add(user2)
+    db.session.commit()
+
+    # Add app group that no one owns
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+
+    db.session.commit()
+
+    # Add role group that user owns
+    db.session.add(role_group)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id, user2.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyGroupUsers(group=app_group, owners_to_add=[user2.id], sync_to_okta=False).execute()
+
+    # Add tag
+    tag.constraints = {
+        Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
+    }
+    db.session.add(tag)
+    db.session.commit()
+
+    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
+    request_completed_notification_spy = mocker.patch.object(hook, "access_role_request_completed")
+    add_membership_spy = mocker.patch.object(okta, "async_add_user_to_group")
+
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=app_group,
+        request_reason="test reason",
+    ).execute()
+
+    assert role_request is not None
+    assert request_created_notification_spy.call_count == 1
+    _, kwargs = request_created_notification_spy.call_args
+    assert kwargs["role_request"] == role_request
+    assert kwargs["role"] == role_group
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
+    # since the only group owner is blocked, the request notification should be forwarded to Access admins
+    assert len(kwargs["approvers"]) == 1
+    assert kwargs["approvers"][0] == access_owner
+
+    # user2 owns the group and is a member of the requester role, should fail
+    should_fail = ApproveRoleRequest(
+        role_request=role_request,
+        approver_user=user2,
+    ).execute()
+    assert should_fail.status == AccessRequestStatus.PENDING
+
+    should_pass = ApproveRoleRequest(
+        role_request=role_request,
+        approver_user=access_owner,
+    ).execute()
+    assert should_pass.status == AccessRequestStatus.APPROVED
+
+    assert add_membership_spy.call_count == 2
+    assert request_completed_notification_spy.call_count == 1
+    _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs["role_request"] == should_pass
+    assert kwargs["role"] == role_group
+    assert kwargs["group"] == app_group
+    assert kwargs["requester"] == user
 
 
 def test_role_request_approval_via_direct_add(
