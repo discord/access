@@ -1,0 +1,7 @@
+  pytest==8.3.4
+  pytest-flask==1.3.0
+  pytest-runner==6.0.1
+  pytest-factoryboy==2.7.0
+  pytest-mock==3.14.0
+  factory_boy==3.3.3
+  types-factory-boy==0.4.1
