@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Protocol, cast
 from unittest.mock import Mock
 
 from factory import Faker
@@ -24,6 +24,11 @@ from api.models import (
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import AppGroupFactory, OktaGroupFactory, RoleGroupFactory
+
+
+# Define a Protocol that includes the pystr method
+class FakerWithPyStr(Protocol):
+    def pystr(self) -> str: ...
 
 
 def test_get_group(
@@ -631,7 +636,13 @@ def test_delete_group(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
 
 
-def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag) -> None:
+def test_create_group(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    tag: Tag,
+) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
     data: dict[str, Any] = {}
@@ -641,7 +652,10 @@ def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
     db.session.add(tag)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    # Cast faker to our Protocol type that has the pystr method
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
 
     data = {"type": "okta_group", "name": "Created", "description": "", "tags_to_add": [tag.id]}
     rep = client.post(groups_url, json=data)
@@ -657,7 +671,12 @@ def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
 
 
 def test_create_app_group(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag, access_app: App
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    tag: Tag,
+    access_app: App,
 ) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
@@ -671,7 +690,9 @@ def test_create_app_group(
     db.session.add(AppTagMap(app_id=access_app.id, tag_id=tag.id))
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
 
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
 
