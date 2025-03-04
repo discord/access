@@ -40,6 +40,8 @@ import {
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 
 import {
   groupBy,
@@ -76,6 +78,11 @@ import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
+dayjs.extend(timezone);
+dayjs.extend(utc);
+
+// Get the user's local timezone
+const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -380,7 +387,7 @@ export default function ReadRequest() {
             <Paper
               sx={{
                 p: 2,
-                height: 240,
+                height: 'auto',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
@@ -453,9 +460,59 @@ export default function ReadRequest() {
                     textAlign: 'center',
                   }}>
                   <Typography variant="h6">Status</Typography>
-                  <Typography variant="h4">
+                  <Typography
+                    variant="h4"
+                    color={
+                      accessRequest.status === 'APPROVED'
+                        ? 'success.main'
+                        : accessRequest.status === 'REJECTED'
+                          ? 'error.main'
+                          : 'inherit'
+                    }>
                     <b>{accessRequest.status}</b>
                   </Typography>
+                  {accessRequest.status === 'APPROVED' && (
+                    <>
+                      <Box>
+                        <Typography variant="subtitle2" color="primary">
+                          <b>ACCESS START:</b>
+                        </Typography>
+                        <Typography variant="body1">
+                          {dayjs(accessRequest.resolved_at || accessRequest.created_at).format('MMM D, YYYY h:mm A')}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            Local: {userTimezone}
+                          </Typography>
+                        </Typography>
+                        <Typography variant="caption" sx={{fontFamily: 'monospace'}} color="text.secondary">
+                          UTC:{' '}
+                          {dayjs(accessRequest.resolved_at || accessRequest.created_at)
+                            .utc()
+                            .format('YYYY-MM-DD HH:mm:ss')}
+                        </Typography>
+                        <Typography variant="subtitle2" color="primary" sx={{mt: 1}}>
+                          <b>ACCESS END:</b>
+                        </Typography>
+                        <Typography variant="body1">
+                          {accessRequest.approval_ending_at || accessRequest.request_ending_at
+                            ? dayjs(accessRequest.approval_ending_at || accessRequest.request_ending_at).format(
+                                'MMM D, YYYY h:mm A',
+                              )
+                            : 'Never (No Expiration)'}
+                          <Typography variant="caption" display="block" color="text.secondary">
+                            Local: {userTimezone}
+                          </Typography>
+                        </Typography>
+                        {(accessRequest.approval_ending_at || accessRequest.request_ending_at) && (
+                          <Typography variant="caption" sx={{fontFamily: 'monospace'}} color="text.secondary">
+                            UTC:{' '}
+                            {dayjs(accessRequest.approval_ending_at || accessRequest.request_ending_at)
+                              .utc()
+                              .format('YYYY-MM-DD HH:mm:ss')}
+                          </Typography>
+                        )}
+                      </Box>
+                    </>
+                  )}
                 </Grid>
               </Grid>
             </Paper>
@@ -527,12 +584,62 @@ export default function ReadRequest() {
                           <b>{accessRequest.requested_group?.name}</b>
                         </Link>
                       )}{' '}
-                      ending{' '}
-                      <b>
-                        {accessRequest.request_ending_at == null
-                          ? 'never'
-                          : dayjs(accessRequest.request_ending_at).startOf('second').fromNow()}
-                      </b>
+                      {accessRequest.status === 'APPROVED' ? (
+                        <>
+                          from{' '}
+                          <b>{dayjs(accessRequest.resolved_at || accessRequest.created_at).format('MMM D, YYYY')}</b>{' '}
+                          <Typography
+                            component="span"
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{display: 'block', fontFamily: 'monospace'}}>
+                            (UTC:{' '}
+                            {dayjs(accessRequest.resolved_at || accessRequest.created_at)
+                              .utc()
+                              .format('YYYY-MM-DD HH:mm:ss')}
+                            )
+                          </Typography>
+                          to{' '}
+                          <b>
+                            {accessRequest.approval_ending_at || accessRequest.request_ending_at
+                              ? dayjs(accessRequest.approval_ending_at || accessRequest.request_ending_at).format(
+                                  'MMM D, YYYY',
+                                )
+                              : 'never (no expiration)'}
+                          </b>
+                          {(accessRequest.approval_ending_at || accessRequest.request_ending_at) && (
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{display: 'block', fontFamily: 'monospace'}}>
+                              (UTC:{' '}
+                              {dayjs(accessRequest.approval_ending_at || accessRequest.request_ending_at)
+                                .utc()
+                                .format('YYYY-MM-DD HH:mm:ss')}
+                              )
+                            </Typography>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          ending{' '}
+                          <b>
+                            {accessRequest.request_ending_at == null
+                              ? 'never'
+                              : dayjs(accessRequest.request_ending_at).startOf('second').fromNow()}
+                          </b>
+                          {accessRequest.request_ending_at && (
+                            <Typography
+                              component="span"
+                              variant="caption"
+                              color="text.secondary"
+                              sx={{display: 'block', fontFamily: 'monospace'}}>
+                              (UTC: {dayjs(accessRequest.request_ending_at).utc().format('YYYY-MM-DD HH:mm:ss')})
+                            </Typography>
+                          )}
+                        </>
+                      )}
                     </Typography>
                     <Typography variant="body2">
                       <b>Reason:</b> {accessRequest.request_reason ? accessRequest.request_reason : 'No reason given'}
