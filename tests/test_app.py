@@ -412,12 +412,12 @@ def test_create_app_with_name_collision(
     app_group: AppGroup,
 ) -> None:
     app = AppFactory.create()
-    app.name = 'Test-Staging'
+    app.name = "Test-Staging"
     db.session.add(app)
     db.session.commit()
 
     app_group.app_id = app.id
-    app_group.name = 'App-Test-Staging-Group'
+    app_group.name = "App-Test-Staging-Group"
     db.session.add(app_group)
     db.session.commit()
 
@@ -447,7 +447,7 @@ def test_create_app_with_name_collision(
     # Make sure original app still has its app group
     app_groups = AppGroup.query.filter(AppGroup.app_id == app.id).all()
     assert len(app_groups) == 1
-    
+
 
 def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
     apps_url = url_for("api-apps.apps")
