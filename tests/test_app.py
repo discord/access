@@ -404,6 +404,51 @@ def test_create_app_with_additional_groups(
     assert test_app_group.is_owner is False
 
 
+def test_create_app_with_name_collision(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    app_group: AppGroup,
+) -> None:
+    app = AppFactory.create()
+    app.name = "Test-Staging"
+    db.session.add(app)
+    db.session.commit()
+
+    app_group.app_id = app.id
+    app_group.name = "App-Test-Staging-Group"
+    db.session.add(app_group)
+    db.session.commit()
+
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+
+    data = {"name": "Test"}
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.post(apps_url, json=data)
+    assert rep.status_code == 201
+    assert create_group_spy.call_count == 1
+    assert add_user_to_group_spy.call_count == 1
+    assert add_owner_to_group_spy.call_count == 1
+
+    data = rep.get_json()
+    assert db.session.get(App, data["id"]) is not None
+    assert data["name"] == "Test"
+
+    # Make sure new app doesn't end up with additional app groups from name collision
+    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    assert len(app_groups) == 1
+
+    # Make sure original app still has its app group
+    app_groups = AppGroup.query.filter(AppGroup.app_id == app.id).all()
+    assert len(app_groups) == 1
+
+
 def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
     apps_url = url_for("api-apps.apps")
     apps = AppFactory.create_batch(10)
