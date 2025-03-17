@@ -168,7 +168,7 @@ class CreateApp:
         )
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
-            if not type(existing_app_group) is AppGroup:
+            if type(existing_app_group) is not AppGroup:
                 existing_app_group_ids_to_update.append(existing_app_group.id)
 
         for existing_app_group_id in existing_app_group_ids_to_update:
