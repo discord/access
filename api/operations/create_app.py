@@ -168,12 +168,8 @@ class CreateApp:
         )
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
-            if type(existing_app_group) is AppGroup:
-                existing_app_group.app_id = app_id
-                existing_app_group.is_owner = False
-            else:
+            if not type(existing_app_group) is AppGroup:
                 existing_app_group_ids_to_update.append(existing_app_group.id)
-        db.session.commit()
 
         for existing_app_group_id in existing_app_group_ids_to_update:
             ModifyGroupType(
