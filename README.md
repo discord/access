@@ -9,7 +9,7 @@ Meet Access, a centralized portal for employees to transparently discover, reque
 ## Purpose
 
 The access service exists to help answer the following questions for each persona:
-
+ 
 - All Users
   - What do I have access to?
   - What does a teammate have access to that I don’t?
