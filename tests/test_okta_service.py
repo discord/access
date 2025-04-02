@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
@@ -90,22 +91,35 @@ def test_update_group_preserves_custom_attributes() -> None:
         service.okta_client.get_group = AsyncMock(return_value=(existing_group, None, None))
         service.okta_client.update_group = AsyncMock(return_value=(MagicMock(), None, None))
 
-        # Mock the _get_sessioned_okta_request_executor method
-        mock_executor = MagicMock()
-        mock_executor.__aenter__ = AsyncMock(return_value=None)
-        mock_executor.__aexit__ = AsyncMock(return_value=None)
-        service._get_sessioned_okta_request_executor = MagicMock(return_value=mock_executor)
+        # Create a mock for the SessionedOktaRequestExecutor context manager
+        # This is a special class that implements the async context manager protocol
+        class MockSessionedExecutor:
+            """Mock class for SessionedOktaRequestExecutor with async context manager methods"""
 
-        # Call update_group
-        service.update_group(group_id, "New Name", "New Description")
+            async def __aenter__(self) -> None:
+                """Mock for __aenter__ - called when entering an 'async with' block"""
+                return None
 
-        # Verify update_group was called with a payload that preserved the custom attribute
-        args, _ = service.okta_client.update_group.call_args
-        assert len(args) == 2
-        assert args[0] == group_id
+            async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+                """Mock for __aexit__ - called when exiting an 'async with' block"""
+                return None
 
-        # Check that the payload contains both the updated fields and the preserved custom attribute
-        updated_payload = args[1]
-        assert updated_payload.profile.name == "New Name"
-        assert updated_payload.profile.description == "New Description"
-        assert updated_payload.profile.allow_discord_access is True
+        # Create a mock context manager instance
+        mock_executor = MockSessionedExecutor()
+
+        # Use patch to mock the _get_sessioned_okta_request_executor method
+        # This avoids directly assigning to the method, which mypy doesn't like
+        with patch.object(service, "_get_sessioned_okta_request_executor", return_value=mock_executor):
+            # Call update_group
+            service.update_group(group_id, "New Name", "New Description")
+
+            # Verify update_group was called with a payload that preserved the custom attribute
+            args, _ = service.okta_client.update_group.call_args
+            assert len(args) == 2
+            assert args[0] == group_id
+
+            # Check that the payload contains both the updated fields and the preserved custom attribute
+            updated_payload = args[1]
+            assert updated_payload.profile.name == "New Name"
+            assert updated_payload.profile.description == "New Description"
+            assert updated_payload.profile.allow_discord_access is True
