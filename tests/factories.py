@@ -29,6 +29,7 @@ class GroupProfileFactory(factory.Factory[GroupProfile]):
         {
             "name": factory.Faker("pystr"),
             "description": factory.Faker("pystr"),
+            "allow_discord_access": None,  # Default to None for the custom attribute
         }
     )
 
