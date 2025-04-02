@@ -164,10 +164,38 @@ class OktaService:
     def update_group(self, groupId: str, name: str, description: str) -> Group:
         async def _update_group(groupId: str, name: str, description: str) -> Group:
             async with self._get_sessioned_okta_request_executor() as _:
+                # Fetch Existing Group Data
+                existing_group_data, _, get_error = await OktaService._retry(self.okta_client.get_group, groupId)
+                if get_error is not None:
+                    logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
+                    raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
+                if existing_group_data is None:
+                    logger.error(f"Group {groupId} not found in Okta before update.")
+                    raise Exception(f"Group {groupId} not found in Okta before update.")
+
+                # Extract Existing Profile
+                existing_profile = {}
+                if existing_group_data.profile:
+                    # Using __dict__ can be fragile if Okta changes internal representation.
+                    # If specific profile attributes are known, accessing them directly might be safer.
+                    # Filter out None values if needed by Okta API or desired.
+                    existing_profile = {k: v for k, v in existing_group_data.profile.__dict__.items() if v is not None}
+
+                # Merge Updated Profile Data
+                new_profile = {**existing_profile}  # Start with a copy of the existing profile
+                new_profile["name"] = name  # Update/set the name
+                new_profile["description"] = (
+                    description if description is not None else ""
+                )  # Update/set the description (handle None)
+
+                # Construct the New Payload
+                group_payload = OktaGroupType({"profile": new_profile})
+
+                # Modify the Update Call to use the new payload
                 group, _, error = await OktaService._retry(
                     self.okta_client.update_group,
                     groupId,
-                    OktaGroupType({"profile": {"name": name, "description": description}}),
+                    group_payload,
                 )
 
             if error is not None:

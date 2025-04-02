@@ -1,8 +1,9 @@
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 
-from api.services.okta_service import is_managed_group
+from api.services.okta_service import OktaService, is_managed_group
 
 
 def test_is_managed_group_with_allow_discord_access_false() -> None:
@@ -60,3 +61,51 @@ def test_is_managed_group_with_allow_discord_access_undefined() -> None:
         # Call the function and assert the expected result
         result = is_managed_group(group, group_ids_with_group_rules, OKTA_GROUP_PROFILE_CUSTOM_ATTR)
         assert result is True
+
+
+def test_update_group_preserves_custom_attributes() -> None:
+    """Test that update_group preserves custom attributes when updating a group."""
+    # Create a new event loop for this test
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Mock asyncio.run to use our event loop
+    with patch("asyncio.run", side_effect=lambda x: loop.run_until_complete(x)):
+        # Create OktaService instance with mock client
+        service = OktaService()
+        service.okta_client = MagicMock()
+
+        # Set up the mocks for the existing group and the update call
+        group_id = "test-group-id"
+
+        # Create a mock group with a profile that has the custom attribute
+        existing_group = MagicMock()
+        # Instead of setting __dict__ directly, configure the mock properly
+        existing_group.profile = MagicMock()
+        existing_group.profile.name = "Old Name"
+        existing_group.profile.description = "Old Description"
+        existing_group.profile.allow_discord_access = True
+
+        # Mock the get_group and update_group methods
+        service.okta_client.get_group = AsyncMock(return_value=(existing_group, None, None))
+        service.okta_client.update_group = AsyncMock(return_value=(MagicMock(), None, None))
+
+        # Mock the _get_sessioned_okta_request_executor method
+        mock_executor = MagicMock()
+        mock_executor.__aenter__ = AsyncMock(return_value=None)
+        mock_executor.__aexit__ = AsyncMock(return_value=None)
+        service._get_sessioned_okta_request_executor = MagicMock(return_value=mock_executor)
+
+        # Call update_group
+        service.update_group(group_id, "New Name", "New Description")
+
+        # Verify update_group was called with a payload that preserved the custom attribute
+        args, _ = service.okta_client.update_group.call_args
+        assert len(args) == 2
+        assert args[0] == group_id
+
+        # Check that the payload contains both the updated fields and the preserved custom attribute
+        updated_payload = args[1]
+        assert updated_payload.profile.name == "New Name"
+        assert updated_payload.profile.description == "New Description"
+        assert updated_payload.profile.allow_discord_access is True
