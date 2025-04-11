@@ -2455,6 +2455,12 @@
             "name": "q",
             "required": false,
             "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "owner_id",
+            "required": false,
+            "type": "string"
           }
         ],
         "responses": {

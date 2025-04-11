@@ -26,6 +26,10 @@ class SearchGroupPaginationRequestSchema(SearchPaginationRequestSchema):
     managed = fields.Boolean(load_only=True)
 
 
+class SearchRolePaginationRequestSchema(SearchPaginationRequestSchema):
+    owner_id = fields.String(load_only=True)
+
+
 class AuditOrderBy(Enum):
     moniker = 1  # Enum has a field called "name", so we can't use that
     created_at = 2
