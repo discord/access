@@ -209,11 +209,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       page: 0,
       per_page: 10,
       q: roleSearchInput,
+      owner_id: '@me',
     },
   });
   let roleSearchOptions = roleSearchData?.results ?? [];
-  // Filter to only show roles owned by the current user
-  roleSearchOptions = roleSearchOptions.filter((group) => ownedGroups.includes(group.id ?? ''));
 
   const {data: groupSearchData} = useGetGroups({
     queryParams: {

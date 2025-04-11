@@ -845,6 +845,7 @@ export type GetRolesQueryParams = {
   page?: number;
   per_page?: number;
   q?: string;
+  owner_id?: string;
 };
 
 export type GetRolesError = Fetcher.ErrorWrapper<{
