@@ -214,6 +214,10 @@ def access_request_created(
         send_slack_dm(approver, approver_message)
     logger.info(f"Approver message: {approver_message}")
 
+    # Send the message to the requester too
+    send_slack_dm(requester, approver_message)
+    logger.info("Requester received creation notification")
+
     # Post to the alerts channel
     send_slack_channel_message(approver_message)
 
@@ -247,6 +251,11 @@ def access_request_completed(
     if notify_requester:
         send_slack_dm(requester, requester_message)
     logger.info(f"Requester message: {requester_message}")
+
+    # Send the message to all approvers as well
+    for approver in approvers:
+        send_slack_dm(approver, requester_message)
+    logger.info("Approvers received completion notification")
 
     # Post to the alerts channel
     send_slack_channel_message(requester_message)
