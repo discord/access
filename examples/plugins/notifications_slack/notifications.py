@@ -2,17 +2,63 @@ from __future__ import print_function
 
 import logging
 import os
+import random
+import time
 from datetime import date, datetime, timedelta
-from typing import List, Optional
+from typing import Callable, List, Optional, TypeVar
 
 import pluggy
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 from api.models import AccessRequest, OktaGroup, OktaUser, RoleGroup
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
+
+# Type variable for generic return type
+T = TypeVar("T")
+
+
+def retry_operation(
+    operation_func: Callable[[], T], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
+) -> Optional[T]:
+    """
+    Execute an operation with retries, without propagating exceptions
+
+    Args:
+        operation_func: Function that performs the operation
+        max_attempts: Maximum number of retry attempts
+        base_delay: Initial delay between retries in seconds
+        max_delay: Maximum delay between retries in seconds
+
+    Returns:
+        The result of the operation or None if all attempts fail
+    """
+    attempt = 0
+    delay = base_delay
+
+    while attempt < max_attempts:
+        try:
+            return operation_func()
+        except Exception as e:
+            attempt += 1
+
+            # Log differently based on attempt number
+            if attempt >= max_attempts:
+                logger.error(f"Max retry attempts ({max_attempts}) reached. Last error: {str(e)}")
+                return None
+            else:
+                # Add jitter to avoid thundering herd
+                jitter = random.uniform(0, 0.1 * delay)
+                sleep_time = min(delay + jitter, max_delay)
+                logger.warning(
+                    f"Operation failed (attempt {attempt}/{max_attempts}): {str(e)}. Retrying in {sleep_time:.2f}s"
+                )
+                time.sleep(sleep_time)
+                delay = min(delay * 2, max_delay)  # Exponential backoff
+
+    return None
+
 
 # Initialize Slack client and signature verifier
 slack_token = os.environ["SLACK_BOT_TOKEN"]
@@ -79,7 +125,7 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
 
 
 def get_user_id_by_email(email: str) -> Optional[str]:
-    """Get Slack user ID by email.
+    """Get Slack user ID by email with retry logic.
 
     Args:
         email (str): The email of the user.
@@ -87,16 +133,20 @@ def get_user_id_by_email(email: str) -> Optional[str]:
     Returns:
         Optional[str]: The Slack user ID if found, otherwise None.
     """
-    try:
+
+    def lookup_user() -> str:
         response = client.users_lookupByEmail(email=email)
         return response["user"]["id"]
-    except SlackApiError as e:
-        logger.error(f"Error fetching user ID for {email}: {e.response['error']}")
-        return None
+
+    user_id = retry_operation(lookup_user)
+    if not user_id:
+        logger.error(f"Failed to fetch user ID for {email} after multiple attempts")
+
+    return user_id
 
 
 def send_slack_dm(user: OktaUser, message: str) -> None:
-    """Send a direct message to a Slack user.
+    """Send a direct message to a Slack user with retry logic.
 
     Args:
         user (OktaUser): The user to send the message to.
@@ -105,29 +155,37 @@ def send_slack_dm(user: OktaUser, message: str) -> None:
     user_id = get_user_id_by_email(user.email)
     if user_id:
         mention_message = f"<@{user_id}> {message}"
-        try:
+
+        def send_message() -> dict:
             response = client.chat_postMessage(
                 channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
             )
             logger.info(f"Slack DM sent: {response['ts']}")
-        except SlackApiError as e:
-            logger.error(f"Error sending Slack message: {e.response['error']}")
+            return response
+
+        result = retry_operation(send_message)
+        if not result:
+            logger.error(f"Failed to send Slack DM to {user.email} after multiple attempts")
 
 
 def send_slack_channel_message(message: str) -> None:
-    """Send a message to a Slack channel if the alerts_channel is defined.
+    """Send a message to a Slack channel with retry logic.
 
     Args:
         message (str): The message content.
     """
     if alerts_channel:
-        try:
+
+        def send_message() -> dict:
             response = client.chat_postMessage(
                 channel=alerts_channel, text=message, as_user=True, unfurl_links=True, unfurl_media=True
             )
             logger.info(f"Slack channel message sent: {response['ts']}")
-        except SlackApiError as e:
-            logger.error(f"Error sending Slack channel message: {e.response['error']}")
+            return response
+
+        result = retry_operation(send_message)
+        if not result:
+            logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
 
 
 @notification_hook_impl
