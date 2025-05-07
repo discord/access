@@ -168,24 +168,28 @@ def send_slack_dm(user: OktaUser, message: str) -> None:
             logger.error(f"Failed to send Slack DM to {user.email} after multiple attempts")
 
 
-def send_slack_channel_message(message: str) -> None:
+def send_slack_channel_message(user: OktaUser, message: str) -> None:
     """Send a message to a Slack channel with retry logic.
 
     Args:
         message (str): The message content.
     """
     if alerts_channel:
+        user_id = get_user_id_by_email(user.email)
 
-        def send_message() -> Dict[str, Any]:
-            response = client.chat_postMessage(
-                channel=alerts_channel, text=message, as_user=True, unfurl_links=True, unfurl_media=True
-            )
-            logger.info(f"Slack channel message sent: {response['ts']}")
-            return response
+        if user_id:
+            channel_message = f"<@{user_id}> - {message}"
 
-        result = retry_operation(send_message)
-        if not result:
-            logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
+            def send_message() -> Dict[str, Any]:
+                response = client.chat_postMessage(
+                    channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
+                )
+                logger.info(f"Slack channel message sent: {response['ts']}")
+                return response
+
+            result = retry_operation(send_message)
+            if not result:
+                logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
 
 
 @notification_hook_impl
@@ -219,7 +223,7 @@ def access_request_created(
     logger.info("Requester received creation notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(approver_message)
+    send_slack_channel_message(requester, approver_message)
 
 
 @notification_hook_impl
@@ -258,7 +262,7 @@ def access_request_completed(
     logger.info("Approvers received completion notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester_message)
+    send_slack_channel_message(requester, requester_message)
 
 
 @notification_hook_impl
@@ -284,7 +288,7 @@ def access_expiring_user(groups: List[OktaGroup], user: OktaUser, expiration_dat
     logger.info(f"User message: {message}")
 
     # Post to the alerts channel
-    send_slack_channel_message(message)
+    send_slack_channel_message(user, message)
 
 
 @notification_hook_impl
@@ -321,7 +325,7 @@ def access_expiring_owner(
         logger.info(f"Owner message: {message}")
 
         # Post to the alerts channel
-        send_slack_channel_message(message)
+        send_slack_channel_message(owner, message)
 
     if roles is not None and len(roles) > 0:
         expiring_access_url = get_base_url() + "/expiring-roles?owner_id=@me"
@@ -340,4 +344,4 @@ def access_expiring_owner(
         logger.info(f"Owner message: {message}")
 
         # Post to the alerts channel
-        send_slack_channel_message(message)
+        send_slack_channel_message(owner, message)
