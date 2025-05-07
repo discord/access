@@ -5,7 +5,7 @@ import os
 import random
 import time
 from datetime import date, datetime, timedelta
-from typing import Callable, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 import pluggy
 from slack_sdk import WebClient
@@ -156,7 +156,7 @@ def send_slack_dm(user: OktaUser, message: str) -> None:
     if user_id:
         mention_message = f"<@{user_id}> {message}"
 
-        def send_message() -> dict:
+        def send_message() -> Dict[str, Any]:
             response = client.chat_postMessage(
                 channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
             )
@@ -176,7 +176,7 @@ def send_slack_channel_message(message: str) -> None:
     """
     if alerts_channel:
 
-        def send_message() -> dict:
+        def send_message() -> Dict[str, Any]:
             response = client.chat_postMessage(
                 channel=alerts_channel, text=message, as_user=True, unfurl_links=True, unfurl_media=True
             )
