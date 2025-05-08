@@ -178,7 +178,7 @@ def send_slack_channel_message(user: OktaUser, message: str) -> None:
         user_id = get_user_id_by_email(user.email)
 
         if user_id:
-            channel_message = f"<{user.email}> - {message}"
+            channel_message = f"{user.email} - {message}"
 
             def send_message() -> Dict[str, Any]:
                 response = client.chat_postMessage(
