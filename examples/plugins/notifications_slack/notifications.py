@@ -233,7 +233,6 @@ def access_request_completed(
     group: OktaGroup,
     requester: OktaUser,
     approvers: List[OktaUser],
-    notify_requester: bool,
 ) -> None:
     """Notify the requester that their access request has been processed.
 
@@ -242,7 +241,6 @@ def access_request_completed(
         group (OktaGroup): The group for which access is requested.
         requester (OktaUser): The user requesting access.
         approvers (List[OktaUser]): The list of approvers.
-        notify_requester (bool): Whether to notify the requester.
     """
     access_request_url = get_base_url() + f"/requests/{access_request.id}"
     emoji = ":white_check_mark:" if access_request.status.lower() == "approved" else ":x:"
@@ -253,8 +251,7 @@ def access_request_completed(
     )
 
     # Send the message to the requester
-    if notify_requester:
-        send_slack_dm(requester, requester_message)
+    send_slack_dm(requester, requester_message)
     logger.info(f"Requester message: {requester_message}")
 
     # Send the message to all approvers (except the requester)
