@@ -173,6 +173,7 @@ def send_slack_channel_message(user: OktaUser, message: str) -> None:
 
     Args:
         message (str): The message content.
+        user (OktaUser): The user to relate the message to.
     """
     if alerts_channel:
         user_id = get_user_id_by_email(user.email)
