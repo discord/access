@@ -3,7 +3,7 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:22-alpine AS build-step
+FROM node:23-alpine AS build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
@@ -31,9 +31,17 @@ RUN sentry-cli releases finalize ${SENTRY_RELEASE}
 RUN touch sentry
 
 # Build step #3: build the API with the client as static files
-FROM python:3.13 AS false
+FROM python:3.13-alpine AS api-build
 ARG SENTRY_RELEASE=""
 WORKDIR /app
+
+# Install required system dependencies
+RUN apk add --no-cache python3 py3-pip py3-virtualenv
+
+# Create a virtual environment for the application
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
 COPY --from=build-step /app/build ./build
 
 RUN rm ./build/static/js/*.map
@@ -41,7 +49,9 @@ RUN mkdir ./api && mkdir ./migrations
 COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
 COPY ./config ./config
-RUN pip install -r ./api/requirements.txt
+
+# Install dependencies inside the virtual environment
+RUN pip install --no-cache-dir -r ./api/requirements.txt
 
 # Build an image that includes the optional sentry release push build step
 FROM false AS true
@@ -54,6 +64,9 @@ FROM ${PUSH_SENTRY_RELEASE}
 ENV FLASK_ENV=production
 ENV FLASK_APP=api.app:create_app
 ENV SENTRY_RELEASE=$SENTRY_RELEASE
+
+# Ensure Flask uses the virtual environment
+ENV PATH="/app/venv/bin:$PATH"
 
 EXPOSE 3000
 
