@@ -53,6 +53,12 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     app.logger.setLevel(logging.INFO)
     logging.root.setLevel(logging.INFO)
 
+    # Apply log filter to prevent sensitive token information from being logged
+    from api.log_filters import TokenSanitizingFilter
+
+    token_filter = TokenSanitizingFilter()
+    logging.getLogger("flask_oidc").addFilter(token_filter)
+
     logger = logging.getLogger(__name__)
 
     app.config.from_object("api.config")
