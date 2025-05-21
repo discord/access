@@ -40,7 +40,7 @@ class RedactingGunicornLogger(Logger):
 
         if path.startswith("/oidc/authorize"):
             # Override WSGI variable used by Gunicorn's access log formatter
-            environ["RAW_URI"] = path  # removes the query string from the log
+            environ["RAW_URI"] = f"{path}?[REDACTED]"
         else:
             # Optional: Set RAW_URI for other paths to preserve default behavior
             # so Gunicorn doesn't construct it from PATH_INFO + QUERY_STRING
