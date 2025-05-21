@@ -1,7 +1,8 @@
 import logging
 import re
+from typing import Any, Dict
 
-from gunicorn.glogging import Logger
+from gunicorn.glogging import Logger as GunicornLogger
 
 
 class TokenSanitizingFilter(logging.Filter):
@@ -11,7 +12,7 @@ class TokenSanitizingFilter(logging.Filter):
     see gunicorn_logging.py which provides specialized handling for those.
     """
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         if hasattr(record, "msg") and isinstance(record.msg, str):
             msg = record.msg
 
@@ -29,12 +30,13 @@ class TokenSanitizingFilter(logging.Filter):
         return True
 
 
-class RedactingGunicornLogger(Logger):
+# Ignore mypy error as GunicornLogger lacks proper type annotations in gunicorn stubs
+class RedactingGunicornLogger(GunicornLogger):  # type: ignore[misc]
     """
     Gunicorn logger that strips query strings from /oidc/authorize access logs.
     """
 
-    def access(self, resp, req, environ, request_time):
+    def access(self, resp: Any, req: Any, environ: Dict[str, Any], request_time: float) -> None:
         path = environ.get("PATH_INFO", "")
         query = environ.get("QUERY_STRING", "")
 
