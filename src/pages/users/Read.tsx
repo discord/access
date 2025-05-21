@@ -38,6 +38,7 @@ import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveG
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
 import {groupBy, displayUserName, displayGroupType} from '../../helpers';
 import {canManageGroup, isGroupOwner} from '../../authorization';
+import MembershipChip from '../../components/MembershipChip';
 
 function sortUserGroups(
   [aGroupId, aGroups]: [string, Array<OktaUserGroupMember>],
@@ -193,48 +194,22 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                         rowGap: '.5rem',
                       }}>
                       {groups.map((group) =>
-                        group.active_role_group_mapping == null ? (
-                          <Chip
-                            key="direct"
-                            label="Direct"
-                            color="primary"
-                            onDelete={
-                              group.active_group?.is_managed &&
-                              (currentUser.id === user.id || canManageGroup(currentUser, group.active_group))
-                                ? () => {
-                                    currentUser.id == user.id
-                                      ? onClickRemoveDirectAccess(
-                                          user.id,
-                                          group.active_group ?? ({} as PolymorphicGroup),
-                                          true,
-                                        )
-                                      : removeUserFromGroup(group.active_group?.id ?? '');
-                                  }
-                                : undefined
-                            }
+                        group.active_group ? (
+                          <MembershipChip
+                            key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
+                            user={group}
+                            group={group.active_group}
+                            removeRoleGroup={(roleGroup) => {
+                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, true);
+                            }}
+                            removeDirectAccessAsUser={() => {
+                              onClickRemoveDirectAccess(user.id, group.active_group!, true);
+                            }}
+                            removeDirectAccessAsGroupManager={() => {
+                              removeUserFromGroup(group.active_group!.id ?? '');
+                            }}
                           />
-                        ) : (
-                          <Chip
-                            key={group.active_role_group_mapping?.active_role_group?.name}
-                            label={group.active_role_group_mapping?.active_role_group?.name}
-                            variant="outlined"
-                            color="primary"
-                            onClick={() =>
-                              navigate(`/roles/${group.active_role_group_mapping?.active_role_group?.name}`)
-                            }
-                            onDelete={
-                              canManageGroup(currentUser, group.active_group) ||
-                              isGroupOwner(currentUser, group.active_role_group_mapping.active_role_group?.id ?? '')
-                                ? () =>
-                                    onClickRemoveGroupFromRole(
-                                      group.active_group ?? ({} as PolymorphicGroup),
-                                      group.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                      true,
-                                    )
-                                : undefined
-                            }
-                          />
-                        ),
+                        ) : null,
                       )}
                     </Stack>
                   </TableCell>
@@ -342,48 +317,22 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                         rowGap: '.5rem',
                       }}>
                       {groups.map((group) =>
-                        group.active_role_group_mapping == null ? (
-                          <Chip
-                            key="direct"
-                            label="Direct"
-                            color="primary"
-                            onDelete={
-                              group.active_group?.is_managed &&
-                              (currentUser.id === user.id || canManageGroup(currentUser, group.active_group))
-                                ? () => {
-                                    currentUser.id == user.id
-                                      ? onClickRemoveDirectAccess(
-                                          user.id,
-                                          group.active_group ?? ({} as PolymorphicGroup),
-                                          false,
-                                        )
-                                      : removeUserFromGroup(group.active_group?.id ?? '');
-                                  }
-                                : undefined
-                            }
+                        group.active_group ? (
+                          <MembershipChip
+                            key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
+                            user={group}
+                            group={group.active_group}
+                            removeRoleGroup={(roleGroup) => {
+                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, false);
+                            }}
+                            removeDirectAccessAsUser={() => {
+                              onClickRemoveDirectAccess(user.id, group.active_group!, false);
+                            }}
+                            removeDirectAccessAsGroupManager={() => {
+                              removeUserFromGroup(group.active_group!.id ?? '');
+                            }}
                           />
-                        ) : (
-                          <Chip
-                            key={group.active_role_group_mapping?.active_role_group?.name}
-                            label={group.active_role_group_mapping?.active_role_group?.name}
-                            variant="outlined"
-                            color="primary"
-                            onClick={() =>
-                              navigate(`/roles/${group.active_role_group_mapping?.active_role_group?.name}`)
-                            }
-                            onDelete={
-                              canManageGroup(currentUser, group.active_group) ||
-                              isGroupOwner(currentUser, group.active_role_group_mapping.active_role_group?.id ?? '')
-                                ? () =>
-                                    onClickRemoveGroupFromRole(
-                                      group.active_group ?? ({} as PolymorphicGroup),
-                                      group.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                      false,
-                                    )
-                                : undefined
-                            }
-                          />
-                        ),
+                        ) : null,
                       )}
                     </Stack>
                   </TableCell>
