@@ -53,11 +53,15 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     app.logger.setLevel(logging.INFO)
     logging.root.setLevel(logging.INFO)
 
-    # Apply log filter to prevent sensitive token information from being logged
+    # Apply log filter to prevent sensitive token information and authorization codes from being logged
     from api.log_filters import TokenSanitizingFilter
 
     token_filter = TokenSanitizingFilter()
+    # Apply filter to specific loggers
     logging.getLogger("flask_oidc").addFilter(token_filter)
+    logging.getLogger("werkzeug").addFilter(token_filter)  # For HTTP request logs
+    app.logger.addFilter(token_filter)  # For application logs
+    logging.root.addFilter(token_filter)  # Catch-all for any other loggers
 
     logger = logging.getLogger(__name__)
 
