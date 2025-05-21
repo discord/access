@@ -1,6 +1,8 @@
 import logging
 import re
 
+from gunicorn.glogging import Logger
+
 
 class TokenSanitizingFilter(logging.Filter):
     """Filter that redacts sensitive token information from Flask application logs.
@@ -25,3 +27,23 @@ class TokenSanitizingFilter(logging.Filter):
             record.msg = msg
 
         return True
+
+
+class RedactingGunicornLogger(Logger):
+    """
+    Gunicorn logger that strips query strings from /oidc/authorize access logs.
+    """
+
+    def access(self, resp, req, environ, request_time):
+        path = environ.get("PATH_INFO", "")
+        query = environ.get("QUERY_STRING", "")
+
+        if path.startswith("/oidc/authorize"):
+            # Override WSGI variable used by Gunicorn's access log formatter
+            environ["RAW_URI"] = path  # removes the query string from the log
+        else:
+            # Optional: Set RAW_URI for other paths to preserve default behavior
+            # so Gunicorn doesn't construct it from PATH_INFO + QUERY_STRING
+            environ["RAW_URI"] = f"{path}?{query}" if query else path
+
+        super().access(resp, req, environ, request_time)
