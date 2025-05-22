@@ -12,7 +12,7 @@ import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from '../../components/icons/MoreTime';
 import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';

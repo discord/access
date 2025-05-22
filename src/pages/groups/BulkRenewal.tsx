@@ -17,7 +17,7 @@ import Select from '@mui/material/Select';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from '../../components/icons/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 

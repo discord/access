@@ -10,7 +10,7 @@ import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from '../../components/icons/MoreTime';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
