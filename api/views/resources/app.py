@@ -149,6 +149,8 @@ class AppResource(MethodResource):
                         new_name_prefix,
                         app_group.name,
                     )
+                if app_group.is_owner:
+                    app_group.description = f"Owners of the {app.name} application"
                 if app_group.deleted_at is None:
                     okta.update_group(app_group.id, app_group.name, app_group.description)
 
