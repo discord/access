@@ -50,10 +50,12 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
 import {minTagTime, minTagTimeGroups} from '../../helpers';
+import {Tooltip} from '@mui/material';
 
 dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
+  enabled: boolean;
   setOpen(open: boolean): any;
   role?: RoleGroup;
   group?: PolymorphicGroup;
@@ -63,15 +65,28 @@ interface CreateRequestButtonProps {
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<RoleRequestIcon />}>
-      {props.group == null
-        ? 'Create Request'
-        : props.renew
-          ? 'Renew'
-          : props.owner
-            ? 'Request Ownership'
-            : 'Request Membership'}
-    </Button>
+    <Tooltip
+      title={
+        props.enabled
+          ? 'Request access on behalf of a role you own.'
+          : 'You do not own any roles for which to request access.'
+      }>
+      <span>
+        <Button
+          variant="contained"
+          onClick={() => props.setOpen(true)}
+          endIcon={<RoleRequestIcon />}
+          disabled={!props.enabled}>
+          {props.group == null
+            ? 'Create Request'
+            : props.renew
+              ? 'Renew'
+              : props.owner
+                ? 'Request Ownership'
+                : 'Request Membership'}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -490,6 +505,7 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 }
 
 interface CreateRequestProps {
+  enabled: boolean;
   currentUser: OktaUser;
   role?: RoleGroup;
   group?: PolymorphicGroup;
@@ -511,6 +527,7 @@ export default function CreateRequest(props: CreateRequestProps) {
   return (
     <>
       <CreateRequestButton
+        enabled={props.enabled}
         setOpen={setOpen}
         role={props.role}
         group={props.group}
