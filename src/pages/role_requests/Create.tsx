@@ -54,6 +54,7 @@ import {minTagTime, minTagTimeGroups} from '../../helpers';
 dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
+  enabled: boolean;
   setOpen(open: boolean): any;
   role?: RoleGroup;
   group?: PolymorphicGroup;
@@ -63,7 +64,11 @@ interface CreateRequestButtonProps {
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<RoleRequestIcon />}>
+    <Button
+      variant="contained"
+      onClick={() => props.setOpen(true)}
+      endIcon={<RoleRequestIcon />}
+      disabled={!props.enabled}>
       {props.group == null
         ? 'Create Request'
         : props.renew
@@ -490,6 +495,7 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 }
 
 interface CreateRequestProps {
+  enabled: boolean;
   currentUser: OktaUser;
   role?: RoleGroup;
   group?: PolymorphicGroup;
@@ -511,6 +517,7 @@ export default function CreateRequest(props: CreateRequestProps) {
   return (
     <>
       <CreateRequestButton
+        enabled={props.enabled}
         setOpen={setOpen}
         role={props.role}
         group={props.group}

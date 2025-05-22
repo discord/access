@@ -40,7 +40,7 @@ function userOwnsRoles(user: OktaUserGroupMember[]): boolean {
 
 export default function ListRoleRequests() {
   const currentUser = useCurrentUser();
-  const showCreateRequest = userOwnsRoles(currentUser.active_group_ownerships ?? []);
+  const enableCreateRequest = userOwnsRoles(currentUser.active_group_ownerships ?? []);
 
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,7 +138,7 @@ export default function ListRoleRequests() {
   return (
     <TableContainer component={Paper}>
       <TableTopBar title="Role Requests">
-        {showCreateRequest && <CreateRoleRequest currentUser={currentUser}></CreateRoleRequest>}
+        <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
         <TableTopBarAutocomplete
           options={searchRows.map(
             (row) =>
