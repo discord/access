@@ -57,4 +57,4 @@ ENV SENTRY_RELEASE=$SENTRY_RELEASE
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "api.wsgi:app"]
+CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "--logger-class", "api.log_filters.RedactingGunicornLogger", "api.wsgi:app"]
