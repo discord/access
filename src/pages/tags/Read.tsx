@@ -30,6 +30,7 @@ import {App, AppGroup, PolymorphicGroup, Tag} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
+import ChangeTitle from '../../tab-title';
 import AddApps from './AddApps';
 import AddGroups from './AddGroups';
 import CreateUpdateTag from './CreateUpdate';
@@ -117,6 +118,7 @@ export default function ReadTag() {
   const hasActions = tag != null && tag.deleted_at == null && isAccessAdmin(currentUser);
   return (
     <React.Fragment>
+      <ChangeTitle title={`${tag.name} Tag`} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>

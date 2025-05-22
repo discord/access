@@ -27,6 +27,7 @@ import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
 import DeleteGroup from './Delete';
 import AddUsers from './AddUsers';
@@ -206,6 +207,7 @@ export default function ReadGroup() {
 
   return (
     <React.Fragment>
+      <ChangeTitle title={group.name} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item sm={12}>
