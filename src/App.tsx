@@ -1,5 +1,5 @@
 import * as React from 'react';
-import {Link as RouterLink, Route, Routes} from 'react-router-dom';
+import {Link as RouterLink, Route, Routes, useSearchParams} from 'react-router-dom';
 
 import {createTheme, styled, ThemeProvider} from '@mui/material/styles';
 import Link from '@mui/material/Link';
@@ -16,6 +16,20 @@ import Container from '@mui/material/Container';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import AccountIcon from '@mui/icons-material/AccountCircle';
+import {
+  alpha,
+  CssBaseline,
+  PaletteMode,
+  Stack,
+  Theme,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  useMediaQuery,
+  useTheme,
+} from '@mui/material';
+import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
+import {lightGreen, red, yellow} from '@mui/material/colors';
 
 import AuditGroup from './pages/groups/Audit';
 import AuditRole from './pages/roles/Audit';
@@ -39,20 +53,7 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
-import {
-  alpha,
-  CssBaseline,
-  PaletteMode,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Tooltip,
-  useMediaQuery,
-  useTheme,
-} from '@mui/material';
-import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow} from '@mui/material/colors';
-
+import * as Sentry from '@sentry/react';
 const drawerWidth: number = 240;
 
 interface AppBarProps extends MuiAppBarProps {
@@ -266,11 +267,19 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
   );
 }
 
+interface AppStateProps {
+  source: string | undefined;
+  theme: Theme;
+  setMode: (mode: PaletteMode) => void;
+}
+
 export default function App() {
   const storedTheme = localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null;
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
   const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const source = searchParams.get('source') ?? undefined;
 
   // See https://discord.com/branding
   let theme = React.useMemo(() => {
@@ -337,7 +346,32 @@ export default function App() {
     });
   }, [mode]);
 
+  const updateMode = React.useCallback(
+    (mode: PaletteMode) => {
+      setMode(mode);
+      localStorage.setItem('user-set-color-scheme', mode);
+    },
+    [setMode],
+  );
+
+  return <AppState source={source} theme={theme} setMode={updateMode} />;
+}
+
+function AppState({source, theme, setMode}: AppStateProps) {
   useCurrentUser();
+
+  React.useEffect(() => {
+    if (source) {
+      Sentry.addBreadcrumb({
+        category: 'navigation',
+        message: `Access navigation from source referrer`,
+        data: {source},
+        level: 'info',
+      });
+      Sentry.setTag('source', source);
+    }
+  }, [source]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
