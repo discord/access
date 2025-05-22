@@ -13,7 +13,7 @@ import UserIcon from '@mui/icons-material/Person';
 import GroupIcon from '@mui/icons-material/People';
 import RoleIcon from '@mui/icons-material/Diversity3';
 import AppIcon from '@mui/icons-material/AppShortcut';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from './icons/MoreTime';
 import RequestFromMe from '@mui/icons-material/AssignmentInd';
 import RequestToMe from '@mui/icons-material/AssignmentReturn';
 import RequestAll from '@mui/icons-material/Assignment';
