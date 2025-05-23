@@ -137,7 +137,7 @@ export default function ListRoleRequests() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Role Requests" />
       <TableContainer component={Paper}>
         <TableTopBar title="Role Requests">
@@ -326,6 +326,6 @@ export default function ListRoleRequests() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

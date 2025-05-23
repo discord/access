@@ -126,7 +126,7 @@ export default function ListRequests() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Access Requests" />
       <TableContainer component={Paper}>
         <TableTopBar title="Access Requests">
@@ -297,6 +297,6 @@ export default function ListRequests() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

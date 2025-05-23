@@ -107,7 +107,7 @@ export default function ListApps() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Apps" />
       <TableContainer component={Paper}>
         <TableTopBar title="Applications">
@@ -174,6 +174,6 @@ export default function ListApps() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

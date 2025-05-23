@@ -191,7 +191,7 @@ export default function AuditUser() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title={`${displayUserName(user)} Audit`} />
       <TableContainer component={Paper}>
         <TableTopBar
@@ -387,6 +387,6 @@ export default function AuditUser() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

@@ -207,7 +207,7 @@ export default function ExpiringGroups() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Expiring Groups" />
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Groups">
@@ -401,6 +401,6 @@ export default function ExpiringGroups() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

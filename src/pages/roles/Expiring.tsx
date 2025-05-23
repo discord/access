@@ -211,7 +211,7 @@ export default function ExpiringRoless() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Expiring Roles" />
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Roles">
@@ -400,6 +400,6 @@ export default function ExpiringRoless() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

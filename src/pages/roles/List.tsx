@@ -107,7 +107,7 @@ export default function ListRoles() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Roles" />
       <TableContainer component={Paper}>
         <TableTopBar title="Roles">
@@ -180,6 +180,6 @@ export default function ListRoles() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

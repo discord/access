@@ -105,7 +105,7 @@ export default function ListTags() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Tags" />
       <TableContainer component={Paper}>
         <TableTopBar title="Tags">
@@ -169,6 +169,6 @@ export default function ListTags() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

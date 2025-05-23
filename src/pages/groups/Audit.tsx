@@ -194,7 +194,7 @@ export default function AuditGroup() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title={`${group.name} Audit`} />
       <TableContainer component={Paper}>
         <TableTopBar
@@ -398,6 +398,6 @@ export default function AuditGroup() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

@@ -105,7 +105,7 @@ export default function ListUsers() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Users" />
       <TableContainer component={Paper}>
         <TableTopBar title="Users">
@@ -185,6 +185,6 @@ export default function ListUsers() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

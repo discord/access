@@ -105,7 +105,7 @@ export default function ListGroups() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title="Groups" />
       <TableContainer component={Paper}>
         <TableTopBar title="Groups">
@@ -187,6 +187,6 @@ export default function ListGroups() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }

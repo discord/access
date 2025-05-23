@@ -189,7 +189,7 @@ export default function AuditRole() {
   };
 
   return (
-    <div>
+    <>
       <ChangeTitle title={`${role.name} Role Audit`} />
       <TableContainer component={Paper}>
         <TableTopBar
@@ -361,6 +361,6 @@ export default function AuditRole() {
           </TableFooter>
         </Table>
       </TableContainer>
-    </div>
+    </>
   );
 }
