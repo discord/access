@@ -51,9 +51,14 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow} from '@mui/material/colors';
+import {lightGreen, red, yellow, grey} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
+const darkBg1: string = '#181818';
+const darkBg2: string = '#242424';
+const darkBg3: string = '#080808';
+const darkModeText: string = '#EAEAEA';
+const darkPrimary: string = '#413E70';
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
@@ -173,6 +178,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
         <Toolbar
           sx={{
             pr: '24px', // keep right padding when drawer closed
+            backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.primary.main : darkPrimary),
           }}>
           <IconButton
             edge="start"
@@ -191,13 +197,17 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
           </IconButton>
         </Toolbar>
       </AppBar>
-      <Drawer variant="permanent" open={open}>
+      <Drawer
+        sx={{backgroundColor: (theme) => (theme.palette.mode === 'light' ? 'default' : darkBg2)}}
+        variant="permanent"
+        open={open}>
         <Toolbar
           sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
             px: [1],
+            backgroundColor: (theme) => (theme.palette.mode === 'light' ? 'default' : darkBg2),
           }}>
           <Link
             to="/"
@@ -209,7 +219,11 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
               px: 2,
               textDecoration: 'none',
             }}>
-            <Avatar src="/logo-square.png" variant="square" />
+            {useTheme().palette.mode === 'light' ? (
+              <Avatar src="/logo-square.png" variant="square" />
+            ) : (
+              <Avatar src="/logo-square-dark.png" variant="square" />
+            )}
             <Typography component="h1" variant="h5" sx={{px: 2}} color="text.accent">
               ACCESS
             </Typography>
@@ -219,18 +233,20 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
           </IconButton>
         </Toolbar>
         <Divider />
-        <List component="nav">
+        <List sx={{backgroundColor: (theme) => (theme.palette.mode === 'light' ? 'default' : darkBg2)}} component="nav">
           <NavItems open={open} />
         </List>
-        <Stack marginTop="auto" p={2}>
+        <Stack
+          sx={{backgroundColor: (theme) => (theme.palette.mode === 'light' ? 'default' : darkBg2)}}
+          marginTop="auto"
+          p={2}>
           <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
         </Stack>
       </Drawer>
       <Box
         component="main"
         sx={{
-          backgroundColor: (theme) =>
-            theme.palette.mode === 'light' ? theme.palette.grey[200] : theme.palette.grey[800],
+          backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.grey[200] : '#1E1E1E'),
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
@@ -278,7 +294,7 @@ export default function App() {
       palette: {
         mode,
         primary: {
-          main: '#5865F2',
+          main: mode === 'light' ? '#5865F2' : darkPrimary,
           light: '#A5B2FF',
         },
         secondary: {
@@ -294,7 +310,12 @@ export default function App() {
           main: '#57F287',
         },
         text: {
-          accent: mode === 'light' ? '#5865F2' : '#A5B2FF',
+          accent: mode === 'light' ? '#5865F2' : '#8385DF',
+          primary: mode === 'light' ? grey[900] : darkModeText,
+        },
+        background: {
+          paper: mode === 'light' ? '#FFFFFF' : darkBg1,
+          default: mode === 'light' ? '#FFFFFF' : darkBg1,
         },
       },
       components: {
@@ -313,6 +334,41 @@ export default function App() {
                   color: theme.palette.text.accent,
                 }),
             }),
+          },
+        },
+        MuiButtonBase: {
+          styleOverrides: {
+            root: {
+              color: mode === 'light' ? 'default' : darkModeText,
+            },
+          },
+        },
+        MuiButton: {
+          styleOverrides: {
+            root: {
+              color: mode === 'light' ? 'default' : darkModeText,
+            },
+          },
+        },
+        MuiSvgIcon: {
+          styleOverrides: {
+            root: {
+              color: mode === 'light' ? 'default' : darkModeText,
+            },
+          },
+        },
+        MuiDrawer: {
+          styleOverrides: {
+            paper: {
+              backgroundColor: mode === 'light' ? 'default' : darkBg2,
+            },
+          },
+        },
+        MuiDialog: {
+          styleOverrides: {
+            paper: {
+              backgroundColor: mode === 'light' ? 'default' : darkBg3,
+            },
           },
         },
       },
