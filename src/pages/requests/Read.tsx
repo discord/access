@@ -71,6 +71,7 @@ import {
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
+import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 
@@ -326,6 +327,9 @@ export default function ReadRequest() {
 
   return (
     <React.Fragment>
+      <ChangeTitle
+        title={`Request: ${displayUserName(accessRequest.requester)} ${accessRequest.request_ownership ? 'ownership of' : 'membership to'} ${accessRequest.requested_group!.name}`}
+      />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={5} lg={3}>

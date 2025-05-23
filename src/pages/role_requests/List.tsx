@@ -23,6 +23,7 @@ import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateRoleRequest from './Create';
 import {useGetRoleRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
@@ -136,192 +137,195 @@ export default function ListRoleRequests() {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <TableTopBar title="Role Requests">
-        <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
-        <TableTopBarAutocomplete
-          options={searchRows.map(
-            (row) =>
-              row.id +
-              ';' +
-              displayUserName(row.requester) +
-              ';' +
-              row.request_ownership +
-              ';' +
-              (row.requested_group?.name ?? '') +
-              ';' +
-              (row.status ?? '') +
-              ';' +
-              displayUserName(row.resolver),
-          )}
-          onChange={handleSearchSubmit}
-          onInputChange={(event, newInputValue) => {
-            setSearchInput(newInputValue?.split(';')[0] ?? '');
-          }}
-          defaultValue={searchQuery}
-          renderOption={(props, option, state) => {
-            const [id, displayName, ownership, group, status, resolver] = option.split(';');
-            return (
-              <li key={id} {...props}>
-                <Grid container alignItems="center">
-                  <Grid item>
-                    <Box>
-                      {displayName} {ownership == 'true' ? 'ownership of' : 'membership to'} {group}
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}
-                    </Typography>
+    <>
+      <ChangeTitle title="Role Requests" />
+      <TableContainer component={Paper}>
+        <TableTopBar title="Role Requests">
+          <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
+          <TableTopBarAutocomplete
+            options={searchRows.map(
+              (row) =>
+                row.id +
+                ';' +
+                displayUserName(row.requester) +
+                ';' +
+                row.request_ownership +
+                ';' +
+                (row.requested_group?.name ?? '') +
+                ';' +
+                (row.status ?? '') +
+                ';' +
+                displayUserName(row.resolver),
+            )}
+            onChange={handleSearchSubmit}
+            onInputChange={(event, newInputValue) => {
+              setSearchInput(newInputValue?.split(';')[0] ?? '');
+            }}
+            defaultValue={searchQuery}
+            renderOption={(props, option, state) => {
+              const [id, displayName, ownership, group, status, resolver] = option.split(';');
+              return (
+                <li key={id} {...props}>
+                  <Grid container alignItems="center">
+                    <Grid item>
+                      <Box>
+                        {displayName} {ownership == 'true' ? 'ownership of' : 'membership to'} {group}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}
+                      </Typography>
+                    </Grid>
                   </Grid>
-                </Grid>
-              </li>
-            );
-          }}
-        />
-      </TableTopBar>
-      <Table sx={{minWidth: 650}} size="small" aria-label="roles">
-        <TableHead>
-          <TableRow>
-            <TableCell>Requester Role</TableCell>
-            <TableCell>Requester</TableCell>
-            <TableCell>Request</TableCell>
-            <TableCell>Resolver</TableCell>
-            <TableCell>Status</TableCell>
-            <TableCell colSpan={2}>Created</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow
-              key={row.id}
-              sx={{
-                bgcolor: ({palette: {highlight}}) =>
-                  row.status == 'APPROVED'
-                    ? highlight.success.main
-                    : row.status == 'REJECTED'
-                      ? highlight.danger.main
-                      : 'inherit',
-              }}>
-              <TableCell>
-                {(row.requester_role?.deleted_at ?? null) != null ? (
-                  <Link
-                    to={`/groups/${row.requester_role?.id ?? ''}`}
-                    sx={{textDecoration: 'line-through', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.requester_role?.name ?? ''}
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/groups/${row.requester_role?.name ?? ''}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.requester_role?.name ?? ''}
-                  </Link>
-                )}
-              </TableCell>
-              <TableCell>
-                {(row.requester?.deleted_at ?? null) != null ? (
-                  <Link
-                    to={`/users/${row.requester?.id ?? ''}`}
-                    sx={{textDecoration: 'line-through', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row.requester)}
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/users/${row.requester?.email.toLowerCase() ?? ''}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row.requester)}
-                  </Link>
-                )}
-              </TableCell>
-              <TableCell>
-                {row.request_ownership ? 'Ownership of ' : 'Membership to '}
-                {(row.requested_group?.deleted_at ?? null) != null ? (
-                  <Link
-                    to={`/groups/${row.requested_group?.id ?? ''}`}
-                    sx={{textDecoration: 'line-through', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.requested_group?.name ?? ''}
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/groups/${row.requested_group?.name ?? ''}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.requested_group?.name ?? ''}
-                  </Link>
-                )}
-              </TableCell>
-              <TableCell>
-                {row.resolver == null && row.status != 'PENDING' ? (
-                  'Access'
-                ) : (row.resolver?.deleted_at ?? null) != null ? (
-                  <Link
-                    to={`/users/${row.resolver?.id ?? ''}`}
-                    sx={{textDecoration: 'line-through', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row.resolver)}
-                  </Link>
-                ) : (
-                  <Link
-                    to={`/users/${row.resolver?.email.toLowerCase() ?? ''}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row.resolver)}
-                  </Link>
-                )}
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/role-requests/${row.id}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  {row.status}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/role-requests/${row.id}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  <span title={row.created_at}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Button variant="contained" size="small" to={`/role-requests/${row.id}`} component={RouterLink}>
-                  View
-                </Button>
-              </TableCell>
+                </li>
+              );
+            }}
+          />
+        </TableTopBar>
+        <Table sx={{minWidth: 650}} size="small" aria-label="roles">
+          <TableHead>
+            <TableRow>
+              <TableCell>Requester Role</TableCell>
+              <TableCell>Requester</TableCell>
+              <TableCell>Request</TableCell>
+              <TableCell>Resolver</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell colSpan={2}>Created</TableCell>
             </TableRow>
-          ))}
-          {emptyRows > 0 && (
-            <TableRow style={{height: 33 * emptyRows}}>
-              <TableCell colSpan={6} />
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow
+                key={row.id}
+                sx={{
+                  bgcolor: ({palette: {highlight}}) =>
+                    row.status == 'APPROVED'
+                      ? highlight.success.main
+                      : row.status == 'REJECTED'
+                        ? highlight.danger.main
+                        : 'inherit',
+                }}>
+                <TableCell>
+                  {(row.requester_role?.deleted_at ?? null) != null ? (
+                    <Link
+                      to={`/groups/${row.requester_role?.id ?? ''}`}
+                      sx={{textDecoration: 'line-through', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.requester_role?.name ?? ''}
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/groups/${row.requester_role?.name ?? ''}`}
+                      sx={{textDecoration: 'none', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.requester_role?.name ?? ''}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {(row.requester?.deleted_at ?? null) != null ? (
+                    <Link
+                      to={`/users/${row.requester?.id ?? ''}`}
+                      sx={{textDecoration: 'line-through', color: 'inherit'}}
+                      component={RouterLink}>
+                      {displayUserName(row.requester)}
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/users/${row.requester?.email.toLowerCase() ?? ''}`}
+                      sx={{textDecoration: 'none', color: 'inherit'}}
+                      component={RouterLink}>
+                      {displayUserName(row.requester)}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {row.request_ownership ? 'Ownership of ' : 'Membership to '}
+                  {(row.requested_group?.deleted_at ?? null) != null ? (
+                    <Link
+                      to={`/groups/${row.requested_group?.id ?? ''}`}
+                      sx={{textDecoration: 'line-through', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.requested_group?.name ?? ''}
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/groups/${row.requested_group?.name ?? ''}`}
+                      sx={{textDecoration: 'none', color: 'inherit'}}
+                      component={RouterLink}>
+                      {row.requested_group?.name ?? ''}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {row.resolver == null && row.status != 'PENDING' ? (
+                    'Access'
+                  ) : (row.resolver?.deleted_at ?? null) != null ? (
+                    <Link
+                      to={`/users/${row.resolver?.id ?? ''}`}
+                      sx={{textDecoration: 'line-through', color: 'inherit'}}
+                      component={RouterLink}>
+                      {displayUserName(row.resolver)}
+                    </Link>
+                  ) : (
+                    <Link
+                      to={`/users/${row.resolver?.email.toLowerCase() ?? ''}`}
+                      sx={{textDecoration: 'none', color: 'inherit'}}
+                      component={RouterLink}>
+                      {displayUserName(row.resolver)}
+                    </Link>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Link
+                    to={`/role-requests/${row.id}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.status}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link
+                    to={`/role-requests/${row.id}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    <span title={row.created_at}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Button variant="contained" size="small" to={`/role-requests/${row.id}`} component={RouterLink}>
+                    View
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {emptyRows > 0 && (
+              <TableRow style={{height: 33 * emptyRows}}>
+                <TableCell colSpan={6} />
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={6}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TablePagination
-              rowsPerPageOptions={perPage}
-              colSpan={6}
-              count={totalRows}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              SelectProps={{
-                inputProps: {
-                  'aria-label': 'rows per page',
-                },
-                native: true,
-              }}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              ActionsComponent={TablePaginationActions}
-            />
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </TableContainer>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </>
   );
 }

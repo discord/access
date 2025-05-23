@@ -28,6 +28,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import {useGetUserById, usePutGroupMembersById} from '../../api/apiComponents';
 import {OktaUser, OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../../api/apiSchemas';
 import UserAvatar from './UserAvatar';
@@ -459,6 +460,7 @@ export default function ReadUser() {
 
   return (
     <React.Fragment>
+      <ChangeTitle title={displayUserName(user)} />
       <Container maxWidth="xl" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} alignItems="center">

@@ -77,6 +77,7 @@ import {
 
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
+import ChangeTitle from '../../tab-title';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -367,6 +368,9 @@ export default function ReadRoleRequest() {
 
   return (
     <React.Fragment>
+      <ChangeTitle
+        title={`Request: ${roleRequest.requester_role!.name} ${roleRequest.request_ownership ? 'ownership of' : 'membership to'} ${roleRequest.requested_group!.name}`}
+      />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={5} lg={3}>

@@ -22,6 +22,7 @@ import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
+import ChangeTitle from '../../tab-title';
 import {Stack} from '@mui/material';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 
@@ -104,83 +105,86 @@ export default function ListUsers() {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <TableTopBar title="Users">
-        <TableTopBarAutocomplete
-          options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
-          onInputChange={(event, newInputValue) => {
-            setSearchInput(newInputValue?.split(';')[0] ?? '');
-          }}
-          onChange={handleSearchSubmit}
-          defaultValue={searchQuery}
-          key={searchQuery}
-          renderOption={renderUserOption}
-        />
-      </TableTopBar>
-      <Table sx={{minWidth: 650}} size="small" aria-label="users">
-        <TableHead>
-          <TableRow>
-            <TableCell></TableCell>
-            <TableCell>Name</TableCell>
-            <TableCell>Email</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  {displayUserName(row)}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  {row.email.toLowerCase()}
-                </Link>
-              </TableCell>
+    <>
+      <ChangeTitle title="Users" />
+      <TableContainer component={Paper}>
+        <TableTopBar title="Users">
+          <TableTopBarAutocomplete
+            options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            onInputChange={(event, newInputValue) => {
+              setSearchInput(newInputValue?.split(';')[0] ?? '');
+            }}
+            onChange={handleSearchSubmit}
+            defaultValue={searchQuery}
+            key={searchQuery}
+            renderOption={renderUserOption}
+          />
+        </TableTopBar>
+        <Table sx={{minWidth: 650}} size="small" aria-label="users">
+          <TableHead>
+            <TableRow>
+              <TableCell></TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Email</TableCell>
             </TableRow>
-          ))}
-          {emptyRows > 0 && (
-            <TableRow style={{height: 37 * emptyRows}}>
-              <TableCell colSpan={6} />
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell>
+                  <Link
+                    to={`/users/${row.email.toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link
+                    to={`/users/${row.email.toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {displayUserName(row)}
+                  </Link>
+                </TableCell>
+                <TableCell>
+                  <Link
+                    to={`/users/${row.email.toLowerCase()}`}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
+                    component={RouterLink}>
+                    {row.email.toLowerCase()}
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+            {emptyRows > 0 && (
+              <TableRow style={{height: 37 * emptyRows}}>
+                <TableCell colSpan={6} />
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={3}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TablePagination
-              rowsPerPageOptions={perPage}
-              colSpan={3}
-              count={totalRows}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              SelectProps={{
-                inputProps: {
-                  'aria-label': 'rows per page',
-                },
-                native: true,
-              }}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              ActionsComponent={TablePaginationActions}
-            />
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </TableContainer>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </>
   );
 }
