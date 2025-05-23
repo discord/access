@@ -309,7 +309,7 @@ export default function App() {
           main: '#57F287',
         },
         text: {
-          accent: mode === 'light' ? '#5865F2' : '#646cbd',
+          accent: mode === 'light' ? '#5865F2' : '#8385DF',
           primary: mode === 'light' ? grey[900] : darkModeText,
         },
         background: {
