@@ -57,7 +57,7 @@ const drawerWidth: number = 240;
 const darkBg1: string = '#181818';
 const darkBg2: string = '#242424';
 const darkBg3: string = '#080808';
-const darkModeText: string = '#DDDDDD';
+const darkModeText: string = '#EAEAEA';
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
