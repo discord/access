@@ -58,6 +58,7 @@ const darkBg1: string = '#181818';
 const darkBg2: string = '#242424';
 const darkBg3: string = '#080808';
 const darkModeText: string = '#EAEAEA';
+const darkPrimary: string = '#413E70';
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
@@ -177,7 +178,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
         <Toolbar
           sx={{
             pr: '24px', // keep right padding when drawer closed
-            backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.primary.main : '#2A2C4F'),
+            backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.primary.main : darkPrimary),
           }}>
           <IconButton
             edge="start"
@@ -293,7 +294,7 @@ export default function App() {
       palette: {
         mode,
         primary: {
-          main: mode === 'light' ? '#5865F2' : '#2A2C4F',
+          main: mode === 'light' ? '#5865F2' : darkPrimary,
           light: '#A5B2FF',
         },
         secondary: {
