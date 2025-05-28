@@ -57,5 +57,5 @@ def get_access_owners() -> List[OktaUser]:
     return []
 
 
-def app_owners_group_description(app_name: str):
+def app_owners_group_description(app_name: str) -> str:
     return f"Owners of the {app_name} application"
