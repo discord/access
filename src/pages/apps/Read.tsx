@@ -28,6 +28,7 @@ import {useGetAppById} from '../../api/apiComponents';
 import {App, OktaUserGroupMember} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from '../groups/CreateUpdate';
 import CreateUpdateApp from './CreateUpdate';
 import DeleteApp from './Delete';
@@ -72,6 +73,7 @@ export default function ReadApp() {
   const hasActions = isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app?.id ?? '');
   return (
     <React.Fragment>
+      <ChangeTitle title={app.name} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12}>
