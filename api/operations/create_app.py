@@ -7,8 +7,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
-from api.helpers import app_owners_group_description
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.models.app_group import app_owners_group_description
 from api.operations.create_group import CreateGroup, GroupDict
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers

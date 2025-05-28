@@ -7,8 +7,8 @@ from sqlalchemy.orm import joinedload, selectinload
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
-from api.helpers import app_owners_group_description
 from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models.app_group import app_owners_group_description
 from api.operations import CreateApp, DeleteApp, ModifyAppTags
 from api.pagination import paginate
 from api.services import okta
