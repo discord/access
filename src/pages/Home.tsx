@@ -18,6 +18,8 @@ import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
 
+import {useTheme} from '@mui/material';
+
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
   general: ['Welcome to Access!', 'Overview', <GeneralIcon />],
@@ -150,6 +152,7 @@ function AccordionMaker(props: AccordionMakerProps) {
 
 export default function Home() {
   const [whichAccordion, setWhichAccordion] = React.useState('general'); // general, users, people-lead, app owner, admin, faq
+  const theme = useTheme();
 
   return (
     <React.Fragment>
@@ -160,14 +163,11 @@ export default function Home() {
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
-                    <Box
-                      component="img"
-                      src="/logo.png"
-                      alt="Access logo"
-                      sx={{
-                        width: 250,
-                      }}
-                    />
+                    {theme.palette.mode === 'light' ? (
+                      <Box component="img" src="/logo.png" alt="Access logo" sx={{width: 250}} />
+                    ) : (
+                      <Box component="img" src="/logo-dark.png" alt="Access logo" sx={{width: 250}} />
+                    )}
                   </Grid>
                 </Grid>
               </Grid>

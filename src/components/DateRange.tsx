@@ -116,7 +116,7 @@ function ButtonField(props: ButtonFieldProps) {
           color: theme.palette.text.secondary,
           position: 'absolute',
           // HACK: Match dark mode MUI Paper at elevation 1, which is where this is currently used
-          backgroundColor: theme.palette.mode === 'light' ? theme.palette.background.default : '#1E1E1E',
+          backgroundColor: theme.palette.mode === 'light' ? theme.palette.background.default : '#242424',
           marginLeft: '5px',
           paddingX: '3px',
           zIndex: '2',
