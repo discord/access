@@ -228,7 +228,7 @@ export default function ReadApp() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -318,7 +318,7 @@ export default function ReadApp() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -412,7 +412,7 @@ export default function ReadApp() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -502,7 +502,7 @@ export default function ReadApp() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>

@@ -379,7 +379,7 @@ export default function ReadGroup() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -468,7 +468,7 @@ export default function ReadGroup() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -632,7 +632,7 @@ export default function ReadGroup() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -786,7 +786,7 @@ export default function ReadGroup() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
