@@ -198,7 +198,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                         group.active_group ? (
                           <MembershipChip
                             key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
-                            user={group}
+                            okta_user_group_member={group}
                             group={group.active_group}
                             removeRoleGroup={(roleGroup) => {
                               onClickRemoveGroupFromRole(group.active_group!, roleGroup, true);
@@ -321,7 +321,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                         group.active_group ? (
                           <MembershipChip
                             key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
-                            user={group}
+                            okta_user_group_member={group}
                             group={group.active_group}
                             removeRoleGroup={(roleGroup) => {
                               onClickRemoveGroupFromRole(group.active_group!, roleGroup, false);

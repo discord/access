@@ -586,7 +586,7 @@ export default function ReadGroup() {
                                   directRoleOwnerships.has(user.active_user!.id) ? (
                                     <MembershipChip
                                       key={`${user.active_user?.id}${user.active_role_group_mapping?.active_role_group?.id}`}
-                                      user={user}
+                                      okta_user_group_member={user}
                                       group={group}
                                       removeRoleGroup={(roleGroup) => {
                                         removeGroupFromRole(group, roleGroup, true);
@@ -741,7 +741,7 @@ export default function ReadGroup() {
                                 {users.sort(sortOktaUserGroupMembers).map((user) => (
                                   <MembershipChip
                                     key={`${user.active_user?.id}${user.active_role_group_mapping?.active_role_group?.id}`}
-                                    user={user}
+                                    okta_user_group_member={user}
                                     group={group}
                                     removeRoleGroup={(roleGroup) => {
                                       removeGroupFromRole(group, roleGroup, false);
