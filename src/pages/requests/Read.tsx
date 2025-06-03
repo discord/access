@@ -74,7 +74,7 @@ import NotFound from '../NotFound';
 import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
-import {EmptyListEntry, EmptyListEntry} from '../../components/EmptyListEntry';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
