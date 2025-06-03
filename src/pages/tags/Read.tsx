@@ -228,7 +228,7 @@ export default function ReadTag() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -305,7 +305,7 @@ export default function ReadTag() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -408,7 +408,7 @@ export default function ReadTag() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
