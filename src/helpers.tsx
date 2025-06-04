@@ -130,5 +130,5 @@ export function sortGroupMemberRecords(users: Record<string, OktaUser>): OktaUse
 export function groupMemberships(
   memberships: Array<OktaUserGroupMember> | undefined,
 ): Record<string, Array<OktaUserGroupMember>> {
-  return groupBy(memberships ?? [], () => 'active_user.id');
+  return groupBy(memberships ?? [], (membership) => membership.active_user?.id ?? '');
 }
