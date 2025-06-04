@@ -22,7 +22,7 @@ import Typography from '@mui/material/Typography';
 import TagIcon from '@mui/icons-material/LocalOffer';
 
 import Ending from '../../components/Ending';
-import {groupBy, displayUserName} from '../../helpers';
+import {displayUserName, groupMemberships, sortGroupMembers} from '../../helpers';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {useGetAppById} from '../../api/apiComponents';
 import {App, OktaUserGroupMember} from '../../api/apiSchemas';
@@ -34,19 +34,6 @@ import CreateUpdateApp from './CreateUpdate';
 import DeleteApp from './Delete';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
-
-function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
-): number {
-  let aEmail = aUsers[0].active_user?.email ?? '';
-  let bEmail = bUsers[0].active_user?.email ?? '';
-  return aEmail.localeCompare(bEmail);
-}
-
-function groupMemberships(memberships: Array<OktaUserGroupMember> | undefined) {
-  return groupBy(memberships, (m) => m.active_user?.id);
-}
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
