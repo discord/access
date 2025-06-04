@@ -169,7 +169,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
   };
 
   return (
-    <Box sx={{display: 'flex'}}>
+    <Box sx={{display: 'flex', minWidth: '20rem', overflowX: 'hidden'}}>
       <AppBar position="absolute" open={open}>
         <Toolbar
           sx={{

@@ -56,6 +56,7 @@ import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -369,13 +370,7 @@ export default function ReadGroup() {
                             </TableRow>
                           ))
                       ) : (
-                        <TableRow key="roleownersgroups">
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              None
-                            </Typography>
-                          </TableCell>
-                        </TableRow>
+                        <EmptyListEntry />
                       )}
                     </TableBody>
                     <TableFooter>
