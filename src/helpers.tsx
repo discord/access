@@ -1,4 +1,4 @@
-import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap} from './api/apiSchemas';
+import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap, OktaUserGroupMember} from './api/apiSchemas';
 
 export const perPage: Array<number | {label: string; value: number}> = [5, 10, 20, 50, {label: 'All', value: -1}];
 
@@ -106,4 +106,29 @@ export function ownerCantAddSelf(tags: Tag[] | undefined, owner: boolean) {
 
 export function ownerCantAddSelfGroups(groups: PolymorphicGroup[], owner: boolean) {
   return ownerCantAddSelf(getActiveTagsFromGroups(groups), owner);
+}
+
+export function sortGroupMembers(
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+): number {
+  let aEmail = aUsers[0].active_user?.email ?? '';
+  let bEmail = bUsers[0].active_user?.email ?? '';
+  return aEmail.localeCompare(bEmail);
+}
+
+export function sortGroupMemberRecords(users: Record<string, OktaUser>): OktaUser[] {
+  const usersArray = Object.values(users); // Convert the object to an array
+  usersArray.sort((a, b) => {
+    const nameA = `${a.first_name} ${a.last_name}`;
+    const nameB = `${b.first_name} ${b.last_name}`;
+    return nameA.localeCompare(nameB);
+  });
+  return usersArray;
+}
+
+export function groupMemberships(
+  memberships: Array<OktaUserGroupMember> | undefined,
+): Record<string, Array<OktaUserGroupMember>> {
+  return groupBy(memberships ?? [], (membership) => membership.active_user?.id ?? '');
 }
