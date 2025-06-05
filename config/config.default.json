@@ -14,7 +14,13 @@
     "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens.",
     "HIDE_ROLE_REQUESTS": false,
     "HIDE_EXPIRING_ROLES": false,
-    "HIDE_OWNERSHIP_SELECTION": false
+    "HIDE_OWNERSHIP_SELECTION": false,
+    "HIDE_GROUP_OWNER_BTNS": false,
+    "HIDE_GROUP_ROLE_MEMBER_BTNS": false,
+    "HIDE_GROUP_EDIT_BTN": false,
+    "HIDE_ROLE_EDIT_BTN": false,
+    "HIDE_ROLE_OWNER_BTNS": false,
+    "HIDE_ROLE_GROUPS_ADD_BTNS": false
   },
   "BACKEND": {
     "NAME_VALIDATION_PATTERN": "[A-Z][A-Za-z0-9-]*",

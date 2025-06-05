@@ -56,6 +56,7 @@ import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
+import accessConfig from '../../config/accessConfig';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -264,11 +265,14 @@ export default function ReadGroup() {
                 </Stack>
                 <Divider />
                 <Stack direction="row" justifyContent="center">
-                  <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
-                    <div>
-                      <CreateUpdateGroup currentUser={currentUser} group={group} />
-                    </div>
-                  </Tooltip>
+                  {((group.type !== 'role_group' && !accessConfig.HIDE_GROUP_EDIT_BTN) || 
+                    (group.type === 'role_group' && !accessConfig.HIDE_ROLE_EDIT_BTN)) && (
+                    <Tooltip title="Edit" placement="top" PopperProps={moveTooltip}>
+                      <div>
+                        <CreateUpdateGroup currentUser={currentUser} group={group} />
+                      </div>
+                    </Tooltip>
+                  )}
                   <Tooltip title="Delete" placement="top" PopperProps={moveTooltip}>
                     <div>
                       <DeleteGroup currentUser={currentUser} group={group} />
@@ -306,7 +310,9 @@ export default function ReadGroup() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right" colSpan={2}>
-                          <AddGroups currentUser={currentUser} group={group} owner={true} />
+                          {!accessConfig.HIDE_ROLE_OWNER_BTNS && (
+                            <AddGroups currentUser={currentUser} group={group} owner={true} />
+                          )}
                         </TableCell>
                       </TableRow>
                       <TableRow>
@@ -395,7 +401,9 @@ export default function ReadGroup() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right" colSpan={2}>
-                          <AddGroups currentUser={currentUser} group={group} owner={false} />
+                          {!accessConfig.HIDE_ROLE_GROUPS_ADD_BTNS && (
+                            <AddGroups currentUser={currentUser} group={group} owner={false} />
+                          )}
                         </TableCell>
                       </TableRow>
                       <TableRow>
@@ -494,9 +502,13 @@ export default function ReadGroup() {
                     </TableCell>
                     <TableCell align="right">
                       <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
-                        <CreateRequest currentUser={currentUser} group={group} owner={true}></CreateRequest>
-                        <AddUsers currentUser={currentUser} group={group} owner={true} />
-                        <AddRoles currentUser={currentUser} group={group} owner={true} />
+                        {!accessConfig.HIDE_GROUP_OWNER_BTNS && (
+                          <>
+                            <CreateRequest currentUser={currentUser} group={group} owner={true}></CreateRequest>
+                            <AddUsers currentUser={currentUser} group={group} owner={true} />
+                            <AddRoles currentUser={currentUser} group={group} owner={true} />
+                          </>
+                        )}
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -656,7 +668,9 @@ export default function ReadGroup() {
                       <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
                         <CreateRequest currentUser={currentUser} group={group} owner={false}></CreateRequest>
                         <AddUsers currentUser={currentUser} group={group} />
-                        <AddRoles currentUser={currentUser} group={group} />
+                        {!accessConfig.HIDE_GROUP_ROLE_MEMBER_BTNS && (
+                          <AddRoles currentUser={currentUser} group={group} />
+                        )}
                       </Stack>
                     </TableCell>
                   </TableRow>
