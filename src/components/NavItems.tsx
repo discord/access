@@ -23,6 +23,7 @@ import ExpiringMyAccess from '@mui/icons-material/AccountBox';
 import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
+import accessConfig from '../config/accessConfig';
 
 interface ListItemLinkProps extends ListItemProps {
   to: string;
@@ -95,31 +96,35 @@ export default function NavItems(props: NavItemsProps) {
           <ListItemLink to="/requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
-      <ListItemLink
-        to="/role-requests"
-        displayText="Role Requests"
-        displayIcon={<RoleRequestIcon />}
-        open={openRoleRequests}
-        onClick={() => setOpenRoleRequests(!openRoleRequests)}
-        sx={{pb: 1}}
-      />
-      <Collapse component="li" in={props.open && openRoleRequests} timeout="auto" unmountOnExit>
-        <List disablePadding>
+      {!accessConfig.HIDE_ROLE_REQUESTS && (
+        <>
           <ListItemLink
-            to="/role-requests?requester_user_id=@me"
-            displayText="From Me"
-            displayIcon={<RequestFromMe />}
-            sx={{pl: 4}}
+            to="/role-requests"
+            displayText="Role Requests"
+            displayIcon={<RoleRequestIcon />}
+            open={openRoleRequests}
+            onClick={() => setOpenRoleRequests(!openRoleRequests)}
+            sx={{pb: 1}}
           />
-          <ListItemLink
-            to="/role-requests?assignee_user_id=@me"
-            displayText="Assigned to Me"
-            displayIcon={<RequestToMe />}
-            sx={{pl: 4}}
-          />
-          <ListItemLink to="/role-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
-        </List>
-      </Collapse>
+          <Collapse component="li" in={props.open && openRoleRequests} timeout="auto" unmountOnExit>
+            <List disablePadding>
+              <ListItemLink
+                to="/role-requests?requester_user_id=@me"
+                displayText="From Me"
+                displayIcon={<RequestFromMe />}
+                sx={{pl: 4}}
+              />
+              <ListItemLink
+                to="/role-requests?assignee_user_id=@me"
+                displayText="Assigned to Me"
+                displayIcon={<RequestToMe />}
+                sx={{pl: 4}}
+              />
+              <ListItemLink to="/role-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+            </List>
+          </Collapse>
+        </>
+      )}
       <Divider />
       <ListItemLink
         to="/expiring-groups"
@@ -146,24 +151,28 @@ export default function NavItems(props: NavItemsProps) {
           <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
-      <ListItemLink
-        to="/expiring-roles"
-        displayText="Expiring Roles"
-        displayIcon={<ExpiringRolesIcon />}
-        open={openExpiringRoles}
-        onClick={() => setOpenExpiringRoles(!openExpiringRoles)}
-      />
-      <Collapse component="li" in={props.open && openExpiringRoles} timeout="auto" unmountOnExit>
-        <List disablePadding>
+      {!accessConfig.HIDE_EXPIRING_ROLES && (
+        <>
           <ListItemLink
-            to="/expiring-roles?owner_id=@me"
-            displayText="Owned by Me"
-            displayIcon={<ExpiringOwnedByMe />}
-            sx={{pl: 4}}
+            to="/expiring-roles"
+            displayText="Expiring Roles"
+            displayIcon={<ExpiringRolesIcon />}
+            open={openExpiringRoles}
+            onClick={() => setOpenExpiringRoles(!openExpiringRoles)}
           />
-          <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
-        </List>
-      </Collapse>
+          <Collapse component="li" in={props.open && openExpiringRoles} timeout="auto" unmountOnExit>
+            <List disablePadding>
+              <ListItemLink
+                to="/expiring-roles?owner_id=@me"
+                displayText="Owned by Me"
+                displayIcon={<ExpiringOwnedByMe />}
+                sx={{pl: 4}}
+              />
+              <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+            </List>
+          </Collapse>
+        </>
+      )}
     </List>
   );
 }
