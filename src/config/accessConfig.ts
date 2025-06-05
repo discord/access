@@ -3,6 +3,9 @@ export interface AccessConfig {
   DEFAULT_ACCESS_TIME: string;
   NAME_VALIDATION_PATTERN: string;
   NAME_VALIDATION_ERROR: string;
+  HIDE_ROLE_REQUESTS: boolean;
+  HIDE_EXPIRING_ROLES: boolean;
+  HIDE_OWNERSHIP_SELECTION: boolean;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface

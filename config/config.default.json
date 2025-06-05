@@ -11,7 +11,10 @@
     },
     "DEFAULT_ACCESS_TIME": "1209600",
     "NAME_VALIDATION_PATTERN": "^[A-Z][A-Za-z0-9\\-]*$",
-    "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens."
+    "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens.",
+    "HIDE_ROLE_REQUESTS": false,
+    "HIDE_EXPIRING_ROLES": false,
+    "HIDE_OWNERSHIP_SELECTION": false
   },
   "BACKEND": {
     "NAME_VALIDATION_PATTERN": "[A-Z][A-Za-z0-9-]*",

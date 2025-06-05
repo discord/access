@@ -308,7 +308,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       defaultValues={{
         group: props.group,
         until: accessConfig.DEFAULT_ACCESS_TIME,
-        ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
+        ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : 
+                       accessConfig.HIDE_OWNERSHIP_SELECTION ? 'member' : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>
       <DialogTitle>
@@ -379,41 +380,43 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               />
             </Grid>
             <Grid item xs={1} />
-            <Grid item xs={2}>
-              <ToggleButtonGroupElement
-                name="ownerOrMember"
-                enforceAtLeastOneSelected
-                exclusive
-                required
-                disabled={props.owner != null}
-                onChange={(event, value) => {
-                  updateUntil(undefined, value == 'owner');
-                }}
-                options={
-                  props.owner != null
-                    ? [
-                        {
-                          id: 'owner',
-                          label: 'Owner',
-                        },
-                        {
-                          id: 'member',
-                          label: 'Member',
-                        },
-                      ]
-                    : [
-                        {
-                          id: 'owner',
-                          label: 'Owner',
-                        },
-                        {
-                          id: 'member',
-                          label: 'Member',
-                        },
-                      ]
-                }
-              />
-            </Grid>
+            {!accessConfig.HIDE_OWNERSHIP_SELECTION && (
+              <Grid item xs={2}>
+                <ToggleButtonGroupElement
+                  name="ownerOrMember"
+                  enforceAtLeastOneSelected
+                  exclusive
+                  required
+                  disabled={props.owner != null}
+                  onChange={(event, value) => {
+                    updateUntil(undefined, value == 'owner');
+                  }}
+                  options={
+                    props.owner != null
+                      ? [
+                          {
+                            id: 'owner',
+                            label: 'Owner',
+                          },
+                          {
+                            id: 'member',
+                            label: 'Member',
+                          },
+                        ]
+                      : [
+                          {
+                            id: 'owner',
+                            label: 'Owner',
+                          },
+                          {
+                            id: 'member',
+                            label: 'Member',
+                          },
+                        ]
+                  }
+                />
+              </Grid>
+            )}
             <Grid item xs={1} />
           </Grid>
         </FormControl>
