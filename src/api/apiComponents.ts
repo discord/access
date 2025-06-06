@@ -1183,6 +1183,37 @@ export const useGetUsers = <TData = Schemas.UserPagination>(
   });
 };
 
+export type GetAllUsersError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.UserPagination;
+}>;
+
+export type GetAllUsersVariables = ApiContext['fetcherOptions'];
+
+export const fetchGetAllUsers = (variables: GetAllUsersVariables, signal?: AbortSignal) =>
+  apiFetch<undefined, GetAllUsersError, undefined, {}, {}, {}>({
+    url: '/api/users',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAllUsers = <TData = Schemas.UserPagination>(
+  variables: GetAllUsersVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<undefined, GetAllUsersError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<undefined, GetAllUsersError, TData>({
+    queryKey: queryKeyFn({path: '/api/users', operationId: 'getAllUsers', variables}),
+    queryFn: ({signal}) => fetchGetAllUsers({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type GetUserByIdPathParams = {
   userId: string;
 };
@@ -1310,4 +1341,9 @@ export type QueryOperation =
       path: '/api/users/{userId}';
       operationId: 'getUserById';
       variables: GetUserByIdVariables;
+    }
+  | {
+      path: '/api/users';
+      operationId: 'getAllUsers';
+      variables: GetAllUsersVariables;
     };
