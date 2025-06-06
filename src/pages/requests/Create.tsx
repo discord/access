@@ -309,6 +309,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         group: props.group,
         until: accessConfig.DEFAULT_ACCESS_TIME,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
+        reason: accessConfig.REASON_TEMPLATE || '',
       }}
       onSuccess={(formData) => submit(formData)}>
       <DialogTitle>
@@ -434,7 +435,35 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="reason"
             multiline
             rows={4}
-            validation={{maxLength: 1024}}
+            placeholder={accessConfig.REASON_TEMPLATE}
+            validation={{
+              required: 'Reason is required',
+              maxLength: 1024,
+              validate: (value: string) => {
+                // Check if reason is empty or only whitespace
+                if (!value || value.trim().length === 0) {
+                  return 'Reason is required';
+                }
+
+                // Check if reason is the same as the template
+                if (accessConfig.REASON_TEMPLATE && value.trim() === accessConfig.REASON_TEMPLATE.trim()) {
+                  return 'Please fill out the template with your specific information instead of submitting the template as-is.';
+                }
+
+                // Check if required template fields are present
+                if (accessConfig.REASON_TEMPLATE_REQUIRED && value) {
+                  const missingFields = accessConfig.REASON_TEMPLATE_REQUIRED.filter(
+                    (field: string) => !value.includes(field),
+                  );
+
+                  if (missingFields.length > 0) {
+                    return `The following required fields are missing from your reason: ${missingFields.join(', ')}`;
+                  }
+                }
+
+                return true;
+              },
+            }}
             parseError={(error) => {
               if (error?.message != '') {
                 return error?.message ?? '';

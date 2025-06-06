@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +9,8 @@ logger = logging.getLogger(__name__)
 BACKEND = "BACKEND"
 NAME_VALIDATION_PATTERN = "NAME_VALIDATION_PATTERN"
 NAME_VALIDATION_ERROR = "NAME_VALIDATION_ERROR"
+REASON_TEMPLATE = "REASON_TEMPLATE"
+REASON_TEMPLATE_REQUIRED = "REASON_TEMPLATE_REQUIRED"
 
 
 class UndefinedConfigKeyError(Exception):
@@ -27,9 +29,17 @@ class ConfigValidationError(Exception):
 
 
 class AccessConfig:
-    def __init__(self, name_pattern: str, name_validation_error: str):
+    def __init__(
+        self,
+        name_pattern: str,
+        name_validation_error: str,
+        reason_template: Optional[str] = None,
+        reason_template_required: Optional[list[str]] = None,
+    ):
         self.name_pattern = name_pattern
         self.name_validation_error = name_validation_error
+        self.reason_template = reason_template
+        self.reason_template_required = reason_template_required
 
 
 def _get_config_value(config: dict[str, Any], key: str) -> Any:
@@ -77,9 +87,15 @@ def _load_access_config() -> AccessConfig:
     name_pattern = _get_config_value(config, NAME_VALIDATION_PATTERN)
     name_validation_error = _get_config_value(config, NAME_VALIDATION_ERROR)
 
+    # Reason template and required fields are optional
+    reason_template = config.get(REASON_TEMPLATE)
+    reason_template_required = config.get(REASON_TEMPLATE_REQUIRED)
+
     return AccessConfig(
         name_pattern=name_pattern,
         name_validation_error=name_validation_error,
+        reason_template=reason_template,
+        reason_template_required=reason_template_required,
     )
 
 

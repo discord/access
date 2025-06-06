@@ -11,6 +11,8 @@ const DEFAULT_ACCESS_TIME = 'DEFAULT_ACCESS_TIME';
 const FRONTEND = 'FRONTEND';
 const NAME_VALIDATION_PATTERN = 'NAME_VALIDATION_PATTERN';
 const NAME_VALIDATION_ERROR = 'NAME_VALIDATION_ERROR';
+const REASON_TEMPLATE = 'REASON_TEMPLATE';
+const REASON_TEMPLATE_REQUIRED = 'REASON_TEMPLATE_REQUIRED';
 
 class UndefinedConfigError extends Error {
   constructor(key, obj) {
@@ -58,6 +60,24 @@ function validate_override_config(overrideConfig) {
     throw new AccessConfigValidationError(
       `If ${NAME_VALIDATION_PATTERN} is present, ${NAME_VALIDATION_ERROR} must also be overridden.`,
     );
+  }
+
+  if (REASON_TEMPLATE in overrideConfig && !(REASON_TEMPLATE_REQUIRED in overrideConfig)) {
+    throw new AccessConfigValidationError(
+      `If ${REASON_TEMPLATE} is present, ${REASON_TEMPLATE_REQUIRED} must also be overridden.`,
+    );
+  }
+  // ensure that REASON_TEMPLATE has all required fields in REASON_TEMPLATE_REQUIRED
+  if (REASON_TEMPLATE in overrideConfig && REASON_TEMPLATE_REQUIRED in overrideConfig) {
+    const requiredFields = getConfig(overrideConfig, REASON_TEMPLATE_REQUIRED);
+    const reasonTemplate = getConfig(overrideConfig, REASON_TEMPLATE);
+    for (const field of requiredFields) {
+      if (!(field in reasonTemplate)) {
+        throw new AccessConfigValidationError(
+          `Field '${field}' is required in ${REASON_TEMPLATE} when ${REASON_TEMPLATE_REQUIRED} is set.`,
+        );
+      }
+    }
   }
 }
 
