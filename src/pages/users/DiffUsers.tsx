@@ -4,6 +4,7 @@ import {
   Card,
   CardContent,
   Typography,
+  Link,
   List,
   ListItem,
   ListItemText,
@@ -18,6 +19,7 @@ import {
 } from '@mui/material';
 import {useGetAllUsers, useGetUserById} from '../../api/apiComponents';
 import {OktaUser, OktaUserGroupMember} from '../../api/apiSchemas';
+import {Link as RouterLink} from 'react-router-dom';
 
 const groupTypeLabels = {
   role_group: 'Role Group',
@@ -88,115 +90,59 @@ const findCommonOwnerships = (user1: OktaUser, user2: OktaUser): OktaUserGroupMe
   return commonOwnerships;
 };
 
-// Function to find memberships unique to user1
-const findUniqueMembershipsUser1 = (user1: OktaUser, user2: OktaUser): OktaUserGroupMember[] => {
-  if (!user1?.active_group_memberships?.length) {
+// Function to find memberships, left join on primary
+const findUniqueMemberships = (primary: OktaUser, compareUser: OktaUser): OktaUserGroupMember[] => {
+  if (!primary?.active_group_memberships?.length) {
     return [];
   }
 
-  // If user2 has no memberships, all of user1's memberships are unique
-  if (!user2?.active_group_memberships?.length) {
-    return user1.active_group_memberships;
+  // If compareUser has no memberships, all of primary's memberships are unique
+  if (!compareUser?.active_group_memberships?.length) {
+    return primary.active_group_memberships;
   }
 
-  // Collect all group IDs from user2 for comparison
-  const user2GroupIds = new Set<string>();
+  // Collect all group IDs from compareUser for comparison
+  const compareUserGroupIds = new Set<string>();
 
-  user2.active_group_memberships.forEach((membership) => {
+  compareUser.active_group_memberships.forEach((membership) => {
     const groupId = membership.group?.id || membership.active_group?.id;
     if (groupId) {
-      user2GroupIds.add(groupId);
+      compareUserGroupIds.add(groupId);
     }
   });
 
-  // Return user1's memberships that are not in user2's groups
-  return user1.active_group_memberships.filter((membership) => {
+  // Return primary's memberships that are not in compareUser's groups
+  return primary.active_group_memberships.filter((membership) => {
     const groupId = membership.group?.id || membership.active_group?.id;
-    return groupId && !user2GroupIds.has(groupId);
+    return groupId && !compareUserGroupIds.has(groupId);
   });
 };
 
-// Function to find memberships unique to user2
-const findUniqueMembershipsUser2 = (user1: OktaUser, user2: OktaUser): OktaUserGroupMember[] => {
-  if (!user2?.active_group_memberships?.length) {
+// Function to find unique ownerships, left join on primary
+const findUniqueOwnerships = (primary: OktaUser, compareUser: OktaUser): OktaUserGroupMember[] => {
+  if (!primary?.active_group_ownerships?.length) {
     return [];
   }
 
-  // If user1 has no memberships, all of user2's memberships are unique
-  if (!user1?.active_group_memberships?.length) {
-    return user2.active_group_memberships;
+  // If compareUser has no ownerships, all of primary's ownerships are unique
+  if (!compareUser?.active_group_ownerships?.length) {
+    return primary.active_group_ownerships;
   }
 
-  // Collect all group IDs from user1 for comparison
-  const user1GroupIds = new Set<string>();
+  // Collect all group IDs from compareUser for comparison
+  const compareUserGroupIds = new Set<string>();
 
-  user1.active_group_memberships.forEach((membership) => {
-    const groupId = membership.group?.id || membership.active_group?.id;
+  compareUser.active_group_ownerships.forEach((ownership) => {
+    const groupId = ownership.group?.id || ownership.active_group?.id;
     if (groupId) {
-      user1GroupIds.add(groupId);
+      compareUserGroupIds.add(groupId);
     }
   });
 
-  // Return user2's memberships that are not in user1's groups
-  return user2.active_group_memberships.filter((membership) => {
-    const groupId = membership.group?.id || membership.active_group?.id;
-    return groupId && !user1GroupIds.has(groupId);
-  });
-};
-
-// Function to find ownerships unique to user1
-const findUniqueOwnershipsUser1 = (user1: OktaUser, user2: OktaUser): OktaUserGroupMember[] => {
-  if (!user1?.active_group_ownerships?.length) {
-    return [];
-  }
-
-  // If user2 has no ownerships, all of user1's ownerships are unique
-  if (!user2?.active_group_ownerships?.length) {
-    return user1.active_group_ownerships;
-  }
-
-  // Collect all group IDs from user2 for comparison
-  const user2GroupIds = new Set<string>();
-
-  user2.active_group_ownerships.forEach((ownership) => {
+  // Return primary's ownerships that are not in compareUser's groups
+  return primary.active_group_ownerships.filter((ownership) => {
     const groupId = ownership.group?.id || ownership.active_group?.id;
-    if (groupId) {
-      user2GroupIds.add(groupId);
-    }
-  });
-
-  // Return user1's ownerships that are not in user2's groups
-  return user1.active_group_ownerships.filter((ownership) => {
-    const groupId = ownership.group?.id || ownership.active_group?.id;
-    return groupId && !user2GroupIds.has(groupId);
-  });
-};
-
-// Function to find ownerships unique to user2
-const findUniqueOwnershipsUser2 = (user1: OktaUser, user2: OktaUser): OktaUserGroupMember[] => {
-  if (!user2?.active_group_ownerships?.length) {
-    return [];
-  }
-
-  // If user1 has no ownerships, all of user2's ownerships are unique
-  if (!user1?.active_group_ownerships?.length) {
-    return user2.active_group_ownerships;
-  }
-
-  // Collect all group IDs from user1 for comparison
-  const user1GroupIds = new Set<string>();
-
-  user1.active_group_ownerships.forEach((ownership) => {
-    const groupId = ownership.group?.id || ownership.active_group?.id;
-    if (groupId) {
-      user1GroupIds.add(groupId);
-    }
-  });
-
-  // Return user2's ownerships that are not in user1's groups
-  return user2.active_group_ownerships.filter((ownership) => {
-    const groupId = ownership.group?.id || ownership.active_group?.id;
-    return groupId && !user1GroupIds.has(groupId);
+    return groupId && !compareUserGroupIds.has(groupId);
   });
 };
 
@@ -205,7 +151,7 @@ interface MembershipListProps {
   emptyMessage: string;
 }
 
-function MembershipList({memberships, emptyMessage}: MembershipListProps) {
+const MembershipList = ({memberships, emptyMessage}: MembershipListProps) => {
   if (memberships.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{p: 2}}>
@@ -227,7 +173,24 @@ function MembershipList({memberships, emptyMessage}: MembershipListProps) {
               <ListItemText
                 primary={
                   <Box display="flex" alignItems="center" gap={1}>
-                    <Typography variant="body1">{groupName || 'Unnamed Group'}</Typography>
+                    <Typography variant="body1">
+                      <Link
+                        to={`/groups/${groupName}`}
+                        sx={{
+                          textDecoration: 'none',
+                          color: 'inherit',
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            color: 'primary.main',
+                            cursor: 'pointer',
+                          },
+                        }}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        component={RouterLink}>
+                        {groupName ?? 'Unnamed Group'}
+                      </Link>
+                    </Typography>
                     <Chip
                       label={
                         groupType ? groupTypeLabels[groupType as keyof typeof groupTypeLabels] || 'unknown' : 'unknown'
@@ -247,14 +210,13 @@ function MembershipList({memberships, emptyMessage}: MembershipListProps) {
       })}
     </List>
   );
-}
+};
 
 export default function DiffUsers() {
   // Store the basic user selections from the dropdown
   const [selectedUser1, setSelectedUser1] = React.useState<OktaUser | null>(null);
   const [selectedUser2, setSelectedUser2] = React.useState<OktaUser | null>(null);
   const [isSameUser, setIsSameUser] = React.useState<boolean>(false);
-  const [tabValue, setTabValue] = React.useState(0);
 
   // Fetch all users for the dropdown options
   const {data: allUsers, isLoading: isLoadingAllUsers, error: errorAllUsers} = useGetAllUsers({});
@@ -286,7 +248,6 @@ export default function DiffUsers() {
     },
   );
 
-  const isLoading = isLoadingAllUsers || (selectedUser1 && isLoadingUser1) || (selectedUser2 && isLoadingUser2);
   const error = errorAllUsers || errorUser1 || errorUser2;
 
   // Reset the comparison view
@@ -294,11 +255,6 @@ export default function DiffUsers() {
     setSelectedUser1(null);
     setSelectedUser2(null);
     setIsSameUser(false);
-  };
-
-  // Handle tab change
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
   };
 
   // Update isSameUser flag whenever selections change
@@ -428,19 +384,11 @@ export default function DiffUsers() {
   const commonMemberships = findCommonMemberships(user1Details, user2Details);
   const commonOwnerships = findCommonOwnerships(user1Details, user2Details);
 
-  const uniqueMembershipsUser1 = findUniqueMembershipsUser1(user1Details, user2Details);
-  const uniqueMembershipsUser2 = findUniqueMembershipsUser2(user1Details, user2Details);
+  const uniqueMembershipsUser1 = findUniqueMemberships(user1Details, user2Details);
+  const uniqueMembershipsUser2 = findUniqueMemberships(user2Details, user1Details);
 
-  const uniqueOwnershipsUser1 = findUniqueOwnershipsUser1(user1Details, user2Details);
-  const uniqueOwnershipsUser2 = findUniqueOwnershipsUser2(user1Details, user2Details);
-
-  // Log user properties for debugging
-  console.log('User comparison data:', {
-    user1: user1Details,
-    user2: user2Details,
-    commonMembershipsCount: commonMemberships.length,
-    commonOwnershipsCount: commonOwnerships.length,
-  });
+  const uniqueOwnershipsUser1 = findUniqueOwnerships(user1Details, user2Details);
+  const uniqueOwnershipsUser2 = findUniqueOwnerships(user2Details, user1Details);
 
   return (
     <Box>
@@ -449,7 +397,7 @@ export default function DiffUsers() {
       </Typography>
 
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Button variant="outlined" onClick={resetComparison}>
+        <Button variant="contained" size="large" sx={{height: '50px'}} onClick={resetComparison}>
           Compare Different Users
         </Button>
         {isSameUser && (
