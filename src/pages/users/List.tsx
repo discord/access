@@ -1,7 +1,6 @@
 import React from 'react';
 
-import {Link as RouterLink, useSearchParams, useNavigate} from 'react-router-dom';
-import Link from '@mui/material/Link';
+import {useSearchParams, useNavigate} from 'react-router-dom';
 
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -12,18 +11,12 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
-import Grid from '@mui/material/Grid';
-import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
 
 import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
-import {Stack} from '@mui/material';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 export default function ListUsers() {
@@ -130,31 +123,21 @@ export default function ListUsers() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                onClick={() => navigate(`/users/${row.email.toLowerCase()}`)}
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: (theme) => theme.palette.action.hover,
+                  },
+                }}>
                 <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
-                  </Link>
+                  <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
                 </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayUserName(row)}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/users/${row.email.toLowerCase()}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.email.toLowerCase()}
-                  </Link>
-                </TableCell>
+                <TableCell>{displayUserName(row)}</TableCell>
+                <TableCell>{row.email.toLowerCase()}</TableCell>
               </TableRow>
             ))}
             {emptyRows > 0 && (
