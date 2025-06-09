@@ -131,18 +131,19 @@ export default function ListApps() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                onClick={() => navigate(`/apps/${row.name}`)}
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: (theme) => theme.palette.action.hover,
+                  },
+                }}>
+                <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {(row.description ?? '').length > 115
-                      ? row.description?.substring(0, 114) + '...'
-                      : row.description ?? ''}
-                  </Link>
+                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
                 </TableCell>
               </TableRow>
             ))}

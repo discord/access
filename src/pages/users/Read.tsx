@@ -170,18 +170,17 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
             Object.entries(ownerships)
               .sort(sortUserGroups)
               .map(([groupId, groups]: [string, Array<OktaUserGroupMember>]) => (
-                <TableRow key={groupId}>
-                  <TableCell>
-                    <Link
-                      to={`/groups/${groups[0].active_group?.name}`}
-                      sx={{
-                        textDecoration: 'none',
-                        color: 'inherit',
-                      }}
-                      component={RouterLink}>
-                      {groups[0].active_group?.name}
-                    </Link>
-                  </TableCell>
+                <TableRow
+                  key={groupId}
+                  onClick={() => navigate(`/groups/${groups[0].active_group?.name}`)}
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: (theme) => theme.palette.action.hover,
+                    },
+                  }}>
+                  <TableCell>{groups[0].active_group?.name}</TableCell>
                   <TableCell>{displayGroupType(groups[0].active_group)}</TableCell>
                   <TableCell>
                     <Ending memberships={groups} />
@@ -293,18 +292,17 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
             Object.entries(memberships)
               .sort(sortUserGroups)
               .map(([groupId, groups]: [string, Array<OktaUserGroupMember>]) => (
-                <TableRow key={groupId}>
-                  <TableCell>
-                    <Link
-                      to={`/groups/${groups[0].active_group?.name}`}
-                      sx={{
-                        textDecoration: 'none',
-                        color: 'inherit',
-                      }}
-                      component={RouterLink}>
-                      {groups[0].active_group?.name}
-                    </Link>
-                  </TableCell>
+                <TableRow
+                  key={groupId}
+                  onClick={() => navigate(`/groups/${groups[0].active_group?.name}`)}
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      backgroundColor: (theme) => theme.palette.action.hover,
+                    },
+                  }}>
+                  <TableCell>{groups[0].active_group?.name}</TableCell>
                   <TableCell>{displayGroupType(groups[0].active_group)}</TableCell>
                   <TableCell>
                     <Ending memberships={groups} />
