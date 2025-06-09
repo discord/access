@@ -414,6 +414,7 @@ def expiring_access_notifications_user() -> None:
         .join(OktaUserGroupMember.active_group)
         .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_day))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
+        .filter(OktaUserGroupMember.should_expire.is_(False))
         .all()
     )
 
@@ -455,6 +456,7 @@ def expiring_access_notifications_user() -> None:
         .join(OktaUserGroupMember.active_group)
         .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_day))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
+        .filter(OktaUserGroupMember.should_expire.is_(False))
         .all()
     )
 
@@ -516,6 +518,7 @@ def expiring_access_notifications_owner() -> None:
         .join(OktaUserGroupMember.active_group)
         .filter(db.and_(OktaUserGroupMember.ended_at >= day, OktaUserGroupMember.ended_at < next_week))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
+        .filter(OktaUserGroupMember.should_expire.is_(False))
         .all()
     )
 
@@ -555,6 +558,7 @@ def expiring_access_notifications_owner() -> None:
         .join(OktaUserGroupMember.active_group)
         .filter(db.and_(OktaUserGroupMember.ended_at >= one_week, OktaUserGroupMember.ended_at < two_weeks))
         .filter(OktaUserGroupMember.role_group_map_id.is_(None))
+        .filter(OktaUserGroupMember.should_expire.is_(False))
         .all()
     )
 
@@ -624,6 +628,7 @@ def expiring_access_notifications_owner() -> None:
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
         .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_week))
+        .filter(RoleGroupMap.should_expire.is_(False))
         .all()
     )
 
@@ -658,6 +663,7 @@ def expiring_access_notifications_owner() -> None:
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
         .filter(db.and_(RoleGroupMap.ended_at >= one_week, RoleGroupMap.ended_at < two_weeks))
+        .filter(RoleGroupMap.should_expire.is_(False))
         .all()
     )
 
