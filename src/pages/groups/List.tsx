@@ -130,32 +130,20 @@ export default function ListGroups() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {displayGroupType(row)}
-                  </Link>
-                </TableCell>
+              <TableRow
+                key={row.id}
+                onClick={() => navigate(`/groups/${row.name}`)}
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: (theme) => theme.palette.action.hover,
+                  },
+                }}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>{displayGroupType(row)}</TableCell>
                 <TableCell colSpan={2}>
-                  <Link
-                    to={`/groups/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {(row.description?.length ?? 0) > 115
-                      ? row.description?.substring(0, 114) + '...' ?? ''
-                      : row.description}
-                  </Link>
+                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
                 </TableCell>
               </TableRow>
             ))}
