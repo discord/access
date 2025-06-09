@@ -739,20 +739,29 @@ export default function ReadRequest() {
                                     Object.entries(ownerships)
                                       .sort(sortGroupMembers)
                                       .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                                        <TableRow
-                                          key={'owner' + userId}
-                                          onClick={() =>
-                                            navigate(`/users/${users[0].active_user?.email.toLowerCase()}`)
-                                          }
-                                          sx={{
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            '&:hover': {
-                                              backgroundColor: (theme) => theme.palette.action.hover,
-                                            },
-                                          }}>
-                                          <TableCell>{displayUserName(users[0].active_user)}</TableCell>
-                                          <TableCell colSpan={2}>{users[0].active_user?.email.toLowerCase()}</TableCell>
+                                        <TableRow key={'owner' + userId}>
+                                          <TableCell>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {displayUserName(users[0].active_user)}
+                                            </Link>
+                                          </TableCell>
+                                          <TableCell colSpan={2}>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {users[0].active_user?.email.toLowerCase()}
+                                            </Link>
+                                          </TableCell>
                                         </TableRow>
                                       ))
                                   ) : (
@@ -795,20 +804,29 @@ export default function ReadRequest() {
                                     Object.entries(appOwnerships)
                                       .sort(sortGroupMembers)
                                       .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                                        <TableRow
-                                          key={'owner' + userId}
-                                          onClick={() =>
-                                            navigate(`/users/${users[0].active_user?.email.toLowerCase()}`)
-                                          }
-                                          sx={{
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            '&:hover': {
-                                              backgroundColor: (theme) => theme.palette.action.hover,
-                                            },
-                                          }}>
-                                          <TableCell>{displayUserName(users[0].active_user)}</TableCell>
-                                          <TableCell colSpan={2}>{users[0].active_user?.email.toLowerCase()}</TableCell>
+                                        <TableRow key={'owner' + userId}>
+                                          <TableCell>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {displayUserName(users[0].active_user)}
+                                            </Link>
+                                          </TableCell>
+                                          <TableCell colSpan={2}>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {users[0].active_user?.email.toLowerCase()}
+                                            </Link>
+                                          </TableCell>
                                         </TableRow>
                                       ))
                                   ) : (
@@ -852,20 +870,29 @@ export default function ReadRequest() {
                                     Object.entries(accessAppOwnerships)
                                       .sort(sortGroupMembers)
                                       .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
-                                        <TableRow
-                                          key={'owner' + userId}
-                                          onClick={() =>
-                                            navigate(`/users/${users[0].active_user?.email.toLowerCase()}`)
-                                          }
-                                          sx={{
-                                            cursor: 'pointer',
-                                            transition: 'all 0.2s ease',
-                                            '&:hover': {
-                                              backgroundColor: (theme) => theme.palette.action.hover,
-                                            },
-                                          }}>
-                                          <TableCell>{displayUserName(users[0].active_user)}</TableCell>
-                                          <TableCell colSpan={2}>{users[0].active_user?.email.toLowerCase()}</TableCell>
+                                        <TableRow key={'owner' + userId}>
+                                          <TableCell>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {displayUserName(users[0].active_user)}
+                                            </Link>
+                                          </TableCell>
+                                          <TableCell colSpan={2}>
+                                            <Link
+                                              to={`/users/${users[0].active_user?.email.toLowerCase()}`}
+                                              sx={{
+                                                textDecoration: 'none',
+                                                color: 'inherit',
+                                              }}
+                                              component={RouterLink}>
+                                              {users[0].active_user?.email.toLowerCase()}
+                                            </Link>
+                                          </TableCell>
                                         </TableRow>
                                       ))
                                   ) : (
