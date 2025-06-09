@@ -59,6 +59,7 @@ class OktaUserGroupMemberSchema(SQLAlchemyAutoSchema):
             "ended_actor_id",
             "created_actor",
             "ended_actor",
+            "should_expire",
         )
         dump_only = (
             "id",
@@ -81,6 +82,7 @@ class OktaUserGroupMemberSchema(SQLAlchemyAutoSchema):
             "ended_actor_id",
             "created_actor",
             "ended_actor",
+            "should_expire",
         )
         model = OktaUserGroupMember
         sqla_session = db.session
@@ -586,6 +588,7 @@ class RoleGroupMapSchema(SQLAlchemyAutoSchema):
             "created_actor",
             "ended_actor",
             "created_reason",
+            "should_expire",
         )
         dump_only = (
             "id",
@@ -606,6 +609,7 @@ class RoleGroupMapSchema(SQLAlchemyAutoSchema):
             "created_actor",
             "ended_actor",
             "created_reason",
+            "should_expire",
         )
         model = RoleGroupMap
         sqla_session = db.session

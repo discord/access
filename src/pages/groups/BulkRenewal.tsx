@@ -14,6 +14,8 @@ import Grid from '@mui/material/Grid';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
@@ -21,7 +23,7 @@ import AccessRequestIcon from '../../components/icons/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
-import {GridColDef, GridRowSelectionModel} from '@mui/x-data-grid';
+import {GridColDef, GridRenderCellParams, GridRowSelectionModel} from '@mui/x-data-grid';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -41,10 +43,11 @@ interface Data {
   started: string;
   addedBy: string;
   ending: string;
+  renew: 'yes' | 'no' | '';
   status: string;
 }
 
-function createData(row: OktaUserGroupMember): Data {
+function createData(row: OktaUserGroupMember, renewValue: 'yes' | 'no' | '' = ''): Data {
   return {
     id: row.id,
     userName: displayUserName(row.user),
@@ -54,6 +57,7 @@ function createData(row: OktaUserGroupMember): Data {
     started: dayjs(row.created_at).startOf('second').fromNow(),
     addedBy: displayUserName(row.created_actor),
     ending: dayjs(row.ended_at).startOf('second').fromNow(),
+    renew: renewValue,
     status:
       dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
         ? 'Soon'
@@ -64,7 +68,8 @@ function createData(row: OktaUserGroupMember): Data {
 }
 
 interface CreateRequestForm {
-  selected: OktaUserGroupMember[];
+  selectedYes: OktaUserGroupMember[];
+  selectedNo: OktaUserGroupMember[];
   customUntil?: string;
   reason?: string;
 }
@@ -97,18 +102,74 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
 
-  const [selected, setSelected] = React.useState<OktaUserGroupMember[]>(() =>
-    props.select != undefined ? props.rows.filter((r) => r.id == props.select) : [],
+  // Track toggle states for each row
+  const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
+    const initialStates: Record<number, 'yes' | 'no' | ''> = {};
+    props.rows.forEach((row) => {
+      initialStates[row.id] = props.select === row.id ? 'yes' : '';
+    });
+    return initialStates;
+  });
+
+  const [selectedYes, setSelectedYes] = React.useState<OktaUserGroupMember[]>(() =>
+    props.select !== undefined ? props.rows.filter((r) => r.id === props.select) : [],
   );
+  const [selectedNo, setSelectedNo] = React.useState<OktaUserGroupMember[]>([]);
+
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
 
-  const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
-    props.rows.filter((r) => r.id == props.select).map((r) => r.id),
-  );
   const [paginationModel, setPaginationModel] = React.useState({
     pageSize: 10,
-    page: props.select != undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
+    page: props.select !== undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
   });
+
+  // Custom cell renderer for the ToggleButtonGroup
+  const renderToggleButtons = (params: GridRenderCellParams) => {
+    const handleToggleChange = (event: React.MouseEvent<HTMLElement>, newValue: string | null) => {
+      const rowId = params.row.id;
+      const currentValue = toggleStates[rowId] || '';
+
+      // If clicking the same button, deselect it
+      const finalValue = newValue === currentValue ? '' : (newValue as 'yes' | 'no' | '');
+
+      setToggleStates((prev) => ({
+        ...prev,
+        [rowId]: finalValue,
+      }));
+
+      // Update selected arrays
+      const rowData = props.rows.find((row) => row.id === rowId);
+      if (!rowData) return;
+
+      setSelectedYes((prev) => {
+        const filtered = prev.filter((row) => row.id !== rowId);
+        return finalValue === 'yes' ? [...filtered, rowData] : filtered;
+      });
+
+      setSelectedNo((prev) => {
+        const filtered = prev.filter((row) => row.id !== rowId);
+        return finalValue === 'no' ? [...filtered, rowData] : filtered;
+      });
+    };
+
+    const currentValue = toggleStates[params.row.id] || '';
+
+    return (
+      <ToggleButtonGroup
+        value={currentValue}
+        exclusive
+        onChange={handleToggleChange}
+        aria-label="renew toggle"
+        size="small">
+        <ToggleButton value="yes" aria-label="yes">
+          Yes
+        </ToggleButton>
+        <ToggleButton value="no" aria-label="no">
+          No
+        </ToggleButton>
+      </ToggleButtonGroup>
+    );
+  };
 
   const columns: GridColDef[] = [
     {field: 'userName', headerName: 'User Name', flex: 1},
@@ -118,6 +179,14 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     {field: 'started', headerName: 'Started', flex: 1},
     {field: 'addedBy', headerName: 'Added By', flex: 1},
     {field: 'ending', headerName: 'Ending', flex: 1},
+    {
+      field: 'renew',
+      headerName: 'Renew?',
+      flex: 1,
+      renderCell: renderToggleButtons,
+      sortable: false,
+      filterable: false,
+    },
   ];
 
   const updateUntil = (memberships: OktaUserGroupMember[]) => {
@@ -235,6 +304,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
+  // Update time limits and required reason when selections change
+  React.useEffect(() => {
+    const allSelected = [...selectedYes, ...selectedNo];
+    updateUntil(allSelected);
+    updateRequiredReason(allSelected);
+  }, [selectedYes, selectedNo]);
+
   const complete = (
     completedUsersChange: GroupMember | undefined,
     error: PutGroupMembersByIdError | null,
@@ -272,16 +348,16 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
 
-    if (selected.length == 0) {
+    if (selectedYes.length == 0 && selectedNo.length == 0) {
       setSubmitting(false);
       props.setOpen(false);
       navigate(0);
       return;
     }
 
-    // group selected OktaUserGroupMembers by group
-    // creates map  { group ids : {'owner' : [user ids], 'member' : [user ids]} }
-    const grouped = selected.reduce(
+    // group selectedYes OktaUserGroupMembers by group
+    // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
+    const grouped = selectedYes.reduce(
       (groups, item) => {
         (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
         return groups;
@@ -289,15 +365,36 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       {} as Record<string, Record<string, string[]>>,
     );
 
-    setNumUpdates(Object.keys(grouped).length);
+    // group selectedNo OktaUserGroupMembers by group
+    // creates map { group ids : [OktaUserGroupMember] }
+    const doNotRenew = selectedNo.reduce(
+      (groups, item) => {
+        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+        return groups;
+      },
+      {} as Record<string, Record<string, number[]>>,
+    );
 
-    for (const key in grouped) {
+    console.log(doNotRenew);
+
+    const updates = new Set([...Object.keys(grouped), ...Object.keys(doNotRenew)]);
+
+    console.log(updates);
+
+    setNumUpdates(updates.size);
+
+    updates.forEach(function (gid) {
+      console.log('here');
       const groupUsers: GroupMember = {
-        members_to_add: grouped[key]['member'],
+        members_to_add: grouped[gid]?.['member'] ?? [],
+        members_should_expire: doNotRenew[gid]?.['member'] ?? [],
         members_to_remove: [],
-        owners_to_add: grouped[key]['owner'],
+        owners_to_add: grouped[gid]?.['owner'] ?? [],
+        owners_should_expire: doNotRenew[gid]?.['owner'] ?? [],
         owners_to_remove: [],
       };
+
+      console.log(groupUsers);
 
       switch (until) {
         case 'indefinite':
@@ -316,10 +413,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
       putGroupUsers.mutate({
         body: groupUsers,
-        pathParams: {groupId: key},
+        pathParams: {groupId: gid},
       });
-    }
+    });
   };
+
+  // Generate rows with current toggle states
+  const dataRows = props.rows.map((row) => createData(row, toggleStates[row.id] || ''));
 
   return (
     <Dialog open fullWidth maxWidth="xl" onClose={() => props.setOpen(false)}>
@@ -330,6 +430,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             {timeLimit
               ? 'Access to one or more selected groups is limited to ' + Math.floor(timeLimit / 86400) + ' days.'
               : null}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+            Selected for renewal: {selectedYes.length} | Selected to decline: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <Grid container spacing={1}>
@@ -392,8 +495,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             </Grid>
           </Grid>
           <BulkRenewalDataGrid
-            rows={props.rows.map((row) => createData(row))}
-            rowHeight={40}
+            rows={dataRows}
+            rowHeight={45}
             columns={columns}
             columnVisibilityModel={{
               id: false,
@@ -402,16 +505,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}
             pageSizeOptions={[5, 10, 20]}
-            checkboxSelection
-            rowSelectionModel={selectionModel}
-            onRowSelectionModelChange={(ids) => {
-              setSelectionModel(ids);
-              const selectedIDs = new Set(ids);
-              const selectedRowData = props.rows.filter((row) => selectedIDs.has(row.id));
-              setSelected(selectedRowData);
-              updateUntil(selectedRowData);
-              updateRequiredReason(selectedRowData);
-            }}
+            disableRowSelectionOnClick
+            hideFooterSelectedRowCount
             getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
           />
         </DialogContent>

@@ -966,6 +966,10 @@
           "type": "string",
           "x-nullable": true
         },
+        "should_expire": {
+          "readOnly": true,
+          "type": "boolean"
+        },
         "created_reason": {
           "maxLength": 1024,
           "readOnly": true,

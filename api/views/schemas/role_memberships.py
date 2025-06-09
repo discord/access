@@ -9,8 +9,10 @@ class RoleMemberSchema(Schema):
     groups_owned_by_role = fields.List(fields.String(), dump_only=True)
 
     groups_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
+    groups_should_expire = fields.List(fields.Int(), required=False, load_only=True)
     owner_groups_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
     groups_to_remove = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
+    owner_groups_should_expire = fields.List(fields.Int(), required=False, load_only=True)
     owner_groups_to_remove = fields.List(
         fields.String(validate=validate.Length(equal=20)), required=True, load_only=True
     )
