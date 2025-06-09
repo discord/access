@@ -348,19 +348,16 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
 
-    // Only process "Yes" selections for renewal
-    const selected = selectedYes;
-
-    if (selected.length == 0) {
+    if (selectedYes.length == 0 && selectedNo.length == 0) {
       setSubmitting(false);
       props.setOpen(false);
       navigate(0);
       return;
     }
 
-    // group selected OktaUserGroupMembers by group
-    // creates map  { group ids : {'owner' : [user ids], 'member' : [user ids]} }
-    const grouped = selected.reduce(
+    // group selectedYes OktaUserGroupMembers by group
+    // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
+    const grouped = selectedYes.reduce(
       (groups, item) => {
         (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
         return groups;
@@ -368,15 +365,36 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       {} as Record<string, Record<string, string[]>>,
     );
 
-    setNumUpdates(Object.keys(grouped).length);
+    // group selectedNo OktaUserGroupMembers by group
+    // creates map { group ids : [OktaUserGroupMember] }
+    const doNotRenew = selectedNo.reduce(
+      (groups, item) => {
+        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+        return groups;
+      },
+      {} as Record<string, Record<string, number[]>>,
+    );
 
-    for (const key in grouped) {
+    console.log(doNotRenew);
+
+    const updates = new Set([...Object.keys(grouped), ...Object.keys(doNotRenew)]);
+
+    console.log(updates);
+
+    setNumUpdates(updates.size);
+
+    updates.forEach(function (gid) {
+      console.log('here');
       const groupUsers: GroupMember = {
-        members_to_add: grouped[key]['member'],
+        members_to_add: grouped[gid]?.['member'] ?? [],
+        members_should_expire: doNotRenew[gid]?.['member'] ?? [],
         members_to_remove: [],
-        owners_to_add: grouped[key]['owner'],
+        owners_to_add: grouped[gid]?.['owner'] ?? [],
+        owners_should_expire: doNotRenew[gid]?.['owner'] ?? [],
         owners_to_remove: [],
       };
+
+      console.log(groupUsers);
 
       switch (until) {
         case 'indefinite':
@@ -395,9 +413,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
       putGroupUsers.mutate({
         body: groupUsers,
-        pathParams: {groupId: key},
+        pathParams: {groupId: gid},
       });
-    }
+    });
   };
 
   // Generate rows with current toggle states
@@ -478,7 +496,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           </Grid>
           <BulkRenewalDataGrid
             rows={dataRows}
-            rowHeight={40}
+            rowHeight={45}
             columns={columns}
             columnVisibilityModel={{
               id: false,

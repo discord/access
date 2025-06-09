@@ -206,6 +206,8 @@ export default function ExpiringGroups() {
     }
   };
 
+  console.log(rows);
+
   return (
     <>
       <ChangeTitle title="Expiring Groups" />
