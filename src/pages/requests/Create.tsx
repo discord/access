@@ -17,6 +17,7 @@ import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
+import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -51,19 +52,28 @@ interface CreateRequestButtonProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
+  disable?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
-      {props.group == null
-        ? 'Create Request'
-        : props.renew
-          ? 'Renew'
-          : props.owner
-            ? 'Request Ownership'
-            : 'Request Membership'}
-    </Button>
+    <Tooltip title={props.disable && "Already reviewed. Marked as 'Should expire'"}>
+      <span>
+        <Button
+          variant="contained"
+          onClick={() => props.setOpen(true)}
+          endIcon={<AccessRequestIcon />}
+          disabled={props.disable ?? false}>
+          {props.group == null
+            ? 'Create Request'
+            : props.renew
+              ? 'Renew'
+              : props.owner
+                ? 'Request Ownership'
+                : 'Request Membership'}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -500,6 +510,7 @@ interface CreateRequestProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
+  disable?: boolean;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -519,7 +530,8 @@ export default function CreateRequest(props: CreateRequestProps) {
         setOpen={setOpen}
         group={props.group}
         owner={props.owner}
-        renew={props.renew}></CreateRequestButton>
+        renew={props.renew}
+        disable={props.disable}></CreateRequestButton>
       {open ? <CreateRequestDialog setOpen={setOpen} {...props} renew={props.renew} /> : null}
     </>
   );

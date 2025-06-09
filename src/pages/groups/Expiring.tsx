@@ -3,6 +3,7 @@ import {Link as RouterLink, useSearchParams} from 'react-router-dom';
 
 import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import Grid from '@mui/material/Grid';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
@@ -214,7 +215,7 @@ export default function ExpiringGroups() {
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Groups">
           <BulkRenewal
-            rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+            rows={rows.filter((row) => canManageGroup(currentUser, row.group) && !row.should_expire)}
             ownAccess={userId == '@me' || userId == currentUser.id}
           />
           <ToggleButtonGroup
@@ -273,6 +274,7 @@ export default function ExpiringGroups() {
                   Ending
                 </TableSortLabel>
               </TableCell>
+              <TableCell>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -285,7 +287,9 @@ export default function ExpiringGroups() {
                       ? highlight.warning.main
                       : dayjs(row.ended_at).isBefore(dayjs())
                         ? highlight.danger.main
-                        : null,
+                        : row.should_expire
+                          ? highlight.info.main
+                          : null,
                 }}>
                 <TableCell>
                   {(row.user?.deleted_at ?? null) != null ? (
@@ -364,15 +368,26 @@ export default function ExpiringGroups() {
                 </TableCell>
                 {userId == '@me' || currentUser.id == row.user.id ? (
                   <TableCell align="center">
-                    <CreateRequest currentUser={row.user} group={row.group} owner={row.is_owner} renew={true} />
+                    <CreateRequest
+                      currentUser={row.user}
+                      group={row.group}
+                      owner={row.is_owner}
+                      renew={true}
+                      disable={row.should_expire}
+                    />
                   </TableCell>
                 ) : ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
                   <TableCell align="center">
-                    <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} select={row.id} />
+                    <BulkRenewal
+                      rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+                      select={row.id}
+                      disable={row.should_expire}
+                    />
                   </TableCell>
                 ) : (
                   <TableCell></TableCell>
                 )}
+                {row.should_expire ? <TableCell>Reviewed, allow expiration</TableCell> : <TableCell></TableCell>}
               </TableRow>
             ))}
             {emptyRows > 0 && (

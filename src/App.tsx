@@ -21,7 +21,6 @@ import {
   CssBaseline,
   PaletteMode,
   Stack,
-  Theme,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -29,7 +28,8 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow} from '@mui/material/colors';
+import {lightGreen, red, yellow, blue} from '@mui/material/colors';
+import * as Sentry from '@sentry/react';
 
 import AuditGroup from './pages/groups/Audit';
 import AuditRole from './pages/roles/Audit';
@@ -53,7 +53,7 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
-import * as Sentry from '@sentry/react';
+
 const drawerWidth: number = 240;
 
 interface AppBarProps extends MuiAppBarProps {
@@ -299,6 +299,9 @@ export default function App() {
         warning: {
           main: '#FEE75C',
         },
+        info: {
+          main: '#4287f5',
+        },
         success: {
           main: '#57F287',
         },
@@ -340,6 +343,10 @@ export default function App() {
           danger: base.palette.augmentColor({
             color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
             name: 'danger',
+          }),
+          info: base.palette.augmentColor({
+            color: {main: mode === 'light' ? blue[100] : alpha(blue[500], 0.3)},
+            name: 'info',
           }),
         },
       },

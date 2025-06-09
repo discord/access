@@ -348,7 +348,10 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
 
-    if (selectedYes.length == 0 && selectedNo.length == 0) {
+    if (
+      selectedYes.filter((y) => !y.should_expire).length == 0 &&
+      selectedNo.filter((n) => !n.should_expire && dayjs(n.ended_at) >= dayjs()).length == 0
+    ) {
       setSubmitting(false);
       props.setOpen(false);
       navigate(0);
@@ -357,9 +360,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     // group selectedYes OktaUserGroupMembers by group
     // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
+    // only allow renewal if a decision has not already been made
     const grouped = selectedYes.reduce(
       (groups, item) => {
-        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
+        if (!item.should_expire) {
+          (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
+        }
         return groups;
       },
       {} as Record<string, Record<string, string[]>>,
@@ -367,24 +373,22 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     // group selectedNo OktaUserGroupMembers by group
     // creates map { group ids : [OktaUserGroupMember] }
+    // only include if access is active and decision has not already been made
     const doNotRenew = selectedNo.reduce(
       (groups, item) => {
-        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+        if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
+          (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+        }
         return groups;
       },
       {} as Record<string, Record<string, number[]>>,
     );
 
-    console.log(doNotRenew);
-
     const updates = new Set([...Object.keys(grouped), ...Object.keys(doNotRenew)]);
-
-    console.log(updates);
 
     setNumUpdates(updates.size);
 
     updates.forEach(function (gid) {
-      console.log('here');
       const groupUsers: GroupMember = {
         members_to_add: grouped[gid]?.['member'] ?? [],
         members_should_expire: doNotRenew[gid]?.['member'] ?? [],
@@ -393,8 +397,6 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         owners_should_expire: doNotRenew[gid]?.['owner'] ?? [],
         owners_to_remove: [],
       };
-
-      console.log(groupUsers);
 
       switch (until) {
         case 'indefinite':
@@ -432,7 +434,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
               : null}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
-            Selected for renewal: {selectedYes.length} | Selected to decline: {selectedNo.length}
+            Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <Grid container spacing={1}>
@@ -524,14 +526,26 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 interface BulkRenewalButtonProps {
   setOpen(open: boolean): any;
   bulk: boolean;
+  disable?: boolean;
 }
 
 function BulkRenewalButton(props: BulkRenewalButtonProps) {
   return (
-    <Tooltip title={props.bulk ? 'Renew access for group memberships currently shown' : null}>
-      <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
-        {props.bulk ? 'Bulk Renew' : 'Renew'}
-      </Button>
+    <Tooltip
+      title={
+        props.bulk
+          ? 'Renew access for group memberships currently shown'
+          : props.disable && "Already reviewed. Marked as 'Should expire'"
+      }>
+      <span>
+        <Button
+          variant="contained"
+          onClick={() => props.setOpen(true)}
+          endIcon={<AccessRequestIcon />}
+          disabled={props.disable ?? false}>
+          {props.bulk ? 'Bulk Renew' : 'Renew'}
+        </Button>
+      </span>
     </Tooltip>
   );
 }
@@ -540,6 +554,7 @@ interface BulkRenewalProps {
   rows: OktaUserGroupMember[];
   select?: number;
   ownAccess?: boolean;
+  disable?: boolean;
 }
 
 export default function BulkRenewal(props: BulkRenewalProps) {
@@ -551,7 +566,7 @@ export default function BulkRenewal(props: BulkRenewalProps) {
 
   return (
     <>
-      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} />
+      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} disable={props.disable} />
       {open ? <BulkRenewalDialog setOpen={setOpen} rows={props.rows} select={props.select} /> : null}
     </>
   );
