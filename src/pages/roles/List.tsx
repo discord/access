@@ -26,6 +26,7 @@ import {perPage} from '../../helpers';
 import {useGetRoles} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 export default function ListRoles() {
   const navigate = useNavigate();
@@ -131,31 +132,30 @@ export default function ListRoles() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow
+                key={row.id}
+                onClick={() => navigate(`/roles/${row.name}`)}
+                sx={{
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    backgroundColor: (theme) => theme.palette.action.hover,
+                  },
+                }}>
+                <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Link
-                    to={`/roles/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.name}
-                  </Link>
-                </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/roles/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {(row.description?.length ?? 0) > 115
-                      ? row.description?.substring(0, 114) + '...' ?? ''
-                      : row.description}
-                  </Link>
+                  {(row.description?.length ?? 0) > 115
+                    ? (row.description?.substring(0, 114) ?? '') + '...'
+                    : row.description}
                 </TableCell>
               </TableRow>
             ))}
-            {emptyRows > 0 && (
+            {emptyRows > 0 ? (
               <TableRow style={{height: 33 * emptyRows}}>
                 <TableCell colSpan={2} />
               </TableRow>
+            ) : (
+              <EmptyListEntry cellProps={{colSpan: 2}} />
             )}
           </TableBody>
           <TableFooter>
