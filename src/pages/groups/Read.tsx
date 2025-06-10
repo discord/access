@@ -344,6 +344,9 @@ export default function ReadGroup() {
                                   sx={{
                                     textDecoration: 'none',
                                     color: 'inherit',
+                                    '&:hover': {
+                                      color: (theme) => theme.palette.primary.main,
+                                    },
                                   }}
                                   component={RouterLink}>
                                   {groups[0].active_group?.name}
@@ -427,6 +430,9 @@ export default function ReadGroup() {
                                   sx={{
                                     textDecoration: 'none',
                                     color: 'inherit',
+                                    '&:hover': {
+                                      color: (theme) => theme.palette.primary.main,
+                                    },
                                   }}
                                   component={RouterLink}>
                                   {groups[0].active_group?.name}
@@ -545,6 +551,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {displayUserName(users[0].active_user)}
@@ -556,6 +565,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {users[0].active_user?.email.toLowerCase()}
@@ -705,6 +717,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {displayUserName(users[0].active_user)}
@@ -716,6 +731,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {users[0].active_user?.email.toLowerCase()}

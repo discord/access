@@ -18,6 +18,7 @@ import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListUsers() {
   const navigate = useNavigate();
@@ -123,22 +124,13 @@ export default function ListUsers() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow
-                key={row.id}
-                onClick={() => navigate(`/users/${row.email.toLowerCase()}`)}
-                sx={{
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    backgroundColor: (theme) => theme.palette.action.hover,
-                  },
-                }}>
+              <LinkTableRow to={`/users/${row.email.toLowerCase()}`} key={row.id}>
                 <TableCell>
                   <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
                 </TableCell>
                 <TableCell>{displayUserName(row)}</TableCell>
                 <TableCell>{row.email.toLowerCase()}</TableCell>
-              </TableRow>
+              </LinkTableRow>
             ))}
             {emptyRows > 0 && (
               <TableRow style={{height: 37 * emptyRows}}>

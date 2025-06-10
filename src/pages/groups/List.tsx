@@ -24,6 +24,7 @@ import {displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListGroups() {
   const navigate = useNavigate();
@@ -130,22 +131,13 @@ export default function ListGroups() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow
-                key={row.id}
-                onClick={() => navigate(`/groups/${row.name}`)}
-                sx={{
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease',
-                  '&:hover': {
-                    backgroundColor: (theme) => theme.palette.action.hover,
-                  },
-                }}>
+              <LinkTableRow to={`/groups/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{displayGroupType(row)}</TableCell>
                 <TableCell colSpan={2}>
                   {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
                 </TableCell>
-              </TableRow>
+              </LinkTableRow>
             ))}
             {emptyRows > 0 && (
               <TableRow style={{height: 33 * emptyRows}}>
