@@ -29,7 +29,7 @@ PyJWT==2.10.1
 flask-oidc==2.2.2
 
 # Requests
-requests==2.32.3
+requests==2.32.4
 
 # Error Reporting
 sentry-sdk[flask]==2.19.0
