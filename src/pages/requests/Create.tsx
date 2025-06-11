@@ -52,18 +52,14 @@ interface CreateRequestButtonProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
-  disable?: boolean;
+  expired?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Tooltip title={props.disable && "Already reviewed. Marked as 'Should expire'"}>
+    <Tooltip title={props.expired && "Already reviewed and marked as 'Should expire'"}>
       <span>
-        <Button
-          variant="contained"
-          onClick={() => props.setOpen(true)}
-          endIcon={<AccessRequestIcon />}
-          disabled={props.disable ?? false}>
+        <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
           {props.group == null
             ? 'Create Request'
             : props.renew
@@ -510,7 +506,7 @@ interface CreateRequestProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
-  disable?: boolean;
+  expired?: boolean;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -531,7 +527,7 @@ export default function CreateRequest(props: CreateRequestProps) {
         group={props.group}
         owner={props.owner}
         renew={props.renew}
-        disable={props.disable}></CreateRequestButton>
+        expired={props.expired}></CreateRequestButton>
       {open ? <CreateRequestDialog setOpen={setOpen} {...props} renew={props.renew} /> : null}
     </>
   );

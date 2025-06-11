@@ -52,7 +52,7 @@ function createData(row: RoleGroupMap): Data {
     id: row.id!,
     groupName: row.group?.name,
     roleName: row.role_group?.name,
-    groupType: row.group?.type == 'okta_group' ? 'Group' : 'app_group' ? 'App Group' : 'Role Group',
+    groupType: row.group?.type == 'okta_group' ? 'Group' : row.group?.type == 'app_group' ? 'App Group' : 'Role Group',
     memberOrOwner: row.is_owner ? 'Owner' : 'Member',
     started: dayjs(row.created_at).startOf('second').fromNow(),
     addedBy: displayUserName(row.created_actor),

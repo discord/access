@@ -1801,6 +1801,12 @@
           },
           {
             "in": "query",
+            "name": "needs_review",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
             "name": "app_owner",
             "required": false,
             "type": "boolean"
@@ -1902,6 +1908,12 @@
           {
             "in": "query",
             "name": "active",
+            "required": false,
+            "type": "boolean"
+          },
+          {
+            "in": "query",
+            "name": "needs_review",
             "required": false,
             "type": "boolean"
           },

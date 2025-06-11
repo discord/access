@@ -286,6 +286,11 @@ class UserGroupAuditResource(MethodResource):
                         OktaUserGroupMember.ended_at < db.func.now(),
                     )
                 )
+        if "needs_review" in search_args:
+            if search_args["needs_review"]:
+                query = query.filter(
+                    OktaUserGroupMember.should_expire.is_(False),
+                )
 
         if "direct" in search_args:
             if search_args["direct"]:

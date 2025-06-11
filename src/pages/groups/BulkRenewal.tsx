@@ -47,7 +47,8 @@ interface Data {
   status: string;
 }
 
-function createData(row: OktaUserGroupMember, renewValue: 'yes' | 'no' | '' = ''): Data {
+function createData(row: OktaUserGroupMember, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
+  const highlight = row.id == selected ? 'Selected-' : '';
   return {
     id: row.id,
     userName: displayUserName(row.user),
@@ -58,12 +59,15 @@ function createData(row: OktaUserGroupMember, renewValue: 'yes' | 'no' | '' = ''
     addedBy: displayUserName(row.created_actor),
     ending: dayjs(row.ended_at).startOf('second').fromNow(),
     renew: renewValue,
-    status:
-      dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-        ? 'Soon'
+    status: row.should_expire
+      ? highlight + 'Should-Expire'
+      : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+        ? highlight + 'Soon'
         : dayjs(row.ended_at).isBefore(dayjs())
-          ? 'Expired'
-          : '',
+          ? highlight + 'Expired'
+          : highlight !== ''
+            ? 'Selected'
+            : '',
   };
 }
 
@@ -106,7 +110,11 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
     const initialStates: Record<number, 'yes' | 'no' | ''> = {};
     props.rows.forEach((row) => {
-      initialStates[row.id] = props.select === row.id ? 'yes' : '';
+      if (row.should_expire) {
+        initialStates[row.id] = 'no';
+      } else {
+        initialStates[row.id] = '';
+      }
     });
     return initialStates;
   });
@@ -114,7 +122,10 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [selectedYes, setSelectedYes] = React.useState<OktaUserGroupMember[]>(() =>
     props.select !== undefined ? props.rows.filter((r) => r.id === props.select) : [],
   );
-  const [selectedNo, setSelectedNo] = React.useState<OktaUserGroupMember[]>([]);
+
+  const [selectedNo, setSelectedNo] = React.useState<OktaUserGroupMember[]>(() =>
+    props.rows.filter((row) => row.should_expire),
+  );
 
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
 
@@ -421,7 +432,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   };
 
   // Generate rows with current toggle states
-  const dataRows = props.rows.map((row) => createData(row, toggleStates[row.id] || ''));
+  const dataRows = props.rows.map((row) => createData(row, props.select, toggleStates[row.id] || ''));
 
   return (
     <Dialog open fullWidth maxWidth="xl" onClose={() => props.setOpen(false)}>
@@ -526,7 +537,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 interface BulkRenewalButtonProps {
   setOpen(open: boolean): any;
   bulk: boolean;
-  disable?: boolean;
+  rereview?: boolean;
 }
 
 function BulkRenewalButton(props: BulkRenewalButtonProps) {
@@ -535,15 +546,11 @@ function BulkRenewalButton(props: BulkRenewalButtonProps) {
       title={
         props.bulk
           ? 'Renew access for group memberships currently shown'
-          : props.disable && "Already reviewed. Marked as 'Should expire'"
+          : props.rereview && "Already reviewed and marked as 'Should expire.'"
       }>
       <span>
-        <Button
-          variant="contained"
-          onClick={() => props.setOpen(true)}
-          endIcon={<AccessRequestIcon />}
-          disabled={props.disable ?? false}>
-          {props.bulk ? 'Bulk Renew' : 'Renew'}
+        <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
+          {props.bulk ? 'Bulk Review' : props.rereview ? 'Update' : 'Review'}
         </Button>
       </span>
     </Tooltip>
@@ -554,7 +561,7 @@ interface BulkRenewalProps {
   rows: OktaUserGroupMember[];
   select?: number;
   ownAccess?: boolean;
-  disable?: boolean;
+  rereview?: boolean;
 }
 
 export default function BulkRenewal(props: BulkRenewalProps) {
@@ -566,7 +573,7 @@ export default function BulkRenewal(props: BulkRenewalProps) {
 
   return (
     <>
-      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} disable={props.disable} />
+      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} rereview={props.rereview} />
       {open ? <BulkRenewalDialog setOpen={setOpen} rows={props.rows} select={props.select} /> : null}
     </>
   );

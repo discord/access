@@ -337,15 +337,27 @@ export default function App() {
             name: 'success',
           }),
           warning: base.palette.augmentColor({
-            color: {main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3)},
+            color: {
+              main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(yellow[300], 0.9) : alpha(yellow[200], 0.3),
+            },
             name: 'warning',
           }),
           danger: base.palette.augmentColor({
-            color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
+            color: {
+              main: mode === 'light' ? red[100] : alpha(red[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(red[200], 0.9) : alpha(red[300], 0.3),
+            },
             name: 'danger',
           }),
           info: base.palette.augmentColor({
-            color: {main: mode === 'light' ? blue[100] : alpha(blue[500], 0.3)},
+            color: {
+              main: mode === 'light' ? blue[100] : alpha(blue[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(blue[300], 0.8) : alpha(blue[200], 0.3),
+            },
             name: 'info',
           }),
         },
