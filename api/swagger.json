@@ -1221,6 +1221,10 @@
           "readOnly": true,
           "type": "string"
         },
+        "should_expire": {
+          "readOnly": true,
+          "type": "boolean"
+        },
         "id": {
           "readOnly": true,
           "type": "integer"

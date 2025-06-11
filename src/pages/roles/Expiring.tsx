@@ -318,12 +318,12 @@ export default function ExpiringRoless() {
                 key={row.id}
                 sx={{
                   bgcolor: ({palette: {highlight}}) =>
-                    row.should_expire
-                      ? highlight.info.main
-                      : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                        ? highlight.warning.main
-                        : dayjs(row.ended_at).isBefore(dayjs())
-                          ? highlight.danger.main
+                    dayjs(row.ended_at).isBefore(dayjs())
+                      ? highlight.danger.main
+                      : row.should_expire
+                        ? highlight.info.main
+                        : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+                          ? highlight.warning.main
                           : null,
                 }}>
                 <TableCell>

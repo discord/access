@@ -61,12 +61,12 @@ function createData(row: OktaUserGroupMember, selected: number | undefined, rene
     addedBy: displayUserName(row.created_actor),
     ending: dayjs(row.ended_at).startOf('second').fromNow(),
     renew: renewValue,
-    status: row.should_expire
-      ? highlight + 'Should-Expire'
-      : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-        ? highlight + 'Soon'
-        : dayjs(row.ended_at).isBefore(dayjs())
-          ? highlight + 'Expired'
+    status: dayjs(row.ended_at).isBefore(dayjs())
+      ? highlight + 'Expired'
+      : row.should_expire
+        ? highlight + 'Should-Expire'
+        : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+          ? highlight + 'Soon'
           : highlight !== ''
             ? 'Selected'
             : '',
