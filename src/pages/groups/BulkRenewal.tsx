@@ -4,6 +4,7 @@ import {useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import ChangeReviewIcon from '@mui/icons-material/PublishedWithChanges';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -24,6 +25,7 @@ import AccessRequestIcon from '../../components/icons/MoreTime';
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
 import {GridColDef, GridRenderCellParams, GridRowSelectionModel} from '@mui/x-data-grid';
+import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -541,6 +543,7 @@ interface BulkRenewalButtonProps {
 }
 
 function BulkRenewalButton(props: BulkRenewalButtonProps) {
+  const theme = useTheme();
   return (
     <Tooltip
       title={
@@ -549,7 +552,11 @@ function BulkRenewalButton(props: BulkRenewalButtonProps) {
           : props.rereview && "Already reviewed and marked as 'Should expire.'"
       }>
       <span>
-        <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
+        <Button
+          variant="contained"
+          onClick={() => props.setOpen(true)}
+          endIcon={props.rereview ? <ChangeReviewIcon /> : <AccessRequestIcon />}
+          sx={{backgroundColor: props.rereview ? theme.palette.primary.dark : theme.palette.primary.main}}>
           {props.bulk ? 'Bulk Review' : props.rereview ? 'Update' : 'Review'}
         </Button>
       </span>

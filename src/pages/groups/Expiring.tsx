@@ -415,22 +415,51 @@ export default function ExpiringGroups() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TablePagination
-                rowsPerPageOptions={perPage}
-                colSpan={9}
-                count={totalRows}
-                rowsPerPage={rowsPerPage}
-                page={page}
-                SelectProps={{
-                  inputProps: {
-                    'aria-label': 'rows per page',
-                  },
-                  native: true,
-                }}
-                onPageChange={handleChangePage}
-                onRowsPerPageChange={handleChangeRowsPerPage}
-                ActionsComponent={TablePaginationActions}
-              />
+              <TableCell colSpan={9} sx={{position: 'relative', p: 0}}>
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    display: 'flex',
+                    gap: 1,
+                    zIndex: 1,
+                  }}>
+                  <Chip
+                    label="Expired"
+                    variant="outlined"
+                    sx={{bgcolor: ({palette: {highlight}}) => highlight.danger.main}}
+                  />
+                  <Chip
+                    label="Expiring Soon"
+                    variant="outlined"
+                    sx={{bgcolor: ({palette: {highlight}}) => highlight.warning.main}}
+                  />
+                  <Chip
+                    label="Reviewed, Not Renewed"
+                    variant="outlined"
+                    sx={{bgcolor: ({palette: {highlight}}) => highlight.info.main}}
+                  />
+                </Box>
+                <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
+                  <TablePagination
+                    rowsPerPageOptions={perPage}
+                    count={totalRows}
+                    rowsPerPage={rowsPerPage}
+                    page={page}
+                    SelectProps={{
+                      inputProps: {
+                        'aria-label': 'rows per page',
+                      },
+                      native: true,
+                    }}
+                    onPageChange={handleChangePage}
+                    onRowsPerPageChange={handleChangeRowsPerPage}
+                    ActionsComponent={TablePaginationActions}
+                  />
+                </Box>
+              </TableCell>
             </TableRow>
           </TableFooter>
         </Table>
