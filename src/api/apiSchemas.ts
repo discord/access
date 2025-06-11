@@ -456,8 +456,10 @@ export type RoleMember = {
   groups_in_role?: void[];
   groups_owned_by_role?: void[];
   groups_to_add: string[];
+  groups_should_expire?: number[];
   groups_to_remove: string[];
   owner_groups_to_add: string[];
+  owner_groups_should_expire?: number[];
   owner_groups_to_remove: string[];
   created_reason?: string;
 };

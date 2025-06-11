@@ -24,7 +24,7 @@ import AccessRequestIcon from '../../components/icons/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
-import {GridColDef, GridRenderCellParams, GridRowSelectionModel} from '@mui/x-data-grid';
+import {GridColDef, GridRenderCellParams} from '@mui/x-data-grid';
 import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
@@ -362,7 +362,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     setSubmitting(true);
 
     if (
-      selectedYes.filter((y) => !y.should_expire).length == 0 &&
+      selectedYes.length == 0 &&
       selectedNo.filter((n) => !n.should_expire && dayjs(n.ended_at) >= dayjs()).length == 0
     ) {
       setSubmitting(false);
@@ -373,12 +373,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     // group selectedYes OktaUserGroupMembers by group
     // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
-    // only allow renewal if a decision has not already been made
     const grouped = selectedYes.reduce(
       (groups, item) => {
-        if (!item.should_expire) {
-          (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
-        }
+        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
         return groups;
       },
       {} as Record<string, Record<string, string[]>>,
