@@ -606,6 +606,11 @@ class GroupRoleAuditResource(MethodResource):
                         RoleGroupMap.ended_at < db.func.now(),
                     )
                 )
+        if "needs_review" in search_args:
+            if search_args["needs_review"]:
+                query = query.filter(
+                    RoleGroupMap.should_expire.is_(False),
+                )
 
         return paginate(
             query,
