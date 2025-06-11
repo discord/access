@@ -14,6 +14,8 @@ import Grid from '@mui/material/Grid';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
@@ -21,7 +23,7 @@ import AccessRequestIcon from '../../components/icons/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
-import {GridColDef, GridRowParams, GridRowSelectionModel} from '@mui/x-data-grid';
+import {GridColDef, GridRenderCellParams, GridRowParams, GridRowSelectionModel} from '@mui/x-data-grid';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -44,10 +46,12 @@ interface Data {
   started: string;
   addedBy: string;
   ending: string;
+  renew: 'yes' | 'no' | '';
   status: string;
 }
 
-function createData(row: RoleGroupMap): Data {
+function createData(row: RoleGroupMap, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
+  const highlight = row.id == selected ? 'Selected-' : '';
   return {
     id: row.id!,
     groupName: row.group?.name,
@@ -57,17 +61,21 @@ function createData(row: RoleGroupMap): Data {
     started: dayjs(row.created_at).startOf('second').fromNow(),
     addedBy: displayUserName(row.created_actor),
     ending: dayjs(row.ended_at).startOf('second').fromNow(),
+    renew: renewValue,
     status:
       dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-        ? 'Soon'
+        ? highlight + 'Soon'
         : dayjs(row.ended_at).isBefore(dayjs())
-          ? 'Expired'
-          : '',
+          ? highlight + 'Expired'
+          : highlight !== ''
+            ? 'Selected'
+            : '',
   };
 }
 
 interface CreateRequestForm {
-  selected: RoleGroupMap[];
+  selectedYes: RoleGroupMap[];
+  selectedNo: RoleGroupMap[];
   customUntil?: string;
   reason?: string;
 }
@@ -102,22 +110,34 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
   const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
+
+  // Track toggle states for each row
+  const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
+    const initialStates: Record<number, 'yes' | 'no' | ''> = {};
+    props.rows.forEach((row) => {
+      if (row.should_expire) {
+        initialStates[row.id!] = 'no';
+      } else {
+        initialStates[row.id!] = '';
+      }
+    });
+    return initialStates;
+  });
+
+  const [selectedYes, setSelectedYes] = React.useState<RoleGroupMap[]>(() =>
+    props.select !== undefined ? props.rows.filter((r) => r.id === props.select) : [],
+  );
+
+  const [selectedNo, setSelectedNo] = React.useState<RoleGroupMap[]>(() =>
+    props.rows.filter((row) => row.should_expire),
+  );
+
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
 
   const [paginationModel, setPaginationModel] = React.useState({
     pageSize: 10,
     page: props.select != undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
   });
-
-  const columns: GridColDef[] = [
-    {field: 'roleName', headerName: 'Role Name', flex: 1},
-    {field: 'groupName', headerName: 'Group Name', flex: 1},
-    {field: 'groupType', headerName: 'Group Type', flex: 1},
-    {field: 'memberOrOwner', headerName: 'Member or Owner', flex: 1},
-    {field: 'started', headerName: 'Started', flex: 1},
-    {field: 'addedBy', headerName: 'Added By', flex: 1},
-    {field: 'ending', headerName: 'Ending', flex: 1},
-  ];
 
   const role_memberships =
     currentUser.active_group_memberships?.reduce((out, curr) => {
@@ -134,35 +154,111 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     return out;
   }, new Set<string>());
 
+  // Custom cell renderer for the ToggleButtonGroup
+  const renderToggleButtons = (params: GridRenderCellParams) => {
+    const handleToggleChange = (event: React.MouseEvent<HTMLElement>, newValue: string | null) => {
+      const rowId = params.row.id;
+      const currentValue = toggleStates[rowId] || '';
+
+      // If clicking the same button, deselect it
+      const finalValue = newValue === currentValue ? '' : (newValue as 'yes' | 'no' | '');
+
+      setToggleStates((prev) => ({
+        ...prev,
+        [rowId]: finalValue,
+      }));
+
+      // Update selected arrays
+      const rowData = props.rows.find((row) => row.id === rowId);
+      if (!rowData) return;
+
+      setSelectedYes((prev) => {
+        const filtered = prev.filter((row) => row.id !== rowId);
+        return finalValue === 'yes' ? [...filtered, rowData] : filtered;
+      });
+
+      setSelectedNo((prev) => {
+        const filtered = prev.filter((row) => row.id !== rowId);
+        return finalValue === 'no' ? [...filtered, rowData] : filtered;
+      });
+    };
+
+    const currentValue = toggleStates[params.row.id] || '';
+
+    // Determine if toggle should be disabled based on your conditional
+    const isToggleEnabled = isAccessAdmin(currentUser)
+      ? true
+      : !(
+          role_memberships.has(params.row.roleName) &&
+          ((groups_cant_add_self_owner.has(params.row.groupName) && params.row.memberOrOwner == 'Owner') ||
+            (groups_cant_add_self_member.has(params.row.groupName) && params.row.memberOrOwner == 'Member'))
+        );
+
+    return (
+      <ToggleButtonGroup
+        value={currentValue}
+        exclusive
+        onChange={handleToggleChange}
+        aria-label="renew toggle"
+        size="small"
+        disabled={!isToggleEnabled}>
+        <ToggleButton value="yes" aria-label="yes" disabled={!isToggleEnabled}>
+          Yes
+        </ToggleButton>
+        <ToggleButton value="no" aria-label="no" disabled={!isToggleEnabled}>
+          No
+        </ToggleButton>
+      </ToggleButtonGroup>
+    );
+  };
+
+  const columns: GridColDef[] = [
+    {field: 'roleName', headerName: 'Role Name', flex: 1},
+    {field: 'groupName', headerName: 'Group Name', flex: 1},
+    {field: 'groupType', headerName: 'Group Type', flex: 1},
+    {field: 'memberOrOwner', headerName: 'Member or Owner', flex: 1},
+    {field: 'started', headerName: 'Started', flex: 1},
+    {field: 'addedBy', headerName: 'Added By', flex: 1},
+    {field: 'ending', headerName: 'Ending', flex: 1},
+    {
+      field: 'renew',
+      headerName: 'Renew?',
+      flex: 1,
+      renderCell: renderToggleButtons,
+      sortable: false,
+      filterable: false,
+    },
+  ];
+
   // If user is renewing a specific role, set it as selected by default *only* if the group tag constraints allow them
   // to renew it. (Eg. if there is the owner can't add themselves' constraint, make sure they aren't in the role before
   // selecting the row by default)
-  const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
-    props.select != undefined
-      ? props.rows.filter(
-          (r) =>
-            r.id == props.select &&
-            !(
-              role_memberships.has(r.role_group!.name) &&
-              ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
-                (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
-            ),
-        )
-      : [],
-  );
-  const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
-    props.rows
-      .filter(
-        (r) =>
-          r.id == props.select &&
-          !(
-            role_memberships.has(r.role_group!.name) &&
-            ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
-              (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
-          ),
-      )
-      .map((r) => r.id!),
-  );
+  // const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
+  //   props.select != undefined
+  //     ? props.rows.filter(
+  //         (r) =>
+  //           r.id == props.select &&
+  //           !(
+  //             role_memberships.has(r.role_group!.name) &&
+  //             ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
+  //               (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
+  //           ),
+  //       )
+  //     : [],
+  // );
+  // const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
+  //   props.rows
+  //     .filter(
+  //       (r) =>
+  //         r.id == props.select &&
+  //         !(
+  //           role_memberships.has(r.role_group!.name) &&
+  //           ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
+  //             (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
+  //         ),
+  //     )
+  //     .map((r) => r.id!),
+  // );
 
   const display_owner_add_constraint =
     !isAccessAdmin(currentUser) &&
@@ -240,6 +336,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
+  // Update time limits and required reason when selections change
+  React.useEffect(() => {
+    const allSelected = [...selectedYes, ...selectedNo];
+    updateUntil(allSelected);
+    updateRequiredReason(allSelected);
+  }, [selectedYes, selectedNo]);
+
   const complete = (
     completedUsersChange: RoleMember | undefined,
     error: PutRoleMembersByIdError | null,
@@ -276,7 +379,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
   const submit = (rolesForm: CreateRequestForm) => {
     let blockedRoles: Array<BlockedPair> = [];
-    const blockedRoleSelected = selected.reduce((out, roleGroupMap) => {
+    const blockedRoleSelected = selectedYes.reduce((out, roleGroupMap) => {
       const blockedOwner =
         role_memberships.has(roleGroupMap.role_group!.name) &&
         groups_cant_add_self_owner.has(roleGroupMap.group!.name) &&
@@ -316,7 +419,10 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     setSubmitting(true);
 
-    if (selected.length == 0) {
+    if (
+      selectedYes.length == 0 &&
+      selectedNo.filter((n) => !n.should_expire && dayjs(n.ended_at) >= dayjs()).length == 0
+    ) {
       setSubmitting(false);
       props.setOpen(false);
       navigate(0);
@@ -325,7 +431,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
     // group selected RoleGroupMaps by group
     // creates map  { role ids : {'owner' : [group ids], 'member' : [group ids]} }
-    const grouped = selected.reduce(
+    const grouped = selectedYes.reduce(
       (groups, item) => {
         (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(
           item.group!.id!,
@@ -335,13 +441,30 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       {} as Record<string, Record<string, string[]>>,
     );
 
-    setNumUpdates(Object.keys(grouped).length);
+    // group selectedNo OktaUserGroupMembers by group
+    // creates map { group ids : [OktaUserGroupMember] }
+    // only include if access is active and decision has not already been made
+    const doNotRenew = selectedNo.reduce(
+      (groups, item) => {
+        if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
+          (groups[item.group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id!);
+        }
+        return groups;
+      },
+      {} as Record<string, Record<string, number[]>>,
+    );
 
-    for (const key in grouped) {
+    const updates = new Set([...Object.keys(grouped), ...Object.keys(doNotRenew)]);
+
+    setNumUpdates(updates.size);
+
+    updates.forEach(function (gid) {
       const roleMembers: RoleMember = {
-        groups_to_add: grouped[key]['member'],
+        groups_to_add: grouped[gid]?.['member'] ?? [],
+        groups_should_expire: doNotRenew[gid]?.['member'] ?? [],
         groups_to_remove: [],
-        owner_groups_to_add: grouped[key]['owner'],
+        owner_groups_to_add: grouped[gid]?.['owner'] ?? [],
+        owner_groups_should_expire: doNotRenew[gid]?.['owner'] ?? [],
         owner_groups_to_remove: [],
       };
 
@@ -362,10 +485,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 
       putGroupUsers.mutate({
         body: roleMembers,
-        pathParams: {roleId: key},
+        pathParams: {roleId: gid},
       });
-    }
+    });
   };
+
+  // Generate rows with current toggle states
+  const dataRows = props.rows.map((row) => createData(row, props.select, toggleStates[row.id!] || ''));
 
   return (
     <Dialog open fullWidth maxWidth="xl" onClose={() => props.setOpen(false)}>
@@ -381,6 +507,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             {display_owner_add_constraint
               ? 'Due to group constraints, some roles may not be renewed since you are both a member of the role and an owner of the group. Please reach out to another group owner to renew the role membership to the group.'
               : null}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{mb: 2}}>
+            Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <Grid container spacing={1}>
@@ -443,8 +572,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             </Grid>
           </Grid>
           <BulkRenewalDataGrid
-            rows={props.rows.map((row) => createData(row))}
-            rowHeight={40}
+            rows={dataRows}
+            rowHeight={45}
             columns={columns}
             columnVisibilityModel={{
               id: false,
@@ -453,25 +582,8 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}
             pageSizeOptions={[5, 10, 20]}
-            checkboxSelection
-            rowSelectionModel={selectionModel}
-            isRowSelectable={(params: GridRowParams) =>
-              isAccessAdmin(currentUser)
-                ? true
-                : !(
-                    role_memberships.has(params.row.roleName) &&
-                    ((groups_cant_add_self_owner.has(params.row.groupName) && params.row.memberOrOwner == 'Owner') ||
-                      (groups_cant_add_self_member.has(params.row.groupName) && params.row.memberOrOwner == 'Member'))
-                  )
-            }
-            onRowSelectionModelChange={(ids) => {
-              setSelectionModel(ids);
-              const selectedIDs = new Set(ids);
-              const selectedRowData = props.rows.filter((row) => selectedIDs.has(row.id!));
-              setSelected(selectedRowData);
-              updateUntil(selectedRowData);
-              updateRequiredReason(selectedRowData);
-            }}
+            disableRowSelectionOnClick
+            hideFooterSelectedRowCount
             getRowClassName={(params) => (params.row.status != '' ? `super-app-theme--${params.row.status}` : '')}
           />
         </DialogContent>
