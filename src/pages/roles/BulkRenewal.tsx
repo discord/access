@@ -4,6 +4,7 @@ import {useNavigate} from 'react-router-dom';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import ChangeReviewIcon from '@mui/icons-material/PublishedWithChanges';
 import CircularProgress from '@mui/material/CircularProgress';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -23,7 +24,8 @@ import AccessRequestIcon from '../../components/icons/MoreTime';
 
 import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
 
-import {GridColDef, GridRenderCellParams, GridRowParams, GridRowSelectionModel} from '@mui/x-data-grid';
+import {GridColDef, GridRenderCellParams} from '@mui/x-data-grid';
+import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
@@ -62,11 +64,12 @@ function createData(row: RoleGroupMap, selected: number | undefined, renewValue:
     addedBy: displayUserName(row.created_actor),
     ending: dayjs(row.ended_at).startOf('second').fromNow(),
     renew: renewValue,
-    status:
-      dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-        ? highlight + 'Soon'
-        : dayjs(row.ended_at).isBefore(dayjs())
-          ? highlight + 'Expired'
+    status: dayjs(row.ended_at).isBefore(dayjs())
+      ? highlight + 'Expired'
+      : row.should_expire
+        ? highlight + 'Should-Expire'
+        : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+          ? highlight + 'Soon'
           : highlight !== ''
             ? 'Selected'
             : '',
@@ -229,36 +232,6 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       filterable: false,
     },
   ];
-
-  // If user is renewing a specific role, set it as selected by default *only* if the group tag constraints allow them
-  // to renew it. (Eg. if there is the owner can't add themselves' constraint, make sure they aren't in the role before
-  // selecting the row by default)
-  // const [selected, setSelected] = React.useState<RoleGroupMap[]>(() =>
-  //   props.select != undefined
-  //     ? props.rows.filter(
-  //         (r) =>
-  //           r.id == props.select &&
-  //           !(
-  //             role_memberships.has(r.role_group!.name) &&
-  //             ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
-  //               (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
-  //           ),
-  //       )
-  //     : [],
-  // );
-  // const [selectionModel, setSelectionModel] = React.useState<GridRowSelectionModel>(() =>
-  //   props.rows
-  //     .filter(
-  //       (r) =>
-  //         r.id == props.select &&
-  //         !(
-  //           role_memberships.has(r.role_group!.name) &&
-  //           ((groups_cant_add_self_owner.has(r.group!.name) && r.is_owner!) ||
-  //             (groups_cant_add_self_member.has(r.group!.name) && !r.is_owner))
-  //         ),
-  //     )
-  //     .map((r) => r.id!),
-  // );
 
   const display_owner_add_constraint =
     !isAccessAdmin(currentUser) &&
@@ -441,13 +414,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       {} as Record<string, Record<string, string[]>>,
     );
 
-    // group selectedNo OktaUserGroupMembers by group
-    // creates map { group ids : [OktaUserGroupMember] }
+    // group selectedNo RoleGroupMaps by group
+    // creates map { role ids : [RoleGroupMap] }
     // only include if access is active and decision has not already been made
     const doNotRenew = selectedNo.reduce(
       (groups, item) => {
         if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
-          (groups[item.group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id!);
+          (groups[item.role_group!.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id!);
         }
         return groups;
       },
@@ -605,11 +578,23 @@ interface BulkRenewalButtonProps {
 }
 
 function BulkRenewalButton(props: BulkRenewalButtonProps) {
+  const theme = useTheme();
   return (
-    <Tooltip title={props.bulk ? 'Renew access for group memberships currently shown' : null}>
-      <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
-        {props.bulk ? 'Bulk Review' : props.rereview ? 'Update' : 'Review'}
-      </Button>
+    <Tooltip
+      title={
+        props.bulk
+          ? 'Renew access for group memberships currently shown'
+          : props.rereview && "Already reviewed and marked as 'Should expire.'"
+      }>
+      <span>
+        <Button
+          variant="contained"
+          onClick={() => props.setOpen(true)}
+          endIcon={props.rereview ? <ChangeReviewIcon /> : <AccessRequestIcon />}
+          sx={{backgroundColor: props.rereview ? theme.palette.primary.dark : theme.palette.primary.main}}>
+          {props.bulk ? 'Bulk Review' : props.rereview ? 'Update' : 'Review'}
+        </Button>
+      </span>
     </Tooltip>
   );
 }
