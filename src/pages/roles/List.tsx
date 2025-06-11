@@ -26,6 +26,8 @@ import {perPage} from '../../helpers';
 import {useGetRoles} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListRoles() {
   const navigate = useNavigate();
@@ -131,31 +133,21 @@ export default function ListRoles() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <LinkTableRow to={`/roles/${row.name}`} key={row.id}>
+                <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Link
-                    to={`/roles/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {row.name}
-                  </Link>
+                  {(row.description?.length ?? 0) > 115
+                    ? (row.description?.substring(0, 114) ?? '') + '...'
+                    : row.description}
                 </TableCell>
-                <TableCell>
-                  <Link
-                    to={`/roles/${row.name}`}
-                    sx={{textDecoration: 'none', color: 'inherit'}}
-                    component={RouterLink}>
-                    {(row.description?.length ?? 0) > 115
-                      ? row.description?.substring(0, 114) + '...' ?? ''
-                      : row.description}
-                  </Link>
-                </TableCell>
-              </TableRow>
+              </LinkTableRow>
             ))}
-            {emptyRows > 0 && (
+            {emptyRows > 0 ? (
               <TableRow style={{height: 33 * emptyRows}}>
                 <TableCell colSpan={2} />
               </TableRow>
+            ) : (
+              <EmptyListEntry cellProps={{colSpan: 2}} />
             )}
           </TableBody>
           <TableFooter>

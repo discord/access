@@ -94,7 +94,15 @@ function ReportingToCard({user}: ReportingToCardProps) {
             <ListItem
               component={RouterLink}
               to={`/users/${user.manager.email.toLowerCase()}`}
-              sx={{textDecoration: 'none', color: 'inherit', padding: 0}}>
+              sx={{
+                textDecoration: 'none',
+                color: 'inherit',
+                padding: 0,
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                  borderRadius: 1,
+                },
+              }}>
               <ListItemAvatar>
                 <UserAvatar name={displayUserName(user.manager)} size={32} variant={'body1'} />
               </ListItemAvatar>
@@ -176,7 +184,10 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                       to={`/groups/${groups[0].active_group?.name}`}
                       sx={{
                         textDecoration: 'none',
-                        color: 'inherit',
+                        color: 'inherit ',
+                        '&:hover': {
+                          color: (theme) => theme.palette.primary.main,
+                        },
                       }}
                       component={RouterLink}>
                       {groups[0].active_group?.name}
@@ -300,6 +311,9 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                       sx={{
                         textDecoration: 'none',
                         color: 'inherit',
+                        '&:hover': {
+                          color: (theme) => theme.palette.primary.main,
+                        },
                       }}
                       component={RouterLink}>
                       {groups[0].active_group?.name}
@@ -433,7 +447,16 @@ export default function ReadUser() {
                 <Divider />
                 <Stack justifyContent="center" direction="row" gap={1}>
                   <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
-                    <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
+                    <IconButton
+                      aria-label="audit"
+                      to={`/users/${id}/audit`}
+                      component={RouterLink}
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: 'primary.main',
+                          color: 'primary.contrastText',
+                        },
+                      }}>
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>

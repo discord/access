@@ -26,6 +26,7 @@ import {perPage} from '../../helpers';
 import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListApps() {
   const navigate = useNavigate();
@@ -131,20 +132,12 @@ export default function ListApps() {
           </TableHead>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <LinkTableRow to={`/apps/${row.name}`} key={row.id}>
+                <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {row.name}
-                  </Link>
+                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
                 </TableCell>
-                <TableCell>
-                  <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {(row.description ?? '').length > 115
-                      ? row.description?.substring(0, 114) + '...'
-                      : row.description ?? ''}
-                  </Link>
-                </TableCell>
-              </TableRow>
+              </LinkTableRow>
             ))}
             {emptyRows > 0 && (
               <TableRow style={{height: 33 * emptyRows}}>
