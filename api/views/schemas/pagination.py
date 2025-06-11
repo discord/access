@@ -39,6 +39,7 @@ class AuditOrderBy(Enum):
 class SearchAuditPaginationRequestSchema(SearchPaginationRequestSchema):
     owner = fields.Boolean(load_only=True)
     active = fields.Boolean(load_only=True)
+    needs_review = fields.Boolean(load_only=True)
     managed = fields.Boolean(load_only=True)
     order_by = fields.Enum(AuditOrderBy, load_only=True, load_default=AuditOrderBy.created_at)
     order_desc = fields.Boolean(load_only=True, load_default=True)

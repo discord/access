@@ -19,6 +19,7 @@ import TableSortLabel from '@mui/material/TableSortLabel';
 import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import dayjs, {Dayjs} from 'dayjs';
@@ -53,7 +54,8 @@ export default function ExpiringGroups() {
   const [searchInput, setSearchInput] = React.useState('');
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
-  const [filterActive, setFilterActive] = React.useState<boolean | null>(true);
+  const [filterNeedsReview, setFilterNeedsReview] = React.useState<boolean>(true);
+  const [filterActive, setFilterActive] = React.useState<boolean | null>(null);
   const [startDate, setStartDate] = React.useState<Dayjs | null>(dayjs());
   const [endDate, setEndDate] = React.useState<Dayjs | null>(dayjs().add(30, 'day'));
   const [datesPicked, setDatesPicked] = React.useState(0);
@@ -69,6 +71,7 @@ export default function ExpiringGroups() {
     }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setFilterNeedsReview(searchParams.get('needs_review') !== 'false');
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setStartDate(searchParams.get('start_date') == null ? dayjs() : dayjs.unix(Number(searchParams.get('start_date'))));
     setEndDate(
@@ -88,6 +91,7 @@ export default function ExpiringGroups() {
       searchQuery == null ? null : {q: searchQuery},
       userId == null ? null : {user_id: userId},
       ownerId == null ? null : {owner_id: ownerId},
+      filterNeedsReview == null ? null : {needs_review: filterNeedsReview},
       filterActive == null ? null : {active: filterActive},
       startDate == null ? null : {start_date: startDate.unix()},
       endDate == null ? null : {end_date: endDate.unix()},
@@ -163,6 +167,17 @@ export default function ExpiringGroups() {
     setSearchQuery(newValue);
   };
 
+  const handleNeedsReviewOrAll = (event: React.MouseEvent<HTMLElement>, newValue: boolean) => {
+    if (newValue !== null) {
+      setSearchParams((params) => {
+        params.set('needs_review', newValue ? 'true' : 'false');
+        params.set('page', '0');
+        return params;
+      });
+      setPage(0);
+    }
+  };
+
   const handleActiveOrInactive = (event: React.MouseEvent<HTMLElement>, newValue: boolean | null) => {
     if (newValue == null) {
       setSearchParams((params) => {
@@ -207,17 +222,21 @@ export default function ExpiringGroups() {
     }
   };
 
-  console.log(rows);
-
   return (
     <>
       <ChangeTitle title="Expiring Groups" />
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Groups">
           <BulkRenewal
-            rows={rows.filter((row) => canManageGroup(currentUser, row.group) && !row.should_expire)}
+            rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
             ownAccess={userId == '@me' || userId == currentUser.id}
           />
+          <Tooltip title="Show access that still needs review or all expiring access.">
+            <ToggleButtonGroup size="small" exclusive value={filterNeedsReview} onChange={handleNeedsReviewOrAll}>
+              <ToggleButton value={true}>Pending</ToggleButton>
+              <ToggleButton value={false}>All</ToggleButton>
+            </ToggleButtonGroup>
+          </Tooltip>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -274,7 +293,6 @@ export default function ExpiringGroups() {
                   Ending
                 </TableSortLabel>
               </TableCell>
-              <TableCell>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -283,12 +301,12 @@ export default function ExpiringGroups() {
                 key={row.id}
                 sx={{
                   bgcolor: ({palette: {highlight}}) =>
-                    dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? highlight.warning.main
-                      : dayjs(row.ended_at).isBefore(dayjs())
-                        ? highlight.danger.main
-                        : row.should_expire
-                          ? highlight.info.main
+                    row.should_expire
+                      ? highlight.info.main
+                      : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+                        ? highlight.warning.main
+                        : dayjs(row.ended_at).isBefore(dayjs())
+                          ? highlight.danger.main
                           : null,
                 }}>
                 <TableCell>
@@ -373,7 +391,7 @@ export default function ExpiringGroups() {
                       group={row.group}
                       owner={row.is_owner}
                       renew={true}
-                      disable={row.should_expire}
+                      expired={row.should_expire}
                     />
                   </TableCell>
                 ) : ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
@@ -381,13 +399,12 @@ export default function ExpiringGroups() {
                     <BulkRenewal
                       rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
                       select={row.id}
-                      disable={row.should_expire}
+                      rereview={row.should_expire}
                     />
                   </TableCell>
                 ) : (
                   <TableCell></TableCell>
                 )}
-                {row.should_expire ? <TableCell>Reviewed, allow expiration</TableCell> : <TableCell></TableCell>}
               </TableRow>
             ))}
             {emptyRows > 0 && (

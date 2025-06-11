@@ -177,6 +177,7 @@ export type GetGroupRoleAuditsQueryParams = {
   q?: string;
   owner?: boolean;
   active?: boolean;
+  needs_review?: boolean;
   app_owner?: boolean;
   managed?: boolean;
   /**
@@ -233,6 +234,7 @@ export type GetUserGroupAuditsQueryParams = {
   q?: string;
   owner?: boolean;
   active?: boolean;
+  needs_review?: boolean;
   managed?: boolean;
   /**
    * @default created_at
