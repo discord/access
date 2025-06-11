@@ -489,13 +489,14 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
 interface BulkRenewalButtonProps {
   setOpen(open: boolean): any;
   bulk: boolean;
+  rereview?: boolean;
 }
 
 function BulkRenewalButton(props: BulkRenewalButtonProps) {
   return (
     <Tooltip title={props.bulk ? 'Renew access for group memberships currently shown' : null}>
       <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
-        {props.bulk ? 'Bulk Renew' : 'Renew'}
+        {props.bulk ? 'Bulk Review' : props.rereview ? 'Update' : 'Review'}
       </Button>
     </Tooltip>
   );
@@ -504,6 +505,7 @@ function BulkRenewalButton(props: BulkRenewalButtonProps) {
 interface BulkRenewalProps {
   rows: RoleGroupMap[];
   select?: number;
+  rereview?: boolean;
 }
 
 export default function BulkRenewal(props: BulkRenewalProps) {
@@ -515,7 +517,7 @@ export default function BulkRenewal(props: BulkRenewalProps) {
 
   return (
     <>
-      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} />
+      <BulkRenewalButton setOpen={setOpen} bulk={props.select != undefined ? false : true} rereview={props.rereview} />
       {open ? <BulkRenewalDialog setOpen={setOpen} rows={props.rows} select={props.select} /> : null}
     </>
   );

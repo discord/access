@@ -341,7 +341,7 @@ export default function App() {
             color: {
               main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3),
               // using this as a general contrast color but MUI doesn't have that field built in
-              contrastText: mode === 'light' ? alpha(yellow[300], 0.9) : alpha(yellow[200], 0.3),
+              contrastText: mode === 'light' ? alpha(yellow[300], 0.8) : alpha(yellow[200], 0.3),
             },
             name: 'warning',
           }),
@@ -349,7 +349,7 @@ export default function App() {
             color: {
               main: mode === 'light' ? red[100] : alpha(red[500], 0.3),
               // using this as a general contrast color but MUI doesn't have that field built in
-              contrastText: mode === 'light' ? alpha(red[200], 0.9) : alpha(red[300], 0.3),
+              contrastText: mode === 'light' ? alpha(red[200], 0.7) : alpha(red[300], 0.3),
             },
             name: 'danger',
           }),

@@ -1,4 +1,5 @@
-import {alpha, darken, keyframes, lighten, PaletteColor, styled} from '@mui/material';
+import {darken, lighten, PaletteColor, styled} from '@mui/material';
+import {grey} from '@mui/material/colors';
 import {DataGrid} from '@mui/x-data-grid';
 
 const getHoverBackgroundColor = (color: PaletteColor, mode: string) => (mode === 'dark' ? color.dark : color.light);
@@ -96,18 +97,18 @@ const BulkRenewalDataGrid = styled(DataGrid)(
         },
       },
     },
-    // '& .super-app-theme--Selected': {
-    //   backgroundColor: ,
-    //   '&:hover': {
-    //     backgroundColor: getHoverBackgroundColor(highlight.info, mode),
-    //   },
-    //   '&.Mui-selected': {
-    //     backgroundColor: getSelectedBackgroundColor(highlight.info, mode),
-    //     '&:hover': {
-    //       backgroundColor: getSelectedHoverBackgroundColor(highlight.info, mode),
-    //     },
-    //   },
-    // },
+    '& .super-app-theme--Selected': {
+      backgroundColor: mode === 'dark' ? grey[800] : lighten(grey[200], 0.5),
+      '&:hover': {
+        backgroundColor: mode === 'dark' ? lighten(grey[800], 0.05) : lighten(grey[200], 0.2),
+      },
+      '&.Mui-selected': {
+        backgroundColor: mode === 'dark' ? grey[800] : lighten(grey[200], 0.5),
+        '&:hover': {
+          backgroundColor: mode === 'dark' ? lighten(grey[800], 0.05) : lighten(grey[200], 0.2),
+        },
+      },
+    },
   }),
 );
 export default BulkRenewalDataGrid;
