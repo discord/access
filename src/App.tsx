@@ -280,6 +280,7 @@ export default function App() {
         primary: {
           main: '#5865F2',
           light: '#A5B2FF',
+          dark: '#464FB8',
         },
         secondary: {
           main: '#EB459E',
