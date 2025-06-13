@@ -445,16 +445,13 @@ def test_individual_do_not_renew_notification_behavior(
 
     # Get the OktaUserGroupMember for the user's membership to role_group
     membership = (
-        OktaUserGroupMember.query
-        .filter(OktaUserGroupMember.user_id.is_(user.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
         .filter(OktaUserGroupMember.group_id.is_(role_group.id))
         .first()
     )
 
     # Mark one membership as 'should_expire'
-    ModifyGroupUsers(
-        group=role_group, members_should_expire=[membership.id], sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=role_group, members_should_expire=[membership.id], sync_to_okta=False).execute()
 
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_user")
@@ -473,7 +470,9 @@ def test_individual_do_not_renew_notification_behavior(
 
 
 # Test owner notifications for should not renew funtionality
-def test_owner_role_do_not_renew_notification_behavior(db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup) -> None:
+def test_owner_role_do_not_renew_notification_behavior(
+    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup
+) -> None:
     user1 = OktaUserFactory.create()
     owner = OktaUserFactory.create()
     expiration_datetime = datetime.now() + timedelta(days=2)
@@ -484,38 +483,38 @@ def test_owner_role_do_not_renew_notification_behavior(db: SQLAlchemy, mocker: M
     db.session.add(owner)
     db.session.commit()
 
-
-    ModifyGroupUsers(group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user1.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role_group, users_added_ended_at=None, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user1.id], sync_to_okta=False
+    ).execute()
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=None, owners_to_add=[owner.id], sync_to_okta=False
+    ).execute()
     ModifyGroupUsers(group=okta_group, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
-        role_group=role_group, groups_added_ended_at=expiration_datetime, groups_to_add=[okta_group.id], sync_to_okta=False
+        role_group=role_group,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[okta_group.id],
+        sync_to_okta=False,
     ).execute()
 
     # Get the OktaUserGroupMember for the user's membership to role_group
     membership = (
-        OktaUserGroupMember.query
-        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user1.id))
         .filter(OktaUserGroupMember.group_id.is_(role_group.id))
         .first()
     )
     # Get RoleGroupMap
     role_membership = (
-        RoleGroupMap.query
-        .filter(RoleGroupMap.role_group_id.is_(role_group.id))
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id.is_(role_group.id))
         .filter(RoleGroupMap.group_id.is_(okta_group.id))
         .first()
     )
 
     # Mark user as do not renew
-    ModifyGroupUsers(
-        group=role_group, members_should_expire=[membership.id], sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=role_group, members_should_expire=[membership.id], sync_to_okta=False).execute()
 
     # Mark role as do not renew
-    ModifyRoleGroups(
-        role_group=role_group, groups_should_expire=[role_membership.id], sync_to_okta=False
-    ).execute()
+    ModifyRoleGroups(role_group=role_group, groups_should_expire=[role_membership.id], sync_to_okta=False).execute()
 
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")

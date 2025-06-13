@@ -85,8 +85,7 @@ class ModifyGroupUsers:
         self.members_should_expire = []
         if len(members_should_expire) > 0:
             self.members_should_expire = (
-                OktaUserGroupMember.query
-                .filter(OktaUserGroupMember.id.in_(members_should_expire))
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(members_should_expire))
                 .filter(OktaUserGroupMember.ended_at > db.func.now())
                 .filter(OktaUserGroupMember.is_owner.is_(False))
             ).all()
@@ -94,8 +93,7 @@ class ModifyGroupUsers:
         self.owners_should_expire = []
         if len(owners_should_expire) > 0:
             self.owners_should_expire = (
-                OktaUserGroupMember.query
-                .filter(OktaUserGroupMember.id.in_(owners_should_expire))
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(owners_should_expire))
                 .filter(OktaUserGroupMember.ended_at > db.func.now())
                 .filter(OktaUserGroupMember.is_owner.is_(True))
             ).all()

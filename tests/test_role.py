@@ -1303,7 +1303,12 @@ def test_complex_role_modifications(
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: SQLAlchemy, client: FlaskClient, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: SQLAlchemy,
+    client: FlaskClient,
+    mocker: MockerFixture,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
 ) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
@@ -1315,7 +1320,10 @@ def test_do_not_renew(
         group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
     ).execute()
     ModifyRoleGroups(
-        role_group=role_group, groups_added_ended_at=expiration_datetime, groups_to_add=[okta_group.id], sync_to_okta=False
+        role_group=role_group,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[okta_group.id],
+        sync_to_okta=False,
     ).execute()
 
     # need the RoleGroupMap id to pass in later
@@ -1349,12 +1357,16 @@ def test_do_not_renew(
     assert len(data["groups_owned_by_role"]) == 0
 
     # get OktaUserGroupMembers, check expiration dates and should_expire
-    membership_role = RoleGroupMap.query.filter(
+    membership_role = (
+        RoleGroupMap.query.filter(
             db.or_(
-               RoleGroupMap.ended_at.is_(None),
+                RoleGroupMap.ended_at.is_(None),
                 RoleGroupMap.ended_at > db.func.now(),
             )
-        ).filter(RoleGroupMap.role_group_id.is_(role_group.id)).all()
+        )
+        .filter(RoleGroupMap.role_group_id.is_(role_group.id))
+        .all()
+    )
 
     assert len(membership_role) == 1
     assert membership_role[0].ended_at == expiration_datetime

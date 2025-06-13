@@ -81,8 +81,7 @@ class ModifyRoleGroups:
         self.groups_should_expire = []
         if len(groups_should_expire) > 0:
             self.groups_should_expire = (
-                RoleGroupMap.query
-                .filter(RoleGroupMap.id.in_(groups_should_expire))
+                RoleGroupMap.query.filter(RoleGroupMap.id.in_(groups_should_expire))
                 .filter(RoleGroupMap.ended_at > db.func.now())
                 .filter(RoleGroupMap.is_owner.is_(False))
             ).all()
@@ -90,8 +89,7 @@ class ModifyRoleGroups:
         self.owner_groups_should_expire = []
         if len(owner_groups_should_expire) > 0:
             self.owner_groups_should_expire = (
-                RoleGroupMap.query
-                .filter(RoleGroupMap.id.in_(groups_should_expire))
+                RoleGroupMap.query.filter(RoleGroupMap.id.in_(groups_should_expire))
                 .filter(RoleGroupMap.ended_at > db.func.now())
                 .filter(RoleGroupMap.is_owner.is_(True))
             ).all()
@@ -277,17 +275,13 @@ class ModifyRoleGroups:
         # Only relevant for the expiring roles page so not adding checks for this field anywhere else since OK if marked to expire
         # then manually renewed from group/role page or with an access request
         if len(self.groups_should_expire) > 0:
-            RoleGroupMap.query.filter(
-                RoleGroupMap.id.in_(m.id for m in self.groups_should_expire)
-            ).update(
+            RoleGroupMap.query.filter(RoleGroupMap.id.in_(m.id for m in self.groups_should_expire)).update(
                 {RoleGroupMap.should_expire: True},
                 synchronize_session="fetch",
             )
 
         if len(self.owner_groups_should_expire) > 0:
-            RoleGroupMap.query.filter(
-                RoleGroupMap.id.in_(m.id for m in self.owner_groups_should_expire)
-            ).update(
+            RoleGroupMap.query.filter(RoleGroupMap.id.in_(m.id for m in self.owner_groups_should_expire)).update(
                 {RoleGroupMap.should_expire: True},
                 synchronize_session="fetch",
             )
