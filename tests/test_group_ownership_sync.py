@@ -397,6 +397,9 @@ def run_sync(
     groups_with_rules: set[str] = set(),
 ) -> list[OktaGroup]:
     with Session(db.engine) as session:
+        # Initialize Okta service with group owners API enabled
+        okta.initialize("test.okta.com", "test-token", use_group_owners_api=True)
+
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 
         mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
