@@ -401,10 +401,13 @@ def run_sync(
         okta.initialize("test.okta.com", "test-token", use_group_owners_api=True)
 
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
-
         mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
-
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
+        # Mock ownership-related methods
+        mocker.patch.object(okta, "add_owner_to_group", return_value=None)
+        mocker.patch.object(okta, "async_add_owner_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_owner_from_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_owner_from_group", return_value=None)
 
         sync_group_ownerships(act_as_authority)
 
