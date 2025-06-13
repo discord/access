@@ -396,16 +396,32 @@ def run_sync(
     act_as_authority: bool,
     groups_with_rules: set[str] = set(),
 ) -> list[OktaGroup]:
+    # Initialize Okta service first
+    okta.initialize("test.okta.com", "test-token")
+
+    # Mock the okta module functions
+    mocker.patch.object(okta, "list_groups", return_value=okta_groups)
+    mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
+    mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
+
+    # Check if these are already mocked by the test
+    if not hasattr(okta.add_owner_to_group, "_mock_name"):
+        mocker.patch.object(okta, "add_owner_to_group", return_value=None)
+    if not hasattr(okta.remove_owner_from_group, "_mock_name"):
+        mocker.patch.object(okta, "remove_owner_from_group", return_value=None)
+
+    # Mock OktaService for ModifyGroupUsers
+    mock_service = mocker.MagicMock()
+    mock_service.okta_client = mocker.MagicMock()
+    mock_service.use_group_owners_api = False
+    mocker.patch("api.services.okta_service.OktaService", return_value=mock_service)
+
     with Session(db.engine) as session:
-        mocker.patch.object(okta, "list_groups", return_value=okta_groups)
-
-        mocker.patch.object(okta, "list_owners_for_group", side_effect=user_ownership_func)
-
-        mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
-
         sync_group_ownerships(act_as_authority)
+        session.commit()
 
-        return session.query(OktaUserGroupMember).all()
+    db.session.expire_all()
+    return db.session.query(OktaUserGroupMember).all()
 
 
 def _get_group_owners(db: SQLAlchemy, group_id: str) -> dict[str, OwnershipDetails]:
