@@ -319,14 +319,11 @@ def run_sync(
     groups_with_rules: set[str] = set(),
 ) -> list[OktaGroup]:
     with Session(db.engine) as session:
-        # Initialize Okta service
-        okta.initialize("test.okta.com", "test-token")
-
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
+
         mocker.patch.object(okta, "list_users_for_group", side_effect=user_membership_func)
+
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
-        mocker.patch.object(okta, "add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
 
         sync_group_memberships(act_as_authority)
 
