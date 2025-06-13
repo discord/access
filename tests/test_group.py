@@ -757,7 +757,10 @@ def test_do_not_renew(
     expiration_datetime = datetime.now() + timedelta(days=1)
 
     ModifyGroupUsers(
-        group=okta_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id, user2.id], sync_to_okta=False
+        group=okta_group,
+        users_added_ended_at=expiration_datetime,
+        members_to_add=[user.id, user2.id],
+        sync_to_okta=False,
     ).execute()
 
     # need the OktaUserGroupMember id to pass in later
@@ -791,23 +794,31 @@ def test_do_not_renew(
     assert len(data["owners"]) == 0
 
     # get OktaUserGroupMembers, check expiration dates and should_expire
-    membership_user1 = OktaUserGroupMember.query.filter(
+    membership_user1 = (
+        OktaUserGroupMember.query.filter(
             db.or_(
-               OktaUserGroupMember.ended_at.is_(None),
+                OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > db.func.now(),
             )
-        ).filter(OktaUserGroupMember.user_id.is_(user.id)).all()
+        )
+        .filter(OktaUserGroupMember.user_id.is_(user.id))
+        .all()
+    )
 
     assert len(membership_user1) == 1
     assert membership_user1[0].ended_at is None
     assert membership_user1[0].should_expire is False
 
-    membership_user2 = OktaUserGroupMember.query.filter(
+    membership_user2 = (
+        OktaUserGroupMember.query.filter(
             db.or_(
-               OktaUserGroupMember.ended_at.is_(None),
+                OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > db.func.now(),
             )
-        ).filter(OktaUserGroupMember.user_id.is_(user2.id)).all()
+        )
+        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .all()
+    )
 
     assert len(membership_user2) == 1
     assert membership_user2[0].ended_at == expiration_datetime
