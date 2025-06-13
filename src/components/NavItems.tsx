@@ -164,6 +164,9 @@ export default function NavItems(props: NavItemsProps) {
           <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
+      <Divider />
+
+      <ListItemLink to="/users/diff" displayText="Diff Users" displayIcon={<GroupIcon />} />
     </List>
   );
 }
