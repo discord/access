@@ -28,7 +28,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow, blue} from '@mui/material/colors';
+import {lightGreen, red, yellow, blue, grey} from '@mui/material/colors';
 import * as Sentry from '@sentry/react';
 
 import AuditGroup from './pages/groups/Audit';
@@ -355,9 +355,9 @@ export default function App() {
           }),
           info: base.palette.augmentColor({
             color: {
-              main: mode === 'light' ? blue[100] : alpha(blue[500], 0.3),
+              main: mode === 'light' ? grey[100] : alpha(grey[700], 0.3),
               // using this as a general contrast color but MUI doesn't have that field built in
-              contrastText: mode === 'light' ? alpha(blue[300], 0.8) : alpha(blue[200], 0.3),
+              contrastText: mode === 'light' ? alpha(grey[300], 0.8) : alpha(grey[200], 0.3),
             },
             name: 'info',
           }),
