@@ -310,7 +310,8 @@ export default function ExpiringRoless() {
                   Ending
                 </TableSortLabel>
               </TableCell>
-              <TableCell colSpan={2}>Notes</TableCell>
+              <TableCell>Notes</TableCell>
+              <TableCell></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
