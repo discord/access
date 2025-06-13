@@ -3,9 +3,8 @@ from __future__ import with_statement
 import logging
 from logging.config import fileConfig
 
-from flask import current_app
-
 from alembic import context
+from flask import current_app
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -28,6 +27,27 @@ target_metadata = current_app.extensions["migrate"].db.metadata
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+
+
+def include_object(object, name, type_, reflected, compare_to):
+    """
+    Control which database objects are included in auto-generated migrations.
+    """
+    # Always include indexes to ensure they're properly tracked
+    if type_ == "index":
+        return True
+
+    # Exclude Flask-Migrate's own version table
+    if type_ == "table" and name == "alembic_version":
+        return False
+
+    # Exclude any PostgreSQL system tables/schemas
+    if hasattr(object, "schema"):
+        if object.schema in ["information_schema", "pg_catalog", "pg_toast"]:
+            return False
+
+    # Include everything else (tables, columns, etc.)
+    return True
 
 
 def run_migrations_offline():
@@ -68,6 +88,18 @@ def run_migrations_online():
                 logger.info("No changes in schema detected.")
 
     connectable = current_app.extensions["migrate"].db.get_engine()
+
+    configure_args = current_app.extensions["migrate"].configure_args.copy()
+
+    configure_args.update(
+        {
+            "compare_type": True,  # Detect column type changes
+            "compare_server_default": True,  # Detect default value changes
+            "include_schemas": True,  # Include schema information
+            "include_object": include_object,  # Use our custom filter
+            "render_as_batch": True,  # For SQLite compatibility
+        }
+    )
 
     with connectable.connect() as connection:
         context.configure(
