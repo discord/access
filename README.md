@@ -12,7 +12,7 @@ The access service exists to help answer the following questions for each person
 
 - All Users
   - What do I have access to?
-  - What does a teammate have access to that I don’t?
+  - What does a teammate have access to that I don't?
   - What groups and roles are available?
   - Can I get access?
 - Team Leads
@@ -340,6 +340,47 @@ flask init <YOUR_OKTA_USER_EMAIL>
 ```
 
 Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
+
+### Database Migrations
+
+Access uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. When you make changes to the database models, you'll need to create and apply a migration.
+
+#### Creating a New Migration
+
+To create a new migration after making changes to your models:
+
+1. Make your changes to the SQLAlchemy models in the `api/models` directory
+2. Generate a new migration using:
+   ```
+   flask db migrate -m "Description of your changes"
+   ```
+   This will create a new migration file in the `migrations/versions` directory with a name like `xxxxxxxxxxxx_description_of_your_changes.py`
+
+   For changes that don't involve schema modifications (like adding indexes), you may need to manually create the migration:
+   ```
+   flask db revision -m "Description of your changes"
+   ```
+   Then edit the generated migration file to include your changes, for example:
+   ```python
+   def upgrade():
+       op.create_index('ix_table_column', 'table', ['column'])
+
+   def downgrade():
+       op.drop_index('ix_table_column', 'table')
+   ```
+
+3. Review the generated migration file in `migrations/versions` to ensure it correctly captures your changes
+4. Apply the migration using:
+   ```
+   flask db upgrade
+   ```
+
+If you need to rollback a migration, you can use:
+```
+flask db downgrade
+```
+
+For more information about Alembic migrations, see the [Alembic documentation](https://alembic.sqlalchemy.org/).
 
 ### Kubernetes Deployment and CronJobs
 

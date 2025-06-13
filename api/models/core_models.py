@@ -40,6 +40,16 @@ class OktaUserGroupMember(db.Model):
 
     created_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="", server_default="")
 
+    __table_args__ = (
+        db.Index("idx_okta_user_group_member_user_id", "user_id"),
+        db.Index("idx_okta_user_group_member_group_id", "group_id"),
+        db.Index("idx_okta_user_group_member_role_group_map_id", "role_group_map_id"),
+        db.Index("idx_okta_user_group_member_created_actor_id", "created_actor_id"),
+        db.Index("idx_okta_user_group_member_ended_actor_id", "ended_actor_id"),
+        db.Index("idx_okta_user_group_member_user_group", "user_id", "group_id"),
+        db.Index("idx_okta_user_group_member_group_ended", "group_id", "ended_at"),
+    )
+
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
     group: Mapped["OktaGroup"] = db.relationship(
@@ -136,6 +146,7 @@ class OktaUser(db.Model):
             postgresql_where=db.text("deleted_at IS NULL"),
             sqlite_where=db.text("deleted_at IS NULL"),
         ),
+        db.Index("idx_okta_user_manager_id", "manager_id"),
     )
 
     # A JSON field for storing the user profile, including extra user attribute data from Okta
@@ -455,6 +466,13 @@ class RoleGroupMap(db.Model):
 
     created_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="", server_default="")
 
+    __table_args__ = (
+        db.Index("idx_role_group_map_role_id", "role_id"),
+        db.Index("idx_role_group_map_group_id", "group_id"),
+        db.Index("idx_role_group_map_created_actor_id", "created_actor_id"),
+        db.Index("idx_role_group_map_ended_actor_id", "ended_actor_id"),
+    )
+
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
     role_group: Mapped["RoleGroup"] = db.relationship(
@@ -589,6 +607,8 @@ class AppGroup(OktaGroup):
     # group to administer and manage membership of the app owner group
     is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
 
+    __table_args__ = (db.Index("idx_app_group_app_id", "app_id"),)
+
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
     # in GET /api/audit/users so we have to enable "select" lazy loading.
@@ -714,6 +734,14 @@ class AccessRequest(db.Model):
         db.ForeignKey("okta_user_group_member.id"),
     )
 
+    __table_args__ = (
+        db.Index("idx_access_request_requester_user_id", "requester_user_id"),
+        db.Index("idx_access_request_requested_group_id", "requested_group_id"),
+        db.Index("idx_access_request_resolver_user_id", "resolver_user_id"),
+        db.Index("idx_access_request_approved_membership_id", "approved_membership_id"),
+        db.Index("idx_access_request_status_resolved", "status", "resolved_at"),
+    )
+
     requester: Mapped[OktaUser] = db.relationship(
         "OktaUser",
         back_populates="all_access_requests",
@@ -799,6 +827,14 @@ class RoleRequest(db.Model):
     approved_membership_id: Mapped[Optional[int]] = mapped_column(
         db.BigInteger().with_variant(db.Integer, "sqlite"),
         db.ForeignKey("role_group_map.id"),
+    )
+
+    __table_args__ = (
+        db.Index("idx_role_request_requester_user_id", "requester_user_id"),
+        db.Index("idx_role_request_requester_role_id", "requester_role_id"),
+        db.Index("idx_role_request_requested_group_id", "requested_group_id"),
+        db.Index("idx_role_request_resolver_user_id", "resolver_user_id"),
+        db.Index("idx_role_request_approved_membership_id", "approved_membership_id"),
     )
 
     requester: Mapped[OktaUser] = db.relationship(
