@@ -1,3 +1,4 @@
+
 import datetime
 import logging
 import sys
@@ -34,14 +35,12 @@ class NotificationPluginSpec:
     ) -> None:
         """Notify the requester that their access request has been processed."""
 
-    # TODO
     @hookspec
     def access_expiring_user(
         self, groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
     ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
-    # TODO
     @hookspec
     def access_expiring_owner(
         self,
@@ -52,8 +51,6 @@ class NotificationPluginSpec:
         expiration_datetime: datetime.datetime,
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
-
-    # TODO role owner notifs
 
     @hookspec
     def access_role_request_created(
@@ -109,7 +106,6 @@ def access_request_completed(
         logger.exception("Failed to execute access request completed notification callback")
 
 
-# TODO change to OktaUserGroupMembers
 @hookimpl(wrapper=True)
 def access_expiring_user(
     groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
@@ -123,7 +119,6 @@ def access_expiring_user(
         logger.exception("Failed to execute access expiring for user notification callback")
 
 
-# TODO change to RoleGroupMaps and OktaUserGroupMembers
 @hookimpl(wrapper=True)
 def access_expiring_owner(
     owner: OktaUser,
@@ -139,13 +134,6 @@ def access_expiring_owner(
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for owner notification callback")
-
-
-# TODO add notifications for role ownsers ala individual user notifs
-@hookimpl(wrapper=True)
-def access_expiring_role_owner() -> Generator[None, None, None]:
-    pass
-    logger.exception("Failed to execute access expiring for role owner notification callback")
 
 
 @hookimpl(wrapper=True)
