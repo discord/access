@@ -285,7 +285,7 @@ export default function ExpiringGroups() {
                 <TableSortLabel>Started</TableSortLabel>
               </TableCell>
               <TableCell>Added by</TableCell>
-              <TableCell colSpan={2}>
+              <TableCell>
                 <TableSortLabel
                   active={orderBy === 'ended_at'}
                   direction={orderBy === 'ended_at' ? orderDirection : 'asc'}
@@ -293,6 +293,7 @@ export default function ExpiringGroups() {
                   Ending
                 </TableSortLabel>
               </TableCell>
+              <TableCell colSpan={2}>Notes</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -384,6 +385,7 @@ export default function ExpiringGroups() {
                 <TableCell>
                   <Ending memberships={[row]} />
                 </TableCell>
+                <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {userId == '@me' || currentUser.id == row.user.id ? (
                   <TableCell align="center">
                     <CreateRequest
@@ -415,51 +417,22 @@ export default function ExpiringGroups() {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell colSpan={9} sx={{position: 'relative', p: 0}}>
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    left: '50%',
-                    top: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    display: 'flex',
-                    gap: 1,
-                    zIndex: 1,
-                  }}>
-                  <Chip
-                    label="Expired"
-                    variant="outlined"
-                    sx={{bgcolor: ({palette: {highlight}}) => highlight.danger.main}}
-                  />
-                  <Chip
-                    label="Expiring Soon"
-                    variant="outlined"
-                    sx={{bgcolor: ({palette: {highlight}}) => highlight.warning.main}}
-                  />
-                  <Chip
-                    label="Reviewed, Not Renewed"
-                    variant="outlined"
-                    sx={{bgcolor: ({palette: {highlight}}) => highlight.info.main}}
-                  />
-                </Box>
-                <Box sx={{display: 'flex', justifyContent: 'flex-end'}}>
-                  <TablePagination
-                    rowsPerPageOptions={perPage}
-                    count={totalRows}
-                    rowsPerPage={rowsPerPage}
-                    page={page}
-                    SelectProps={{
-                      inputProps: {
-                        'aria-label': 'rows per page',
-                      },
-                      native: true,
-                    }}
-                    onPageChange={handleChangePage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    ActionsComponent={TablePaginationActions}
-                  />
-                </Box>
-              </TableCell>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={9}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
           </TableFooter>
         </Table>
