@@ -2,6 +2,7 @@ import * as React from 'react';
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import {useNavigate} from 'react-router-dom';
+import accessConfig from '../../config/accessConfig';
 import Button from '@mui/material/Button';
 import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
@@ -462,6 +463,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="reason"
             multiline
             rows={4}
+            placeholder={accessConfig.REASON_TEMPLATE}
             validation={{maxLength: 1024}}
             parseError={(error) => {
               if (error?.message != '') {
