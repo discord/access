@@ -34,6 +34,7 @@ import {lightGreen, red, yellow} from '@mui/material/colors';
 import AuditGroup from './pages/groups/Audit';
 import AuditRole from './pages/roles/Audit';
 import AuditUser from './pages/users/Audit';
+import DiffUsers from './pages/users/DiffUsers';
 import ExpiringGroups from './pages/groups/Expiring';
 import ExpiringRoles from './pages/roles/Expiring';
 import Home from './pages/Home';
@@ -53,6 +54,7 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
+
 import * as Sentry from '@sentry/react';
 const drawerWidth: number = 240;
 
@@ -243,6 +245,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <Route path="/users" element={<ListUsers />} />
             <Route path="/users/:id" element={<ReadUser />} />
             <Route path="/users/:id/audit" element={<AuditUser />} />
+            <Route path="/users/diff" element={<DiffUsers />} />
             <Route path="/groups" element={<ListGroups />} />
             <Route path="/groups/:id" element={<ReadGroup />} />
             <Route path="/groups/:id/audit" element={<AuditGroup />} />
