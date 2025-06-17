@@ -6,7 +6,11 @@ from pytest_mock import MockerFixture
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.plugins import get_notification_hook
-from api.syncer import expiring_access_notifications_owner, expiring_access_notifications_user
+from api.syncer import (
+    expiring_access_notifications_owner,
+    expiring_access_notifications_role_owner,
+    expiring_access_notifications_user,
+)
 from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
@@ -537,3 +541,117 @@ def test_owner_role_do_not_renew_notification_behavior(
     expiring_access_notifications_owner()
 
     assert expiring_access_notification_spy.call_count == 0
+
+
+# Test with one owner who owns two role, each role is a member of a group and its access expires tomorrow
+def test_role_owner_expiring_access_notifications_role_tomorrow(db: SQLAlchemy, mocker: MockerFixture) -> None:
+    role1 = RoleGroupFactory.create()
+    role2 = RoleGroupFactory.create()
+    group = OktaGroupFactory.create()
+    user1 = OktaUserFactory.create()
+    owner = OktaUserFactory.create()
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    db.session.add(role1)
+    db.session.add(role2)
+    db.session.add(group)
+    db.session.add(user1)
+    db.session.add(owner)
+    db.session.commit()
+
+    ModifyGroupUsers(group=role1, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role2, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    ModifyRoleGroups(
+        role_group=role1, groups_added_ended_at=expiration_datetime, groups_to_add=[group.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role2, groups_added_ended_at=expiration_datetime, groups_to_add=[group.id], sync_to_okta=False
+    ).execute()
+
+    membership1 = (
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role1.id)
+        .filter(RoleGroupMap.group_id == group.id)
+        .first()
+    )
+    membership2 = (
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role2.id)
+        .filter(RoleGroupMap.group_id == group.id)
+        .first()
+    )
+
+    hook = get_notification_hook()
+    expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_role_owner")
+
+    expiring_access_notifications_role_owner()
+
+    assert expiring_access_notification_spy.call_count == 1
+    _, kwargs = expiring_access_notification_spy.call_args
+    assert len(kwargs["roles"]) == 2
+    assert membership1 in kwargs["roles"]
+    assert membership2 in kwargs["roles"]
+    if datetime.now().weekday() == 4:
+        assert kwargs["expiration_datetime"] is None
+    else:
+        assert expiration_datetime.date() == kwargs["expiration_datetime"].date()
+
+
+# Test with one owner who owns two role, each role is a member of one or more groups and its
+# access expires tomorrow or next week
+def test_role_owner_expiring_access_notifications_role_multiple_dates(db: SQLAlchemy, mocker: MockerFixture) -> None:
+    role1 = RoleGroupFactory.create()
+    role2 = RoleGroupFactory.create()
+    group1 = OktaGroupFactory.create()
+    group2 = OktaGroupFactory.create()
+    user1 = OktaUserFactory.create()
+    owner = OktaUserFactory.create()
+    expiration_datetime = datetime.now() + timedelta(days=1)
+    expiration_datetime2 = datetime.now() + timedelta(weeks=1)
+
+    db.session.add(role1)
+    db.session.add(role2)
+    db.session.add(group1)
+    db.session.add(group2)
+    db.session.add(user1)
+    db.session.add(owner)
+    db.session.commit()
+
+    ModifyGroupUsers(group=role1, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=role2, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    ModifyRoleGroups(
+        role_group=role1, groups_added_ended_at=expiration_datetime, groups_to_add=[group1.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role2, groups_added_ended_at=expiration_datetime2, groups_to_add=[group1.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role2, groups_added_ended_at=expiration_datetime, groups_to_add=[group2.id], sync_to_okta=False
+    ).execute()
+
+    membership1 = (
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role1.id)
+        .filter(RoleGroupMap.group_id == group1.id)
+        .first()
+    )
+    membership2 = (
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role2.id)
+        .filter(RoleGroupMap.group_id == group1.id)
+        .first()
+    )
+    membership3 = (
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role2.id)
+        .filter(RoleGroupMap.group_id == group2.id)
+        .first()
+    )
+
+    hook = get_notification_hook()
+    expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_role_owner")
+
+    expiring_access_notifications_role_owner()
+
+    assert expiring_access_notification_spy.call_count == 1
+    _, kwargs = expiring_access_notification_spy.call_args
+    assert len(kwargs["roles"]) == 3
+    assert membership1 in kwargs["roles"]
+    assert membership2 in kwargs["roles"]
+    assert membership3 in kwargs["roles"]
+    assert kwargs["expiration_datetime"] is None

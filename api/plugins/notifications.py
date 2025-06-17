@@ -46,17 +46,16 @@ class NotificationPluginSpec:
         self,
         owner: OktaUser,
         groups: defaultdict[OktaGroup, list[OktaUser]],
-        roles: list[RoleGroupMap],
+        roles: defaultdict[OktaGroup, list[str]],
         expiration_datetime: datetime.datetime,
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
 
-    # # TODO role owner notifs
-    # @hookspec
-    # def access_expiring_role_owner(
-    #     self, groups: list[OktaUserGroupMember], user: OktaUser, expiration_datetime: datetime.datetime
-    # ) -> None:
-    #     """Notify role owners that roles they own will lose access to a group soon"""
+    @hookspec
+    def access_expiring_role_owner(
+        self, owner: OktaUser, roles: defaultdict[OktaGroup, list[str]], expiration_datetime: datetime.datetime
+    ) -> None:
+        """Notify role owners that roles they own will be losing access soon"""
 
     @hookspec
     def access_role_request_created(
@@ -129,7 +128,7 @@ def access_expiring_user(
 def access_expiring_owner(
     owner: OktaUser,
     groups: defaultdict[OktaGroup, list[OktaUser]],
-    roles: list[RoleGroupMap],
+    roles: defaultdict[OktaGroup, list[str]],
     expiration_datetime: datetime.datetime,
 ) -> Generator[None, None, None]:
     try:
@@ -141,11 +140,17 @@ def access_expiring_owner(
         logger.exception("Failed to execute access expiring for owner notification callback")
 
 
-# # TODO add notifications for role ownsers ala individual user notifs
-# @hookimpl(wrapper=True)
-# def access_expiring_role_owner() -> Generator[None, None, None]:
-#     pass
-#     logger.exception("Failed to execute access expiring for role owner notification callback")
+@hookimpl(wrapper=True)
+def access_expiring_role_owner(
+    owner: OktaUser, roles: defaultdict[OktaGroup, list[str]], expiration_datetime: datetime.datetime,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute access expiring for role owner notification callback")
 
 
 @hookimpl(wrapper=True)
