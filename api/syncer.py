@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-from typing import List
+from typing import Any
 
 from flask import current_app
 from sqlalchemy.orm import (
@@ -501,17 +501,19 @@ class GroupsAndUsers:
         self.roles: defaultdict[OktaGroup, list[str]] = defaultdict(list)
 
 
-def combine_defaultdicts_list_value(dict1, dict2):
+def combine_defaultdicts_list_value(
+    dict1: defaultdict[OktaGroup, list[Any]], dict2: defaultdict[OktaGroup, list[Any]]
+) -> defaultdict[OktaGroup, list[Any]]:
     combined = defaultdict(list)
-    
+
     # Add all items from dict1
     for key, value_list in dict1.items():
         combined[key].extend(value_list)
-    
+
     # Add all items from dict2, extending existing lists
     for key, value_list in dict2.items():
         combined[key].extend(value_list)
-    
+
     return combined
 
 
@@ -601,7 +603,9 @@ def expiring_access_notifications_owner() -> None:
         if owner in owner_expiring_groups_next:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups= combine_defaultdicts_list_value(owner_expiring_groups_this[owner].groups, owner_expiring_groups_next[owner].groups),
+                groups=combine_defaultdicts_list_value(
+                    owner_expiring_groups_this[owner].groups, owner_expiring_groups_next[owner].groups
+                ),
                 roles=None,
                 expiration_datetime=None,
             )
@@ -700,7 +704,9 @@ def expiring_access_notifications_owner() -> None:
             notification_hook.access_expiring_owner(
                 owner=owner,
                 groups=None,
-                roles=combine_defaultdicts_list_value(owner_expiring_roles_this[owner].roles, owner_expiring_roles_next[owner].roles),
+                roles=combine_defaultdicts_list_value(
+                    owner_expiring_roles_this[owner].roles, owner_expiring_roles_next[owner].roles
+                ),
                 expiration_datetime=None,
             )
         else:
@@ -805,7 +811,9 @@ def expiring_access_notifications_role_owner() -> None:
         if owner in role_owner_expiring_roles_next:
             notification_hook.access_expiring_role_owner(
                 owner=owner,
-                roles=combine_defaultdicts_list_value(role_owner_expiring_roles_tomorrow[owner].roles, role_owner_expiring_roles_next[owner].roles),
+                roles=combine_defaultdicts_list_value(
+                    role_owner_expiring_roles_tomorrow[owner].roles, role_owner_expiring_roles_next[owner].roles
+                ),
                 expiration_datetime=None,
             )
         else:

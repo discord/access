@@ -6,7 +6,7 @@ from typing import Generator
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleRequest
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -53,7 +53,10 @@ class NotificationPluginSpec:
 
     @hookspec
     def access_expiring_role_owner(
-        self, owner: OktaUser, roles: defaultdict[OktaGroup, list[str]], expiration_datetime: datetime.datetime
+        self,
+        owner: OktaUser,
+        roles: defaultdict[OktaGroup, list[str]],
+        expiration_datetime: datetime.datetime,
     ) -> None:
         """Notify role owners that roles they own will be losing access soon"""
 
@@ -142,7 +145,9 @@ def access_expiring_owner(
 
 @hookimpl(wrapper=True)
 def access_expiring_role_owner(
-    owner: OktaUser, roles: defaultdict[OktaGroup, list[str]], expiration_datetime: datetime.datetime,
+    owner: OktaUser,
+    roles: defaultdict[OktaGroup, list[str]],
+    expiration_datetime: datetime.datetime,
 ) -> Generator[None, None, None]:
     try:
         return (yield)

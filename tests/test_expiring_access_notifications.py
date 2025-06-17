@@ -426,7 +426,10 @@ def test_owner_expiring_access_notifications_role_week(db: SQLAlchemy, mocker: M
     ModifyGroupUsers(group=group1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyRoleGroups(
-        role_group=role, groups_added_ended_at=expiration_datetime, groups_to_add=[group1.id, group2.id], sync_to_okta=False
+        role_group=role,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[group1.id, group2.id],
+        sync_to_okta=False,
     ).execute()
 
     hook = get_notification_hook()
