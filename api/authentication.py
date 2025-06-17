@@ -119,6 +119,7 @@ class CloudflareAuthenticationHelpers:
             List of RSA public keys usable by PyJWT.
         """
         r = requests.get("https://{}/cdn-cgi/access/certs".format(cloudflare_team_domain))
+        r.raise_for_status()
         public_keys = {}
         jwk_set = r.json()
         for key_dict in jwk_set["keys"]:
