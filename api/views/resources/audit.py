@@ -531,7 +531,7 @@ class GroupRoleAuditResource(MethodResource):
                 ),
                 group_alias.name.asc() if order_by != "moniker" else nullslast(RoleGroupMap.created_at.asc()),
             )
-        
+
         if "role_owner_id" in search_args:
             role_owner_id = search_args["role_owner_id"]
             if role_owner_id == "@me":
@@ -556,24 +556,18 @@ class GroupRoleAuditResource(MethodResource):
             )
 
             # https://stackoverflow.com/questions/4186062/sqlalchemy-order-by-descending#comment52902932_9964966
-            query = (
-                query.filter(
-                    RoleGroupMap.role_group_id.in_(
-                        [
-                            o.group_id
-                            for o in owner_role_ownerships.with_entities(OktaUserGroupMember.group_id).all()
-                        ]
-                    )
+            query = query.filter(
+                RoleGroupMap.role_group_id.in_(
+                    [o.group_id for o in owner_role_ownerships.with_entities(OktaUserGroupMember.group_id).all()]
                 )
-                .order_by(
-                    nulls_order(
-                        getattr(
-                            group_alias.name if order_by == "moniker" else getattr(RoleGroupMap, order_by),
-                            "desc" if order_direction else "asc",
-                        )()
-                    ),
-                    group_alias.name.asc() if order_by != "moniker" else nullslast(RoleGroupMap.created_at.asc()),
-                )
+            ).order_by(
+                nulls_order(
+                    getattr(
+                        group_alias.name if order_by == "moniker" else getattr(RoleGroupMap, order_by),
+                        "desc" if order_direction else "asc",
+                    )()
+                ),
+                group_alias.name.asc() if order_by != "moniker" else nullslast(RoleGroupMap.created_at.asc()),
             )
 
         # Implement basic search with the "q" url parameter
