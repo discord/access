@@ -514,7 +514,7 @@ export default function CreateRequest(props: CreateRequestProps) {
 
   if (
     props.group?.deleted_at != null ||
-    (props.group != null && !canManageGroup(props.currentUser, props.group)) ||
+    (props.group != null && canManageGroup(props.currentUser, props.group)) ||
     props.group?.is_managed == false
   ) {
     return null;
