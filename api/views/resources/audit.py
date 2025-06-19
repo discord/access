@@ -531,6 +531,50 @@ class GroupRoleAuditResource(MethodResource):
                 ),
                 group_alias.name.asc() if order_by != "moniker" else nullslast(RoleGroupMap.created_at.asc()),
             )
+        
+        if "role_owner_id" in search_args:
+            role_owner_id = search_args["role_owner_id"]
+            if role_owner_id == "@me":
+                role_owner_id = g.current_user_id
+            role_owner = (
+                OktaUser.query.filter(db.or_(OktaUser.id == role_owner_id, OktaUser.email.ilike(role_owner_id)))
+                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+                .first_or_404()
+            )
+            role_group_alias = aliased(RoleGroup)
+            owner_role_ownerships = (
+                OktaUserGroupMember.query.options(joinedload(OktaUserGroupMember.group.of_type(RoleGroup)))
+                .filter(OktaUserGroupMember.user_id == role_owner.id)
+                .filter(OktaUserGroupMember.is_owner.is_(True))
+                .join(OktaUserGroupMember.group.of_type(role_group_alias))
+                .filter(
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    )
+                )
+            )
+
+            # https://stackoverflow.com/questions/4186062/sqlalchemy-order-by-descending#comment52902932_9964966
+            query = (
+                query.filter(
+                    RoleGroupMap.role_group_id.in_(
+                        [
+                            o.group_id
+                            for o in owner_role_ownerships.with_entities(OktaUserGroupMember.group_id).all()
+                        ]
+                    )
+                )
+                .order_by(
+                    nulls_order(
+                        getattr(
+                            group_alias.name if order_by == "moniker" else getattr(RoleGroupMap, order_by),
+                            "desc" if order_direction else "asc",
+                        )()
+                    ),
+                    group_alias.name.asc() if order_by != "moniker" else nullslast(RoleGroupMap.created_at.asc()),
+                )
+            )
 
         # Implement basic search with the "q" url parameter
         if "q" in search_args and len(search_args["q"]) > 0:
