@@ -217,7 +217,7 @@ def test_put_group(
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     builtin_access_owners_group = AppGroup.query.filter(
-        AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner.is_(True)
+        AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner
     ).first()
     update_group_spy.reset_mock()
 
@@ -764,7 +764,7 @@ def test_do_not_renew(
     ).execute()
 
     # need the OktaUserGroupMember id to pass in later
-    membership_user2 = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user2.id)).first()
+    membership_user2 = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user2.id).first()
 
     # set one user to renew and one do not renew
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
@@ -801,7 +801,7 @@ def test_do_not_renew(
                 OktaUserGroupMember.ended_at > db.func.now(),
             )
         )
-        .filter(OktaUserGroupMember.user_id.is_(user.id))
+        .filter(OktaUserGroupMember.user_id == user.id)
         .all()
     )
 
@@ -816,7 +816,7 @@ def test_do_not_renew(
                 OktaUserGroupMember.ended_at > db.func.now(),
             )
         )
-        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .filter(OktaUserGroupMember.user_id == user2.id)
         .all()
     )
 

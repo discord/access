@@ -1327,7 +1327,7 @@ def test_do_not_renew(
     ).execute()
 
     # need the RoleGroupMap id to pass in later
-    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id.is_(role_group.id)).first()
+    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id).first()
 
     # set one user to renew and one do not renew
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
@@ -1364,7 +1364,7 @@ def test_do_not_renew(
                 RoleGroupMap.ended_at > db.func.now(),
             )
         )
-        .filter(RoleGroupMap.role_group_id.is_(role_group.id))
+        .filter(RoleGroupMap.role_group_id == role_group.id)
         .all()
     )
 
