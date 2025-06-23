@@ -28,7 +28,7 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow, blue, grey} from '@mui/material/colors';
+import {lightGreen, red, yellow, grey} from '@mui/material/colors';
 import * as Sentry from '@sentry/react';
 
 import AuditGroup from './pages/groups/Audit';
