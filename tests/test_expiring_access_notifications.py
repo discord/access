@@ -445,8 +445,8 @@ def test_individual_do_not_renew_notification_behavior(
 
     # Get the OktaUserGroupMember for the user's membership to role_group
     membership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
-        .filter(OktaUserGroupMember.group_id.is_(role_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.group_id == role_group.id)
         .first()
     )
 
@@ -499,14 +499,14 @@ def test_owner_role_do_not_renew_notification_behavior(
 
     # Get the OktaUserGroupMember for the user's membership to role_group
     membership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user1.id))
-        .filter(OktaUserGroupMember.group_id.is_(role_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user1.id)
+        .filter(OktaUserGroupMember.group_id == role_group.id)
         .first()
     )
     # Get RoleGroupMap
     role_membership = (
-        RoleGroupMap.query.filter(RoleGroupMap.role_group_id.is_(role_group.id))
-        .filter(RoleGroupMap.group_id.is_(okta_group.id))
+        RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id)
+        .filter(RoleGroupMap.group_id == okta_group.id)
         .first()
     )
 
