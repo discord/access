@@ -50,9 +50,9 @@ def test_individual_expiring_access_notifications(
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert membership1 in kwargs["groups"]
-    assert membership2 in kwargs["groups"]
+    assert len(kwargs["okta_user_group_members"]) == 2
+    assert membership1 in kwargs["okta_user_group_members"]
+    assert membership2 in kwargs["okta_user_group_members"]
     assert user == kwargs["user"]
     if datetime.now().weekday() == 4:
         assert kwargs["expiration_datetime"] is None
@@ -97,9 +97,9 @@ def test_individual_expiring_access_notifications_week(
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert membership1 in kwargs["groups"]
-    assert membership2 in kwargs["groups"]
+    assert len(kwargs["okta_user_group_members"]) == 2
+    assert membership1 in kwargs["okta_user_group_members"]
+    assert membership2 in kwargs["okta_user_group_members"]
     assert user == kwargs["user"]
     assert kwargs["expiration_datetime"] is None
 
@@ -196,12 +196,12 @@ def test_owner_expiring_access_notifications(db: SQLAlchemy, mocker: MockerFixtu
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert user1 in kwargs["groups"][group1]
-    assert user2 in kwargs["groups"][group2]
-    assert kwargs["roles"] is None
+    assert len(kwargs["group_user_associations"]) == 2
+    assert group1 in kwargs["group_user_associations"]
+    assert group2 in kwargs["group_user_associations"]
+    assert user1 in kwargs["group_user_associations"][group1]
+    assert user2 in kwargs["group_user_associations"][group2]
+    assert kwargs["role_group_associations"] is None
 
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring this week
@@ -260,13 +260,13 @@ def test_owner_expiring_access_notifications_owner_member(db: SQLAlchemy, mocker
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert user1 in kwargs["groups"][group1]
-    assert owner not in kwargs["groups"][group1]
-    assert user2 in kwargs["groups"][group2]
-    assert kwargs["roles"] is None
+    assert len(kwargs["group_user_associations"]) == 2
+    assert group1 in kwargs["group_user_associations"]
+    assert group2 in kwargs["group_user_associations"]
+    assert user1 in kwargs["group_user_associations"][group1]
+    assert owner not in kwargs["group_user_associations"][group1]
+    assert user2 in kwargs["group_user_associations"][group2]
+    assert kwargs["role_group_associations"] is None
 
 
 # Test with one owner who owns two groups, each group has a member whose access expires next week
@@ -301,12 +301,12 @@ def test_owner_expiring_access_notifications_week(db: SQLAlchemy, mocker: Mocker
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert user1 in kwargs["groups"][group1]
-    assert user2 in kwargs["groups"][group2]
-    assert kwargs["roles"] is None
+    assert len(kwargs["group_user_associations"]) == 2
+    assert group1 in kwargs["group_user_associations"]
+    assert group2 in kwargs["group_user_associations"]
+    assert user1 in kwargs["group_user_associations"][group1]
+    assert user2 in kwargs["group_user_associations"][group2]
+    assert kwargs["role_group_associations"] is None
 
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring next week
@@ -365,13 +365,13 @@ def test_owner_expiring_access_notifications_owner_member_week(db: SQLAlchemy, m
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert user1 in kwargs["groups"][group1]
-    assert owner not in kwargs["groups"][group1]
-    assert user2 in kwargs["groups"][group2]
-    assert kwargs["roles"] is None
+    assert len(kwargs["group_user_associations"]) == 2
+    assert group1 in kwargs["group_user_associations"]
+    assert group2 in kwargs["group_user_associations"]
+    assert user1 in kwargs["group_user_associations"][group1]
+    assert owner not in kwargs["group_user_associations"][group1]
+    assert user2 in kwargs["group_user_associations"][group2]
+    assert kwargs["role_group_associations"] is None
 
 
 # Test with one owner who owns a groups, the group has a role member whose access expires this week
@@ -401,9 +401,9 @@ def test_owner_expiring_access_notifications_role(db: SQLAlchemy, mocker: Mocker
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["roles"]) == 1
-    assert group2 in kwargs["roles"]
-    assert group1.name in kwargs["roles"][group2]
+    assert len(kwargs["role_group_associations"]) == 1
+    assert group2 in kwargs["role_group_associations"]
+    assert group1.name in kwargs["role_group_associations"][group2]
 
 
 # Test with one owner who owns two groups, each group has a role member whose access expires next week
@@ -439,11 +439,11 @@ def test_owner_expiring_access_notifications_role_week(db: SQLAlchemy, mocker: M
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["roles"]) == 2
-    assert group1 in kwargs["roles"]
-    assert group2 in kwargs["roles"]
-    assert role.name in kwargs["roles"][group1]
-    assert role.name in kwargs["roles"][group2]
+    assert len(kwargs["role_group_associations"]) == 2
+    assert group1 in kwargs["role_group_associations"]
+    assert group2 in kwargs["role_group_associations"]
+    assert role.name in kwargs["role_group_associations"][group1]
+    assert role.name in kwargs["role_group_associations"][group2]
 
 
 # Test should not renew funtionality for individual notifications

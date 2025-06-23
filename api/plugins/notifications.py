@@ -2,7 +2,7 @@ import datetime
 import logging
 import sys
 from collections import defaultdict
-from typing import Generator
+from typing import Generator, Optional
 
 import pluggy
 
@@ -37,7 +37,11 @@ class NotificationPluginSpec:
 
     @hookspec
     def access_expiring_user(
-        self, groups: list[OktaUserGroupMember], user: OktaUser, expiration_datetime: datetime.datetime
+        self,
+        groups: list[OktaGroup],
+        user: OktaUser,
+        expiration_datetime: datetime.datetime,
+        okta_user_group_members: Optional[list[OktaUserGroupMember]],
     ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
@@ -45,9 +49,12 @@ class NotificationPluginSpec:
     def access_expiring_owner(
         self,
         owner: OktaUser,
-        groups: defaultdict[OktaGroup, list[OktaUser]],
-        roles: defaultdict[OktaGroup, list[str]],
+        groups: list[OktaGroup],
+        roles: list[OktaGroup],
+        users: list[RoleGroup],
         expiration_datetime: datetime.datetime,
+        group_user_associations: Optional[defaultdict[OktaGroup, list[OktaUser]]],
+        role_group_associations: Optional[defaultdict[OktaGroup, list[str]]],
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
 
@@ -116,7 +123,10 @@ def access_request_completed(
 
 @hookimpl(wrapper=True)
 def access_expiring_user(
-    groups: list[OktaUserGroupMember], user: OktaUser, expiration_datetime: datetime.datetime
+    groups: list[OktaGroup],
+    user: OktaUser,
+    expiration_datetime: datetime.datetime,
+    okta_user_group_members: Optional[list[OktaUserGroupMember]],
 ) -> Generator[None, None, None]:
     try:
         return (yield)
@@ -130,9 +140,12 @@ def access_expiring_user(
 @hookimpl(wrapper=True)
 def access_expiring_owner(
     owner: OktaUser,
-    groups: defaultdict[OktaGroup, list[OktaUser]],
-    roles: defaultdict[OktaGroup, list[str]],
+    groups: list[OktaGroup],
+    roles: list[OktaGroup],
+    users: list[OktaUser],
     expiration_datetime: datetime.datetime,
+    group_user_associations: Optional[defaultdict[OktaGroup, list[OktaUser]]],
+    role_group_associations: Optional[defaultdict[OktaGroup, list[str]]],
 ) -> Generator[None, None, None]:
     try:
         return (yield)

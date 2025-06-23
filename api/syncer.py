@@ -475,21 +475,26 @@ def expiring_access_notifications_user() -> None:
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
             notification_hook.access_expiring_user(
-                groups=grouped_tomorrow[user] + grouped_next_week[user], user=user, expiration_datetime=None
+                groups=None,
+                user=user,
+                expiration_datetime=None,
+                okta_user_group_members=grouped_tomorrow[user] + grouped_next_week[user],
             )
         else:
             notification_hook.access_expiring_user(
-                groups=grouped_tomorrow[user],
+                groups=None,
                 user=user,
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
+                okta_user_group_members=grouped_tomorrow[user],
             )
 
     for user in grouped_next_week:
         if user not in grouped_tomorrow:
             notification_hook.access_expiring_user(
-                groups=grouped_next_week[user],
+                groups=None,
                 user=user,
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
+                okta_user_group_members=grouped_next_week[user],
             )
 
     logger.info("Expiring access notifications for users finished.")
@@ -603,27 +608,36 @@ def expiring_access_notifications_owner() -> None:
         if owner in owner_expiring_groups_next:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=combine_defaultdicts_list_value(
+                groups=None,
+                roles=None,
+                users=None,
+                expiration_datetime=None,
+                group_user_associations=combine_defaultdicts_list_value(
                     owner_expiring_groups_this[owner].groups, owner_expiring_groups_next[owner].groups
                 ),
-                roles=None,
-                expiration_datetime=None,
+                role_group_associations=None,
             )
         else:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_groups_this[owner].groups,
+                groups=None,
                 roles=None,
+                users=None,
                 expiration_datetime=datetime.now(),
+                group_user_associations=owner_expiring_groups_this[owner].groups,
+                role_group_associations=None,
             )
 
     for owner in owner_expiring_groups_next:
         if owner not in owner_expiring_groups_this:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_groups_next[owner].groups,
+                groups=None,
                 roles=None,
+                users=None,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
+                group_user_associations=owner_expiring_groups_next[owner].groups,
+                role_group_associations=None,
             )
 
     all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
@@ -704,17 +718,23 @@ def expiring_access_notifications_owner() -> None:
             notification_hook.access_expiring_owner(
                 owner=owner,
                 groups=None,
-                roles=combine_defaultdicts_list_value(
+                roles=None,
+                users=None,
+                expiration_datetime=None,
+                group_user_associations=None,
+                role_group_associations=combine_defaultdicts_list_value(
                     owner_expiring_roles_this[owner].roles, owner_expiring_roles_next[owner].roles
                 ),
-                expiration_datetime=None,
             )
         else:
             notification_hook.access_expiring_owner(
                 owner=owner,
                 groups=None,
-                roles=owner_expiring_roles_this[owner].roles,
+                roles=None,
+                users=None,
                 expiration_datetime=datetime.now(),
+                group_user_associations=None,
+                role_group_associations=owner_expiring_roles_this[owner].roles,
             )
 
     for owner in owner_expiring_roles_next:
@@ -722,8 +742,11 @@ def expiring_access_notifications_owner() -> None:
             notification_hook.access_expiring_owner(
                 owner=owner,
                 groups=None,
-                roles=owner_expiring_roles_next[owner].roles,
+                roles=None,
+                users=None,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
+                group_user_associations=None,
+                role_group_associations=owner_expiring_roles_next[owner].roles,
             )
 
     logger.info("Expiring access notifications for owners finished.")
