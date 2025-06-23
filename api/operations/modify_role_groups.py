@@ -89,7 +89,7 @@ class ModifyRoleGroups:
         self.owner_groups_should_expire = []
         if len(owner_groups_should_expire) > 0:
             self.owner_groups_should_expire = (
-                RoleGroupMap.query.filter(RoleGroupMap.id.in_(groups_should_expire))
+                RoleGroupMap.query.filter(RoleGroupMap.id.in_(owner_groups_should_expire))
                 .filter(RoleGroupMap.ended_at > db.func.now())
                 .filter(RoleGroupMap.is_owner.is_(True))
             ).all()
