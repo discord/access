@@ -239,6 +239,11 @@ The `.env.production` file is where you configure the application.
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `SECRET_KEY`: Specifies the secret key used to encrypt flask cookies. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: Specifies the OTLP endpoint URL for your OpenTelemetry agent to collect traces and metrics. **[OPTIONAL] You can safely remove this from your env file**
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: Specifices the OTLP protocol, valid options are grpc(default port 4317) or http/protobuf (default port 4318).**[OPTIONAL] You can safely remove this from your env file**
+- `OTEL_SERVICE_NAME`: Specifies the service name for OpenTelemetry instrumentation. **[OPTIONAL] You can safely remove this from your env file**
+- `OTEL_RESOURCE_ATTTRIBUTES`: Additional OpenTelemetry metadata attributes that describe the service instance. These attributes are attached to all telemetry data and help with filtering and grouping in observability platforms.**[OPTIONAL] You can safely remove this from your env file**
+
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
