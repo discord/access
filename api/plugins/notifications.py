@@ -6,7 +6,7 @@ from typing import Generator, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleRequest
+from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -53,8 +53,8 @@ class NotificationPluginSpec:
         roles: list[OktaGroup],
         users: list[RoleGroup],
         expiration_datetime: datetime.datetime,
-        group_user_associations: Optional[defaultdict[OktaGroup, list[OktaUser]]],
-        role_group_associations: Optional[defaultdict[OktaGroup, list[str]]],
+        group_user_associations: Optional[list[OktaUserGroupMember]],
+        role_group_associations: Optional[list[RoleGroupMap]],
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
 
@@ -62,7 +62,7 @@ class NotificationPluginSpec:
     def access_expiring_role_owner(
         self,
         owner: OktaUser,
-        roles: defaultdict[OktaGroup, list[str]],
+        roles: list[RoleGroupMap],
         expiration_datetime: datetime.datetime,
     ) -> None:
         """Notify role owners that roles they own will be losing access soon"""
@@ -144,8 +144,8 @@ def access_expiring_owner(
     roles: list[OktaGroup],
     users: list[OktaUser],
     expiration_datetime: datetime.datetime,
-    group_user_associations: Optional[defaultdict[OktaGroup, list[OktaUser]]],
-    role_group_associations: Optional[defaultdict[OktaGroup, list[str]]],
+    group_user_associations: Optional[list[OktaUserGroupMember]],
+    role_group_associations: Optional[list[RoleGroupMap]],
 ) -> Generator[None, None, None]:
     try:
         return (yield)
@@ -159,7 +159,7 @@ def access_expiring_owner(
 @hookimpl(wrapper=True)
 def access_expiring_role_owner(
     owner: OktaUser,
-    roles: defaultdict[OktaGroup, list[str]],
+    roles: list[RoleGroupMap],
     expiration_datetime: datetime.datetime,
 ) -> Generator[None, None, None]:
     try:

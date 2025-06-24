@@ -189,6 +189,17 @@ def test_owner_expiring_access_notifications(db: SQLAlchemy, mocker: MockerFixtu
     ModifyGroupUsers(group=group1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
+    membership1 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        .first()
+    )
+    membership2 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
+        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -197,10 +208,8 @@ def test_owner_expiring_access_notifications(db: SQLAlchemy, mocker: MockerFixtu
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["group_user_associations"]) == 2
-    assert group1 in kwargs["group_user_associations"]
-    assert group2 in kwargs["group_user_associations"]
-    assert user1 in kwargs["group_user_associations"][group1]
-    assert user2 in kwargs["group_user_associations"][group2]
+    assert membership1 in kwargs["group_user_associations"]
+    assert membership2 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
 
 
@@ -253,6 +262,22 @@ def test_owner_expiring_access_notifications_owner_member(db: SQLAlchemy, mocker
     ModifyGroupUsers(group=group1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
+    membership1 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        .first()
+    )
+    membership2 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(owner.id))
+        .first()
+    )
+    membership3 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
+        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -261,11 +286,9 @@ def test_owner_expiring_access_notifications_owner_member(db: SQLAlchemy, mocker
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["group_user_associations"]) == 2
-    assert group1 in kwargs["group_user_associations"]
-    assert group2 in kwargs["group_user_associations"]
-    assert user1 in kwargs["group_user_associations"][group1]
-    assert owner not in kwargs["group_user_associations"][group1]
-    assert user2 in kwargs["group_user_associations"][group2]
+    assert membership1 in kwargs["group_user_associations"]
+    assert membership2 not in kwargs["group_user_associations"]
+    assert membership3 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
 
 
@@ -294,6 +317,17 @@ def test_owner_expiring_access_notifications_week(db: SQLAlchemy, mocker: Mocker
     ModifyGroupUsers(group=group1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
+    membership1 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        .first()
+    )
+    membership2 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
+        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -302,10 +336,8 @@ def test_owner_expiring_access_notifications_week(db: SQLAlchemy, mocker: Mocker
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["group_user_associations"]) == 2
-    assert group1 in kwargs["group_user_associations"]
-    assert group2 in kwargs["group_user_associations"]
-    assert user1 in kwargs["group_user_associations"][group1]
-    assert user2 in kwargs["group_user_associations"][group2]
+    assert membership1 in kwargs["group_user_associations"]
+    assert membership2 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
 
 
@@ -358,6 +390,22 @@ def test_owner_expiring_access_notifications_owner_member_week(db: SQLAlchemy, m
     ModifyGroupUsers(group=group1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
+    membership1 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        .first()
+    )
+    membership2 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
+        .filter(OktaUserGroupMember.user_id.is_(owner.id))
+        .first()
+    )
+    membership3 = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
+        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -366,11 +414,9 @@ def test_owner_expiring_access_notifications_owner_member_week(db: SQLAlchemy, m
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["group_user_associations"]) == 2
-    assert group1 in kwargs["group_user_associations"]
-    assert group2 in kwargs["group_user_associations"]
-    assert user1 in kwargs["group_user_associations"][group1]
-    assert owner not in kwargs["group_user_associations"][group1]
-    assert user2 in kwargs["group_user_associations"][group2]
+    assert membership1 in kwargs["group_user_associations"]
+    assert membership2 not in kwargs["group_user_associations"]
+    assert membership3 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
 
 
@@ -394,6 +440,12 @@ def test_owner_expiring_access_notifications_role(db: SQLAlchemy, mocker: Mocker
         role_group=group1, groups_added_ended_at=expiration_datetime, groups_to_add=[group2.id], sync_to_okta=False
     ).execute()
 
+    membership1 = (
+        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group2.id))
+        .filter(RoleGroupMap.role_group_id.is_(group1.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -402,8 +454,7 @@ def test_owner_expiring_access_notifications_role(db: SQLAlchemy, mocker: Mocker
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["role_group_associations"]) == 1
-    assert group2 in kwargs["role_group_associations"]
-    assert group1.name in kwargs["role_group_associations"][group2]
+    assert membership1 in kwargs["role_group_associations"]
 
 
 # Test with one owner who owns two groups, each group has a role member whose access expires next week
@@ -432,6 +483,17 @@ def test_owner_expiring_access_notifications_role_week(db: SQLAlchemy, mocker: M
         sync_to_okta=False,
     ).execute()
 
+    membership1 = (
+        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group1.id))
+        .filter(RoleGroupMap.role_group_id.is_(role.id))
+        .first()
+    )
+    membership2 = (
+        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group2.id))
+        .filter(RoleGroupMap.role_group_id.is_(role.id))
+        .first()
+    )
+
     hook = get_notification_hook()
     expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
 
@@ -440,10 +502,8 @@ def test_owner_expiring_access_notifications_role_week(db: SQLAlchemy, mocker: M
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["role_group_associations"]) == 2
-    assert group1 in kwargs["role_group_associations"]
-    assert group2 in kwargs["role_group_associations"]
-    assert role.name in kwargs["role_group_associations"][group1]
-    assert role.name in kwargs["role_group_associations"][group2]
+    assert membership1 in kwargs["role_group_associations"]
+    assert membership2 in kwargs["role_group_associations"]
 
 
 # Test should not renew funtionality for individual notifications
