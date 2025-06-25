@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {Link as RouterLink, Route, Routes, useSearchParams} from 'react-router-dom';
 
-import {createTheme, styled, ThemeProvider} from '@mui/material/styles';
+import {createTheme, styled, Theme, ThemeProvider} from '@mui/material/styles';
 import Link from '@mui/material/Link';
 import MuiDrawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
