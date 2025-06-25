@@ -33,13 +33,13 @@ def test_individual_expiring_access_notifications(
     ).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
-        .filter(OktaUserGroupMember.group_id.is_(okta_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.group_id == okta_group.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
-        .filter(OktaUserGroupMember.group_id.is_(role_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.group_id == role_group.id)
         .first()
     )
 
@@ -84,13 +84,13 @@ def test_individual_expiring_access_notifications_week(
     ).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
-        .filter(OktaUserGroupMember.group_id.is_(okta_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.group_id == okta_group.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id.is_(user.id))
-        .filter(OktaUserGroupMember.group_id.is_(role_group.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.group_id == role_group.id)
         .first()
     )
 
@@ -198,13 +198,13 @@ def test_owner_expiring_access_notifications(db: SQLAlchemy, mocker: MockerFixtu
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == user1.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
-        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group2.id)
+        .filter(OktaUserGroupMember.user_id == user2.id)
         .first()
     )
 
@@ -279,18 +279,18 @@ def test_owner_expiring_access_notifications_owner_member(db: SQLAlchemy, mocker
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == user1.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(owner.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == owner.id)
         .first()
     )
     membership3 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
-        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group2.id)
+        .filter(OktaUserGroupMember.user_id == user2.id)
         .first()
     )
 
@@ -342,13 +342,13 @@ def test_owner_expiring_access_notifications_week(db: SQLAlchemy, mocker: Mocker
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == user1.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
-        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group2.id)
+        .filter(OktaUserGroupMember.user_id == user2.id)
         .first()
     )
 
@@ -423,18 +423,18 @@ def test_owner_expiring_access_notifications_owner_member_week(db: SQLAlchemy, m
     ModifyGroupUsers(group=group2, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
     membership1 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(user1.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == user1.id)
         .first()
     )
     membership2 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group1.id))
-        .filter(OktaUserGroupMember.user_id.is_(owner.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group1.id)
+        .filter(OktaUserGroupMember.user_id == owner.id)
         .first()
     )
     membership3 = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.is_(group2.id))
-        .filter(OktaUserGroupMember.user_id.is_(user2.id))
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group2.id)
+        .filter(OktaUserGroupMember.user_id == user2.id)
         .first()
     )
 
@@ -481,8 +481,8 @@ def test_owner_expiring_access_notifications_role(db: SQLAlchemy, mocker: Mocker
     ).execute()
 
     membership1 = (
-        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group2.id))
-        .filter(RoleGroupMap.role_group_id.is_(group1.id))
+        RoleGroupMap.query.filter(RoleGroupMap.group_id == group2.id)
+        .filter(RoleGroupMap.role_group_id == group1.id)
         .first()
     )
 
@@ -530,13 +530,13 @@ def test_owner_expiring_access_notifications_role_week(db: SQLAlchemy, mocker: M
     ).execute()
 
     membership1 = (
-        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group1.id))
-        .filter(RoleGroupMap.role_group_id.is_(role.id))
+        RoleGroupMap.query.filter(RoleGroupMap.group_id == group1.id)
+        .filter(RoleGroupMap.role_group_id == role.id)
         .first()
     )
     membership2 = (
-        RoleGroupMap.query.filter(RoleGroupMap.group_id.is_(group2.id))
-        .filter(RoleGroupMap.role_group_id.is_(role.id))
+        RoleGroupMap.query.filter(RoleGroupMap.group_id == group2.id)
+        .filter(RoleGroupMap.role_group_id == role.id)
         .first()
     )
 
