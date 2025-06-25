@@ -7,10 +7,11 @@ from typing import Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
+
 
 def get_base_url() -> str:
     env = os.environ.get("FLASK_ENV", "development")
@@ -18,6 +19,7 @@ def get_base_url() -> str:
         return "https://example.com"
     else:
         return "http://localhost:3000"
+
 
 def parse_dates(comparison_date: datetime, owner: bool) -> str:
     if not comparison_date:
@@ -50,59 +52,75 @@ def parse_dates(comparison_date: datetime, owner: bool) -> str:
     return "soon"
 
 
-def expiring_access_list_user(expiring_access_list):
+def expiring_access_list_user(expiring_access_list: list[OktaUserGroupMember] | None) -> str:
+    if not expiring_access_list:
+        return ""
+
     num_expiring = len(expiring_access_list)
 
-    out = ''
+    out = ""
     for i in range(min(10, num_expiring)):
-        member_owner = 'Ownership of' if expiring_access_list[i].is_owner else 'Membership to'
-        out = out + f'- {member_owner} {expiring_access_list[i].group.name}\n'
+        member_owner = "Ownership of" if expiring_access_list[i].is_owner else "Membership to"
+        out = out + f"- {member_owner} {expiring_access_list[i].group.name}\n"
     if num_expiring > 10:
-        out = out + 'and more...\n'
+        out = out + "and more...\n"
 
     return out
 
 
-def expiring_access_list_owner_roles(expiring_access_list):
+def expiring_access_list_owner_roles(expiring_access_list: list[RoleGroupMap] | None) -> str:
+    if not expiring_access_list:
+        return ""
+
     num_expiring = len(expiring_access_list)
 
-    out = ''
+    out = ""
     for i in range(min(10, num_expiring)):
-        member_owner = 'ownership of' if expiring_access_list[i].is_owner else 'membership to'
-        out = out + f'- {expiring_access_list[i].role_group.name}\'s {member_owner} {expiring_access_list[i].group.name}\n'
+        member_owner = "ownership of" if expiring_access_list[i].is_owner else "membership to"
+        out = (
+            out + f"- {expiring_access_list[i].role_group.name}'s {member_owner} {expiring_access_list[i].group.name}\n"
+        )
     if num_expiring > 10:
-        out = out + 'and more...\n'
+        out = out + "and more...\n"
 
     return out
 
 
-def expiring_access_list_owner_users(expiring_access_list):
+def expiring_access_list_owner_users(expiring_access_list: list[OktaUserGroupMember] | None) -> str:
+    if not expiring_access_list:
+        return ""
+
     num_expiring = len(expiring_access_list)
 
-    out = ''
+    out = ""
     for i in range(min(10, num_expiring)):
         user_name = (
             expiring_access_list[i].user.display_name
-            if expiring_access_list[i].user.display_name != None
-            else expiring_access_list[i].user.first_name + ' ' + expiring_access_list[i].user.last_name
+            if expiring_access_list[i].user.display_name is not None
+            else expiring_access_list[i].user.first_name + " " + expiring_access_list[i].user.last_name
         )
-        member_owner = 'ownership of' if expiring_access_list[i].is_owner else 'membership to'
-        out = out + f'- {user_name}\'s {member_owner} {expiring_access_list[i].group.name}\n'
+        member_owner = "ownership of" if expiring_access_list[i].is_owner else "membership to"
+        out = out + f"- {user_name}'s {member_owner} {expiring_access_list[i].group.name}\n"
     if num_expiring > 10:
-        out = out + 'and more...\n'
+        out = out + "and more...\n"
 
     return out
 
 
-def expiring_access_list_role_owner(expiring_access_list):
+def expiring_access_list_role_owner(expiring_access_list: list[RoleGroupMap]) -> str:
+    if not expiring_access_list:
+        return ""
+
     num_expiring = len(expiring_access_list)
 
-    out = ''
+    out = ""
     for i in range(min(10, num_expiring)):
-        member_owner = 'ownership of' if expiring_access_list[i].is_owner else 'membership to'
-        out = out + f'- {expiring_access_list[i].role_group.name}\'s {member_owner} {expiring_access_list[i].group.name}\n'
+        member_owner = "ownership of" if expiring_access_list[i].is_owner else "membership to"
+        out = (
+            out + f"- {expiring_access_list[i].role_group.name}'s {member_owner} {expiring_access_list[i].group.name}\n"
+        )
     if num_expiring > 10:
-        out = out + 'and more...\n'
+        out = out + "and more...\n"
 
     return out
 
@@ -147,7 +165,9 @@ def access_request_completed(
 
 
 @notification_hook_impl
-def access_role_request_created(role_request, role, group, requester, approvers):
+def access_role_request_created(
+    role_request: RoleRequest, role: RoleGroup, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
+) -> None:
     """Notify all the approvers of the role request through a direct message."""
     type_of_access = "ownership of" if role_request.request_ownership else "membership to"
 
@@ -167,7 +187,7 @@ def access_expiring_user(
     groups: list[OktaGroup],
     user: OktaUser,
     expiration_datetime: datetime,
-    okta_user_group_members: Optional[list[OktaUserGroupMember]]
+    okta_user_group_members: list[OktaUserGroupMember],
 ) -> None:
     expiring_access_url = get_base_url() + "/expiring-groups?user_id=@me"
 
@@ -175,9 +195,9 @@ def access_expiring_user(
     count_of_expirations = len(okta_user_group_members)
 
     message = (
-        f'You have access to {count_of_expirations} groups that will be expiring {parse_dates(expiration_datetime, False)}\n\n'
-        f'{expiring_access_list}.\n'
-        f'[View your access and, if needed, create a request to renew it.]({expiring_access_url})'
+        f"You have access to {count_of_expirations} groups that will be expiring {parse_dates(expiration_datetime, False)}\n\n"
+        f"{expiring_access_list}.\n"
+        f"[View your access and, if needed, create a request to renew it.]({expiring_access_url})"
     )
 
     # Send the message to the individual user with expiring access
@@ -192,22 +212,22 @@ def access_expiring_owner(
     users: list[OktaUser],
     expiration_datetime: datetime,
     group_user_associations: Optional[list[OktaUserGroupMember]],
-    role_group_associations: Optional[list[RoleGroupMap]]
+    role_group_associations: Optional[list[RoleGroupMap]],
 ) -> None:
     if group_user_associations is not None and len(group_user_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-groups?owner_id=@me"
 
         num_users = len(group_user_associations)
 
-        (user_or_users, is_are) = ('A user', 'is') if num_users == 1 else (str(num_users) + ' users', 'are')
-        group_or_groups = 'a group' if len(group_user_associations) == 1 else 'groups'
+        (user_or_users, is_are) = ("A user", "is") if num_users == 1 else (str(num_users) + " users", "are")
+        group_or_groups = "a group" if len(group_user_associations) == 1 else "groups"
         expiring_access_list = expiring_access_list_owner_users(group_user_associations)
 
         message = (
-            f'{user_or_users} that {is_are} granted access to {group_or_groups} you own will lose access '
-            f'{parse_dates(expiration_datetime, True)}\n\n'
-            f'{expiring_access_list}\n'
-            f'Please [review expiring individual access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n'
+            f"{user_or_users} that {is_are} granted access to {group_or_groups} you own will lose access "
+            f"{parse_dates(expiration_datetime, True)}\n\n"
+            f"{expiring_access_list}\n"
+            f"Please [review expiring individual access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n"
         )
 
         # Send the message to the group owner about the users with expiring access
@@ -218,15 +238,15 @@ def access_expiring_owner(
 
         num_roles = len(role_group_associations)
 
-        (role_or_roles, is_are) = ('A role', 'is') if num_roles == 1 else (str(num_roles) + ' roles', 'are')
-        group_or_groups = 'a group' if len(role_group_associations) == 1 else 'groups'
+        (role_or_roles, is_are) = ("A role", "is") if num_roles == 1 else (str(num_roles) + " roles", "are")
+        group_or_groups = "a group" if len(role_group_associations) == 1 else "groups"
         expiring_access_list = expiring_access_list_owner_roles(role_group_associations)
 
         message = (
-            f'{role_or_roles} that {is_are} granted access to {group_or_groups} you own will lose access '
-            f'{parse_dates(expiration_datetime, True)}\n\n'
-            f'{expiring_access_list}\n'
-            f'Please [review expiring role-based access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n'
+            f"{role_or_roles} that {is_are} granted access to {group_or_groups} you own will lose access "
+            f"{parse_dates(expiration_datetime, True)}\n\n"
+            f"{expiring_access_list}\n"
+            f"Please [review expiring role-based access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n"
         )
 
         # Send the message to the group owner about the roles with expiring access
@@ -234,21 +254,17 @@ def access_expiring_owner(
 
 
 @notification_hook_impl
-def access_expiring_role_owner(
-    owner: OktaUser,
-    roles: list[RoleGroupMap],
-    expiration_datetime: datetime
-) -> None:
-    expiring_access_url = get_base_url() + f'/expiring-roles?role_owner_id=@me'
+def access_expiring_role_owner(owner: OktaUser, roles: list[RoleGroupMap], expiration_datetime: datetime) -> None:
+    expiring_access_url = get_base_url() + "/expiring-roles?role_owner_id=@me"
 
     expiring_access_list = expiring_access_list_role_owner(roles)
     count_of_expirations = len(roles)
-    role_or_roles = 'A role' if count_of_expirations == 1 else str(count_of_expirations) + ' roles'
+    role_or_roles = "A role" if count_of_expirations == 1 else str(count_of_expirations) + " roles"
 
     message = (
-        f'{role_or_roles} that you own will be losing access {parse_dates(expiration_datetime, False)}\n\n'
-        f'{expiring_access_list}.\n'
-        f'[View expiring access and, if needed, create a request to renew it.]({expiring_access_url})'
+        f"{role_or_roles} that you own will be losing access {parse_dates(expiration_datetime, False)}\n\n"
+        f"{expiring_access_list}.\n"
+        f"[View expiring access and, if needed, create a request to renew it.]({expiring_access_url})"
     )
 
     # Send the message to the role owner about the roles with expiring access

@@ -549,7 +549,11 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(okta_user_group_member.group_id)
 
         if len(owners) == 0:
-            owners += get_app_managers(okta_user_group_member.group.app_id) if type(okta_user_group_member.group) is AppGroup else []
+            owners += (
+                get_app_managers(okta_user_group_member.group.app_id)
+                if type(okta_user_group_member.group) is AppGroup
+                else []
+            )
 
         if len(owners) == 0:
             owners = access_owners
@@ -603,7 +607,11 @@ def expiring_access_notifications_owner() -> None:
         owners = get_group_managers(okta_user_group_member.group_id)
 
         if len(owners) == 0:
-            owners += get_app_managers(okta_user_group_member.group.app_id) if type(okta_user_group_member.group) is AppGroup else []
+            owners += (
+                get_app_managers(okta_user_group_member.group.app_id)
+                if type(okta_user_group_member.group) is AppGroup
+                else []
+            )
 
         if len(owners) == 0:
             owners = access_owners
@@ -611,7 +619,7 @@ def expiring_access_notifications_owner() -> None:
         for owner in owners:
             if owner.id != okta_user_group_member.user_id:
                 owner_expiring_groups_next[owner].append(okta_user_group_member)
-    
+
     # TODO eventually clean this up, leaving for now for backwards compatibility
     # Map of group -> list of users with access expiring next week
     users_per_group = defaultdict(list)
@@ -635,7 +643,7 @@ def expiring_access_notifications_owner() -> None:
             if len(non_owner_users) > 0:
                 owner_expiring_groups_next_old[owner].users += non_owner_users
                 owner_expiring_groups_next_old[owner].groups.append(group)
-    
+
     for owner in owner_expiring_groups_this:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_groups_next:
@@ -647,7 +655,7 @@ def expiring_access_notifications_owner() -> None:
                 # TODO eventually clean this up, leaving for now for backwards compatibility
                 users=owner_expiring_groups_this_old[owner].users + owner_expiring_groups_next_old[owner].users,
                 expiration_datetime=None,
-                group_user_associations= owner_expiring_groups_this[owner] + owner_expiring_groups_next[owner],
+                group_user_associations=owner_expiring_groups_this[owner] + owner_expiring_groups_next[owner],
                 role_group_associations=None,
             )
         else:

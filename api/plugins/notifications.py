@@ -1,7 +1,6 @@
 import datetime
 import logging
 import sys
-from collections import defaultdict
 from typing import Generator, Optional
 
 import pluggy
@@ -72,8 +71,8 @@ class NotificationPluginSpec:
         self,
         owner: OktaUser,
         groups: list[OktaGroup],
-        roles: list[OktaGroup],
-        users: list[RoleGroup],
+        roles: list[RoleGroup],
+        users: list[OktaUser],
         expiration_datetime: datetime.datetime,
         group_user_associations: Optional[list[OktaUserGroupMember]],
         role_group_associations: Optional[list[RoleGroupMap]],
@@ -163,7 +162,7 @@ def access_expiring_user(
 def access_expiring_owner(
     owner: OktaUser,
     groups: list[OktaGroup],
-    roles: list[OktaGroup],
+    roles: list[RoleGroup],
     users: list[OktaUser],
     expiration_datetime: datetime.datetime,
     group_user_associations: Optional[list[OktaUserGroupMember]],
