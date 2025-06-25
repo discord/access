@@ -35,7 +35,14 @@ class NotificationPluginSpec:
     ) -> None:
         """Notify the requester that their access request has been processed."""
 
-    @hookspec
+    @hookspec(
+        warn_on_impl_args={
+            "groups": DeprecationWarning(
+                "The groups parameter of access_expiring_user is deprecated and will be removed soon; "
+                "use okta_user_group_members instead"
+            ),
+        },
+    )
     def access_expiring_user(
         self,
         groups: list[OktaGroup],
@@ -45,7 +52,22 @@ class NotificationPluginSpec:
     ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
-    @hookspec
+    @hookspec(
+        warn_on_impl_args={
+            "groups": DeprecationWarning(
+                "The groups parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use group_user_associations and role_group_associations instead"
+            ),
+            "roles": DeprecationWarning(
+                "The roles parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use role_group_associations instead"
+            ),
+            "users": DeprecationWarning(
+                "The users parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use group_user_associations instead"
+            ),
+        },
+    )
     def access_expiring_owner(
         self,
         owner: OktaUser,
