@@ -215,6 +215,8 @@ class RoleMemberResource(MethodResource):
             groups_added_ended_at=group_changes.get("groups_added_ending_at"),
             groups_to_add=group_changes["groups_to_add"],
             owner_groups_to_add=group_changes["owner_groups_to_add"],
+            groups_should_expire=group_changes.get("groups_should_expire", []),
+            owner_groups_should_expire=group_changes.get("owner_groups_should_expire", []),
             groups_to_remove=group_changes["groups_to_remove"],
             owner_groups_to_remove=group_changes["owner_groups_to_remove"],
             created_reason=group_changes.get("created_reason", ""),

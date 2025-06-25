@@ -2,6 +2,8 @@ import React from 'react';
 import {Link as RouterLink, useSearchParams} from 'react-router-dom';
 
 import Autocomplete from '@mui/material/Autocomplete';
+import Box from '@mui/material/Box';
+import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -49,6 +51,7 @@ export default function ExpiringRoless() {
   const [searchInput, setSearchInput] = React.useState('');
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(20);
+  const [filterNeedsReview, setFilterNeedsReview] = React.useState<boolean>(true);
   const [filterActive, setFilterActive] = React.useState<boolean | null>(true);
   const [filterAppOwnership, setFilterAppOwnership] = React.useState<boolean>(false);
   const [startDate, setStartDate] = React.useState<Dayjs | null>(dayjs());
@@ -65,6 +68,7 @@ export default function ExpiringRoless() {
     }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
     setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setFilterNeedsReview(searchParams.get('needs_review') !== 'false');
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setFilterAppOwnership(searchParams.get('app_owner') == 'true');
     setStartDate(searchParams.get('start_date') == null ? dayjs() : dayjs.unix(Number(searchParams.get('start_date'))));
@@ -84,6 +88,7 @@ export default function ExpiringRoless() {
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},
       ownerId == null ? null : {owner_id: ownerId},
+      filterNeedsReview == null ? null : {needs_review: filterNeedsReview},
       filterActive == null ? null : {active: filterActive},
       {app_owner: filterAppOwnership},
       startDate == null ? null : {start_date: startDate.unix()},
@@ -157,6 +162,17 @@ export default function ExpiringRoless() {
     setSearchQuery(newValue);
   };
 
+  const handleNeedsReviewOrAll = (event: React.MouseEvent<HTMLElement>, newValue: boolean) => {
+    if (newValue !== null) {
+      setSearchParams((params) => {
+        params.set('needs_review', newValue ? 'true' : 'false');
+        params.set('page', '0');
+        return params;
+      });
+      setPage(0);
+    }
+  };
+
   const handleActiveOrInactive = (event: React.MouseEvent<HTMLElement>, newValue: boolean | null) => {
     if (newValue == null) {
       setSearchParams((params) => {
@@ -216,6 +232,12 @@ export default function ExpiringRoless() {
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Roles">
           <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} />
+          <Tooltip title="Show access that still needs review or all expiring access.">
+            <ToggleButtonGroup size="small" exclusive value={filterNeedsReview} onChange={handleNeedsReviewOrAll}>
+              <ToggleButton value={true}>Pending</ToggleButton>
+              <ToggleButton value={false}>All</ToggleButton>
+            </ToggleButtonGroup>
+          </Tooltip>
           <ToggleButtonGroup
             size="small"
             exclusive
@@ -280,7 +302,7 @@ export default function ExpiringRoless() {
                 <TableSortLabel>Started</TableSortLabel>
               </TableCell>
               <TableCell>Added by</TableCell>
-              <TableCell colSpan={2}>
+              <TableCell>
                 <TableSortLabel
                   active={orderBy === 'ended_at'}
                   direction={orderBy === 'ended_at' ? orderDirection : 'asc'}
@@ -288,6 +310,8 @@ export default function ExpiringRoless() {
                   Ending
                 </TableSortLabel>
               </TableCell>
+              <TableCell>Notes</TableCell>
+              <TableCell></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -296,11 +320,13 @@ export default function ExpiringRoless() {
                 key={row.id}
                 sx={{
                   bgcolor: ({palette: {highlight}}) =>
-                    dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
-                      ? highlight.warning.main
-                      : dayjs(row.ended_at).isBefore(dayjs())
-                        ? highlight.danger.main
-                        : null,
+                    dayjs(row.ended_at).isBefore(dayjs())
+                      ? highlight.danger.main
+                      : row.should_expire
+                        ? highlight.info.main
+                        : dayjs(row.ended_at).isAfter(dayjs()) && dayjs(row.ended_at).isBefore(dayjs().add(7, 'day'))
+                          ? highlight.warning.main
+                          : null,
                 }}>
                 <TableCell>
                   {(row.group?.deleted_at ?? null) != null ? (
@@ -337,7 +363,11 @@ export default function ExpiringRoless() {
                   )}
                 </TableCell>
                 <TableCell>
-                  {row.group?.type == 'okta_group' ? 'Group' : 'app_group' ? 'App Group' : 'Role Group'}
+                  {row.group?.type == 'okta_group'
+                    ? 'Group'
+                    : row.group?.type == 'app_group'
+                      ? 'App Group'
+                      : 'Role Group'}
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
@@ -363,9 +393,14 @@ export default function ExpiringRoless() {
                 <TableCell>
                   <Ending memberships={[row]} />
                 </TableCell>
+                <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
                   <TableCell align="center">
-                    <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} select={row.id} />
+                    <BulkRenewal
+                      rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+                      select={row.id}
+                      rereview={row.should_expire}
+                    />
                   </TableCell>
                 ) : (
                   <TableCell></TableCell>

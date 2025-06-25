@@ -21,7 +21,6 @@ import {
   CssBaseline,
   PaletteMode,
   Stack,
-  Theme,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -29,7 +28,8 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow} from '@mui/material/colors';
+import {lightGreen, red, yellow, grey} from '@mui/material/colors';
+import * as Sentry from '@sentry/react';
 
 import AuditGroup from './pages/groups/Audit';
 import AuditRole from './pages/roles/Audit';
@@ -53,7 +53,7 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
-import * as Sentry from '@sentry/react';
+
 const drawerWidth: number = 240;
 
 interface AppBarProps extends MuiAppBarProps {
@@ -289,6 +289,7 @@ export default function App() {
         primary: {
           main: '#5865F2',
           light: '#A5B2FF',
+          dark: '#5C6299',
         },
         secondary: {
           main: '#EB459E',
@@ -298,6 +299,9 @@ export default function App() {
         },
         warning: {
           main: '#FEE75C',
+        },
+        info: {
+          main: '#4287f5',
         },
         success: {
           main: '#57F287',
@@ -334,12 +338,28 @@ export default function App() {
             name: 'success',
           }),
           warning: base.palette.augmentColor({
-            color: {main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3)},
+            color: {
+              main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(yellow[300], 0.8) : alpha(yellow[200], 0.3),
+            },
             name: 'warning',
           }),
           danger: base.palette.augmentColor({
-            color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
+            color: {
+              main: mode === 'light' ? red[100] : alpha(red[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(red[200], 0.7) : alpha(red[300], 0.3),
+            },
             name: 'danger',
+          }),
+          info: base.palette.augmentColor({
+            color: {
+              main: mode === 'light' ? grey[100] : alpha(grey[700], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(grey[300], 0.8) : alpha(grey[200], 0.3),
+            },
+            name: 'info',
           }),
         },
       },

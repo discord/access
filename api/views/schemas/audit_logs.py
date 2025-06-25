@@ -6,8 +6,10 @@ from marshmallow import Schema, fields, pre_dump
 from api.views.schemas.core_schemas import (
     AccessRequestSchema,
     AppSchema,
+    OktaUserGroupMemberSchema,
     OktaUserSchema,
     PolymorphicGroupSchema,
+    RoleGroupMapSchema,
     RoleGroupSchema,
     RoleRequestSchema,
     TagSchema,
@@ -50,15 +52,27 @@ class AuditLogSchema(Schema):
     group_owners = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
     owners_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
     owners_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    owners_should_expire_user_id_group_id = fields.List(
+        fields.Nested(OktaUserGroupMemberSchema, only=("user_id", "group_id"))
+    )
     members_removed_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
     members_added_ids_emails = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
+    members_should_expire_user_id_group_id = fields.List(
+        fields.Nested(OktaUserGroupMemberSchema, only=("user_id", "group_id"))
+    )
 
     role = fields.Nested(RoleGroupSchema, only=("id", "name"))
     groups_added_ending_at = fields.DateTime()
     owner_groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
     owner_groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
+    owner_groups_should_expire_role_id_group_id = fields.List(
+        fields.Nested(RoleGroupMapSchema, only=("role_group_id", "group_id"))
+    )
     groups_removed_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
     groups_added_ids_names = fields.List(fields.Nested(RoleGroupSchema, only=("id", "name")))
+    groups_should_expire_role_id_group_id = fields.List(
+        fields.Nested(RoleGroupMapSchema, only=("role_group_id", "group_id"))
+    )
 
     request = fields.Nested(
         AccessRequestSchema,

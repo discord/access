@@ -338,6 +338,8 @@ class GroupMemberResource(MethodResource):
             users_added_ended_at=user_changes.get("users_added_ending_at"),
             members_to_add=user_changes["members_to_add"],
             owners_to_add=user_changes["owners_to_add"],
+            members_should_expire=user_changes.get("members_should_expire", []),
+            owners_should_expire=user_changes.get("owners_should_expire", []),
             members_to_remove=user_changes["members_to_remove"],
             owners_to_remove=user_changes["owners_to_remove"],
             created_reason=user_changes.get("created_reason", ""),

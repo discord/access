@@ -10,6 +10,8 @@ class GroupMemberSchema(Schema):
 
     members_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
     owners_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
+    members_should_expire = fields.List(fields.Int(), required=False, load_only=True)
+    owners_should_expire = fields.List(fields.Int(), required=False, load_only=True)
     members_to_remove = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
     owners_to_remove = fields.List(fields.String(validate=validate.Length(equal=20)), required=True, load_only=True)
     created_reason = fields.String(load_only=True, validate=validate.Length(max=1024))

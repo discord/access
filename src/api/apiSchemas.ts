@@ -206,9 +206,11 @@ export type DeleteMessage = {
 export type GroupMember = {
   members?: void[];
   members_to_add: string[];
+  members_should_expire?: number[];
   members_to_remove: string[];
   owners?: void[];
   owners_to_add: string[];
+  owners_should_expire?: number[];
   owners_to_remove: string[];
   /**
    * @format date-time
@@ -356,6 +358,7 @@ export type OktaUserGroupMember = {
    */
   created_at?: string;
   ended_actor?: OktaUser;
+  should_expire?: boolean;
   /**
    * @format date-time
    */
@@ -440,6 +443,7 @@ export type RoleGroupMap = {
   all_group_memberships_and_ownerships?: OktaUserGroupMember[];
   created_actor?: OktaUser;
   ended_actor?: OktaUser;
+  should_expire?: boolean;
   created_reason?: string;
   id?: number;
 };
@@ -452,8 +456,10 @@ export type RoleMember = {
   groups_in_role?: void[];
   groups_owned_by_role?: void[];
   groups_to_add: string[];
+  groups_should_expire?: number[];
   groups_to_remove: string[];
   owner_groups_to_add: string[];
+  owner_groups_should_expire?: number[];
   owner_groups_to_remove: string[];
   created_reason?: string;
 };
