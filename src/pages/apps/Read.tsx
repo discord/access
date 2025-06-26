@@ -21,11 +21,17 @@ export default function ReadApp() {
     pathParams: {appId: id ?? ''},
   });
   const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>(data?.active_non_owner_app_groups || []);
+  const [isExpanded, setIsExpanded] = React.useState(true);
+
   const app = data ?? ({} as App);
 
   React.useEffect(() => {
     setNonOwnerAppGroups(app?.active_non_owner_app_groups || []);
   }, [data]);
+
+  const handleToggleExpand = (expanded: boolean) => {
+    setIsExpanded(expanded);
+  };
 
   if (isError) {
     return <NotFound />;
@@ -48,11 +54,18 @@ export default function ReadApp() {
               list_group_description={'Owners can manage all app groups as implicit owners'}
             />
           )}
-          <AppsAdminActionGroup app={app} currentUser={currentUser} onSearchSubmit={setNonOwnerAppGroups} />
-          {nonOwnerAppGroups && (
+          <AppsAdminActionGroup
+            app={app}
+            currentUser={currentUser}
+            onSearchSubmit={setNonOwnerAppGroups}
+            onToggleExpand={handleToggleExpand}
+            isExpanded={isExpanded}
+          />
+          {app.active_non_owner_app_groups && (
             <AppsAccordionListGroup
-              app_group={nonOwnerAppGroups}
+              app_group={app.active_non_owner_app_groups}
               list_group_title={nonOwnerAppGroups.length > 1 ? 'App Groups' : 'App Group'}
+              isExpanded={isExpanded}
             />
           )}
         </Grid>

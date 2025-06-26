@@ -229,7 +229,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                 </TableRow>
               ))
           ) : (
-            <EmptyListEntry />
+            <EmptyListEntry cellProps={{colSpan: 4}} />
           )}
         </TableBody>
         <TableFooter>

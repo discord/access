@@ -896,7 +896,7 @@ export default function ReadRequest() {
                                         </TableRow>
                                       ))
                                   ) : (
-                                    <EmptyListEntry />
+                                    <EmptyListEntry cellProps={{colSpan: 3}} />
                                   )}
                                 </TableBody>
                               </Table>

@@ -80,7 +80,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) =
                 </TableRow>
               ))
             ) : (
-              <EmptyListEntry />
+              <EmptyListEntry cellProps={{colSpan: 3}} />
             )}
           </TableBody>
 
@@ -94,17 +94,39 @@ const GroupDetailList: React.FC<GroupDetailListProps> = ({member_list, title}) =
 };
 
 interface AppAccordionListGroupProps {
-  app_group?: AppGroup[];
+  app_group: AppGroup[];
   list_group_title?: string;
   list_group_description?: string;
+  isExpanded?: boolean;
 }
 
 export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
   app_group,
   list_group_title,
   list_group_description,
+  isExpanded = false,
 }) => {
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = React.useState<Record<string, boolean>>(() => {
+    if (isExpanded && app_group) {
+      const initialExpanded: Record<string, boolean> = {};
+      app_group.forEach((group) => {
+        initialExpanded[group.name] = true;
+      });
+      return initialExpanded;
+    }
+    return {};
+  });
+
+  // Sync internal state with isExpanded prop changes
+  React.useEffect(() => {
+    if (app_group) {
+      const newExpanded: Record<string, boolean> = {};
+      app_group.forEach((group) => {
+        newExpanded[group.name] = isExpanded;
+      });
+      setExpanded(newExpanded);
+    }
+  }, [isExpanded, app_group]);
 
   const handleChange = (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
     setExpanded({...expanded, [id]: newExpanded});
@@ -142,7 +164,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
 
             return (
               <TableContainer component={Paper}>
-                <Accordion expanded={expanded[appGroup.name] || false} onChange={handleChange(appGroup.name)}>
+                <Accordion expanded={expanded[appGroup.name] || isExpanded} onChange={handleChange(appGroup.name)}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Box
                       sx={{
