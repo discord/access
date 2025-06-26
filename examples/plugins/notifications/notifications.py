@@ -227,7 +227,7 @@ def access_expiring_owner(
             f"{user_or_users} that {is_are} granted access to {group_or_groups} you own will lose access "
             f"{parse_dates(expiration_datetime, True)}\n\n"
             f"{expiring_access_list}\n"
-            f"Please [review expiring individual access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n"
+            f"Please [review expiring individual access]({expiring_access_url}) to decide whether it should be ended or renewed.\n\n"
         )
 
         # Send the message to the group owner about the users with expiring access
@@ -246,7 +246,7 @@ def access_expiring_owner(
             f"{role_or_roles} that {is_are} granted access to {group_or_groups} you own will lose access "
             f"{parse_dates(expiration_datetime, True)}\n\n"
             f"{expiring_access_list}\n"
-            f"Please [review expiring role-based access]{expiring_access_url} to decide whether it should be ended or renewed.\n\n"
+            f"Please [review expiring role-based access]({expiring_access_url}) to decide whether it should be ended or renewed.\n\n"
         )
 
         # Send the message to the group owner about the roles with expiring access
