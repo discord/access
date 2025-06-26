@@ -2,11 +2,8 @@ import React from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
-import Link from '@mui/material/Link';
-import {Link as RouterLink} from 'react-router-dom';
 import {OktaUserGroupMember, RoleGroupMap} from '../api/apiSchemas';
 import AccessHistoryTable from './AccessHistoryTable';
-import RoleSuggestionTable from './RoleSuggestionTable';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import Accordion from '@mui/material/Accordion';
 import AccordionSummary from '@mui/material/AccordionSummary';
@@ -36,19 +33,10 @@ export default function AccessHistory({
     (audit) => audit.ended_at == null || (audit.ended_at && new Date(audit.ended_at) > new Date()),
   );
   const pastAccess = auditHistory.filter((audit) => audit.ended_at != null && new Date(audit.ended_at) <= new Date());
-  // Only for user: check if user has current role-based access to this group
-  const hasCurrentRoleBasedAccess =
-    subjectType === 'user' &&
-    currentAccess.some((audit) => 'role_group_mapping' in audit && audit.role_group_mapping != null);
-
   // Info card for empty state
   if (currentAccess.length === 0 && pastAccess.length === 0) {
     return (
       <Box>
-        {/* Only show Role Suggestions if user does NOT have current role-based access */}
-        {subjectType === 'user' && !hasCurrentRoleBasedAccess && (
-          <RoleSuggestionTable roleMappings={alternativeRoleMappings ?? []} />
-        )}
         <Paper sx={{p: 2, mt: 1, display: 'flex', alignItems: 'center', gap: 2, backgroundColor: 'background.default'}}>
           <Box sx={{display: 'flex', alignItems: 'center'}}>
             <InfoOutlined color="info" sx={{fontSize: 36, mr: 2}} />
@@ -70,10 +58,6 @@ export default function AccessHistory({
 
   return (
     <Box>
-      {/* Only show Role Suggestions if user does NOT have current role-based access */}
-      {subjectType === 'user' && !hasCurrentRoleBasedAccess && (
-        <RoleSuggestionTable roleMappings={alternativeRoleMappings ?? []} />
-      )}
       <Accordion defaultExpanded sx={{mt: 1}}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography variant="h6" sx={{fontWeight: 600}}>
