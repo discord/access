@@ -43,3 +43,11 @@ jobs:
         run: tox -e test
       - name: Test with tox with postgresql
         run: tox -e test-with-postgresql
+      - name: Test installing notifications plugin
+        run: |
+          # Install the notifications plugin from examples/plugins/notifications
+          if [ -d "examples/plugins/notifications" ]; then
+            python -m pip install ./examples/plugins/notifications
+          else
+            echo "Notifications plugin directory not found, skipping installation"
+          fi
