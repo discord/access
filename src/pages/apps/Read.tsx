@@ -20,7 +20,7 @@ export default function ReadApp() {
   const {data, isError, isLoading} = useGetAppById({
     pathParams: {appId: id ?? ''},
   });
-  const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>(data?.active_non_owner_app_groups || []);
+  const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>([]);
   const [isExpanded, setIsExpanded] = React.useState(true);
 
   const app = data ?? ({} as App);
@@ -32,6 +32,10 @@ export default function ReadApp() {
   const handleToggleExpand = (expanded: boolean) => {
     setIsExpanded(expanded);
   };
+
+  const handleSearchSubmit = React.useCallback((newAppGroups: AppGroup[]) => {
+    setNonOwnerAppGroups(newAppGroups);
+  }, []);
 
   if (isError) {
     return <NotFound />;
@@ -57,13 +61,13 @@ export default function ReadApp() {
           <AppsAdminActionGroup
             app={app}
             currentUser={currentUser}
-            onSearchSubmit={setNonOwnerAppGroups}
+            onSearchSubmit={handleSearchSubmit}
             onToggleExpand={handleToggleExpand}
             isExpanded={isExpanded}
           />
           {app.active_non_owner_app_groups && (
             <AppsAccordionListGroup
-              app_group={app.active_non_owner_app_groups}
+              app_group={nonOwnerAppGroups}
               list_group_title={nonOwnerAppGroups.length > 1 ? 'App Groups' : 'App Group'}
               isExpanded={isExpanded}
             />

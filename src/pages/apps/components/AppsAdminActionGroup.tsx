@@ -22,30 +22,31 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({
 }) => {
   const allMembers: Record<string, OktaUser> = {};
   const memberGroups: Record<string, AppGroup[]> = {};
-  [app.active_non_owner_app_groups].forEach((appGroupList) => {
-    (appGroupList ?? []).forEach((appGroup) => {
-      [appGroup.active_user_ownerships, appGroup.active_user_memberships].forEach((memberList) => {
-        (memberList ?? []).forEach((member) => {
-          const activeUser = member.active_user;
-          if (activeUser) {
-            allMembers[activeUser.id] = activeUser;
-            const groups = (memberGroups[activeUser.email.toLowerCase()] ||= []);
-            if (
-              !groups.find((g) => {
-                return g.id === appGroup.id;
-              })
-            ) {
-              groups.push(appGroup);
-            }
+  (app.active_non_owner_app_groups ?? []).forEach((appGroup) => {
+    [appGroup.active_user_ownerships, appGroup.active_user_memberships].forEach((memberList) => {
+      (memberList ?? []).forEach((member) => {
+        const activeUser = member.active_user;
+        if (activeUser) {
+          allMembers[activeUser.id] = activeUser;
+          const groups = (memberGroups[activeUser.email.toLowerCase()] ||= []);
+          if (
+            !groups.find((g) => {
+              return g.id === appGroup.id;
+            })
+          ) {
+            groups.push(appGroup);
           }
-        });
+        }
       });
     });
   });
 
   const handleSearchSubmit = (_: unknown, newValue: string | null) => {
-    const email = newValue?.split(';')[1] ?? '';
+    // Extract email from format "Display Name (email@example.com)"
+    const emailMatch = newValue?.match(/\(([^)]+)\)/);
+    const email = emailMatch ? emailMatch[1].toLowerCase() : '';
     const appGroups = memberGroups[email] ?? app.active_non_owner_app_groups;
+    console.log('Groups: ', appGroups, memberGroups[email], app.active_non_owner_app_groups);
     if (!!onSearchSubmit) {
       onSearchSubmit(appGroups);
     }
