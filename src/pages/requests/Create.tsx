@@ -12,11 +12,12 @@ import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from '../../components/icons/MoreTime';
 import Alert from '@mui/material/Alert';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
+import Tooltip from '@mui/material/Tooltip';
 import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 
@@ -42,6 +43,7 @@ import {
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 import {minTagTime, minTagTimeGroups} from '../../helpers';
+import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -50,19 +52,24 @@ interface CreateRequestButtonProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
+  expired?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
-      {props.group == null
-        ? 'Create Request'
-        : props.renew
-          ? 'Renew'
-          : props.owner
-            ? 'Request Ownership'
-            : 'Request Membership'}
-    </Button>
+    <Tooltip title={props.expired && "Already reviewed and marked as 'Should expire'"}>
+      <span>
+        <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
+          {props.group == null
+            ? 'Create Request'
+            : props.renew
+              ? 'Renew'
+              : props.owner
+                ? 'Request Ownership'
+                : 'Request Membership'}
+        </Button>
+      </span>
+    </Tooltip>
   );
 }
 
@@ -168,24 +175,10 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
-
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
-
+const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
 function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
@@ -232,7 +225,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
     ? filterUntilLabels(timeLimit)
-    : ['1209600', UNTIL_OPTIONS];
+    : [accessConfig.DEFAULT_ACCESS_TIME, UNTIL_OPTIONS];
   const [until, setUntil] = React.useState(untilLabels[0]);
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
@@ -320,7 +313,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     <FormContainer<CreateRequestForm>
       defaultValues={{
         group: props.group,
-        until: '1209600',
+        until: accessConfig.DEFAULT_ACCESS_TIME,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>
@@ -513,6 +506,7 @@ interface CreateRequestProps {
   group?: PolymorphicGroup;
   owner?: boolean;
   renew?: boolean;
+  expired?: boolean;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -532,7 +526,8 @@ export default function CreateRequest(props: CreateRequestProps) {
         setOpen={setOpen}
         group={props.group}
         owner={props.owner}
-        renew={props.renew}></CreateRequestButton>
+        renew={props.renew}
+        expired={props.expired}></CreateRequestButton>
       {open ? <CreateRequestDialog setOpen={setOpen} {...props} renew={props.renew} /> : null}
     </>
   );

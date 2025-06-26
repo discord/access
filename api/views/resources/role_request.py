@@ -17,7 +17,9 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
+    Tag,
 )
+from api.models.tag import coalesce_constraints
 from api.operations import (
     ApproveRoleRequest,
     CreateRoleRequest,
@@ -45,7 +47,11 @@ ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(
 )
 DEFAULT_LOAD_OPTIONS = (
     joinedload(RoleRequest.requester),
-    joinedload(RoleRequest.requester_role),
+    joinedload(RoleRequest.requester_role).options(
+        selectinload(RoleGroup.active_user_memberships).options(
+            joinedload(OktaUserGroupMember.active_user),
+        ),
+    ),
     joinedload(RoleRequest.requested_group).options(
         # Role requests can only be for OktaGroups and AppGroups
         selectin_polymorphic(OktaGroup, [AppGroup]),
@@ -80,6 +86,7 @@ class RoleRequestResource(MethodResource):
                 "requester_role.id",
                 "requester_role.name",
                 "requester_role.deleted_at",
+                "requester_role.active_user_memberships",
                 "requested_group.id",
                 "requested_group.type",
                 "requested_group.name",
@@ -109,7 +116,9 @@ class RoleRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(RoleRequestSchema)
     def put(self, role_request_id: str) -> ResponseReturnValue:
         role_request = (
-            RoleRequest.query.options(joinedload(RoleRequest.active_requested_group))
+            RoleRequest.query.options(
+                joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.requester_role)
+            )
             .filter(RoleRequest.id == role_request_id)
             .first_or_404()
         )
@@ -268,12 +277,152 @@ class RoleRequestList(MethodResource):
                     .subquery()
                 )
 
-                query = query.join(RoleRequest.requested_group).filter(
-                    db.or_(
-                        OktaGroup.id.in_(groups_owned_subquery),
-                        OktaGroup.id.in_(app_groups_owned_subquery),
+                if AuthorizationHelpers.is_access_admin(assignee_user_id):
+                    # get pending role requests for ownership where group tagged with owner
+                    # can't add self as owner constraint
+                    tagged_role_requests_owner = [
+                        g
+                        for g in (
+                            RoleRequest.query.options(
+                                joinedload(RoleRequest.requester_role).options(
+                                    selectinload(OktaGroup.active_user_memberships)
+                                )
+                            )
+                            .options(
+                                joinedload(RoleRequest.requested_group).options(
+                                    selectinload(OktaGroup.active_group_tags),
+                                    selectinload(OktaGroup.active_user_ownerships),
+                                )
+                            )
+                            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+                            .filter(RoleRequest.request_ownership.is_(True))
+                            .all()
+                        )
+                        if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.requested_group.active_group_tags],
+                        )
+                    ]
+
+                    # get pending role requests for membership where group tagged with owner
+                    # can't add self as member constraint
+                    tagged_role_requests_member = [
+                        g
+                        for g in (
+                            RoleRequest.query.options(
+                                joinedload(RoleRequest.requester_role).options(
+                                    selectinload(OktaGroup.active_user_memberships)
+                                )
+                            )
+                            .options(
+                                joinedload(RoleRequest.requested_group).options(
+                                    selectinload(OktaGroup.active_group_tags),
+                                    selectinload(OktaGroup.active_user_ownerships),
+                                )
+                            )
+                            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+                            .filter(RoleRequest.request_ownership.is_(False))
+                            .all()
+                        )
+                        if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.requested_group.active_group_tags],
+                        )
+                    ]
+
+                    # for each role request with a tagged target group, check to see if all owners blocked
+                    blocked_requests = []
+                    for req in tagged_role_requests_owner:
+                        role_members = [m.user_id for m in req.requester_role.active_user_memberships]
+                        blocked = True
+                        for o in req.requested_group.active_user_ownerships:
+                            if o.user_id not in role_members:
+                                blocked = False
+                                break
+                        if blocked:
+                            blocked_requests.append(req.id)
+
+                    for req in tagged_role_requests_member:
+                        role_members = [m.user_id for m in req.requester_role.active_user_memberships]
+                        blocked = True
+                        for o in req.requested_group.active_user_ownerships:
+                            if o.user_id not in role_members:
+                                blocked = False
+                                break
+                        if blocked:
+                            blocked_requests.append(req.id)
+
+                    query = query.join(RoleRequest.requested_group).filter(
+                        db.or_(
+                            OktaGroup.id.in_(groups_owned_subquery),
+                            OktaGroup.id.in_(app_groups_owned_subquery),
+                            RoleRequest.id.in_(blocked_requests),
+                        )
                     )
-                )
+
+                else:
+                    # Get all role requests where assignee user is not blocked
+                    query = query.join(RoleRequest.requested_group).filter(
+                        db.or_(
+                            OktaGroup.id.in_(groups_owned_subquery),
+                            OktaGroup.id.in_(app_groups_owned_subquery),
+                        )
+                    )
+
+                    owned_groups = (
+                        OktaGroup.query.options(joinedload(OktaGroup.active_group_tags))
+                        .filter(
+                            db.or_(
+                                OktaGroup.id.in_(groups_owned_subquery),
+                                OktaGroup.id.in_(app_groups_owned_subquery),
+                            )
+                        )
+                        .all()
+                    )
+
+                    owned_groups_cant_add_self_owner = [
+                        g.id
+                        for g in owned_groups
+                        if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.active_group_tags],
+                        )
+                    ]
+
+                    owned_groups_cant_add_self_member = [
+                        g.id
+                        for g in owned_groups
+                        if coalesce_constraints(
+                            constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
+                            tags=[tag_map.active_tag for tag_map in g.active_group_tags],
+                        )
+                    ]
+
+                    role_memberships = [
+                        g.id
+                        for g in (RoleGroup.query.options(joinedload(RoleGroup.active_user_memberships)).all())
+                        if assignee_user_id in [g.user_id for g in g.active_user_memberships]
+                    ]
+
+                    query = query.filter(
+                        db.not_(
+                            db.or_(
+                                db.and_(  # blocked requests ownership
+                                    RoleRequest.requested_group_id.in_(owned_groups_cant_add_self_owner),
+                                    RoleRequest.requester_role_id.in_(role_memberships),
+                                    RoleRequest.request_ownership.is_(True),
+                                ),
+                                db.and_(  # blocked requests membership
+                                    RoleRequest.requested_group_id.in_(owned_groups_cant_add_self_member),
+                                    RoleRequest.requester_role_id.in_(role_memberships),
+                                    RoleRequest.request_ownership.is_(False),
+                                ),
+                            )
+                        )
+                    )
+                # remove own requests regardless of whether admin
+                query = query.filter(RoleRequest.requester_user_id != assignee_user_id)
+
             else:
                 query = query.filter(False)
 

@@ -1,6 +1,6 @@
 import random
 import string
-from typing import Dict
+from typing import Any, Dict
 
 import factory
 from factory import fuzzy
@@ -24,11 +24,12 @@ from api.models import (
 )
 
 
-class GroupProfileFactory(factory.Factory):
-    config = factory.Dict(
+class GroupProfileFactory(factory.Factory[GroupProfile]):
+    config: Any = factory.Dict(
         {
             "name": factory.Faker("pystr"),
             "description": factory.Faker("pystr"),
+            "allow_discord_access": None,  # Default to None for the custom attribute
         }
     )
 
@@ -36,9 +37,9 @@ class GroupProfileFactory(factory.Factory):
         model = GroupProfile
 
 
-class GroupFactory(factory.Factory):
-    is_deleted = False
-    config = factory.Dict(
+class GroupFactory(factory.Factory[Group]):
+    is_deleted: bool = False
+    config: Any = factory.Dict(
         {
             "id": factory.Faker("pystr"),
             "name": factory.Faker("pystr"),
@@ -64,8 +65,8 @@ class GroupFactory(factory.Factory):
         return okta_access_owner_group
 
 
-class UserProfileFactory(factory.Factory):
-    config = factory.Dict(
+class UserProfileFactory(factory.Factory[UserProfile]):
+    config: Any = factory.Dict(
         {
             "login": factory.Faker("pystr"),
             "firstName": factory.Faker("pystr"),
@@ -77,9 +78,9 @@ class UserProfileFactory(factory.Factory):
         model = UserProfile
 
 
-class UserFactory(factory.Factory):
-    is_deleted = False
-    config = factory.Dict(
+class UserFactory(factory.Factory[User]):
+    is_deleted: bool = False
+    config: Any = factory.Dict(
         {
             "id": factory.Faker("pystr"),
             "login": factory.Faker("pystr"),
@@ -105,8 +106,8 @@ class UserFactory(factory.Factory):
         exclude = "is_deleted"
 
 
-class UserSchemaFactory(factory.Factory):
-    config = factory.Dict(
+class UserSchemaFactory(factory.Factory[UserSchema]):
+    config: Any = factory.Dict(
         {
             "definitions": factory.Dict(
                 {
@@ -167,22 +168,23 @@ class UserSchemaFactory(factory.Factory):
         model = UserSchema
 
 
-class OktaUserFactory(factory.Factory):
-    id = factory.Faker("pystr")
-
-    email = factory.LazyAttribute(lambda a: "{}.{}@example.com".format(a.first_name, a.last_name).lower())
-    first_name = factory.Faker("first_name")
-    last_name = factory.Faker("last_name")
-    display_name = factory.LazyAttribute(lambda a: "{} {}".format(a.first_name, a.last_name))
+class OktaUserFactory(factory.Factory[OktaUser]):
+    id: factory.Faker = factory.Faker("pystr")
+    email: factory.LazyAttribute = factory.LazyAttribute(
+        lambda a: "{}.{}@example.com".format(a.first_name, a.last_name).lower()
+    )
+    first_name: factory.Faker = factory.Faker("first_name")
+    last_name: factory.Faker = factory.Faker("last_name")
+    display_name: factory.LazyAttribute = factory.LazyAttribute(lambda a: "{} {}".format(a.first_name, a.last_name))
     profile: Dict[str, str] = {}
 
     class Meta:
         model = OktaUser
 
 
-class AppFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(
+class AppFactory(factory.Factory[App]):
+    id: factory.Faker = factory.Faker("pystr")
+    name: fuzzy.FuzzyText = fuzzy.FuzzyText(
         length=12, prefix=random.choice(string.ascii_uppercase), chars=string.ascii_letters + string.digits + "-"
     )
 
@@ -190,35 +192,35 @@ class AppFactory(factory.Factory):
         model = App
 
 
-class OktaGroupFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(
+class OktaGroupFactory(factory.Factory[OktaGroup]):
+    id: factory.Faker = factory.Faker("pystr")
+    name: fuzzy.FuzzyText = fuzzy.FuzzyText(
         length=12,
         prefix=random.choice(string.ascii_uppercase),
         chars=string.ascii_letters + string.digits + "-",
     )
-    type = "okta_group"
+    type: str = "okta_group"
 
     class Meta:
         model = OktaGroup
 
 
-class RoleGroupFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(
+class RoleGroupFactory(factory.Factory[RoleGroup]):
+    id: factory.Faker = factory.Faker("pystr")
+    name: fuzzy.FuzzyText = fuzzy.FuzzyText(
         length=12,
         prefix=RoleGroup.ROLE_GROUP_NAME_PREFIX + random.choice(string.ascii_uppercase),
         chars=string.ascii_letters + string.digits + "-",
     )
-    type = "role_group"
+    type: str = "role_group"
 
     class Meta:
         model = RoleGroup
 
 
-class AppGroupFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(
+class AppGroupFactory(factory.Factory[AppGroup]):
+    id: factory.Faker = factory.Faker("pystr")
+    name: fuzzy.FuzzyText = fuzzy.FuzzyText(
         length=12,
         prefix=AppGroup.APP_GROUP_NAME_PREFIX
         + random.choice(string.ascii_uppercase)
@@ -226,33 +228,33 @@ class AppGroupFactory(factory.Factory):
         + random.choice(string.ascii_uppercase),
         chars=string.ascii_letters + string.digits + "-",
     )
-    type = "app_group"
+    type: str = "app_group"
 
     class Meta:
         model = AppGroup
 
 
-class AccessRequestFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    status = AccessRequestStatus.PENDING
-    request_reason = factory.Faker("paragraph", nb_sentences=5)
+class AccessRequestFactory(factory.Factory[AccessRequest]):
+    id: factory.Faker = factory.Faker("pystr")
+    status: AccessRequestStatus = AccessRequestStatus.PENDING
+    request_reason: factory.Faker = factory.Faker("paragraph", nb_sentences=5)
 
     class Meta:
         model = AccessRequest
 
 
-class RoleRequestFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    status = AccessRequestStatus.PENDING
-    request_reason = factory.Faker("paragraph", nb_sentences=5)
+class RoleRequestFactory(factory.Factory[RoleRequest]):
+    id: factory.Faker = factory.Faker("pystr")
+    status: AccessRequestStatus = AccessRequestStatus.PENDING
+    request_reason: factory.Faker = factory.Faker("paragraph", nb_sentences=5)
 
     class Meta:
         model = RoleRequest
 
 
-class TagFactory(factory.Factory):
-    id = factory.Faker("pystr")
-    name = fuzzy.FuzzyText(length=12, prefix="Tag-", chars=string.ascii_letters + string.digits + "-")
+class TagFactory(factory.Factory[Tag]):
+    id: factory.Faker = factory.Faker("pystr")
+    name: fuzzy.FuzzyText = fuzzy.FuzzyText(length=12, prefix="Tag-", chars=string.ascii_letters + string.digits + "-")
 
     class Meta:
         model = Tag

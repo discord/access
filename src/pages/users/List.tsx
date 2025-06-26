@@ -1,7 +1,6 @@
 import React from 'react';
 
-import {Link as RouterLink, useSearchParams, useNavigate} from 'react-router-dom';
-import Link from '@mui/material/Link';
+import {useSearchParams, useNavigate} from 'react-router-dom';
 
 import Paper from '@mui/material/Paper';
 import Table from '@mui/material/Table';
@@ -12,18 +11,14 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
-import TextField from '@mui/material/TextField';
-import Autocomplete from '@mui/material/Autocomplete';
-import Grid from '@mui/material/Grid';
-import Typography from '@mui/material/Typography';
-import Box from '@mui/material/Box';
 
 import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
 import {displayUserName, perPage} from '../../helpers';
-import {Stack} from '@mui/material';
+import ChangeTitle from '../../tab-title';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListUsers() {
   const navigate = useNavigate();
@@ -104,83 +99,67 @@ export default function ListUsers() {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <TableTopBar title="Users">
-        <TableTopBarAutocomplete
-          options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
-          onInputChange={(event, newInputValue) => {
-            setSearchInput(newInputValue?.split(';')[0] ?? '');
-          }}
-          onChange={handleSearchSubmit}
-          defaultValue={searchQuery}
-          key={searchQuery}
-          renderOption={renderUserOption}
-        />
-      </TableTopBar>
-      <Table sx={{minWidth: 650}} size="small" aria-label="users">
-        <TableHead>
-          <TableRow>
-            <TableCell></TableCell>
-            <TableCell>Name</TableCell>
-            <TableCell>Email</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
+    <>
+      <ChangeTitle title="Users" />
+      <TableContainer component={Paper}>
+        <TableTopBar title="Users">
+          <TableTopBarAutocomplete
+            options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            onInputChange={(event, newInputValue) => {
+              setSearchInput(newInputValue?.split(';')[0] ?? '');
+            }}
+            onChange={handleSearchSubmit}
+            defaultValue={searchQuery}
+            key={searchQuery}
+            renderOption={renderUserOption}
+          />
+        </TableTopBar>
+        <Table sx={{minWidth: 650}} size="small" aria-label="users">
+          <TableHead>
+            <TableRow>
+              <TableCell></TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Email</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <LinkTableRow to={`/users/${row.email.toLowerCase()}`} key={row.id}>
+                <TableCell>
                   <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  {displayUserName(row)}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link
-                  to={`/users/${row.email.toLowerCase()}`}
-                  sx={{textDecoration: 'none', color: 'inherit'}}
-                  component={RouterLink}>
-                  {row.email.toLowerCase()}
-                </Link>
-              </TableCell>
+                </TableCell>
+                <TableCell>{displayUserName(row)}</TableCell>
+                <TableCell>{row.email.toLowerCase()}</TableCell>
+              </LinkTableRow>
+            ))}
+            {emptyRows > 0 && (
+              <TableRow style={{height: 37 * emptyRows}}>
+                <TableCell colSpan={6} />
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={3}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
-          ))}
-          {emptyRows > 0 && (
-            <TableRow style={{height: 37 * emptyRows}}>
-              <TableCell colSpan={6} />
-            </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TablePagination
-              rowsPerPageOptions={perPage}
-              colSpan={3}
-              count={totalRows}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              SelectProps={{
-                inputProps: {
-                  'aria-label': 'rows per page',
-                },
-                native: true,
-              }}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              ActionsComponent={TablePaginationActions}
-            />
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </TableContainer>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </>
   );
 }

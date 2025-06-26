@@ -1,16 +1,17 @@
-import React, {useEffect, useState} from 'react';
-import {Link as RouterLink, useNavigate, useParams} from 'react-router-dom';
+import React from 'react';
+import {useParams} from 'react-router-dom';
 
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
-import {groupBy} from '../../helpers';
+
 import {useGetAppById} from '../../api/apiComponents';
-import {App, AppGroup, OktaUserGroupMember} from '../../api/apiSchemas';
+import {App, AppGroup} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
+import ChangeTitle from '../../tab-title';
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
@@ -36,6 +37,7 @@ export default function ReadApp() {
 
   return (
     <React.Fragment>
+      <ChangeTitle title={app.name} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />

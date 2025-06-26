@@ -10,7 +10,7 @@ import Button from '@mui/material/Button';
 import Avatar from '@mui/material/Avatar';
 import Typography from '@mui/material/Typography';
 import Divider from '@mui/material/Divider';
-import AccessRequestIcon from '@mui/icons-material/MoreTime';
+import AccessRequestIcon from '../../components/icons/MoreTime';
 import PendingIcon from '@mui/icons-material/HelpOutline';
 import ApprovedIcon from '@mui/icons-material/CheckCircleOutline';
 import RejectedIcon from '@mui/icons-material/HighlightOff';
@@ -71,7 +71,9 @@ import {
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
+import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
+import accessConfig from '../../config/accessConfig';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 dayjs.extend(RelativeTime);
@@ -100,24 +102,10 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-  indefinite: 'Indefinite',
-  custom: 'Custom',
-} as const;
-
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
-  '43200': '12 Hours',
-  '432000': '5 Days',
-  '1209600': 'Two Weeks',
-  '2592000': '30 Days',
-  '7776000': '90 Days',
-} as const;
-
+const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
 function ComputeConstraints(accessRequest: AccessRequest) {
@@ -294,7 +282,7 @@ export default function ReadRequest() {
   const accessApp = accessAppData ?? ({} as App);
 
   const accessAppOwnerships = groupBy(
-    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_ownerships ?? []).flat(),
+    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
     (m) => m.active_user?.id,
   );
 
@@ -340,6 +328,9 @@ export default function ReadRequest() {
 
   return (
     <React.Fragment>
+      <ChangeTitle
+        title={`Request: ${displayUserName(accessRequest.requester)} ${accessRequest.request_ownership ? 'ownership of' : 'membership to'} ${accessRequest.requested_group!.name}`}
+      />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={5} lg={3}>
@@ -839,13 +830,7 @@ export default function ReadRequest() {
                                         </TableRow>
                                       ))
                                   ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
+                                    <EmptyListEntry cellProps={{colSpan: 3}} />
                                   )}
                                 </TableBody>
                               </Table>
@@ -875,7 +860,7 @@ export default function ReadRequest() {
                                           alignItems: 'right',
                                         }}>
                                         <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                                        Total Owners: {Object.keys(ownerships).length}
+                                        Total Owners: {Object.keys(accessAppOwnerships).length}
                                       </Box>
                                     </TableCell>
                                   </TableRow>
@@ -911,13 +896,7 @@ export default function ReadRequest() {
                                         </TableRow>
                                       ))
                                   ) : (
-                                    <TableRow key="owners">
-                                      <TableCell colSpan={3}>
-                                        <Typography variant="body2" color="text.secondary">
-                                          None
-                                        </Typography>
-                                      </TableCell>
-                                    </TableRow>
+                                    <EmptyListEntry />
                                   )}
                                 </TableBody>
                               </Table>

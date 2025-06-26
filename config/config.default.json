@@ -1,0 +1,20 @@
+{
+  "FRONTEND": {
+    "ACCESS_TIME_LABELS": {
+      "43200": "12 Hours",
+      "432000": "5 Days",
+      "1209600": "Two Weeks",
+      "2592000": "30 Days",
+      "7776000": "90 Days",
+      "indefinite": "Indefinite",
+      "custom": "Custom"
+    },
+    "DEFAULT_ACCESS_TIME": "1209600",
+    "NAME_VALIDATION_PATTERN": "^[A-Z][A-Za-z0-9\\-]*$",
+    "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens."
+  },
+  "BACKEND": {
+    "NAME_VALIDATION_PATTERN": "[A-Z][A-Za-z0-9-]*",
+    "NAME_VALIDATION_ERROR": "name must start capitalized and contain only alphanumeric characters or hyphens."
+  }
+}

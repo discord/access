@@ -1,7 +1,7 @@
 import * as React from 'react';
-import {Link as RouterLink, Route, Routes} from 'react-router-dom';
+import {Link as RouterLink, Route, Routes, useSearchParams} from 'react-router-dom';
 
-import {createTheme, styled, ThemeProvider} from '@mui/material/styles';
+import {createTheme, styled, Theme, ThemeProvider} from '@mui/material/styles';
 import Link from '@mui/material/Link';
 import MuiDrawer from '@mui/material/Drawer';
 import Box from '@mui/material/Box';
@@ -16,27 +16,6 @@ import Container from '@mui/material/Container';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import AccountIcon from '@mui/icons-material/AccountCircle';
-
-import AuditGroup from './pages/groups/Audit';
-import AuditRole from './pages/roles/Audit';
-import AuditUser from './pages/users/Audit';
-import ExpiringGroups from './pages/groups/Expiring';
-import ExpiringRoles from './pages/roles/Expiring';
-import Home from './pages/Home';
-import ListApps from './pages/apps/List';
-import ListGroups from './pages/groups/List';
-import ListRequests from './pages/requests/List';
-import ListRoles from './pages/roles/List';
-import ListTags from './pages/tags/List';
-import ListUsers from './pages/users/List';
-import NavItems from './components/NavItems';
-import NotFound from './pages/NotFound';
-import ReadApp from './pages/apps/Read';
-import ReadGroup from './pages/groups/Read';
-import ReadTag from './pages/tags/Read';
-import ReadUser from './pages/users/Read';
-import {useCurrentUser} from './authentication';
-import ReadRequest from './pages/requests/Read';
 import {
   alpha,
   CssBaseline,
@@ -49,7 +28,31 @@ import {
   useTheme,
 } from '@mui/material';
 import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
-import {lightGreen, red, yellow} from '@mui/material/colors';
+import {lightGreen, red, yellow, grey} from '@mui/material/colors';
+import * as Sentry from '@sentry/react';
+
+import AuditGroup from './pages/groups/Audit';
+import AuditRole from './pages/roles/Audit';
+import AuditUser from './pages/users/Audit';
+import ExpiringGroups from './pages/groups/Expiring';
+import ExpiringRoles from './pages/roles/Expiring';
+import Home from './pages/Home';
+import ListApps from './pages/apps/List';
+import ListGroups from './pages/groups/List';
+import ListRequests from './pages/requests/List';
+import ListRoles from './pages/roles/List';
+import ListRoleRequests from './pages/role_requests/List';
+import ListTags from './pages/tags/List';
+import ListUsers from './pages/users/List';
+import NavItems from './components/NavItems';
+import NotFound from './pages/NotFound';
+import ReadApp from './pages/apps/Read';
+import ReadGroup from './pages/groups/Read';
+import ReadTag from './pages/tags/Read';
+import ReadUser from './pages/users/Read';
+import {useCurrentUser} from './authentication';
+import ReadRequest from './pages/requests/Read';
+import ReadRoleRequest from './pages/role_requests/Read';
 
 const drawerWidth: number = 240;
 
@@ -254,6 +257,8 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <Route path="/expiring-roles" element={<ExpiringRoles />} />
             <Route path="/tags" element={<ListTags />} />
             <Route path="/tags/:id" element={<ReadTag />} />
+            <Route path="/role-requests" element={<ListRoleRequests />} />
+            <Route path="/role-requests/:id" element={<ReadRoleRequest />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Container>
@@ -262,11 +267,19 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
   );
 }
 
+interface AppStateProps {
+  source: string | undefined;
+  theme: Theme;
+  setMode: (mode: PaletteMode) => void;
+}
+
 export default function App() {
   const storedTheme = localStorage.getItem('user-set-color-scheme') as 'light' | 'dark' | null;
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
   const initialMode = storedTheme ?? systemTheme;
   const [mode, setMode] = React.useState<PaletteMode>(initialMode);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const source = searchParams.get('source') ?? undefined;
 
   // See https://discord.com/branding
   let theme = React.useMemo(() => {
@@ -276,6 +289,7 @@ export default function App() {
         primary: {
           main: '#5865F2',
           light: '#A5B2FF',
+          dark: '#5C6299',
         },
         secondary: {
           main: '#EB459E',
@@ -285,6 +299,9 @@ export default function App() {
         },
         warning: {
           main: '#FEE75C',
+        },
+        info: {
+          main: '#4287f5',
         },
         success: {
           main: '#57F287',
@@ -321,19 +338,60 @@ export default function App() {
             name: 'success',
           }),
           warning: base.palette.augmentColor({
-            color: {main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3)},
+            color: {
+              main: mode === 'light' ? yellow[100] : alpha(yellow[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(yellow[300], 0.8) : alpha(yellow[200], 0.3),
+            },
             name: 'warning',
           }),
           danger: base.palette.augmentColor({
-            color: {main: mode === 'light' ? red[100] : alpha(red[500], 0.3)},
+            color: {
+              main: mode === 'light' ? red[100] : alpha(red[500], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(red[200], 0.7) : alpha(red[300], 0.3),
+            },
             name: 'danger',
+          }),
+          info: base.palette.augmentColor({
+            color: {
+              main: mode === 'light' ? grey[100] : alpha(grey[700], 0.3),
+              // using this as a general contrast color but MUI doesn't have that field built in
+              contrastText: mode === 'light' ? alpha(grey[300], 0.8) : alpha(grey[200], 0.3),
+            },
+            name: 'info',
           }),
         },
       },
     });
   }, [mode]);
 
+  const updateMode = React.useCallback(
+    (mode: PaletteMode) => {
+      setMode(mode);
+      localStorage.setItem('user-set-color-scheme', mode);
+    },
+    [setMode],
+  );
+
+  return <AppState source={source} theme={theme} setMode={updateMode} />;
+}
+
+function AppState({source, theme, setMode}: AppStateProps) {
   useCurrentUser();
+
+  React.useEffect(() => {
+    if (source) {
+      Sentry.addBreadcrumb({
+        category: 'navigation',
+        message: `Access navigation from source referrer`,
+        data: {source},
+        level: 'info',
+      });
+      Sentry.setTag('source', source);
+    }
+  }, [source]);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />

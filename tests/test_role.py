@@ -1297,3 +1297,77 @@ def test_complex_role_modifications(
     assert delete_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert db.session.get(OktaGroup, group_id).deleted_at is not None
+
+
+# Do not renew functionality test
+# Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
+# Test is just to make sure the field is set correctly
+def test_do_not_renew(
+    db: SQLAlchemy,
+    client: FlaskClient,
+    mocker: MockerFixture,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
+    db.session.add(okta_group)
+    db.session.add(role_group)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role_group,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[okta_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    # need the RoleGroupMap id to pass in later
+    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id).first()
+
+    # set one user to renew and one do not renew
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+
+    data: dict[str, Any] = {
+        "groups_to_add": [],
+        "owner_groups_to_add": [],
+        "groups_should_expire": [role_group_map.id],
+        "owner_groups_should_expire": [],
+        "groups_to_remove": [],
+        "owner_groups_to_remove": [],
+    }
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    rep = client.put(role_url, json=data)
+    assert rep.status_code == 200
+    assert add_user_to_group_spy.call_count == 0
+    assert remove_user_from_group_spy.call_count == 0
+    assert add_owner_to_group_spy.call_count == 0
+    assert remove_owner_from_group_spy.call_count == 0
+
+    data = rep.get_json()
+    assert len(data["groups_in_role"]) == 1
+    assert okta_group.id in data["groups_in_role"]
+    assert len(data["groups_owned_by_role"]) == 0
+
+    # get OktaUserGroupMembers, check expiration dates and should_expire
+    membership_role = (
+        RoleGroupMap.query.filter(
+            db.or_(
+                RoleGroupMap.ended_at.is_(None),
+                RoleGroupMap.ended_at > db.func.now(),
+            )
+        )
+        .filter(RoleGroupMap.role_group_id == role_group.id)
+        .all()
+    )
+
+    assert len(membership_role) == 1
+    assert membership_role[0].ended_at == expiration_datetime
+    assert membership_role[0].should_expire is True

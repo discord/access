@@ -20,11 +20,13 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateUpdateApp from './CreateUpdate';
 import {perPage} from '../../helpers';
 import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListApps() {
   const navigate = useNavigate();
@@ -106,70 +108,65 @@ export default function ListApps() {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <TableTopBar title="Applications">
-        <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
-          Tags
-        </Button>
-        <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>
-        <TableTopBarAutocomplete
-          options={searchRows.map((row) => row.name)}
-          onChange={handleSearchSubmit}
-          onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
-          defaultValue={searchQuery}
-        />
-      </TableTopBar>
-      <Table sx={{minWidth: 650}} size="small" aria-label="apps">
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Description</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>
-                <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                  {row.name}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link to={`/apps/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                  {(row.description ?? '').length > 115
-                    ? row.description?.substring(0, 114) + '...'
-                    : row.description ?? ''}
-                </Link>
-              </TableCell>
+    <>
+      <ChangeTitle title="Apps" />
+      <TableContainer component={Paper}>
+        <TableTopBar title="Applications">
+          <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
+            Tags
+          </Button>
+          <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>
+          <TableTopBarAutocomplete
+            options={searchRows.map((row) => row.name)}
+            onChange={handleSearchSubmit}
+            onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
+            defaultValue={searchQuery}
+          />
+        </TableTopBar>
+        <Table sx={{minWidth: 650}} size="small" aria-label="apps">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Description</TableCell>
             </TableRow>
-          ))}
-          {emptyRows > 0 && (
-            <TableRow style={{height: 33 * emptyRows}}>
-              <TableCell colSpan={6} />
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <LinkTableRow to={`/apps/${row.name}`} key={row.id}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>
+                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
+                </TableCell>
+              </LinkTableRow>
+            ))}
+            {emptyRows > 0 && (
+              <TableRow style={{height: 33 * emptyRows}}>
+                <TableCell colSpan={6} />
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={3}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TablePagination
-              rowsPerPageOptions={perPage}
-              colSpan={3}
-              count={totalRows}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              SelectProps={{
-                inputProps: {
-                  'aria-label': 'rows per page',
-                },
-                native: true,
-              }}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              ActionsComponent={TablePaginationActions}
-            />
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </TableContainer>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </>
   );
 }

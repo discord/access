@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Protocol, cast
 
 from factory import Faker
 from flask import url_for
@@ -221,7 +221,18 @@ def test_delete_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
-def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag) -> None:
+# Define a Protocol that includes the pystr method
+class FakerWithPyStr(Protocol):
+    def pystr(self) -> str: ...
+
+
+def test_create_app(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    tag: Tag,
+) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
     data: dict[str, Any] = {}
@@ -231,7 +242,9 @@ def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
     db.session.add(tag)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
@@ -261,13 +274,20 @@ def test_create_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, 
 
 
 def test_create_app_with_initial_owners(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, user: OktaUser, role_group: RoleGroup
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    role_group: RoleGroup,
 ) -> None:
     db.session.add(role_group)
     db.session.add(user)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
 
@@ -310,7 +330,10 @@ def test_create_app_with_initial_owners(
 
 
 def test_create_app_with_additional_groups(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
 ) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
@@ -342,7 +365,7 @@ def test_create_app_with_additional_groups(
     assert rep.status_code == 400
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": faker.pystr()})
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -379,6 +402,51 @@ def test_create_app_with_additional_groups(
     assert test_app_group is not None
     assert test_app_group.description == "test"
     assert test_app_group.is_owner is False
+
+
+def test_create_app_with_name_collision(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    app_group: AppGroup,
+) -> None:
+    app = AppFactory.create()
+    app.name = "Test-Staging"
+    db.session.add(app)
+    db.session.commit()
+
+    app_group.app_id = app.id
+    app_group.name = "App-Test-Staging-Group"
+    db.session.add(app_group)
+    db.session.commit()
+
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+
+    data = {"name": "Test"}
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.post(apps_url, json=data)
+    assert rep.status_code == 201
+    assert create_group_spy.call_count == 1
+    assert add_user_to_group_spy.call_count == 1
+    assert add_owner_to_group_spy.call_count == 1
+
+    data = rep.get_json()
+    assert db.session.get(App, data["id"]) is not None
+    assert data["name"] == "Test"
+
+    # Make sure new app doesn't end up with additional app groups from name collision
+    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    assert len(app_groups) == 1
+
+    # Make sure original app still has its app group
+    app_groups = AppGroup.query.filter(AppGroup.app_id == app.id).all()
+    assert len(app_groups) == 1
 
 
 def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:

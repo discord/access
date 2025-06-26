@@ -33,7 +33,7 @@ export function TableTopBarAutocomplete({
       sx={{width: 320}}
       freeSolo
       filterOptions={filterOptions}
-      renderInput={(params) => <TextField {...params} label="Search" />}
+      renderInput={(params) => <TextField {...params} label="Search" autoFocus />}
       {...restProps}
     />
   );

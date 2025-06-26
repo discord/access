@@ -28,6 +28,7 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import {useGetUserById, usePutGroupMembersById} from '../../api/apiComponents';
 import {OktaUser, OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../../api/apiSchemas';
 import UserAvatar from './UserAvatar';
@@ -39,6 +40,7 @@ import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from
 import {groupBy, displayUserName, displayGroupType} from '../../helpers';
 import {canManageGroup, isGroupOwner} from '../../authorization';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
+import MembershipChip from '../../components/MembershipChip';
 
 function sortUserGroups(
   [aGroupId, aGroups]: [string, Array<OktaUserGroupMember>],
@@ -93,7 +95,15 @@ function ReportingToCard({user}: ReportingToCardProps) {
             <ListItem
               component={RouterLink}
               to={`/users/${user.manager.email.toLowerCase()}`}
-              sx={{textDecoration: 'none', color: 'inherit', padding: 0}}>
+              sx={{
+                textDecoration: 'none',
+                color: 'inherit',
+                padding: 0,
+                '&:hover': {
+                  backgroundColor: 'action.hover',
+                  borderRadius: 1,
+                },
+              }}>
               <ListItemAvatar>
                 <UserAvatar name={displayUserName(user.manager)} size={32} variant={'body1'} />
               </ListItemAvatar>
@@ -175,7 +185,10 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                       to={`/groups/${groups[0].active_group?.name}`}
                       sx={{
                         textDecoration: 'none',
-                        color: 'inherit',
+                        color: 'inherit ',
+                        '&:hover': {
+                          color: (theme) => theme.palette.primary.main,
+                        },
                       }}
                       component={RouterLink}>
                       {groups[0].active_group?.name}
@@ -194,48 +207,22 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                         rowGap: '.5rem',
                       }}>
                       {groups.map((group) =>
-                        group.active_role_group_mapping == null ? (
-                          <Chip
-                            key="direct"
-                            label="Direct"
-                            color="primary"
-                            onDelete={
-                              group.active_group?.is_managed &&
-                              (currentUser.id === user.id || canManageGroup(currentUser, group.active_group))
-                                ? () => {
-                                    currentUser.id == user.id
-                                      ? onClickRemoveDirectAccess(
-                                          user.id,
-                                          group.active_group ?? ({} as PolymorphicGroup),
-                                          true,
-                                        )
-                                      : removeUserFromGroup(group.active_group?.id ?? '');
-                                  }
-                                : undefined
-                            }
+                        group.active_group ? (
+                          <MembershipChip
+                            key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
+                            okta_user_group_member={group}
+                            group={group.active_group}
+                            removeRoleGroup={(roleGroup) => {
+                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, true);
+                            }}
+                            removeDirectAccessAsUser={() => {
+                              onClickRemoveDirectAccess(user.id, group.active_group!, true);
+                            }}
+                            removeDirectAccessAsGroupManager={() => {
+                              removeUserFromGroup(group.active_group!.id ?? '');
+                            }}
                           />
-                        ) : (
-                          <Chip
-                            key={group.active_role_group_mapping?.active_role_group?.name}
-                            label={group.active_role_group_mapping?.active_role_group?.name}
-                            variant="outlined"
-                            color="primary"
-                            onClick={() =>
-                              navigate(`/roles/${group.active_role_group_mapping?.active_role_group?.name}`)
-                            }
-                            onDelete={
-                              canManageGroup(currentUser, group.active_group) ||
-                              isGroupOwner(currentUser, group.active_role_group_mapping.active_role_group?.id ?? '')
-                                ? () =>
-                                    onClickRemoveGroupFromRole(
-                                      group.active_group ?? ({} as PolymorphicGroup),
-                                      group.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                      true,
-                                    )
-                                : undefined
-                            }
-                          />
-                        ),
+                        ) : null,
                       )}
                     </Stack>
                   </TableCell>
@@ -319,6 +306,9 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                       sx={{
                         textDecoration: 'none',
                         color: 'inherit',
+                        '&:hover': {
+                          color: (theme) => theme.palette.primary.main,
+                        },
                       }}
                       component={RouterLink}>
                       {groups[0].active_group?.name}
@@ -337,48 +327,22 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                         rowGap: '.5rem',
                       }}>
                       {groups.map((group) =>
-                        group.active_role_group_mapping == null ? (
-                          <Chip
-                            key="direct"
-                            label="Direct"
-                            color="primary"
-                            onDelete={
-                              group.active_group?.is_managed &&
-                              (currentUser.id === user.id || canManageGroup(currentUser, group.active_group))
-                                ? () => {
-                                    currentUser.id == user.id
-                                      ? onClickRemoveDirectAccess(
-                                          user.id,
-                                          group.active_group ?? ({} as PolymorphicGroup),
-                                          false,
-                                        )
-                                      : removeUserFromGroup(group.active_group?.id ?? '');
-                                  }
-                                : undefined
-                            }
+                        group.active_group ? (
+                          <MembershipChip
+                            key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
+                            okta_user_group_member={group}
+                            group={group.active_group}
+                            removeRoleGroup={(roleGroup) => {
+                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, false);
+                            }}
+                            removeDirectAccessAsUser={() => {
+                              onClickRemoveDirectAccess(user.id, group.active_group!, false);
+                            }}
+                            removeDirectAccessAsGroupManager={() => {
+                              removeUserFromGroup(group.active_group!.id ?? '');
+                            }}
                           />
-                        ) : (
-                          <Chip
-                            key={group.active_role_group_mapping?.active_role_group?.name}
-                            label={group.active_role_group_mapping?.active_role_group?.name}
-                            variant="outlined"
-                            color="primary"
-                            onClick={() =>
-                              navigate(`/roles/${group.active_role_group_mapping?.active_role_group?.name}`)
-                            }
-                            onDelete={
-                              canManageGroup(currentUser, group.active_group) ||
-                              isGroupOwner(currentUser, group.active_role_group_mapping.active_role_group?.id ?? '')
-                                ? () =>
-                                    onClickRemoveGroupFromRole(
-                                      group.active_group ?? ({} as PolymorphicGroup),
-                                      group.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                      false,
-                                    )
-                                : undefined
-                            }
-                          />
-                        ),
+                        ) : null,
                       )}
                     </Stack>
                   </TableCell>
@@ -395,7 +359,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
           )}
         </TableBody>
         <TableFooter>
-          <TableRow></TableRow>
+          <TableRow />
         </TableFooter>
       </Table>
     </TableContainer>
@@ -454,6 +418,7 @@ export default function ReadUser() {
 
   return (
     <React.Fragment>
+      <ChangeTitle title={displayUserName(user)} />
       <Container maxWidth="xl" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} alignItems="center">
@@ -477,7 +442,16 @@ export default function ReadUser() {
                 <Divider />
                 <Stack justifyContent="center" direction="row" gap={1}>
                   <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
-                    <IconButton aria-label="audit" to={`/users/${id}/audit`} component={RouterLink}>
+                    <IconButton
+                      aria-label="audit"
+                      to={`/users/${id}/audit`}
+                      component={RouterLink}
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: 'primary.main',
+                          color: 'primary.contrastText',
+                        },
+                      }}>
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>

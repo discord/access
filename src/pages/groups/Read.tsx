@@ -27,6 +27,7 @@ import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
 import DeleteGroup from './Delete';
 import AddUsers from './AddUsers';
@@ -55,6 +56,8 @@ import {EmptyListEntry} from '../../components/EmptyListEntry';
 import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
+import MembershipChip from '../../components/MembershipChip';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -207,6 +210,7 @@ export default function ReadGroup() {
 
   return (
     <React.Fragment>
+      <ChangeTitle title={group.name} />
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <Grid item sm={12}>
@@ -341,6 +345,9 @@ export default function ReadGroup() {
                                   sx={{
                                     textDecoration: 'none',
                                     color: 'inherit',
+                                    '&:hover': {
+                                      color: (theme) => theme.palette.primary.main,
+                                    },
                                   }}
                                   component={RouterLink}>
                                   {groups[0].active_group?.name}
@@ -371,7 +378,7 @@ export default function ReadGroup() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -424,6 +431,9 @@ export default function ReadGroup() {
                                   sx={{
                                     textDecoration: 'none',
                                     color: 'inherit',
+                                    '&:hover': {
+                                      color: (theme) => theme.palette.primary.main,
+                                    },
                                   }}
                                   component={RouterLink}>
                                   {groups[0].active_group?.name}
@@ -460,7 +470,7 @@ export default function ReadGroup() {
                       )}
                     </TableBody>
                     <TableFooter>
-                      <TableRow></TableRow>
+                      <TableRow />
                     </TableFooter>
                   </Table>
                 </TableContainer>
@@ -542,6 +552,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {displayUserName(users[0].active_user)}
@@ -553,6 +566,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {users[0].active_user?.email.toLowerCase()}
@@ -575,42 +591,20 @@ export default function ReadGroup() {
                                   />
                                 ) : null}
                                 {users.sort(sortOktaUserGroupMembers).map((user) =>
-                                  user.active_role_group_mapping == null &&
                                   directRoleOwnerships.has(user.active_user!.id) ? (
-                                    <Chip
-                                      key={'owners' + userId}
-                                      label="Direct"
-                                      color="primary"
-                                      onDelete={
-                                        group.is_managed && (groupOwner || currentUser.id == userId)
-                                          ? () => {
-                                              currentUser.id == userId
-                                                ? removeOwnDirectAccess(userId, group, true)
-                                                : removeDirectUserFromGroup(userId ?? '', true);
-                                            }
-                                          : undefined
-                                      }
-                                    />
-                                  ) : user.active_role_group_mapping != null &&
-                                    directRoleOwnerships.has(user.active_user!.id) ? (
-                                    <Chip
-                                      key={'owners' + userId + user.active_role_group_mapping?.active_role_group?.id}
-                                      label={user.active_role_group_mapping?.active_role_group?.name}
-                                      variant="outlined"
-                                      color="primary"
-                                      onClick={() =>
-                                        navigate(`/roles/${user.active_role_group_mapping?.active_role_group?.name}`)
-                                      }
-                                      onDelete={
-                                        groupOwner
-                                          ? () =>
-                                              removeGroupFromRole(
-                                                group,
-                                                user.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                                true,
-                                              )
-                                          : undefined
-                                      }
+                                    <MembershipChip
+                                      key={`${user.active_user?.id}${user.active_role_group_mapping?.active_role_group?.id}`}
+                                      okta_user_group_member={user}
+                                      group={group}
+                                      removeRoleGroup={(roleGroup) => {
+                                        removeGroupFromRole(group, roleGroup, true);
+                                      }}
+                                      removeDirectAccessAsUser={() => {
+                                        removeOwnDirectAccess(userId, group, true);
+                                      }}
+                                      removeDirectAccessAsGroupManager={() => {
+                                        removeDirectUserFromGroup(userId, true);
+                                      }}
                                     />
                                   ) : null,
                                 )}
@@ -646,7 +640,7 @@ export default function ReadGroup() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>
@@ -724,6 +718,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {displayUserName(users[0].active_user)}
@@ -735,6 +732,9 @@ export default function ReadGroup() {
                               sx={{
                                 textDecoration: 'none',
                                 color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
                               }}
                               component={RouterLink}>
                               {users[0].active_user?.email.toLowerCase()}
@@ -752,44 +752,22 @@ export default function ReadGroup() {
                                   flexWrap: 'wrap',
                                   rowGap: '.5rem',
                                 }}>
-                                {users.sort(sortOktaUserGroupMembers).map((user) =>
-                                  user.active_role_group_mapping == null ? (
-                                    <Chip
-                                      key={'members' + userId}
-                                      label="Direct"
-                                      color="primary"
-                                      onDelete={
-                                        group.is_managed && (groupOwner || currentUser.id == userId)
-                                          ? () => {
-                                              currentUser.id == userId
-                                                ? removeOwnDirectAccess(userId, group, false)
-                                                : removeDirectUserFromGroup(userId ?? '', false);
-                                            }
-                                          : undefined
-                                      }
-                                    />
-                                  ) : (
-                                    <Chip
-                                      key={'members' + userId + user.active_role_group_mapping?.active_role_group?.id}
-                                      label={user.active_role_group_mapping?.active_role_group?.name}
-                                      variant="outlined"
-                                      color="primary"
-                                      onClick={() =>
-                                        navigate(`/roles/${user.active_role_group_mapping?.active_role_group?.name}`)
-                                      }
-                                      onDelete={
-                                        groupOwner
-                                          ? () =>
-                                              removeGroupFromRole(
-                                                group,
-                                                user.active_role_group_mapping?.active_role_group ?? ({} as RoleGroup),
-                                                false,
-                                              )
-                                          : undefined
-                                      }
-                                    />
-                                  ),
-                                )}
+                                {users.sort(sortOktaUserGroupMembers).map((user) => (
+                                  <MembershipChip
+                                    key={`${user.active_user?.id}${user.active_role_group_mapping?.active_role_group?.id}`}
+                                    okta_user_group_member={user}
+                                    group={group}
+                                    removeRoleGroup={(roleGroup) => {
+                                      removeGroupFromRole(group, roleGroup, false);
+                                    }}
+                                    removeDirectAccessAsUser={() => {
+                                      removeOwnDirectAccess(userId, group, false);
+                                    }}
+                                    removeDirectAccessAsGroupManager={() => {
+                                      removeDirectUserFromGroup(userId, false);
+                                    }}
+                                  />
+                                ))}
                               </Stack>
                             </TableCell>
                           ) : (
@@ -822,7 +800,7 @@ export default function ReadGroup() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow></TableRow>
+                  <TableRow />
                 </TableFooter>
               </Table>
             </TableContainer>

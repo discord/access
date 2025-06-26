@@ -8,6 +8,7 @@ from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.models.app_group import app_owners_group_description
 from api.operations.create_group import CreateGroup, GroupDict
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
@@ -124,7 +125,7 @@ class CreateApp:
                 app_id=app_id,
                 is_owner=True,
                 name=self.owner_group_name,
-                description=f"Owners of the {self.app.name} application",
+                description=app_owners_group_description(self.app.name),
             )
             owner_app_group = CreateGroup(group=owner_app_group, current_user_id=self.current_user_id).execute()
         else:
@@ -168,12 +169,8 @@ class CreateApp:
         )
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
-            if type(existing_app_group) is AppGroup:
-                existing_app_group.app_id = app_id
-                existing_app_group.is_owner = False
-            else:
+            if type(existing_app_group) is not AppGroup:
                 existing_app_group_ids_to_update.append(existing_app_group.id)
-        db.session.commit()
 
         for existing_app_group_id in existing_app_group_ids_to_update:
             ModifyGroupType(

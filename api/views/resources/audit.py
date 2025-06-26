@@ -286,6 +286,11 @@ class UserGroupAuditResource(MethodResource):
                         OktaUserGroupMember.ended_at < db.func.now(),
                     )
                 )
+        if "needs_review" in search_args:
+            if search_args["needs_review"]:
+                query = query.filter(
+                    OktaUserGroupMember.should_expire.is_(False),
+                )
 
         if "direct" in search_args:
             if search_args["direct"]:
@@ -332,6 +337,7 @@ class UserGroupAuditResource(MethodResource):
                     "ended_at",
                     "created_reason",
                     "is_owner",
+                    "should_expire",
                     "access_request.id",
                     "user.id",
                     "user.created_at",
@@ -600,6 +606,11 @@ class GroupRoleAuditResource(MethodResource):
                         RoleGroupMap.ended_at < db.func.now(),
                     )
                 )
+        if "needs_review" in search_args:
+            if search_args["needs_review"]:
+                query = query.filter(
+                    RoleGroupMap.should_expire.is_(False),
+                )
 
         return paginate(
             query,
@@ -611,6 +622,7 @@ class GroupRoleAuditResource(MethodResource):
                     "ended_at",
                     "created_reason",
                     "is_owner",
+                    "should_expire",
                     "group.deleted_at",
                     "group.id",
                     "group.type",

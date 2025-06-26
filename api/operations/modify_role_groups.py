@@ -33,6 +33,8 @@ class ModifyRoleGroups:
         groups_added_ended_at: Optional[datetime] = None,
         groups_to_add: list[str] = [],
         owner_groups_to_add: list[str] = [],
+        groups_should_expire: list[str] = [],
+        owner_groups_should_expire: list[str] = [],
         groups_to_remove: list[str] = [],
         owner_groups_to_remove: list[str] = [],
         sync_to_okta: bool = True,
@@ -76,6 +78,22 @@ class ModifyRoleGroups:
                 .all()
             )
 
+        self.groups_should_expire = []
+        if len(groups_should_expire) > 0:
+            self.groups_should_expire = (
+                RoleGroupMap.query.filter(RoleGroupMap.id.in_(groups_should_expire))
+                .filter(RoleGroupMap.ended_at > db.func.now())
+                .filter(RoleGroupMap.is_owner.is_(False))
+            ).all()
+
+        self.owner_groups_should_expire = []
+        if len(owner_groups_should_expire) > 0:
+            self.owner_groups_should_expire = (
+                RoleGroupMap.query.filter(RoleGroupMap.id.in_(owner_groups_should_expire))
+                .filter(RoleGroupMap.ended_at > db.func.now())
+                .filter(RoleGroupMap.is_owner.is_(True))
+            ).all()
+
         self.groups_to_remove = []
         if len(groups_to_remove) > 0:
             self.groups_to_remove = (
@@ -113,8 +131,10 @@ class ModifyRoleGroups:
         if (
             len(self.groups_to_add)
             + len(self.groups_to_remove)
+            + len(self.groups_should_expire)
             + len(self.owner_groups_to_add)
             + len(self.owner_groups_to_remove)
+            + len(self.owner_groups_should_expire)
             == 0
         ):
             return self.role
@@ -160,8 +180,10 @@ class ModifyRoleGroups:
                     "groups_added_ending_at": self.groups_added_ended_at,
                     "owner_groups_removed_ids_names": self.owner_groups_to_remove,
                     "owner_groups_added_ids_names": self.owner_groups_to_add,
+                    "owner_groups_should_expire_role_id_group_id": self.owner_groups_should_expire,
                     "groups_removed_ids_names": self.groups_to_remove,
                     "groups_added_ids_names": self.groups_to_add,
+                    "groups_should_expire_role_id_group_id": self.groups_should_expire,
                 }
             )
         )
@@ -248,6 +270,24 @@ class ModifyRoleGroups:
                         # Remove user from okta group owners
                         # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
                         async_tasks.append(asyncio.create_task(okta.async_remove_owner_from_group(group_id, owner_id)))
+
+        # Mark relevant role memberships and ownerships as 'Should expire'
+        # Only relevant for the expiring roles page so not adding checks for this field anywhere else since OK if marked to expire
+        # then manually renewed from group/role page or with an access request
+        if len(self.groups_should_expire) > 0:
+            RoleGroupMap.query.filter(RoleGroupMap.id.in_(m.id for m in self.groups_should_expire)).update(
+                {RoleGroupMap.should_expire: True},
+                synchronize_session="fetch",
+            )
+
+        if len(self.owner_groups_should_expire) > 0:
+            RoleGroupMap.query.filter(RoleGroupMap.id.in_(m.id for m in self.owner_groups_should_expire)).update(
+                {RoleGroupMap.should_expire: True},
+                synchronize_session="fetch",
+            )
+
+        # Commit all changes so far
+        db.session.commit()
 
         # Add new groups to role and owner groups to role
         if len(self.groups_to_add) > 0 or len(self.owner_groups_to_add) > 0:

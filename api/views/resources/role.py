@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationHelpers
 from api.extensions import db
-from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
@@ -15,7 +15,7 @@ from api.views.schemas import (
     RoleGroupSchema,
     RoleMemberSchema,
     RolePaginationSchema,
-    SearchPaginationRequestSchema,
+    SearchRolePaginationRequestSchema,
 )
 
 ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
@@ -215,6 +215,8 @@ class RoleMemberResource(MethodResource):
             groups_added_ended_at=group_changes.get("groups_added_ending_at"),
             groups_to_add=group_changes["groups_to_add"],
             owner_groups_to_add=group_changes["owner_groups_to_add"],
+            groups_should_expire=group_changes.get("groups_should_expire", []),
+            owner_groups_should_expire=group_changes.get("owner_groups_should_expire", []),
             groups_to_remove=group_changes["groups_to_remove"],
             owner_groups_to_remove=group_changes["owner_groups_to_remove"],
             created_reason=group_changes.get("created_reason", ""),
@@ -238,12 +240,37 @@ class RoleMemberResource(MethodResource):
 
 
 class RoleList(MethodResource):
-    @FlaskApiSpecDecorators.request_schema(SearchPaginationRequestSchema, location="query")
+    @FlaskApiSpecDecorators.request_schema(SearchRolePaginationRequestSchema, location="query")
     @FlaskApiSpecDecorators.response_schema(RolePaginationSchema)
     def get(self) -> ResponseReturnValue:
-        search_args = SearchPaginationRequestSchema().load(request.args)
+        search_args = SearchRolePaginationRequestSchema().load(request.args)
 
         query = RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
+
+        if "owner_id" in search_args:
+            owner_id = search_args["owner_id"]
+            if owner_id == "@me":
+                owner_id = g.current_user_id
+            owner = (
+                OktaUser.query.filter(db.or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+                .first_or_404()
+            )
+            owner_group_ownerships = (
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == owner.id)
+                .filter(OktaUserGroupMember.is_owner.is_(True))
+                .filter(
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    )
+                )
+            )
+            query = query.filter(
+                RoleGroup.id.in_(
+                    [o.group_id for o in owner_group_ownerships.with_entities(OktaUserGroupMember.group_id).all()]
+                ),
+            )
 
         # Implement basic search with the "q" url parameter
         if "q" in search_args and len(search_args["q"]) > 0:

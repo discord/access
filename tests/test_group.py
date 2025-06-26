@@ -1,4 +1,5 @@
-from typing import Any, Dict
+from datetime import datetime, timedelta
+from typing import Any, Dict, Protocol, cast
 from unittest.mock import Mock
 
 from factory import Faker
@@ -23,7 +24,12 @@ from api.models import (
 )
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppGroupFactory, OktaGroupFactory, RoleGroupFactory
+from tests.factories import AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+
+
+# Define a Protocol that includes the pystr method
+class FakerWithPyStr(Protocol):
+    def pystr(self) -> str: ...
 
 
 def test_get_group(
@@ -211,7 +217,7 @@ def test_put_group(
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     builtin_access_owners_group = AppGroup.query.filter(
-        AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner.is_(True)
+        AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner
     ).first()
     update_group_spy.reset_mock()
 
@@ -631,7 +637,13 @@ def test_delete_group(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
 
 
-def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag) -> None:
+def test_create_group(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    tag: Tag,
+) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
     data: dict[str, Any] = {}
@@ -641,7 +653,10 @@ def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
     db.session.add(tag)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    # Cast faker to our Protocol type that has the pystr method
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
 
     data = {"type": "okta_group", "name": "Created", "description": "", "tags_to_add": [tag.id]}
     rep = client.post(groups_url, json=data)
@@ -657,7 +672,12 @@ def test_create_group(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
 
 
 def test_create_app_group(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, faker: Faker, tag: Tag, access_app: App
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    tag: Tag,
+    access_app: App,
 ) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
@@ -671,7 +691,9 @@ def test_create_app_group(
     db.session.add(AppTagMap(app_id=access_app.id, tag_id=tag.id))
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(okta, "create_group", return_value=Group({"id": faker.pystr()}))
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
 
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
 
@@ -717,3 +739,87 @@ def test_get_all_group(client: FlaskClient, db: SQLAlchemy, access_app: App) -> 
     assert len(results["results"]) == 4
     for group in app_groups:
         assert any(u["id"] == group.id for u in results["results"])
+
+
+# Do not renew functionality test
+# Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
+# Test is just to make sure the field is set correctly
+def test_do_not_renew(
+    db: SQLAlchemy, client: FlaskClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup
+) -> None:
+    user2 = OktaUserFactory.create()
+
+    db.session.add(okta_group)
+    db.session.add(user)
+    db.session.add(user2)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    ModifyGroupUsers(
+        group=okta_group,
+        users_added_ended_at=expiration_datetime,
+        members_to_add=[user.id, user2.id],
+        sync_to_okta=False,
+    ).execute()
+
+    # need the OktaUserGroupMember id to pass in later
+    membership_user2 = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user2.id).first()
+
+    # set one user to renew and one do not renew
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+
+    data: dict[str, Any] = {
+        "members_to_add": [user.id],
+        "owners_to_add": [],
+        "members_should_expire": [membership_user2.id],
+        "owners_should_expire": [],
+        "members_to_remove": [],
+        "owners_to_remove": [],
+    }
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    rep = client.put(group_url, json=data)
+    assert rep.status_code == 200
+    assert add_user_to_group_spy.call_count == 1
+    assert remove_user_from_group_spy.call_count == 0
+    assert add_owner_to_group_spy.call_count == 0
+    assert remove_owner_from_group_spy.call_count == 0
+
+    data = rep.get_json()
+    assert len(data["members"]) == 2
+    assert user.id in data["members"] and user2.id in data["members"]
+    assert len(data["owners"]) == 0
+
+    # get OktaUserGroupMembers, check expiration dates and should_expire
+    membership_user1 = (
+        OktaUserGroupMember.query.filter(
+            db.or_(
+                OktaUserGroupMember.ended_at.is_(None),
+                OktaUserGroupMember.ended_at > db.func.now(),
+            )
+        )
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .all()
+    )
+
+    assert len(membership_user1) == 1
+    assert membership_user1[0].ended_at is None
+    assert membership_user1[0].should_expire is False
+
+    membership_user2 = (
+        OktaUserGroupMember.query.filter(
+            db.or_(
+                OktaUserGroupMember.ended_at.is_(None),
+                OktaUserGroupMember.ended_at > db.func.now(),
+            )
+        )
+        .filter(OktaUserGroupMember.user_id == user2.id)
+        .all()
+    )
+
+    assert len(membership_user2) == 1
+    assert membership_user2[0].ended_at == expiration_datetime
+    assert membership_user2[0].should_expire is True

@@ -34,6 +34,8 @@ class ModifyGroupUsers:
         users_added_ended_at: Optional[datetime] = None,
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
+        members_should_expire: list[str] = [],
+        owners_should_expire: list[str] = [],
         members_to_remove: list[str] = [],
         owners_to_remove: list[str] = [],
         sync_to_okta: bool = True,
@@ -80,6 +82,22 @@ class ModifyGroupUsers:
                 OktaUser.query.filter(OktaUser.id.in_(owners_to_add)).filter(OktaUser.deleted_at.is_(None)).all()
             )
 
+        self.members_should_expire = []
+        if len(members_should_expire) > 0:
+            self.members_should_expire = (
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(members_should_expire))
+                .filter(OktaUserGroupMember.ended_at > db.func.now())
+                .filter(OktaUserGroupMember.is_owner.is_(False))
+            ).all()
+
+        self.owners_should_expire = []
+        if len(owners_should_expire) > 0:
+            self.owners_should_expire = (
+                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(owners_should_expire))
+                .filter(OktaUserGroupMember.ended_at > db.func.now())
+                .filter(OktaUserGroupMember.is_owner.is_(True))
+            ).all()
+
         self.members_to_remove = []
         if len(members_to_remove) > 0:
             self.members_to_remove = (
@@ -114,8 +132,10 @@ class ModifyGroupUsers:
         if (
             len(self.members_to_add)
             + len(self.members_to_remove)
+            + len(self.members_should_expire)
             + len(self.owners_to_add)
             + len(self.owners_to_remove)
+            + len(self.owners_should_expire)
             == 0
         ):
             return self.group
@@ -160,8 +180,10 @@ class ModifyGroupUsers:
                     "group": self.group,
                     "owners_removed_ids_emails": self.owners_to_remove,
                     "owners_added_ids_emails": self.owners_to_add,
+                    "owners_should_expire_user_id_group_id": self.owners_should_expire,
                     "members_removed_ids_emails": self.members_to_remove,
                     "members_added_ids_emails": self.members_to_add,
+                    "members_should_expire_user_id_group_id": self.members_should_expire,
                 }
             )
         )
@@ -346,6 +368,28 @@ class ModifyGroupUsers:
                                     okta.async_remove_owner_from_group(role_associated_group_map.group_id, owner_id)
                                 )
                             )
+
+        # Commit all changes so far
+        db.session.commit()
+
+        # Mark relevant OktaUserGroupMembers as 'Should expire'
+        # Only relevant for the expiring groups page so not adding checks for this field anywhere else since OK if marked to expire
+        # then manually renewed from group page or with an access request
+        if len(self.members_should_expire) > 0:
+            OktaUserGroupMember.query.filter(
+                OktaUserGroupMember.id.in_(m.id for m in self.members_should_expire)
+            ).update(
+                {OktaUserGroupMember.should_expire: True},
+                synchronize_session="fetch",
+            )
+
+        if len(self.owners_should_expire) > 0:
+            OktaUserGroupMember.query.filter(
+                OktaUserGroupMember.id.in_(m.id for m in self.owners_should_expire)
+            ).update(
+                {OktaUserGroupMember.should_expire: True},
+                synchronize_session="fetch",
+            )
 
         # Commit all changes so far
         db.session.commit()

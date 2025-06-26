@@ -6,14 +6,16 @@ ARG PUSH_SENTRY_RELEASE="false"
 FROM node:22-alpine AS build-step
 ARG SENTRY_RELEASE=""
 WORKDIR /app
-ENV PATH /app/node_modules/.bin:$PATH
+ENV PATH=/app/node_modules/.bin:$PATH
 COPY craco.config.js package.json package-lock.json tsconfig.json tsconfig.paths.json .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
+COPY ./config ./config
+
 RUN npm install
 RUN touch .env.production
-ENV REACT_APP_SENTRY_RELEASE $SENTRY_RELEASE
-ENV REACT_APP_API_SERVER_URL ""
+ENV REACT_APP_SENTRY_RELEASE=$SENTRY_RELEASE
+ENV REACT_APP_API_SERVER_URL=""
 RUN npm run build
 
 # Optional build step #2: upload the source maps by pushing a release to sentry
@@ -38,6 +40,7 @@ RUN rm ./build/static/js/*.map
 RUN mkdir ./api && mkdir ./migrations
 COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
+COPY ./config ./config
 RUN pip install -r ./api/requirements.txt
 
 # Build an image that includes the optional sentry release push build step
@@ -48,10 +51,10 @@ COPY --from=sentry /app/sentry ./sentry
 # Choose whether to include the sentry release push build step or not
 FROM ${PUSH_SENTRY_RELEASE}
 
-ENV FLASK_ENV production
-ENV FLASK_APP api.app:create_app
-ENV SENTRY_RELEASE $SENTRY_RELEASE
+ENV FLASK_ENV=production
+ENV FLASK_APP=api.app:create_app
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "api.wsgi:app"]
+CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "--logger-class", "api.log_filters.RedactingGunicornLogger", "api.wsgi:app"]

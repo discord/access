@@ -177,6 +177,28 @@ export type CreateAccessRequest = {
   reason?: string;
 };
 
+export type CreateRoleRequest = {
+  /**
+   * @format date-time
+   */
+  ending_at?: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  role_id: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  group_id: string;
+  /**
+   * @default false
+   */
+  group_owner?: boolean;
+  reason?: string;
+};
+
 export type DeleteMessage = {
   deleted?: boolean;
 };
@@ -184,9 +206,11 @@ export type DeleteMessage = {
 export type GroupMember = {
   members?: void[];
   members_to_add: string[];
+  members_should_expire?: number[];
   members_to_remove: string[];
   owners?: void[];
   owners_to_add: string[];
+  owners_should_expire?: number[];
   owners_to_remove: string[];
   /**
    * @format date-time
@@ -334,6 +358,7 @@ export type OktaUserGroupMember = {
    */
   created_at?: string;
   ended_actor?: OktaUser;
+  should_expire?: boolean;
   /**
    * @format date-time
    */
@@ -346,6 +371,15 @@ export type OktaUserGroupMember = {
 export type PolymorphicGroup = OktaGroup | AppGroup | RoleGroup;
 
 export type ResolveAccessRequest = {
+  approved: boolean;
+  /**
+   * @format date-time
+   */
+  ending_at?: string;
+  reason?: string;
+};
+
+export type ResolveRoleRequest = {
   approved: boolean;
   /**
    * @format date-time
@@ -409,6 +443,7 @@ export type RoleGroupMap = {
   all_group_memberships_and_ownerships?: OktaUserGroupMember[];
   created_actor?: OktaUser;
   ended_actor?: OktaUser;
+  should_expire?: boolean;
   created_reason?: string;
   id?: number;
 };
@@ -421,8 +456,10 @@ export type RoleMember = {
   groups_in_role?: void[];
   groups_owned_by_role?: void[];
   groups_to_add: string[];
+  groups_should_expire?: number[];
   groups_to_remove: string[];
   owner_groups_to_add: string[];
+  owner_groups_should_expire?: number[];
   owner_groups_to_remove: string[];
   created_reason?: string;
 };
@@ -438,6 +475,69 @@ export type RolePagination = {
    */
   prev?: string;
   results?: RoleGroup[];
+  total?: number;
+};
+
+export type RoleRequest = {
+  active_requester_role?: RoleGroup;
+  active_requested_group?: PolymorphicGroup;
+  active_requester?: OktaUser;
+  active_resolver?: OktaUser;
+  /**
+   * @format date-time
+   */
+  approval_ending_at?: string | null;
+  approved_membership?: OktaUserGroupMember;
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * @maxLength 20
+   */
+  id: string;
+  request_ownership?: boolean;
+  /**
+   * @maxLength 1024
+   */
+  request_reason?: string;
+  /**
+   * @format date-time
+   */
+  request_ending_at?: string | null;
+  requester_role?: RoleGroup;
+  requested_group?: PolymorphicGroup;
+  requester?: OktaUser;
+  /**
+   * @maxLength 1024
+   */
+  resolution_reason?: string;
+  /**
+   * @format date-time
+   */
+  resolved_at?: string | null;
+  resolver?: OktaUser;
+  /**
+   * @maxLength 8
+   */
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /**
+   * @format date-time
+   */
+  updated_at?: string;
+};
+
+export type RoleRequestPagination = {
+  /**
+   * @format url
+   */
+  next?: string;
+  pages?: number;
+  /**
+   * @format url
+   */
+  prev?: string;
+  results?: RoleRequest[];
   total?: number;
 };
 

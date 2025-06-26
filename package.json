@@ -51,12 +51,14 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/styled-components": "latest",
+    "@types/webpack": "latest",
     "husky": "^8.0.3",
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",
     "react-app-alias": "^2.2.2",
     "react-scripts": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "webpack": "latest"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"

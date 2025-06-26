@@ -1,4 +1,4 @@
-import {TableRow, TableCell, Typography, TableCellProps} from '@mui/material';
+import {TableCellProps, TableRow, TableCell, Typography} from '@mui/material';
 
 interface EmptyListEntryProps {
   cellProps?: TableCellProps;

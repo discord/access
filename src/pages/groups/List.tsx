@@ -18,11 +18,13 @@ import TableRow from '@mui/material/TableRow';
 import TextField from '@mui/material/TextField';
 
 import {useCurrentUser} from '../../authentication';
+import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
 import {displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import LinkTableRow from '../../components/LinkTableRow';
 
 export default function ListGroups() {
   const navigate = useNavigate();
@@ -104,76 +106,67 @@ export default function ListGroups() {
   };
 
   return (
-    <TableContainer component={Paper}>
-      <TableTopBar title="Groups">
-        <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
-          Tags
-        </Button>
-        <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>
-        <TableTopBarAutocomplete
-          options={searchRows.map((row) => row.name)}
-          onChange={handleSearchSubmit}
-          onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
-          defaultValue={searchQuery}
-        />
-      </TableTopBar>
-      <Table sx={{minWidth: 650}} size="small" aria-label="groups">
-        <TableHead>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Type</TableCell>
-            <TableCell colSpan={2}>Description</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {rows.map((row) => (
-            <TableRow key={row.id}>
-              <TableCell>
-                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                  {row.name}
-                </Link>
-              </TableCell>
-              <TableCell>
-                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                  {displayGroupType(row)}
-                </Link>
-              </TableCell>
-              <TableCell colSpan={2}>
-                <Link to={`/groups/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                  {(row.description?.length ?? 0) > 115
-                    ? row.description?.substring(0, 114) + '...' ?? ''
-                    : row.description}
-                </Link>
-              </TableCell>
+    <>
+      <ChangeTitle title="Groups" />
+      <TableContainer component={Paper}>
+        <TableTopBar title="Groups">
+          <Button variant="contained" onClick={() => navigate('/tags/')} endIcon={<TagIcon />}>
+            Tags
+          </Button>
+          <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>
+          <TableTopBarAutocomplete
+            options={searchRows.map((row) => row.name)}
+            onChange={handleSearchSubmit}
+            onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
+            defaultValue={searchQuery}
+          />
+        </TableTopBar>
+        <Table sx={{minWidth: 650}} size="small" aria-label="groups">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Type</TableCell>
+              <TableCell colSpan={2}>Description</TableCell>
             </TableRow>
-          ))}
-          {emptyRows > 0 && (
-            <TableRow style={{height: 33 * emptyRows}}>
-              <TableCell colSpan={6} />
+          </TableHead>
+          <TableBody>
+            {rows.map((row) => (
+              <LinkTableRow to={`/groups/${row.name}`} key={row.id}>
+                <TableCell>{row.name}</TableCell>
+                <TableCell>{displayGroupType(row)}</TableCell>
+                <TableCell colSpan={2}>
+                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
+                </TableCell>
+              </LinkTableRow>
+            ))}
+            {emptyRows > 0 && (
+              <TableRow style={{height: 33 * emptyRows}}>
+                <TableCell colSpan={6} />
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TablePagination
+                rowsPerPageOptions={perPage}
+                colSpan={4}
+                count={totalRows}
+                rowsPerPage={rowsPerPage}
+                page={page}
+                SelectProps={{
+                  inputProps: {
+                    'aria-label': 'rows per page',
+                  },
+                  native: true,
+                }}
+                onPageChange={handleChangePage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                ActionsComponent={TablePaginationActions}
+              />
             </TableRow>
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow>
-            <TablePagination
-              rowsPerPageOptions={perPage}
-              colSpan={4}
-              count={totalRows}
-              rowsPerPage={rowsPerPage}
-              page={page}
-              SelectProps={{
-                inputProps: {
-                  'aria-label': 'rows per page',
-                },
-                native: true,
-              }}
-              onPageChange={handleChangePage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              ActionsComponent={TablePaginationActions}
-            />
-          </TableRow>
-        </TableFooter>
-      </Table>
-    </TableContainer>
+          </TableFooter>
+        </Table>
+      </TableContainer>
+    </>
   );
 }

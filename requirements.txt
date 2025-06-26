@@ -1,6 +1,6 @@
 # Flask
 click==8.1.7
-Flask==3.1.0
+Flask==3.1.1
 Werkzeug==3.1.3
 gunicorn==23.0.0
 six==1.16.0
@@ -23,13 +23,13 @@ flask-marshmallow==1.2.1
 flask-apispec==0.11.4
 
 # Security
-Flask-Cors==5.0.0
+Flask-Cors==6.0.0
 flask-talisman==1.1.0
 PyJWT==2.10.1
 flask-oidc==2.2.2
 
 # Requests
-requests==2.32.3
+requests==2.32.4
 
 # Error Reporting
 sentry-sdk[flask]==2.19.0
