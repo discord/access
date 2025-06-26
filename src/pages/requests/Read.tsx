@@ -78,9 +78,7 @@ import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
-import Started from '../../components/Started';
-import Ending from '../../components/Ending';
-import UserAccessHistory from '../../components/UserAccessHistory';
+import AccessHistory from '../../components/AccessHistory';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -503,10 +501,11 @@ export default function ReadRequest() {
 
           {/* Historical Access Information Section */}
           <Grid item xs={12}>
-            <UserAccessHistory
-              userGroupHistory={userGroupHistory}
+            <AccessHistory
+              subjectType="user"
+              subjectName={displayUserName(accessRequest.requester)}
               groupName={accessRequest.requested_group?.name ?? ''}
-              requesterEmail={accessRequest.requester?.email?.toLowerCase() ?? ''}
+              auditHistory={userGroupHistory}
               alternativeRoleMappings={alternativeRoleMappings}
             />
           </Grid>

@@ -17,7 +17,8 @@ export default function AccessMethodChip({roleGroupMapping}: AccessMethodChipPro
   return (
     <Chip
       label={roleGroupMapping.role_group?.name}
-      color="secondary"
+      variant="outlined"
+      color="primary"
       size="small"
       onClick={() => navigate(`/roles/${roleGroupMapping.role_group?.name}`)}
       sx={{cursor: 'pointer'}}
