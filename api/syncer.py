@@ -856,6 +856,7 @@ def expiring_access_notifications_role_owner() -> None:
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
         .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_day))
+        .filter(RoleGroupMap.should_expire.is_(False))
         .all()
     )
 
@@ -884,6 +885,7 @@ def expiring_access_notifications_role_owner() -> None:
         .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
         .join(RoleGroupMap.active_group)
         .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_day))
+        .filter(RoleGroupMap.should_expire.is_(False))
         .all()
     )
 
