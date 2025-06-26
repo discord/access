@@ -2,7 +2,7 @@ import logging
 import os
 import threading
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, ContextManager, Dict, Iterator, List, Optional
 
 import pluggy
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 _datadog_client = None
 
 
-def _init_datadog():
+def _init_datadog() -> Any:
     global _datadog_client
 
     if _datadog_client is not None:
@@ -55,7 +55,7 @@ def _init_datadog():
 class DatadogMetricsReporter:
     """Datadog implementation of the metrics reporter plugin."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.client = _init_datadog()
         self.global_tags: Dict[str, str] = {}
         self.batch_depth = 0
@@ -156,9 +156,9 @@ class DatadogMetricsReporter:
             self.client.distribution(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def batch_metrics(self):
+    def batch_metrics(self) -> ContextManager[None]:
         @contextmanager
-        def _batch_context():
+        def _batch_context() -> Iterator[None]:
             with self.batch_lock:
                 self.batch_depth += 1
             try:
@@ -171,7 +171,7 @@ class DatadogMetricsReporter:
 
         return _batch_context()
 
-    def _flush_batch(self):
+    def _flush_batch(self) -> None:
         """Flush batched metrics to DogStatsD."""
         if not self.client or not self.batch_buffer:
             return

@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import ContextManager
+from typing import ContextManager, Dict, List, Optional
 
 import pluggy
 
@@ -8,7 +8,7 @@ metrics_reporter_plugin_name = "access_metrics_reporter"
 hookspec = pluggy.HookspecMarker(metrics_reporter_plugin_name)
 hookimpl = pluggy.HookimplMarker(metrics_reporter_plugin_name)
 
-_cached_metrics_reporter_hook: pluggy.HookRelay | None = None
+_cached_metrics_reporter_hook: Optional[pluggy.HookRelay] = None
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float = 1.0,
-        tags: dict = None,
+        tags: Optional[Dict[str, str]] = None,
         monotonic: bool = True,
     ) -> None:
         """
@@ -37,7 +37,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: dict = None,
+        tags: Optional[Dict[str, str]] = None,
     ) -> None:
         """Record a gauge metric value (snapshot/current value)."""
 
@@ -46,8 +46,8 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: dict = None,
-        buckets: list = None,
+        tags: Optional[Dict[str, str]] = None,
+        buckets: Optional[List[float]] = None,
     ) -> None:
         """
         Record a value in a histogram/distribution.
@@ -64,7 +64,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: dict = None,
+        tags: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Record a value for summary statistics (percentiles, min, max, etc).
@@ -72,7 +72,7 @@ class MetricsReporterPluginSpec:
         """
 
     @hookspec
-    def batch_metrics(self) -> ContextManager:
+    def batch_metrics(self) -> ContextManager[None]:
         """
         Context manager for batching multiple metric operations.
 
@@ -86,11 +86,12 @@ class MetricsReporterPluginSpec:
                 metrics.record_histogram("response_time", 0.123)
             # All metrics sent in one batch here
         """
+        return NotImplemented
 
     @hookspec
     def set_global_tags(
         self,
-        tags: dict,
+        tags: Dict[str, str],
     ) -> None:
         """Set global tags to be included with all metrics."""
 
