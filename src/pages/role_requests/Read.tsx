@@ -31,6 +31,7 @@ import TimelineContent from '@mui/lab/TimelineContent';
 import CircularProgress from '@mui/material/CircularProgress';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineDot from '@mui/lab/TimelineDot';
+import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import {
   FormContainer,
   SelectElement,
@@ -62,6 +63,7 @@ import {
   useResolveRoleRequestById,
   ResolveRoleRequestByIdError,
   ResolveRoleRequestByIdVariables,
+  useGetGroupRoleAudits,
 } from '../../api/apiComponents';
 import {
   App,
@@ -78,6 +80,7 @@ import {
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
+import AccessHistory from '../../components/AccessHistory';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -326,6 +329,18 @@ export default function ReadRoleRequest() {
     (m) => m.active_user?.id,
   );
 
+  // Fetch role/group audit data for the requester role and requested group
+  const {data: groupRoleAuditsData} = useGetGroupRoleAudits({
+    queryParams: {
+      role_id: roleRequest.requester_role?.id ?? '',
+      group_id: roleRequest.requested_group?.id ?? '',
+      per_page: 50,
+      order_by: 'created_at',
+      order_desc: true,
+    },
+  });
+  const groupRoleAudits = groupRoleAuditsData?.results ?? [];
+
   if (isError) {
     return <NotFound />;
   }
@@ -504,6 +519,15 @@ export default function ReadRoleRequest() {
                 </Grid>
               </Grid>
             </Paper>
+          </Grid>
+          {/* Access History Section */}
+          <Grid item xs={12}>
+            <AccessHistory
+              subjectType="role"
+              subjectName={roleRequest.requester_role?.name ?? ''}
+              groupName={roleRequest.requested_group?.name ?? ''}
+              auditHistory={groupRoleAudits}
+            />
           </Grid>
           <Grid item xs={12}>
             <Timeline
