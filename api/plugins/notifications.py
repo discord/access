@@ -11,7 +11,7 @@ notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
 hookimpl = pluggy.HookimplMarker(notification_plugin_name)
 
-_cached_notification_hook = None
+_cached_notification_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
 

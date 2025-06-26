@@ -12,7 +12,7 @@ conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
 hookimpl = pluggy.HookimplMarker(conditional_access_plugin_name)
 
-_cached_conditional_access_hook = None
+_cached_conditional_access_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
 
