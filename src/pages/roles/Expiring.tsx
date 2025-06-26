@@ -25,6 +25,7 @@ import dayjs, {Dayjs} from 'dayjs';
 
 import BulkRenewal from './BulkRenewal';
 import NotFound from '../NotFound';
+import CreateRoleRequest from '../role_requests/Create';
 import {useGetGroupRoleAudits, useGetGroups} from '../../api/apiComponents';
 import ChangeTitle from '../../tab-title';
 import {useCurrentUser} from '../../authentication';
@@ -47,6 +48,7 @@ export default function ExpiringRoless() {
   const [orderDirection, setOrderDirection] = React.useState<OrderDirection>('asc');
   const [searchParams, setSearchParams] = useSearchParams();
   const [ownerId, setOwnerId] = React.useState<string | null>(null);
+  const [roleOwnerId, setRoleOwnerId] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
   const [searchInput, setSearchInput] = React.useState('');
   const [page, setPage] = React.useState(0);
@@ -62,6 +64,7 @@ export default function ExpiringRoless() {
     setOrderBy((searchParams.get('order_by') as OrderBy) ?? 'ended_at');
     setOrderDirection((searchParams.get('order_desc') ?? 'true') === 'true' ? 'asc' : 'desc');
     setOwnerId(searchParams.get('owner_id') ?? null);
+    setRoleOwnerId(searchParams.get('role_owner_id') ?? null);
     setSearchQuery(searchParams.get('q') ?? null);
     if (searchInput == '') {
       setSearchInput(searchParams.get('q') ?? '');
@@ -89,6 +92,7 @@ export default function ExpiringRoless() {
       searchQuery == null ? null : {q: searchQuery},
       ownerId == null ? null : {owner_id: ownerId},
       filterNeedsReview == null ? null : {needs_review: filterNeedsReview},
+      roleOwnerId == null ? null : {role_owner_id: roleOwnerId},
       filterActive == null ? null : {active: filterActive},
       {app_owner: filterAppOwnership},
       startDate == null ? null : {start_date: startDate.unix()},
@@ -401,6 +405,16 @@ export default function ExpiringRoless() {
                       select={row.id}
                       rereview={row.should_expire}
                     />
+                  </TableCell>
+                ) : roleOwnerId || canManageGroup(currentUser, row.role_group) ? (
+                  <TableCell align="center">
+                    <CreateRoleRequest
+                      currentUser={currentUser}
+                      enabled
+                      role={row.role_group}
+                      group={row.group}
+                      owner={row.is_owner}
+                      renew></CreateRoleRequest>
                   </TableCell>
                 ) : (
                   <TableCell></TableCell>

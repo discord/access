@@ -59,6 +59,7 @@ class SearchGroupRoleAuditPaginationRequestSchema(SearchAuditPaginationRequestSc
     group_id = fields.String(load_only=True)
     role_id = fields.String(load_only=True)
     owner_id = fields.String(load_only=True)
+    role_owner_id = fields.String(load_only=True)
     app_owner = fields.Boolean(load_only=True)
     start_date = fields.Int(load_only=True)
     end_date = fields.Int(load_only=True)

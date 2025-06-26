@@ -191,6 +191,7 @@ export type GetGroupRoleAuditsQueryParams = {
   group_id?: string;
   role_id?: string;
   owner_id?: string;
+  role_owner_id?: string;
   start_date?: number;
   end_date?: number;
 };
