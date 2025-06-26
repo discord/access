@@ -400,7 +400,11 @@ export default function ExpiringRoless() {
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
                 {ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
                   <TableCell align="center">
-                    <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} select={row.id} />
+                    <BulkRenewal
+                      rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+                      select={row.id}
+                      rereview={row.should_expire}
+                    />
                   </TableCell>
                 ) : roleOwnerId || canManageGroup(currentUser, row.role_group) ? (
                   <TableCell align="center">
