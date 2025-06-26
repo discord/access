@@ -45,10 +45,15 @@ class AuthenticationHelpers:
             # Redirect to the OIDC login page if not logged in
             if not oidc.user_loggedin:
                 # Copied from oidc.require_login decorator
-                redirect_uri = "{login}?next={here}".format(
-                    login=url_for("oidc_auth.login"),
-                    here=quote_plus(request.url),
-                )
+                next_url = request.args.get('next', '')
+                next_url = next_url.replace('\\', '')
+                if not urlparse(next_url).netloc and not urlparse(next_url).scheme:
+                    redirect_uri = "{login}?next={here}".format(
+                        login=url_for("oidc_auth.login"),
+                        here=quote_plus(next_url),
+                    )
+                else:
+                    redirect_uri = url_for("oidc_auth.login")
                 return redirect(redirect_uri)
             current_user = (
                 OktaUser.query.filter(
