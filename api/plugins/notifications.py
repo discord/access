@@ -1,11 +1,11 @@
 import datetime
 import logging
 import sys
-from typing import Generator
+from typing import Generator, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest
+from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -34,22 +34,59 @@ class NotificationPluginSpec:
     ) -> None:
         """Notify the requester that their access request has been processed."""
 
-    @hookspec
+    @hookspec(
+        warn_on_impl_args={
+            "groups": DeprecationWarning(
+                "The groups parameter of access_expiring_user is deprecated and will be removed soon; "
+                "use okta_user_group_members instead"
+            ),
+        },
+    )
     def access_expiring_user(
-        self, groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
+        self,
+        groups: list[OktaGroup],
+        user: OktaUser,
+        expiration_datetime: datetime.datetime,
+        okta_user_group_members: Optional[list[OktaUserGroupMember]],
     ) -> None:
         """Notify individuals that their access to a group is expiring soon"""
 
-    @hookspec
+    @hookspec(
+        warn_on_impl_args={
+            "groups": DeprecationWarning(
+                "The groups parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use group_user_associations and role_group_associations instead"
+            ),
+            "roles": DeprecationWarning(
+                "The roles parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use role_group_associations instead"
+            ),
+            "users": DeprecationWarning(
+                "The users parameter of access_expiring_owner is deprecated and will be removed soon; "
+                "use group_user_associations instead"
+            ),
+        },
+    )
     def access_expiring_owner(
         self,
         owner: OktaUser,
         groups: list[OktaGroup],
-        roles: list[OktaGroup],
-        users: list[RoleGroup],
+        roles: list[RoleGroup],
+        users: list[OktaUser],
         expiration_datetime: datetime.datetime,
+        group_user_associations: Optional[list[OktaUserGroupMember]],
+        role_group_associations: Optional[list[RoleGroupMap]],
     ) -> None:
         """Notify group owners that individuals or roles access to a group is expiring soon"""
+
+    @hookspec
+    def access_expiring_role_owner(
+        self,
+        owner: OktaUser,
+        roles: list[RoleGroupMap],
+        expiration_datetime: datetime.datetime,
+    ) -> None:
+        """Notify role owners that roles they own will be losing access soon"""
 
     @hookspec
     def access_role_request_created(
@@ -107,7 +144,10 @@ def access_request_completed(
 
 @hookimpl(wrapper=True)
 def access_expiring_user(
-    groups: list[OktaGroup], user: OktaUser, expiration_datetime: datetime.datetime
+    groups: list[OktaGroup],
+    user: OktaUser,
+    expiration_datetime: datetime.datetime,
+    okta_user_group_members: Optional[list[OktaUserGroupMember]],
 ) -> Generator[None, None, None]:
     try:
         return (yield)
@@ -125,6 +165,8 @@ def access_expiring_owner(
     roles: list[RoleGroup],
     users: list[OktaUser],
     expiration_datetime: datetime.datetime,
+    group_user_associations: Optional[list[OktaUserGroupMember]],
+    role_group_associations: Optional[list[RoleGroupMap]],
 ) -> Generator[None, None, None]:
     try:
         return (yield)
@@ -133,6 +175,21 @@ def access_expiring_owner(
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for owner notification callback")
+
+
+@hookimpl(wrapper=True)
+def access_expiring_role_owner(
+    owner: OktaUser,
+    roles: list[RoleGroupMap],
+    expiration_datetime: datetime.datetime,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute access expiring for role owner notification callback")
 
 
 @hookimpl(wrapper=True)

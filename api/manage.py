@@ -179,16 +179,30 @@ def fix_role_memberships(dry_run: bool) -> None:
 
 @click.command("notify")
 @click.option(
-    "--owner", is_flag=True, show_default=True, default=False, help="If set will notify owners instead of individuals"
+    "--owner",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="If set will notify group owners instead of individuals",
+)
+@click.option(
+    "--role-owner",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="If set will notify role owners instead of individuals",
 )
 @with_appcontext
-def notify(owner: bool) -> None:
+def notify(owner: bool, role_owner: bool) -> None:
     from api.syncer import (
         expiring_access_notifications_owner,
+        expiring_access_notifications_role_owner,
         expiring_access_notifications_user,
     )
 
     if owner:
         expiring_access_notifications_owner()
+    elif role_owner:
+        expiring_access_notifications_role_owner()
     else:
         expiring_access_notifications_user()
