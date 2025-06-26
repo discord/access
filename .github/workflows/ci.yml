@@ -51,3 +51,27 @@ jobs:
           else
             echo "Notifications plugin directory not found, skipping installation"
           fi
+      - name: Test installing slack notifications plugin
+        run: |
+          # Install the slack notifications plugin from examples/plugins/notifications
+          if [ -d "examples/plugins/notifications/notifications_slack" ]; then
+            python -m pip install ./examples/plugins/notifications/notifications_slack
+          else
+            echo "Slack notifications plugin directory not found, skipping installation"
+          fi
+      - name: Test installing conditional access plugin
+        run: |
+          # Install the slack notifications plugin from examples/plugins/notifications
+          if [ -d "examples/plugins/conditional_access" ]; then
+            python -m pip install ./examples/plugins/conditional_access
+          else
+            echo "Conditional access plugin directory not found, skipping installation"
+          fi
+      - name: Test installing health check plugin
+        run: |
+          # Install the slack notifications plugin from examples/plugins/notifications
+          if [ -d "examples/plugins/health_check_plugin" ]; then
+            python -m pip install ./examples/plugins/health_check_plugin
+          else
+            echo "Health check plugin directory not found, skipping installation"
+          fi
