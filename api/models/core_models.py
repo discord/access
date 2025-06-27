@@ -42,7 +42,7 @@ class OktaUserGroupMember(db.Model):
 
     # This field is set to True when an owner chooses to not renew access in the Expiring Access workflow
     should_expire: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
+        db.Boolean, nullable=False, server_default="false", default=False
     )
 
     # See more details on specifying alternative join conditions for relationships at
@@ -462,7 +462,7 @@ class RoleGroupMap(db.Model):
 
     # This field is set to True when an owner chooses to not renew access in the Expiring Access workflow
     should_expire: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
+        db.Boolean, nullable=False, server_default="false", default=False
     )
 
     # See more details on specifying alternative join conditions for relationships at
