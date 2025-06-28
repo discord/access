@@ -205,7 +205,7 @@ def access_request_created(
         requester (OktaUser): The user requesting access.
         approvers (List[OktaUser]): The list of approvers.
     """
-    type_of_access = "ownership of" if access_request.request_ownership else "membership to"
+    type_of_access = "*ownership* :large_yellow_circle: of" if access_request.request_ownership else "*membership* :white_circle: to"
 
     access_request_url = get_base_url() + f"/requests/{access_request.id}"
 
