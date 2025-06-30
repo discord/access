@@ -163,7 +163,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
               .map((memberList) => memberList[1][0]);
 
             return (
-              <TableContainer component={Paper}>
+              <TableContainer key={appGroup.id} component={Paper}>
                 <Accordion expanded={expanded[appGroup.name] || isExpanded} onChange={handleChange(appGroup.name)}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Box
