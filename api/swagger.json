@@ -1860,6 +1860,12 @@
           },
           {
             "in": "query",
+            "name": "role_owner_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
             "name": "start_date",
             "required": false,
             "type": "number"
