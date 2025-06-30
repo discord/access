@@ -52,11 +52,11 @@ import {
   GroupMember,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
-import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -373,7 +373,7 @@ export default function ReadGroup() {
                             </TableRow>
                           ))
                       ) : (
-                        <EmptyListEntry />
+                        <EmptyListEntry cellProps={{colSpan: 3}} />
                       )}
                     </TableBody>
                     <TableFooter>
