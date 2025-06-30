@@ -2,7 +2,7 @@ import {Autocomplete, Button, Grid, Paper, Stack, TextField} from '@mui/material
 import CreateUpdateGroup from '../../groups/CreateUpdate';
 import {OktaUser, App, AppGroup} from '../../../api/apiSchemas';
 import {renderUserOption} from '../../../components/TableTopBar';
-import {displayUserName, sortGroupMemberRecords, sortGroupMembers} from '../../../helpers';
+import {displayUserName, extractEmailFromDisplayName, sortGroupMemberRecords, sortGroupMembers} from '../../../helpers';
 import React from 'react';
 
 interface AppsAdminActionGroupProps {
@@ -42,11 +42,8 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = ({
   });
 
   const handleSearchSubmit = (_: unknown, newValue: string | null) => {
-    // Extract email from format "Display Name (email@example.com)"
-    const emailMatch = newValue?.match(/\(([^)]+)\)/);
-    const email = emailMatch ? emailMatch[1].toLowerCase() : '';
+    const email = extractEmailFromDisplayName(newValue);
     const appGroups = memberGroups[email] ?? app.active_non_owner_app_groups;
-    console.log('Groups: ', appGroups, memberGroups[email], app.active_non_owner_app_groups);
     if (!!onSearchSubmit) {
       onSearchSubmit(appGroups);
     }

@@ -25,6 +25,14 @@ export function displayUserName(user: OktaUser | undefined) {
   return user.display_name != null ? user.display_name : user.first_name + ' ' + user.last_name;
 }
 
+export function extractEmailFromDisplayName(displayName: string | null) {
+  if (!!displayName) {
+    const emailMatch = displayName.match(/\(([^)]+)\)/);
+    return emailMatch ? emailMatch[1].toLowerCase() : '';
+  }
+  return '';
+}
+
 // https://stackoverflow.com/a/34890276
 export function groupBy<T>(xs: T[] | undefined, keyFn: (item: T) => string | undefined) {
   return (xs ?? []).reduce(
