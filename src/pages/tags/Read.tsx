@@ -290,7 +290,7 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <EmptyListEntry cellProps={{ colSpan: 3 }} />
+                    <EmptyListEntry cellProps={{colSpan: 3}} />
                   )}
                 </TableBody>
                 <TableFooter>
@@ -387,7 +387,7 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <EmptyListEntry />
+                    <EmptyListEntry cellProps={{colSpan: 4}} />
                   )}
                 </TableBody>
                 <TableFooter>
