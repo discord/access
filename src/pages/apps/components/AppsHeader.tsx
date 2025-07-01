@@ -4,18 +4,42 @@ import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
 import {App, OktaUser} from '../../../api/apiSchemas';
 import {useNavigate} from 'react-router-dom';
+import React from 'react';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../../authorization';
+
 interface AppsHeaderProps {
   app: App;
   currentUser: OktaUser;
 }
 
-export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
+export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUser}) => {
   const navigate = useNavigate();
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
-  const hasActions = isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '');
+
+  const hasActions = React.useMemo(() => {
+    return isAccessAdmin(currentUser) || isAppOwnerGroupOwner(currentUser, app.id ?? '');
+  }, [currentUser, app.id]);
+
+  const tagChips = React.useMemo(() => {
+    if (!app.active_app_tags) return null;
+
+    return app.active_app_tags.map((tagMap) => (
+      <Chip
+        key={'tag' + tagMap.active_tag!.id}
+        label={tagMap.active_tag!.name}
+        color="primary"
+        onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
+        icon={<TagIcon />}
+        sx={{
+          margin: '.125rem',
+          marginTop: '.3125rem',
+          bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
+        }}
+      />
+    ));
+  }, [app.active_app_tags, navigate]);
 
   return (
     <Grid item xs={12}>
@@ -28,24 +52,7 @@ export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
             <Typography variant="h5" textAlign={'center'}>
               {app.description}
             </Typography>
-            {app.active_app_tags && (
-              <Box>
-                {app.active_app_tags.map((tagMap) => (
-                  <Chip
-                    key={'tag' + tagMap.active_tag!.id}
-                    label={tagMap.active_tag!.name}
-                    color="primary"
-                    onClick={() => navigate(`/tags/${tagMap.active_tag!.name}`)}
-                    icon={<TagIcon />}
-                    sx={{
-                      margin: '.125rem',
-                      marginTop: '.3125rem',
-                      bgcolor: (theme) => (tagMap.active_tag!.enabled ? 'primary' : theme.palette.action.disabled),
-                    }}
-                  />
-                ))}
-              </Box>
-            )}
+            {tagChips && <Box>{tagChips}</Box>}
           </Stack>
           {hasActions && (
             <>
@@ -68,6 +75,6 @@ export const AppsHeader: React.FC<AppsHeaderProps> = ({app, currentUser}) => {
       </Paper>
     </Grid>
   );
-};
+});
 
 export default AppsHeader;
