@@ -917,7 +917,7 @@ def expiring_access_notifications_role_owner() -> None:
 
     for owner in role_owner_expiring_roles_next:
         if owner not in role_owner_expiring_roles_tomorrow:
-            notification_hook.access_expiring_owner(
+            notification_hook.access_expiring_role_owner(
                 owner=owner,
                 roles=role_owner_expiring_roles_next[owner],
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
