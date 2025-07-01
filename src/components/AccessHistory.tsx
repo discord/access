@@ -75,6 +75,7 @@ export default function AccessHistory({
             showEndedBy={false}
             emptyMessage="No current access"
           />
+          <hr />
           {/* Past Access Section */}
           <Box sx={{mt: 2}}>
             <Typography variant="subtitle1" color="text.secondary" sx={{mb: 1, fontWeight: 500}}>
