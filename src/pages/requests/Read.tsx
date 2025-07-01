@@ -29,6 +29,7 @@ import TimelineContent from '@mui/lab/TimelineContent';
 import CircularProgress from '@mui/material/CircularProgress';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineDot from '@mui/lab/TimelineDot';
+import Chip from '@mui/material/Chip';
 import {
   FormContainer,
   SelectElement,
@@ -56,6 +57,8 @@ import {
   useGetGroupById,
   useGetAppById,
   useResolveRequestById,
+  useGetUserGroupAudits,
+  useGetGroupRoleAudits,
   ResolveRequestByIdError,
   ResolveRequestByIdVariables,
 } from '../../api/apiComponents';
@@ -75,6 +78,7 @@ import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
+import AccessHistory from '../../components/AccessHistory';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -286,6 +290,25 @@ export default function ReadRequest() {
     (m) => m.active_user?.id,
   );
 
+  const {data: userGroupAudits} = useGetUserGroupAudits({
+    queryParams: {
+      user_id: accessRequest.requester?.id ?? '',
+      group_id: accessRequest.requested_group?.id ?? '',
+      per_page: 50,
+      order_by: 'created_at',
+      order_desc: true,
+    },
+  });
+
+  const {data: groupRoleAudits} = useGetGroupRoleAudits({
+    queryParams: {
+      group_id: accessRequest.requested_group?.id ?? '',
+      per_page: 50,
+      order_by: 'created_at',
+      order_desc: true,
+    },
+  });
+
   if (isError) {
     return <NotFound />;
   }
@@ -325,6 +348,16 @@ export default function ReadRequest() {
       pathParams: {accessRequestId: accessRequest.id},
     });
   };
+
+  // Filter audit data for the specific group and user
+  const userGroupHistory =
+    userGroupAudits?.results?.filter(
+      (audit) =>
+        audit.group?.id === accessRequest.requested_group?.id && audit.user?.id === accessRequest.requester?.id,
+    ) ?? [];
+
+  // Get alternative role mappings for this group
+  const alternativeRoleMappings = groupRoleAudits?.results ?? [];
 
   return (
     <React.Fragment>
@@ -465,6 +498,18 @@ export default function ReadRequest() {
               </Grid>
             </Paper>
           </Grid>
+
+          {/* Historical Access Information Section */}
+          <Grid item xs={12}>
+            <AccessHistory
+              subjectType="user"
+              subjectName={displayUserName(accessRequest.requester)}
+              groupName={accessRequest.requested_group?.name ?? ''}
+              auditHistory={userGroupHistory}
+              alternativeRoleMappings={alternativeRoleMappings}
+            />
+          </Grid>
+
           <Grid item xs={12}>
             <Timeline
               sx={{
