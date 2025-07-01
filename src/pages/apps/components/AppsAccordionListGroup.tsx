@@ -143,7 +143,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
           gap: '1.25rem',
         }}>
         {(app_group?.length || 0) > 0 && list_group_title && (
-          <Typography variant="h5" component={'div'}>
+          <Typography variant="h5" component={'div'} fontWeight={500}>
             {list_group_title}
           </Typography>
         )}
@@ -164,7 +164,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
 
             return (
               <TableContainer key={appGroup.id} component={Paper}>
-                <Accordion expanded={expanded[appGroup.name] || isExpanded} onChange={handleChange(appGroup.name)}>
+                <Accordion expanded={expanded[appGroup.name] || false} onChange={handleChange(appGroup.name)}>
                   <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                     <Box
                       sx={{
@@ -177,7 +177,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = ({
                         sx={{
                           flexGrow: 0.95,
                         }}>
-                        <Typography variant="h6" color="primary">
+                        <Typography variant="h6" color="text.accent">
                           <Link
                             to={`/groups/${appGroup.name}`}
                             sx={{
