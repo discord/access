@@ -21,20 +21,36 @@ export default function ReadApp() {
     pathParams: {appId: id ?? ''},
   });
   const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>([]);
-  const [isExpanded, setIsExpanded] = React.useState(true);
+  const [isExpanded, setIsExpanded] = React.useState(false);
 
   const app = data ?? ({} as App);
 
-  React.useEffect(() => {
-    setNonOwnerAppGroups(app?.active_non_owner_app_groups || []);
-  }, [data]);
+  const initialNonOwnerAppGroups = React.useMemo(() => {
+    return app?.active_non_owner_app_groups || [];
+  }, [app?.active_non_owner_app_groups]);
 
-  const handleToggleExpand = (expanded: boolean) => {
-    setIsExpanded(expanded);
-  };
+  React.useEffect(() => {
+    setNonOwnerAppGroups(initialNonOwnerAppGroups);
+  }, [initialNonOwnerAppGroups]);
+
+  const handleToggleExpand = React.useCallback((expanded: boolean) => {
+    setIsExpanded((prev) => {
+      // Only update if the value actually changed
+      if (prev === expanded) {
+        return prev;
+      }
+      return expanded;
+    });
+  }, []);
 
   const handleSearchSubmit = React.useCallback((newAppGroups: AppGroup[]) => {
-    setNonOwnerAppGroups(newAppGroups);
+    setNonOwnerAppGroups((prev) => {
+      // Only update if the groups actually changed
+      if (prev.length === newAppGroups.length && prev.every((group, index) => group.id === newAppGroups[index]?.id)) {
+        return prev;
+      }
+      return newAppGroups;
+    });
   }, []);
 
   if (isError) {
