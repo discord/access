@@ -14,7 +14,7 @@ interface AppsAdminActionGroupProps {
 }
 
 export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.memo(
-  ({currentUser, app, onSearchSubmit, onToggleExpand, isExpanded = true}) => {
+  ({currentUser, app, onSearchSubmit, onToggleExpand, isExpanded = false}) => {
     const {allMembers, memberGroups, sortedUserOptions} = React.useMemo(() => {
       const allMembers: Record<string, OktaUser> = {};
       const memberGroups: Record<string, AppGroup[]> = {};
@@ -45,22 +45,33 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
       return {allMembers, memberGroups, sortedUserOptions};
     }, [app.active_non_owner_app_groups]);
 
-    const handleSearchSubmit = React.useCallback(
-      (_: unknown, newValue: string | null) => {
-        const email = extractEmailFromDisplayName(newValue);
-        const appGroups = memberGroups[email] ?? app.active_non_owner_app_groups;
-        if (!!onSearchSubmit) {
-          onSearchSubmit(appGroups);
-        }
-      },
-      [memberGroups, app.active_non_owner_app_groups, onSearchSubmit],
-    );
+    const memberGroupsRef = React.useRef(memberGroups);
+    const appGroupsRef = React.useRef(app.active_non_owner_app_groups);
+    const onSearchSubmitRef = React.useRef(onSearchSubmit);
+
+    memberGroupsRef.current = memberGroups;
+    appGroupsRef.current = app.active_non_owner_app_groups;
+    onSearchSubmitRef.current = onSearchSubmit;
+
+    const handleSearchSubmit = React.useCallback((_: unknown, newValue: string | null) => {
+      const email = extractEmailFromDisplayName(newValue);
+      const appGroups = memberGroupsRef.current[email] ?? appGroupsRef.current;
+      if (!!onSearchSubmitRef.current) {
+        onSearchSubmitRef.current(appGroups);
+      }
+    }, []);
+
+    const onToggleExpandRef = React.useRef(onToggleExpand);
+    const isExpandedRef = React.useRef(isExpanded);
+
+    onToggleExpandRef.current = onToggleExpand;
+    isExpandedRef.current = isExpanded;
 
     const handleToggleExpand = React.useCallback(() => {
-      if (!!onToggleExpand) {
-        onToggleExpand(!isExpanded);
+      if (!!onToggleExpandRef.current) {
+        onToggleExpandRef.current(!isExpandedRef.current);
       }
-    }, [onToggleExpand, isExpanded]);
+    }, []);
 
     return (
       <Grid item xs={12} className={'app-detail app-detail-admin-action-group'}>
