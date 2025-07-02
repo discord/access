@@ -143,7 +143,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     @app.before_request
     def authenticate_request() -> Optional[ResponseReturnValue]:
         # Skip authentication for health check endpoint
-        if request.path.startswith("/api/healthz"):
+        if request.path.startswith("/api/healthz") or request.path.startswith("/api/metrics"):
             return None
         return AuthenticationHelpers.authenticate_user(request)
 
