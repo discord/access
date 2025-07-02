@@ -1,3 +1,5 @@
+from typing import Any, Dict
+
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema
 
 
@@ -11,7 +13,7 @@ class MetricsDataSchema(Schema):
     buckets = fields.List(fields.Float(), required=False)
 
     @validates_schema
-    def validate_data(self, data, **kwargs):
+    def validate_data(self, data: Dict[str, Any], **kwargs: Any) -> None:
         # Ensure at least one value field is present
         if not any(key in data for key in ["value", "duration"]):
             raise ValidationError("Either 'value' or 'duration' must be provided in data")
