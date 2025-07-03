@@ -147,7 +147,9 @@ function RecommendRolesContainer(props: RecommendRolesContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit">No thanks, request direct{props.owner == true ? ' Ownership' : ' Membership'}</Button>
+        <Button variant="contained" type="submit">
+          Continue Direct {props.owner == true ? 'Ownership' : 'Membership'} Request
+        </Button>
       </DialogActions>
     </FormContainer>
   );
@@ -455,7 +457,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>
+        <Button variant="contained" type="submit" disabled={submitting}>
           {submitting ? <CircularProgress size={24} /> : 'Send'}
         </Button>
       </DialogActions>
