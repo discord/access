@@ -39,6 +39,7 @@ import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveG
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
 import {groupBy, displayUserName, displayGroupType} from '../../helpers';
 import {canManageGroup, isGroupOwner} from '../../authorization';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MembershipChip from '../../components/MembershipChip';
 
 function sortUserGroups(
@@ -228,13 +229,7 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
                 </TableRow>
               ))
           ) : (
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" color="text.secondary">
-                  None
-                </Typography>
-              </TableCell>
-            </TableRow>
+            <EmptyListEntry cellProps={{colSpan: 4}} />
           )}
         </TableBody>
         <TableFooter>

@@ -20,6 +20,7 @@ from api.views.schemas.core_schemas import (
 )
 from api.views.schemas.delete_message import DeleteMessageSchema
 from api.views.schemas.group_memberships import GroupMemberSchema
+from api.views.schemas.metrics import MetricsSchema
 from api.views.schemas.pagination import (
     AccessRequestPaginationSchema,
     AppPaginationSchema,
@@ -59,6 +60,7 @@ __all__ = [
     "GroupMemberSchema",
     "GroupPaginationSchema",
     "GroupRoleAuditPaginationSchema",
+    "MetricsSchema",
     "OktaGroupSchema",
     "OktaGroupTagMapSchema",
     "OktaUserGroupMemberSchema",

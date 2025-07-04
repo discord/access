@@ -508,7 +508,7 @@ interface CreateRequestProps {
   enabled: boolean;
   currentUser: OktaUser;
   role?: RoleGroup;
-  group?: PolymorphicGroup;
+  group?: OktaGroup | AppGroup;
   owner?: boolean;
   renew?: boolean;
 }
@@ -517,8 +517,9 @@ export default function CreateRequest(props: CreateRequestProps) {
   const [open, setOpen] = React.useState<boolean>(false);
 
   if (
+    props.role?.deleted_at != null ||
     props.group?.deleted_at != null ||
-    (props.group != null && canManageGroup(props.currentUser, props.group)) ||
+    (props.role != null && !canManageGroup(props.currentUser, props.role)) ||
     props.group?.is_managed == false
   ) {
     return null;

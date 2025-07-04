@@ -437,9 +437,14 @@ def expiring_access_notifications_user() -> None:
         if (member.user_id, member.group_id) not in user_id_group_id_roles
     ]
 
-    grouped_tomorrow: dict[OktaUser, list[OktaGroup]] = {}
+    grouped_tomorrow: dict[OktaUser, list[OktaUserGroupMember]] = {}
     for membership in db_memberships_expiring_tomorrow:
-        grouped_tomorrow.setdefault(membership.active_user, []).append(membership.active_group)
+        grouped_tomorrow.setdefault(membership.active_user, []).append(membership)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
+    grouped_tomorrow_old: dict[OktaUser, list[OktaGroup]] = {}
+    for membership in db_memberships_expiring_tomorrow:
+        grouped_tomorrow_old.setdefault(membership.active_user, []).append(membership.active_group)
 
     weekend_notif_week = False
     day = date.today() + timedelta(weeks=1)
@@ -467,34 +472,48 @@ def expiring_access_notifications_user() -> None:
         if (member.user_id, member.group_id) not in user_id_group_id_roles
     ]
 
-    grouped_next_week: dict[OktaUser, list[OktaGroup]] = {}
+    grouped_next_week: dict[OktaUser, list[OktaUserGroupMember]] = {}
     for membership in db_memberships_expiring_next_week:
-        grouped_next_week.setdefault(membership.active_user, []).append(membership.active_group)
+        grouped_next_week.setdefault(membership.active_user, []).append(membership)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
+    grouped_next_week_old: dict[OktaUser, list[OktaGroup]] = {}
+    for membership in db_memberships_expiring_next_week:
+        grouped_next_week_old.setdefault(membership.active_user, []).append(membership.active_group)
 
     for user in grouped_tomorrow:
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
             notification_hook.access_expiring_user(
-                groups=grouped_tomorrow[user] + grouped_next_week[user], user=user, expiration_datetime=None
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=grouped_tomorrow_old[user] + grouped_next_week_old[user],
+                user=user,
+                expiration_datetime=None,
+                okta_user_group_members=grouped_tomorrow[user] + grouped_next_week[user],
             )
         else:
             notification_hook.access_expiring_user(
-                groups=grouped_tomorrow[user],
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=grouped_tomorrow_old[user],
                 user=user,
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
+                okta_user_group_members=grouped_tomorrow[user],
             )
 
     for user in grouped_next_week:
         if user not in grouped_tomorrow:
             notification_hook.access_expiring_user(
-                groups=grouped_next_week[user],
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=grouped_next_week_old[user],
                 user=user,
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
+                okta_user_group_members=grouped_next_week[user],
             )
 
     logger.info("Expiring access notifications for users finished.")
 
 
+# TODO eventually clean this up, leaving for now for backwards compatibility
 class GroupsAndUsers:
     def __init__(self) -> None:
         self.groups: List[OktaGroup] = []
@@ -522,16 +541,36 @@ def expiring_access_notifications_owner() -> None:
         .all()
     )
 
+    access_owners = get_access_owners()
+
+    # Map of group owners -> list[OktaUserGroupMember]
+    owner_expiring_groups_this: defaultdict[OktaUser, list[OktaUserGroupMember]] = defaultdict(list)
+    for okta_user_group_member in db_memberships_expiring_this_week:
+        owners = get_group_managers(okta_user_group_member.group_id)
+
+        if len(owners) == 0:
+            owners += (
+                get_app_managers(okta_user_group_member.group.app_id)
+                if type(okta_user_group_member.group) is AppGroup
+                else []
+            )
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            if owner.id != okta_user_group_member.user_id:
+                owner_expiring_groups_this[owner].append(okta_user_group_member)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
     # Map of group -> list of users with access expiring next week
     users_per_group = defaultdict(list)
 
     for m in db_memberships_expiring_this_week:
         users_per_group[m.active_group].append(m.active_user)
 
-    access_owners = get_access_owners()
-
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_groups_this: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_groups_this_old: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in users_per_group:
         owners = get_group_managers(group.id)
 
@@ -544,8 +583,8 @@ def expiring_access_notifications_owner() -> None:
         for owner in owners:
             non_owner_users = [user for user in users_per_group[group] if user.id != owner.id]
             if len(non_owner_users) > 0:
-                owner_expiring_groups_this[owner].users += non_owner_users
-                owner_expiring_groups_this[owner].groups.append(group)
+                owner_expiring_groups_this_old[owner].users += non_owner_users
+                owner_expiring_groups_this_old[owner].groups.append(group)
 
     one_week = date.today() + timedelta(weeks=1)
     two_weeks = one_week + timedelta(weeks=1)
@@ -562,6 +601,26 @@ def expiring_access_notifications_owner() -> None:
         .all()
     )
 
+    # Map of group owners -> list[OktaUserGroupMember]
+    owner_expiring_groups_next: defaultdict[OktaUser, list[OktaUserGroupMember]] = defaultdict(list)
+    for okta_user_group_member in db_memberships_expiring_next_week:
+        owners = get_group_managers(okta_user_group_member.group_id)
+
+        if len(owners) == 0:
+            owners += (
+                get_app_managers(okta_user_group_member.group.app_id)
+                if type(okta_user_group_member.group) is AppGroup
+                else []
+            )
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            if owner.id != okta_user_group_member.user_id:
+                owner_expiring_groups_next[owner].append(okta_user_group_member)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
     # Map of group -> list of users with access expiring next week
     users_per_group = defaultdict(list)
 
@@ -569,7 +628,7 @@ def expiring_access_notifications_owner() -> None:
         users_per_group[m.active_group].append(m.active_user)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_groups_next: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_groups_next_old: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in users_per_group:
         owners = get_group_managers(group.id)
 
@@ -582,36 +641,48 @@ def expiring_access_notifications_owner() -> None:
         for owner in owners:
             non_owner_users = [user for user in users_per_group[group] if user.id != owner.id]
             if len(non_owner_users) > 0:
-                owner_expiring_groups_next[owner].users += non_owner_users
-                owner_expiring_groups_next[owner].groups.append(group)
+                owner_expiring_groups_next_old[owner].users += non_owner_users
+                owner_expiring_groups_next_old[owner].groups.append(group)
 
     for owner in owner_expiring_groups_this:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_groups_next:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_groups_this[owner].groups + owner_expiring_groups_next[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_groups_this_old[owner].groups + owner_expiring_groups_next_old[owner].groups,
                 roles=None,
-                users=owner_expiring_groups_this[owner].users + owner_expiring_groups_next[owner].users,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                users=owner_expiring_groups_this_old[owner].users + owner_expiring_groups_next_old[owner].users,
                 expiration_datetime=None,
+                group_user_associations=owner_expiring_groups_this[owner] + owner_expiring_groups_next[owner],
+                role_group_associations=None,
             )
         else:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_groups_this[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_groups_this_old[owner].groups,
                 roles=None,
-                users=owner_expiring_groups_this[owner].users,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                users=owner_expiring_groups_this_old[owner].users,
                 expiration_datetime=datetime.now(),
+                group_user_associations=owner_expiring_groups_this[owner],
+                role_group_associations=None,
             )
 
     for owner in owner_expiring_groups_next:
         if owner not in owner_expiring_groups_this:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_groups_next[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_groups_next_old[owner].groups,
                 roles=None,
-                users=owner_expiring_groups_next[owner].users,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                users=owner_expiring_groups_next_old[owner].users,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
+                group_user_associations=owner_expiring_groups_next[owner],
+                role_group_associations=None,
             )
 
     all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
@@ -632,6 +703,21 @@ def expiring_access_notifications_owner() -> None:
         .all()
     )
 
+    # Map of group owners -> list[RoleGroupMap]
+    owner_expiring_roles_this: defaultdict[OktaUser, list[RoleGroupMap]] = defaultdict(list)
+    for role_group_map in db_roles_expiring_this_week:
+        owners = get_group_managers(role_group_map.group_id)
+
+        if len(owners) == 0:
+            owners += get_app_managers(role_group_map.group.app_id) if type(role_group_map.group) is AppGroup else []
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            owner_expiring_roles_this[owner].append(role_group_map)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
     # Map of group -> list of roles with access expiring next week
     roles_per_group = defaultdict(list)
 
@@ -639,7 +725,7 @@ def expiring_access_notifications_owner() -> None:
         roles_per_group[r.active_group].append(r.active_role_group)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_roles_this: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_roles_this_old: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in roles_per_group:
         owners = get_group_managers(group.id)
 
@@ -650,8 +736,8 @@ def expiring_access_notifications_owner() -> None:
             owners = access_owners
 
         for owner in owners:
-            owner_expiring_roles_this[owner].roles += roles_per_group[group]
-            owner_expiring_roles_this[owner].groups.append(group)
+            owner_expiring_roles_this_old[owner].roles += roles_per_group[group]
+            owner_expiring_roles_this_old[owner].groups.append(group)
 
     one_week = date.today() + timedelta(weeks=1)
     two_weeks = one_week + timedelta(weeks=1)
@@ -667,6 +753,21 @@ def expiring_access_notifications_owner() -> None:
         .all()
     )
 
+    # Map of group owners -> list[RoleGroupMap]
+    owner_expiring_roles_next: defaultdict[OktaUser, list[RoleGroupMap]] = defaultdict(list)
+    for role_group_map in db_roles_expiring_next_week:
+        owners = get_group_managers(role_group_map.group_id)
+
+        if len(owners) == 0:
+            owners += get_app_managers(role_group_map.group.app_id) if type(role_group_map.group) is AppGroup else []
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            owner_expiring_roles_next[owner].append(role_group_map)
+
+    # TODO eventually clean this up, leaving for now for backwards compatibility
     # Map of group -> list of roles with access expiring next week
     roles_per_group = defaultdict(list)
 
@@ -674,7 +775,7 @@ def expiring_access_notifications_owner() -> None:
         roles_per_group[r.active_group].append(r.active_role_group)
 
     # Map of group owners -> (number of groups with expiring memberships, number of users with expiring memberships)
-    owner_expiring_roles_next: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
+    owner_expiring_roles_next_old: defaultdict[OktaUser, GroupsAndUsers] = defaultdict(GroupsAndUsers)
     for group in roles_per_group:
         owners = get_group_managers(group.id)
 
@@ -685,36 +786,141 @@ def expiring_access_notifications_owner() -> None:
             owners = access_owners
 
         for owner in owners:
-            owner_expiring_roles_next[owner].roles += roles_per_group[group]
-            owner_expiring_roles_next[owner].groups.append(group)
+            owner_expiring_roles_next_old[owner].roles += roles_per_group[group]
+            owner_expiring_roles_next_old[owner].groups.append(group)
 
     for owner in owner_expiring_roles_this:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_roles_next:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_roles_this[owner].groups + owner_expiring_roles_next[owner].groups,
-                roles=owner_expiring_roles_this[owner].roles + owner_expiring_roles_next[owner].roles,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_roles_this_old[owner].groups + owner_expiring_roles_next_old[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                roles=owner_expiring_roles_this_old[owner].roles + owner_expiring_roles_next_old[owner].roles,
                 users=None,
                 expiration_datetime=None,
+                group_user_associations=None,
+                role_group_associations=owner_expiring_roles_this[owner] + owner_expiring_roles_next[owner],
             )
         else:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_roles_this[owner].groups,
-                roles=owner_expiring_roles_this[owner].roles,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_roles_this_old[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                roles=owner_expiring_roles_this_old[owner].roles,
                 users=None,
                 expiration_datetime=datetime.now(),
+                group_user_associations=None,
+                role_group_associations=owner_expiring_roles_this[owner],
             )
 
     for owner in owner_expiring_roles_next:
         if owner not in owner_expiring_roles_this:
             notification_hook.access_expiring_owner(
                 owner=owner,
-                groups=owner_expiring_roles_next[owner].groups,
-                roles=owner_expiring_roles_next[owner].roles,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                groups=owner_expiring_roles_next_old[owner].groups,
+                # TODO eventually clean this up, leaving for now for backwards compatibility
+                roles=owner_expiring_roles_next_old[owner].roles,
                 users=None,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
+                group_user_associations=None,
+                role_group_associations=owner_expiring_roles_next[owner],
             )
 
     logger.info("Expiring access notifications for owners finished.")
+
+
+def expiring_access_notifications_role_owner() -> None:
+    logger.info("Expiring access notifications for role owners started.")
+    notification_hook = get_notification_hook()
+
+    access_owners = get_access_owners()
+
+    all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
+    role_group_alias = aliased(RoleGroup)
+
+    weekend_notif_tomorrow = False
+    day = date.today() + timedelta(days=1)
+    next_day = day + timedelta(days=1)
+    if datetime.now().weekday() == 4:
+        next_day = day + timedelta(days=3)
+        weekend_notif_tomorrow = True
+
+    db_roles_expiring_tomorrow = (
+        RoleGroupMap.query.options(
+            joinedload(RoleGroupMap.active_role_group), joinedload(RoleGroupMap.active_group.of_type(all_group_types))
+        )
+        .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
+        .join(RoleGroupMap.active_group)
+        .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_day))
+        .filter(RoleGroupMap.should_expire.is_(False))
+        .all()
+    )
+
+    # Map of role owners -> list[RoleGroupMap]
+    role_owner_expiring_roles_tomorrow: defaultdict[OktaUser, list[RoleGroupMap]] = defaultdict(list)
+    for role_group_map in db_roles_expiring_tomorrow:
+        owners = get_group_managers(role_group_map.role_group.id)
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            role_owner_expiring_roles_tomorrow[owner].append(role_group_map)
+
+    weekend_notif_week = False
+    day = date.today() + timedelta(weeks=1)
+    next_day = day + timedelta(days=1)
+    if datetime.now().weekday() == 4:
+        next_day = day + timedelta(days=3)
+        weekend_notif_week = True
+
+    db_roles_expiring_next_week = (
+        RoleGroupMap.query.options(
+            joinedload(RoleGroupMap.active_role_group), joinedload(RoleGroupMap.active_group.of_type(all_group_types))
+        )
+        .join(RoleGroupMap.active_role_group.of_type(role_group_alias))
+        .join(RoleGroupMap.active_group)
+        .filter(db.and_(RoleGroupMap.ended_at >= day, RoleGroupMap.ended_at < next_day))
+        .filter(RoleGroupMap.should_expire.is_(False))
+        .all()
+    )
+
+    # Map of role owners -> list[RoleGroupMap]
+    role_owner_expiring_roles_next: defaultdict[OktaUser, list[RoleGroupMap]] = defaultdict(list)
+    for role_group_map in db_roles_expiring_next_week:
+        owners = get_group_managers(role_group_map.role_group.id)
+
+        if len(owners) == 0:
+            owners = access_owners
+
+        for owner in owners:
+            role_owner_expiring_roles_next[owner].append(role_group_map)
+
+    for owner in role_owner_expiring_roles_tomorrow:
+        # If the role owner has roles they own with access expiring both this week and next week, only send one message
+        if owner in role_owner_expiring_roles_next:
+            notification_hook.access_expiring_role_owner(
+                owner=owner,
+                roles=role_owner_expiring_roles_tomorrow[owner] + role_owner_expiring_roles_next[owner],
+                expiration_datetime=None,
+            )
+        else:
+            notification_hook.access_expiring_role_owner(
+                owner=owner,
+                roles=role_owner_expiring_roles_tomorrow[owner],
+                expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
+            )
+
+    for owner in role_owner_expiring_roles_next:
+        if owner not in role_owner_expiring_roles_tomorrow:
+            notification_hook.access_expiring_role_owner(
+                owner=owner,
+                roles=role_owner_expiring_roles_next[owner],
+                expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
+            )
+
+    logger.info("Expiring access notifications for role owners finished.")

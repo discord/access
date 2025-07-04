@@ -37,6 +37,7 @@ import CreateUpdateTag from './CreateUpdate';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
+import {EmptyListEntry} from '../../components/EmptyListEntry';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -218,13 +219,7 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry cellProps={{colSpan: 3}} />
                   )}
                 </TableBody>
                 <TableFooter>
@@ -295,13 +290,7 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry cellProps={{colSpan: 3}} />
                   )}
                 </TableBody>
                 <TableFooter>
@@ -398,13 +387,7 @@ export default function ReadTag() {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow key="owners">
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          None
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
+                    <EmptyListEntry cellProps={{colSpan: 4}} />
                   )}
                 </TableBody>
                 <TableFooter>
