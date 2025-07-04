@@ -6,6 +6,17 @@ from typing import Any, ContextManager, Dict, Iterator, List, Optional
 
 import pluggy
 
+# Conditional imports for prometheus_client
+try:
+    import prometheus_client
+    from prometheus_client import Counter, Gauge, Histogram, Summary
+
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    prometheus_client = None
+    Counter = Gauge = Histogram = Summary = None
+    PROMETHEUS_AVAILABLE = False
+
 metrics_reporter_hookimpl = pluggy.HookimplMarker("access_metrics_reporter")
 
 logger = logging.getLogger(__name__)
@@ -20,10 +31,11 @@ def _init_prometheus() -> Any:
     if _prometheus_client is not None:
         return _prometheus_client
 
-    try:
-        import prometheus_client
-        from prometheus_client import Counter, Gauge, Histogram, Summary
+    if not PROMETHEUS_AVAILABLE:
+        logger.debug("Prometheus client package not available, metrics disabled")
+        return None
 
+    try:
         # Check for multiprocess environment
         multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
         if multiproc_dir:
@@ -43,9 +55,6 @@ def _init_prometheus() -> Any:
 
         logger.info(f"Prometheus initialized for metrics - env: {env_tag}")
 
-    except ImportError:
-        logger.debug("Prometheus client package not available, metrics disabled")
-        _prometheus_client = None
     except Exception as e:
         logger.warning(f"Failed to initialize Prometheus: {e}")
         _prometheus_client = None
@@ -108,11 +117,12 @@ class PrometheusMetricsReporter:
         prometheus_name = self._get_metric_name(metric_name)
 
         if prometheus_name not in _prometheus_metrics["counters"]:
-            from prometheus_client import Counter
-
-            _prometheus_metrics["counters"][prometheus_name] = Counter(
-                prometheus_name, f"Counter metric for {metric_name}", labelnames=list(labels.keys()) if labels else []
-            )
+            if Counter:
+                _prometheus_metrics["counters"][prometheus_name] = Counter(
+                    prometheus_name,
+                    f"Counter metric for {metric_name}",
+                    labelnames=list(labels.keys()) if labels else [],
+                )
 
         return _prometheus_metrics["counters"][prometheus_name]
 
@@ -121,11 +131,10 @@ class PrometheusMetricsReporter:
         prometheus_name = self._get_metric_name(metric_name)
 
         if prometheus_name not in _prometheus_metrics["gauges"]:
-            from prometheus_client import Gauge
-
-            _prometheus_metrics["gauges"][prometheus_name] = Gauge(
-                prometheus_name, f"Gauge metric for {metric_name}", labelnames=list(labels.keys()) if labels else []
-            )
+            if Gauge:
+                _prometheus_metrics["gauges"][prometheus_name] = Gauge(
+                    prometheus_name, f"Gauge metric for {metric_name}", labelnames=list(labels.keys()) if labels else []
+                )
 
         return _prometheus_metrics["gauges"][prometheus_name]
 
@@ -136,19 +145,18 @@ class PrometheusMetricsReporter:
         prometheus_name = self._get_metric_name(metric_name)
 
         if prometheus_name not in _prometheus_metrics["histograms"]:
-            from prometheus_client import Histogram
+            if Histogram:
+                # Use custom buckets if provided, otherwise use Prometheus defaults
+                histogram_kwargs = {
+                    "name": prometheus_name,
+                    "help": f"Histogram metric for {metric_name}",
+                    "labelnames": list(labels.keys()) if labels else [],
+                }
 
-            # Use custom buckets if provided, otherwise use Prometheus defaults
-            histogram_kwargs = {
-                "name": prometheus_name,
-                "help": f"Histogram metric for {metric_name}",
-                "labelnames": list(labels.keys()) if labels else [],
-            }
+                if buckets:
+                    histogram_kwargs["buckets"] = buckets
 
-            if buckets:
-                histogram_kwargs["buckets"] = buckets
-
-            _prometheus_metrics["histograms"][prometheus_name] = Histogram(**histogram_kwargs)
+                _prometheus_metrics["histograms"][prometheus_name] = Histogram(**histogram_kwargs)
 
         return _prometheus_metrics["histograms"][prometheus_name]
 
@@ -157,11 +165,12 @@ class PrometheusMetricsReporter:
         prometheus_name = self._get_metric_name(metric_name)
 
         if prometheus_name not in _prometheus_metrics["summaries"]:
-            from prometheus_client import Summary
-
-            _prometheus_metrics["summaries"][prometheus_name] = Summary(
-                prometheus_name, f"Summary metric for {metric_name}", labelnames=list(labels.keys()) if labels else []
-            )
+            if Summary:
+                _prometheus_metrics["summaries"][prometheus_name] = Summary(
+                    prometheus_name,
+                    f"Summary metric for {metric_name}",
+                    labelnames=list(labels.keys()) if labels else [],
+                )
 
         return _prometheus_metrics["summaries"][prometheus_name]
 
