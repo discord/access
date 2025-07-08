@@ -21,8 +21,8 @@ metrics_reporter_hookimpl = pluggy.HookimplMarker("access_metrics_reporter")
 
 logger = logging.getLogger(__name__)
 
-_prometheus_client = None
-_prometheus_metrics = {}
+_prometheus_client: Any = None
+_prometheus_metrics: Dict[str, Dict[str, Any]] = {}
 
 
 def _init_prometheus() -> Any:
@@ -147,7 +147,7 @@ class PrometheusMetricsReporter:
         if prometheus_name not in _prometheus_metrics["histograms"]:
             if Histogram:
                 # Use custom buckets if provided, otherwise use Prometheus defaults
-                histogram_kwargs = {
+                histogram_kwargs: Dict[str, Any] = {
                     "name": prometheus_name,
                     "help": f"Histogram metric for {metric_name}",
                     "labelnames": list(labels.keys()) if labels else [],
