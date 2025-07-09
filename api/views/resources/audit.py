@@ -7,6 +7,7 @@ from sqlalchemy import func, nullsfirst, nullslast
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
 from api.apispec import FlaskApiSpecDecorators
+from api.authorization import AuthorizationHelpers
 from api.extensions import db
 from api.models import (
     AppGroup,
@@ -542,6 +543,8 @@ class GroupRoleAuditResource(MethodResource):
                 .first_or_404()
             )
             role_group_alias = aliased(RoleGroup)
+
+            # get current role ownerships
             owner_role_ownerships = (
                 OktaUserGroupMember.query.options(joinedload(OktaUserGroupMember.group.of_type(RoleGroup)))
                 .filter(OktaUserGroupMember.user_id == role_owner.id)
@@ -555,10 +558,31 @@ class GroupRoleAuditResource(MethodResource):
                 )
             )
 
+            # if user is an admin, include unowned roles with expiring access
+            unowned_roles_admin = []
+            if AuthorizationHelpers.is_access_admin(role_owner_id):
+                owners_subquery = (
+                    db.session.query(OktaUserGroupMember.group_id)
+                    .filter(
+                        db.and_(
+                            OktaUserGroupMember.is_owner.is_(True),
+                            db.or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()),
+                        )
+                    )
+                    .subquery()
+                )
+
+                unowned_roles_admin = RoleGroup.query.filter(
+                    db.and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery))
+                ).all()
+
             # https://stackoverflow.com/questions/4186062/sqlalchemy-order-by-descending#comment52902932_9964966
             query = query.filter(
-                RoleGroupMap.role_group_id.in_(
-                    [o.group_id for o in owner_role_ownerships.with_entities(OktaUserGroupMember.group_id).all()]
+                db.or_(
+                    RoleGroupMap.role_group_id.in_(
+                        [o.group_id for o in owner_role_ownerships.with_entities(OktaUserGroupMember.group_id).all()]
+                    ),
+                    RoleGroupMap.role_group_id.in_([rgm.id for rgm in unowned_roles_admin]),
                 )
             ).order_by(
                 nulls_order(
