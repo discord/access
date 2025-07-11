@@ -230,7 +230,9 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
             {disallowedGroups.length != 0 && !isAccessAdmin(currentUser)
-              ? 'Some groups may not be added due to group tag constraints.'
+              ? // this case will never be hit as-is since admins are exempt from owner add constraints
+                // leaving in in case we change the visibility of this dialog in the future
+                'Some groups may not be added due to group tag constraints.'
               : null}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
