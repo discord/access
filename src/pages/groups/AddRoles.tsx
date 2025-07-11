@@ -227,7 +227,22 @@ function AddRolesDialog(props: AddRolesDialogProps) {
     setRoles(roles.filter((user) => user.id != userId));
   };
 
+  // Determine if a role should be disabled
+  const isOptionDisabled = (option: RoleGroup) => {
+    // Already in the list to be added
+    if (roles.map((group) => group.id).includes(option.id)) {
+      return true;
+    }
+
+    if (disallowOwnerAdd && !isAccessAdmin(currentUser)) {
+      return currentUserRoleMembershipIds.includes(option.id!);
+    }
+
+    return false;
+  };
+
   const addRolesText = props.owner ? 'Roles as Owners' : 'Roles as Members';
+  const ownerOrMember = props.owner ? 'owner' : 'member';
 
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
@@ -245,9 +260,13 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
-            {disallowOwnerAdd && !isAccessAdmin(currentUser)
-              ? 'Certain roles cannot be added to this group due to tag constraints.'
-              : null}
+            {disallowOwnerAdd && !isAccessAdmin(currentUser) ? (
+              <>
+                Certain roles cannot be added to this group due to the{' '}
+                <strong>owner can't add themselves as {ownerOrMember}</strong> tag constraint. Please get another owner
+                to add the role or, if you own the role, make a role request instead.
+              </>
+            ) : null}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl size="small" margin="normal" fullWidth>
@@ -297,32 +316,42 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id == value.id,
-                filterOptions: (options) =>
-                  options.filter((option) =>
-                    disallowOwnerAdd && !isAccessAdmin(currentUser)
-                      ? !currentUserRoleMembershipIds.includes(option.id!)
-                      : false || !roles.map((group) => group.id).includes(option.id),
-                  ),
+                getOptionDisabled: (option) => isOptionDisabled(option),
                 onInputChange: (event, newInputValue, reason) => {
                   if (reason != 'reset') {
                     setRoleSearchInput(newInputValue);
                   }
                 },
                 onChange: (event, value) => {
-                  if (value != null) {
+                  if (value != null && !isOptionDisabled(value)) {
                     setRoles([value, ...roles]);
                     setRoleSearchInput('');
                   }
                 },
                 inputValue: roleSearchInput,
                 renderOption: (props, option, state) => {
+                  const disabled = isOptionDisabled(option);
                   return (
-                    <li {...props}>
+                    <li
+                      {...props}
+                      style={{
+                        ...props.style,
+                        opacity: disabled ? 0.5 : 1,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                      }}>
                       <Grid container alignItems="center">
                         <Grid item>
                           <Box>{option.name}</Box>
                           <Typography variant="body2" color="text.secondary">
                             {GROUP_TYPE_ID_TO_LABELS[option.type]}
+                            {disabled &&
+                            disallowOwnerAdd &&
+                            !isAccessAdmin(currentUser) &&
+                            currentUserRoleMembershipIds.includes(option.id!)
+                              ? ' (Cannot add due to tag constraint)'
+                              : disabled && roles.map((group) => group.id).includes(option.id)
+                                ? ' (Already selected)'
+                                : ''}
                           </Typography>
                         </Grid>
                       </Grid>
@@ -337,7 +366,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
             <List
               sx={{
                 overflow: 'auto',
-                minHeight: 300,
+                minHeight: 250,
                 maxHeight: 600,
                 backgroundColor: (theme) =>
                   theme.palette.mode === 'light' ? theme.palette.grey[100] : theme.palette.grey[900],
