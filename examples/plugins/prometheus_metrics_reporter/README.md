@@ -77,7 +77,7 @@ metrics_reporter.set_global_tags({
 
 ### Basic Usage
 
-The plugin automatically registers with the Access Management System when installed. Metrics will be exposed at the `/metrics` endpoint in Prometheus format.
+The plugin automatically registers with Access when installed. Metrics will be exposed at the `/metrics` endpoint in Prometheus format.
 
 ### Metric Types
 
