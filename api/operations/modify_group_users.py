@@ -552,11 +552,24 @@ class ModifyGroupUsers:
                 )
 
             # Record gauge metrics for total group membership count
+            # Use queries instead of accessing relationships to avoid SQLAlchemy issues
             total_members = (
-                len(self.group.active_user_memberships) if hasattr(self.group, "active_user_memberships") else 0
+                db.session.query(OktaUserGroupMember)
+                .filter(
+                    OktaUserGroupMember.group_id == self.group.id,
+                    OktaUserGroupMember.ended_at.is_(None),
+                    OktaUserGroupMember.is_owner.is_(False),
+                )
+                .count()
             )
             total_owners = (
-                len(self.group.active_user_ownerships) if hasattr(self.group, "active_user_ownerships") else 0
+                db.session.query(OktaUserGroupMember)
+                .filter(
+                    OktaUserGroupMember.group_id == self.group.id,
+                    OktaUserGroupMember.ended_at.is_(None),
+                    OktaUserGroupMember.is_owner.is_(True),
+                )
+                .count()
             )
 
             self.metrics_hook.record_gauge(

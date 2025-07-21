@@ -1,6 +1,7 @@
 import logging
 import sys
-from typing import ContextManager, Dict, List, Optional
+from contextlib import nullcontext
+from typing import ContextManager, Dict, Generator, List, Optional
 
 import pluggy
 
@@ -98,6 +99,83 @@ class MetricsReporterPluginSpec:
     @hookspec
     def flush(self) -> None:
         """Force flush any buffered metrics to the backend."""
+
+
+@hookimpl(wrapper=True)
+def record_counter(
+    metric_name: str,
+    value: float = 1.0,
+    tags: Optional[Dict[str, str]] = None,
+    monotonic: bool = True,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception(f"Failed to record counter metric: {metric_name}")
+
+
+@hookimpl(wrapper=True)
+def record_gauge(
+    metric_name: str,
+    value: float,
+    tags: Optional[Dict[str, str]] = None,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception(f"Failed to record gauge metric: {metric_name}")
+
+
+@hookimpl(wrapper=True)
+def record_histogram(
+    metric_name: str,
+    value: float,
+    tags: Optional[Dict[str, str]] = None,
+    buckets: Optional[List[float]] = None,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception(f"Failed to record histogram metric: {metric_name}")
+
+
+@hookimpl(wrapper=True)
+def record_summary(
+    metric_name: str,
+    value: float,
+    tags: Optional[Dict[str, str]] = None,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception(f"Failed to record summary metric: {metric_name}")
+
+
+@hookimpl(wrapper=True)
+def batch_metrics() -> Generator[ContextManager[None], None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception("Failed to create batch metrics context")
+        return nullcontext()
+
+
+@hookimpl(wrapper=True)
+def set_global_tags(
+    tags: Dict[str, str],
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception("Failed to set global tags")
+
+
+@hookimpl(wrapper=True)
+def flush() -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        logger.exception("Failed to flush metrics")
 
 
 def get_metrics_reporter_hook() -> pluggy.HookRelay:

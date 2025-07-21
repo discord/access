@@ -288,6 +288,17 @@ class ModifyRoleGroups:
                 synchronize_session="fetch",
             )
 
+        # Calculate total active role mappings using a query instead of accessing the relationship
+        # to avoid SQLAlchemy InvalidRequestError issues
+        total_active_role_mappings = (
+            db.session.query(RoleGroupMap)
+            .filter(
+                RoleGroupMap.role_group_id == self.role.id,
+                RoleGroupMap.ended_at.is_(None),
+            )
+            .count()
+        )
+
         # Commit all changes so far
         db.session.commit()
 
@@ -517,19 +528,14 @@ class ModifyRoleGroups:
         # Commit all changes
         db.session.commit()
 
-        # Record gauge metrics for role statistics
-        total_active_role_mappings = (
-            len(self.role.active_role_associated_group_mappings)
-            if hasattr(self.role, "active_role_associated_group_mappings")
-            else 0
-        )
-
+        # Record gauge metrics for role statistics after final commit
         self.metrics_hook.record_gauge(
             metric_name="roles.total_active",
             value=1,  # This role is active
             tags={},
         )
 
+        # Use the captured count for the histogram
         self.metrics_hook.record_histogram(
             metric_name="role.membership_count", value=total_active_role_mappings, tags={}
         )
