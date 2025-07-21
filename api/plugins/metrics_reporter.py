@@ -152,9 +152,10 @@ def record_summary(
 
 
 @hookimpl(wrapper=True)
-def batch_metrics() -> Generator[ContextManager[None], None, None]:
+def batch_metrics() -> Generator[None, None, ContextManager[None]]:
     try:
-        return (yield)
+        result = yield
+        return result if result is not None else nullcontext()
     except Exception:
         logger.exception("Failed to create batch metrics context")
         return nullcontext()
