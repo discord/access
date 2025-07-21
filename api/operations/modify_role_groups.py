@@ -22,6 +22,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -121,6 +122,7 @@ class ModifyRoleGroups:
         self.notify = notify
 
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> RoleGroup:
         # Run asychronously to parallelize Okta API requests
@@ -338,6 +340,23 @@ class ModifyRoleGroups:
             # Commit changes so far so we can reference the ids of the new role group maps in the OktaUserGroupMembers
             db.session.commit()
 
+            # Record metrics for role group mapping additions
+            for group in self.groups_to_add:
+                self.metrics_hook.record_counter(
+                    "role.group_mapping.added",
+                    tags={
+                        "is_owner_mapping": "false",
+                    }
+                )
+                
+            for owner_group in self.owner_groups_to_add:
+                self.metrics_hook.record_counter(
+                    "role.group_mapping.added",
+                    tags={
+                        "is_owner_mapping": "true",
+                    }
+                )
+
             # Group members of a role should be added as members to all newly added groups
             # and owner groups associated with that role
             active_role_memberships = (
@@ -495,6 +514,21 @@ class ModifyRoleGroups:
 
         # Commit all changes
         db.session.commit()
+
+        # Record gauge metrics for role statistics
+        total_active_role_mappings = len(self.role.active_role_associated_group_mappings) if hasattr(self.role, 'active_role_associated_group_mappings') else 0
+        
+        self.metrics_hook.record_gauge(
+            "roles.total_active",
+            1,  # This role is active
+            tags={}
+        )
+        
+        self.metrics_hook.record_histogram(
+            "role.membership_count",
+            total_active_role_mappings,
+            tags={}
+        )
 
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)

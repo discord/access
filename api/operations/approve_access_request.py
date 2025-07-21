@@ -9,6 +9,7 @@ from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, 
 from api.operations.constraints import CheckForReason
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.plugins import get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -46,6 +47,7 @@ class ApproveAccessRequest:
         self.notify = notify
 
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> AccessRequest:
         # Don't allow approving a request that is already resolved
@@ -110,6 +112,29 @@ class ApproveAccessRequest:
                     "requester": db.session.get(OktaUser, self.access_request.requester_user_id),
                 }
             )
+        )
+
+        # Calculate approval time in seconds
+        creation_time = self.access_request.created_at
+        approval_time = datetime.utcnow()
+        resolution_time_seconds = (approval_time - creation_time).total_seconds()
+
+        # Record metrics for access request approval
+        group_type = "app_group" if isinstance(self.access_request.active_requested_group, AppGroup) else "role_group"
+        self.metrics_hook.record_counter(
+            "access.request.approved",
+            tags={
+                "group_type": group_type,
+                "request_ownership": str(self.access_request.request_ownership).lower(),
+            }
+        )
+        self.metrics_hook.record_histogram(
+            "access.request.resolution_time",
+            resolution_time_seconds,
+            tags={
+                "resolution_type": "approved",
+                "group_type": group_type,
+            }
         )
 
         if self.access_request.request_ownership:

@@ -8,6 +8,7 @@ from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.models.access_request import get_all_possible_request_approvers
 from api.plugins import get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -42,11 +43,18 @@ class RejectAccessRequest:
         self.notify_requester = notify_requester
 
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> AccessRequest:
         # Don't allow approving a request that is already resolved
         if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
             return self.access_request
+
+        # Calculate rejection time in seconds
+        from datetime import datetime
+        creation_time = self.access_request.created_at
+        rejection_time = datetime.utcnow()
+        resolution_time_seconds = (rejection_time - creation_time).total_seconds()
 
         self.access_request.status = AccessRequestStatus.REJECTED
         self.access_request.resolved_at = db.func.now()
@@ -54,6 +62,32 @@ class RejectAccessRequest:
         self.access_request.resolution_reason = self.rejection_reason
 
         db.session.commit()
+
+        # Get group type for metrics
+        requested_group = (
+            db.session.query(OktaGroup)
+            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .filter(OktaGroup.id == self.access_request.requested_group_id)
+            .first()
+        )
+        
+        # Record metrics for access request rejection
+        group_type = "app_group" if isinstance(requested_group, AppGroup) else "role_group"
+        self.metrics_hook.record_counter(
+            "access.request.rejected",
+            tags={
+                "group_type": group_type,
+                "request_ownership": str(self.access_request.request_ownership).lower(),
+            }
+        )
+        self.metrics_hook.record_histogram(
+            "access.request.resolution_time",
+            resolution_time_seconds,
+            tags={
+                "resolution_type": "rejected",
+                "group_type": group_type,
+            }
+        )
 
         # Audit logging
         email = None

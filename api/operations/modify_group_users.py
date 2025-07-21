@@ -22,6 +22,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -122,6 +123,7 @@ class ModifyGroupUsers:
         self.notify = notify
 
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> OktaGroup:
         # Run asychronously to parallelize Okta API requests
@@ -372,6 +374,27 @@ class ModifyGroupUsers:
         # Commit all changes so far
         db.session.commit()
 
+        # Record metrics for group membership removals
+        group_type = "app_group" if isinstance(self.group, AppGroup) else "role_group"
+        
+        for member in self.members_to_remove:
+            self.metrics_hook.record_counter(
+                "group.membership.removed",
+                tags={
+                    "group_type": group_type,
+                    "is_owner": "false",
+                }
+            )
+            
+        for owner in self.owners_to_remove:
+            self.metrics_hook.record_counter(
+                "group.membership.removed",
+                tags={
+                    "group_type": group_type,
+                    "is_owner": "true",
+                }
+            )
+
         # Mark relevant OktaUserGroupMembers as 'Should expire'
         # Only relevant for the expiring groups page so not adding checks for this field anywhere else since OK if marked to expire
         # then manually renewed from group page or with an access request
@@ -504,6 +527,47 @@ class ModifyGroupUsers:
 
             # Commit changes so far, so we can reference OktaUserGroupMember in approved AccessRequests
             db.session.commit()
+
+            # Record metrics for group membership additions
+            for member in self.members_to_add:
+                self.metrics_hook.record_counter(
+                    "group.membership.added",
+                    tags={
+                        "group_type": group_type,
+                        "is_owner": "false",
+                    }
+                )
+                
+            for owner in self.owners_to_add:
+                self.metrics_hook.record_counter(
+                    "group.membership.added",
+                    tags={
+                        "group_type": group_type,
+                        "is_owner": "true",
+                    }
+                )
+
+            # Record gauge metrics for total group membership count
+            total_members = len(self.group.active_user_memberships) if hasattr(self.group, 'active_user_memberships') else 0
+            total_owners = len(self.group.active_user_ownerships) if hasattr(self.group, 'active_user_ownerships') else 0
+            
+            self.metrics_hook.record_gauge(
+                "groups.total_members",
+                total_members,
+                tags={
+                    "group_type": group_type,
+                    "membership_type": "member",
+                }
+            )
+            
+            self.metrics_hook.record_gauge(
+                "groups.total_members",
+                total_owners,
+                tags={
+                    "group_type": group_type,
+                    "membership_type": "owner",
+                }
+            )
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (
