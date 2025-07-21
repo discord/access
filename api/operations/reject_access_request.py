@@ -52,6 +52,7 @@ class RejectAccessRequest:
 
         # Calculate rejection time in seconds
         from datetime import datetime
+
         creation_time = self.access_request.created_at
         rejection_time = datetime.utcnow()
         resolution_time_seconds = (rejection_time - creation_time).total_seconds()
@@ -70,23 +71,24 @@ class RejectAccessRequest:
             .filter(OktaGroup.id == self.access_request.requested_group_id)
             .first()
         )
-        
+
         # Record metrics for access request rejection
         group_type = "app_group" if isinstance(requested_group, AppGroup) else "role_group"
         self.metrics_hook.record_counter(
-            "access.request.rejected",
+            metric_name="access.request.rejected",
+            value=1.0,
             tags={
                 "group_type": group_type,
                 "request_ownership": str(self.access_request.request_ownership).lower(),
-            }
+            },
         )
         self.metrics_hook.record_histogram(
-            "access.request.resolution_time",
-            resolution_time_seconds,
+            metric_name="access.request.resolution_time",
+            value=resolution_time_seconds,
             tags={
                 "resolution_type": "rejected",
                 "group_type": group_type,
-            }
+            },
         )
 
         # Audit logging

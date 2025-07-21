@@ -81,11 +81,12 @@ class CreateAccessRequest:
         # Record metrics for access request creation
         group_type = "app_group" if isinstance(self.requested_group, AppGroup) else "role_group"
         self.metrics_hook.record_counter(
-            "access.request.created",
+            metric_name="access.request.created",
+            value=1.0,
             tags={
                 "group_type": group_type,
                 "request_ownership": str(self.request_ownership).lower(),
-            }
+            },
         )
 
         # Fetch the users to notify

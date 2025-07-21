@@ -63,10 +63,11 @@ class CreateGroup:
         # Record metrics for role creation
         if isinstance(self.group, RoleGroup):
             self.metrics_hook.record_counter(
-                "role.created",
+                metric_name="role.created",
+                value=1.0,
                 tags={
                     "created_by_user_type": "admin" if self.current_user_id else "system",
-                }
+                },
             )
 
         # If this is an app group, add any app tags

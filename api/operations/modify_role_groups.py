@@ -343,18 +343,20 @@ class ModifyRoleGroups:
             # Record metrics for role group mapping additions
             for group in self.groups_to_add:
                 self.metrics_hook.record_counter(
-                    "role.group_mapping.added",
+                    metric_name="role.group_mapping.added",
+                    value=1.0,
                     tags={
                         "is_owner_mapping": "false",
-                    }
+                    },
                 )
-                
+
             for owner_group in self.owner_groups_to_add:
                 self.metrics_hook.record_counter(
-                    "role.group_mapping.added",
+                    metric_name="role.group_mapping.added",
+                    value=1.0,
                     tags={
                         "is_owner_mapping": "true",
-                    }
+                    },
                 )
 
             # Group members of a role should be added as members to all newly added groups
@@ -516,18 +518,20 @@ class ModifyRoleGroups:
         db.session.commit()
 
         # Record gauge metrics for role statistics
-        total_active_role_mappings = len(self.role.active_role_associated_group_mappings) if hasattr(self.role, 'active_role_associated_group_mappings') else 0
-        
-        self.metrics_hook.record_gauge(
-            "roles.total_active",
-            1,  # This role is active
-            tags={}
+        total_active_role_mappings = (
+            len(self.role.active_role_associated_group_mappings)
+            if hasattr(self.role, "active_role_associated_group_mappings")
+            else 0
         )
-        
+
+        self.metrics_hook.record_gauge(
+            metric_name="roles.total_active",
+            value=1,  # This role is active
+            tags={},
+        )
+
         self.metrics_hook.record_histogram(
-            "role.membership_count",
-            total_active_role_mappings,
-            tags={}
+            metric_name="role.membership_count", value=total_active_role_mappings, tags={}
         )
 
         if len(async_tasks) > 0:

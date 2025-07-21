@@ -376,23 +376,25 @@ class ModifyGroupUsers:
 
         # Record metrics for group membership removals
         group_type = "app_group" if isinstance(self.group, AppGroup) else "role_group"
-        
+
         for member in self.members_to_remove:
             self.metrics_hook.record_counter(
-                "group.membership.removed",
+                metric_name="group.membership.removed",
+                value=1.0,
                 tags={
                     "group_type": group_type,
                     "is_owner": "false",
-                }
+                },
             )
-            
+
         for owner in self.owners_to_remove:
             self.metrics_hook.record_counter(
-                "group.membership.removed",
+                metric_name="group.membership.removed",
+                value=1.0,
                 tags={
                     "group_type": group_type,
                     "is_owner": "true",
-                }
+                },
             )
 
         # Mark relevant OktaUserGroupMembers as 'Should expire'
@@ -531,42 +533,48 @@ class ModifyGroupUsers:
             # Record metrics for group membership additions
             for member in self.members_to_add:
                 self.metrics_hook.record_counter(
-                    "group.membership.added",
+                    metric_name="group.membership.added",
+                    value=1.0,
                     tags={
                         "group_type": group_type,
                         "is_owner": "false",
-                    }
+                    },
                 )
-                
+
             for owner in self.owners_to_add:
                 self.metrics_hook.record_counter(
-                    "group.membership.added",
+                    metric_name="group.membership.added",
+                    value=1.0,
                     tags={
                         "group_type": group_type,
                         "is_owner": "true",
-                    }
+                    },
                 )
 
             # Record gauge metrics for total group membership count
-            total_members = len(self.group.active_user_memberships) if hasattr(self.group, 'active_user_memberships') else 0
-            total_owners = len(self.group.active_user_ownerships) if hasattr(self.group, 'active_user_ownerships') else 0
-            
+            total_members = (
+                len(self.group.active_user_memberships) if hasattr(self.group, "active_user_memberships") else 0
+            )
+            total_owners = (
+                len(self.group.active_user_ownerships) if hasattr(self.group, "active_user_ownerships") else 0
+            )
+
             self.metrics_hook.record_gauge(
-                "groups.total_members",
-                total_members,
+                metric_name="groups.total_members",
+                value=total_members,
                 tags={
                     "group_type": group_type,
                     "membership_type": "member",
-                }
+                },
             )
-            
+
             self.metrics_hook.record_gauge(
-                "groups.total_members",
-                total_owners,
+                metric_name="groups.total_members",
+                value=total_owners,
                 tags={
                     "group_type": group_type,
                     "membership_type": "owner",
-                }
+                },
             )
 
             # Approve any pending access requests for access granted by this operation

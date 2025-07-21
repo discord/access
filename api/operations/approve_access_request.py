@@ -122,19 +122,20 @@ class ApproveAccessRequest:
         # Record metrics for access request approval
         group_type = "app_group" if isinstance(self.access_request.active_requested_group, AppGroup) else "role_group"
         self.metrics_hook.record_counter(
-            "access.request.approved",
+            metric_name="access.request.approved",
+            value=1.0,
             tags={
                 "group_type": group_type,
                 "request_ownership": str(self.access_request.request_ownership).lower(),
-            }
+            },
         )
         self.metrics_hook.record_histogram(
-            "access.request.resolution_time",
-            resolution_time_seconds,
+            metric_name="access.request.resolution_time",
+            value=resolution_time_seconds,
             tags={
                 "resolution_type": "approved",
                 "group_type": group_type,
-            }
+            },
         )
 
         if self.access_request.request_ownership:
