@@ -774,10 +774,10 @@ def test_role_owner_expiring_access_notifications_role_multiple_dates(db: SQLAlc
     assert kwargs["expiration_datetime"] is None
 
 
-# Test with a managed group and a non-managed group. The Access admin should only be notified about expiring access for
-# the non-managed group
+# Test with an externally managed group and a non-externally managed group. The Access admin should only be notified about
+# expiring access for the non-externally managed group
 def test_owner_expiring_access_notifications_managed_group_admin(db: SQLAlchemy, app: Flask, mocker: MockerFixture) -> None:
-    # Create a managed group and a non-managed group
+    # Create an externally managed group and an Access managed group
     group1 = OktaGroupFactory.create()
     group1.is_managed = False
     group2 = OktaGroupFactory.create()
@@ -810,7 +810,7 @@ def test_owner_expiring_access_notifications_managed_group_admin(db: SQLAlchemy,
 
     expiring_access_notifications_owner()
 
-    # Access admin should only be notified about non-managed group
+    # Access admin should only be notified about expiring access for the Access managed group
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
     assert kwargs["owner"].id == access_owner.id
