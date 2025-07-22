@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
 
@@ -771,3 +772,56 @@ def test_role_owner_expiring_access_notifications_role_multiple_dates(db: SQLAlc
     assert membership2 in kwargs["roles"]
     assert membership3 in kwargs["roles"]
     assert kwargs["expiration_datetime"] is None
+
+
+# Test with an externally managed group and a non-externally managed group. The Access admin should only be notified about
+# expiring access for the non-externally managed group
+def test_owner_expiring_access_notifications_managed_group_admin(
+    db: SQLAlchemy, app: Flask, mocker: MockerFixture
+) -> None:
+    # Create an externally managed group and an Access managed group
+    group1 = OktaGroupFactory.create()
+    group1.is_managed = False
+    group2 = OktaGroupFactory.create()
+
+    user = OktaUserFactory.create()
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    expiration_datetime = datetime.now() + timedelta(days=2)
+
+    db.session.add(group1)
+    db.session.add(group2)
+    db.session.add(user)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=group1, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyGroupUsers(
+        group=group2, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+
+    membership = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == group2.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .first()
+    )
+
+    hook = get_notification_hook()
+    expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
+
+    expiring_access_notifications_owner()
+
+    # Access admin should only be notified about expiring access for the Access managed group
+    assert expiring_access_notification_spy.call_count == 1
+    _, kwargs = expiring_access_notification_spy.call_args
+    assert kwargs["owner"].id == access_owner.id
+    assert len(kwargs["group_user_associations"]) == 1
+    assert membership in kwargs["group_user_associations"]
+    assert kwargs["role_group_associations"] is None
+    # TODO eventually clean this up, leaving for now for backwards compatibility
+    assert len(kwargs["groups"]) == 1
+    assert group2 in kwargs["groups"]
+    assert len(kwargs["users"]) == 1
+    assert user in kwargs["users"]
+    assert kwargs["roles"] is None
