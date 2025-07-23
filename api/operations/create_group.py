@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -32,6 +33,8 @@ class CreateGroup:
             None,
         )
 
+        self.metrics_hook = get_metrics_reporter_hook()
+
     def execute(self, *, _group: Optional[T] = None) -> T:
         # Do not allow non-deleted groups with the same name (case-insensitive)
         existing_group = (
@@ -56,6 +59,16 @@ class CreateGroup:
         self.group.id = okta_group.id
         db.session.add(self.group)
         db.session.commit()
+
+        # Record metrics for role creation
+        if isinstance(self.group, RoleGroup):
+            self.metrics_hook.record_counter(
+                metric_name="role.created",
+                value=1.0,
+                tags={
+                    "created_by_user_type": "admin" if self.current_user_id else "system",
+                },
+            )
 
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
