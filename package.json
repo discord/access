@@ -14,8 +14,8 @@
     "@tanstack/react-query": "latest",
     "dayjs": "latest",
     "env-cmd": "latest",
-    "react": "latest",
-    "react-dom": "latest",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
     "react-hook-form": "latest",
     "react-hook-form-mui": "latest",
     "react-router-dom": "latest",
@@ -42,7 +42,7 @@
     ]
   },
   "devDependencies": {
-    "@sentry/cli": "latest",
+    "@sentry/vite-plugin": "^4.0.2",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "latest",
     "@testing-library/user-event": "latest",
