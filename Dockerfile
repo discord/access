@@ -17,8 +17,7 @@ RUN touch .env.production
 ENV VITE_API_SERVER_URL=""
 # Set Sentry plugin environment variables for production build
 ENV NODE_ENV=production
-# Remove source maps after build
-RUN npm run build && rm -rf ./build/**/*.map
+RUN npm run build
 
 # Optional build step #2: upload source maps to Sentry
 FROM build-step AS sentry

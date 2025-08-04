@@ -11,7 +11,7 @@ export default defineConfig({
   plugins: [
     react(),
     // Only include Sentry plugin in production builds
-    ...(process.env.NODE_ENV === 'production' && process.env.SENTRY_AUTH_TOKEN !== ''
+    ...(process.env.NODE_ENV === 'production' && !!process.env.SENTRY_AUTH_TOKEN
       ? [
           sentryVitePlugin({
             org: process.env.SENTRY_ORG,
@@ -41,7 +41,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'build',
-    sourcemap: true, // Enable source maps for Sentry
+    sourcemap:
+      process.env.NODE_ENV === 'development' ||
+      (process.env.NODE_ENV === 'production' && !!process.env.SENTRY_AUTH_TOKEN), // Enable source maps for Sentry
   },
   publicDir: 'public',
   test: {
