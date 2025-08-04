@@ -163,7 +163,7 @@ function GroupDialog(props: GroupDialogProps) {
       case 'app_group':
         const appGroup = group as AppGroup;
         appGroup.app_id = appGroup.app?.id ?? '';
-        appGroup.name = (APP_GROUP_PREFIX + appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
+        appGroup.name = APP_GROUP_PREFIX + (appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
         break;
     }
     delete (group as AppGroup).app;

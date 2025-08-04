@@ -1,6 +1,6 @@
 import {ApiContext} from './apiContext';
 
-const baseUrl = process.env.REACT_APP_API_SERVER_URL;
+const baseUrl = import.meta.env.VITE_API_SERVER_URL;
 
 export type ErrorWrapper<TError> = TError | {status: 'unknown'; payload: string};
 
