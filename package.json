@@ -12,9 +12,6 @@
     "@mui/x-date-pickers": "latest",
     "@sentry/react": "latest",
     "@tanstack/react-query": "latest",
-    "@testing-library/jest-dom": "latest",
-    "@testing-library/react": "latest",
-    "@testing-library/user-event": "latest",
     "dayjs": "latest",
     "env-cmd": "latest",
     "react": "latest",
@@ -26,10 +23,10 @@
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
-    "start": "craco start",
-    "build": "env-cmd -f .env.production craco build",
-    "test": "craco test",
-    "eject": "react-scripts eject",
+    "start": "vite",
+    "build": "env-cmd -f .env.production vite build",
+    "preview": "vite preview",
+    "test": "vitest",
     "prepare": "husky install"
   },
   "browserslist": {
@@ -45,20 +42,23 @@
     ]
   },
   "devDependencies": {
-    "@craco/craco": "latest",
     "@sentry/cli": "latest",
-    "@types/node": "latest",
+    "@testing-library/jest-dom": "^6.6.4",
+    "@testing-library/react": "latest",
+    "@testing-library/user-event": "latest",
+    "@types/node": "^24.2.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@types/styled-components": "latest",
-    "@types/webpack": "latest",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/ui": "^3.2.4",
     "husky": "^8.0.3",
+    "jsdom": "^26.1.0",
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",
-    "react-app-alias": "^2.2.2",
-    "react-scripts": "latest",
     "typescript": "latest",
-    "webpack": "latest"
+    "vite": "^7.0.6",
+    "vitest": "^3.2.4"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"
