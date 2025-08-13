@@ -54,6 +54,8 @@ import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
 
+import {appName} from './config/accessConfig';
+
 const drawerWidth: number = 240;
 
 interface AppBarProps extends MuiAppBarProps {
@@ -211,8 +213,14 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
               textDecoration: 'none',
             }}>
             <Avatar src="/logo-square.png" variant="square" />
-            <Typography component="h1" variant="h5" sx={{px: 2}} color="text.accent">
-              ACCESS
+            <Typography
+              title={appName}
+              component="h1"
+              variant="h5"
+              noWrap
+              sx={{px: 2, maxWidth: 125, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}
+              color="text.accent">
+              {appName.toUpperCase()}
             </Typography>
           </Link>
           <IconButton onClick={toggleDrawer}>
