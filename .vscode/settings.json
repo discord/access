@@ -16,7 +16,12 @@
       "source.organizeImports.ruff": "explicit"
     }
   },
+  "python.languageServer": "Pylance",
+  "python.analysis.typeCheckingMode": "off",
   "python.terminal.activateEnvInCurrentTerminal": true,
+  "python.analysis.inlayHints.variableTypes": false,
+  "python.analysis.inlayHints.functionReturnTypes": false,
+  "python.analysis.inlayHints.callArgumentNames": false,
   "mypy-type-checker.args": [
     "--config-file=.mypy.ini"
   ],
