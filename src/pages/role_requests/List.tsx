@@ -18,6 +18,10 @@ import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Autocomplete from '@mui/material/Autocomplete';
+import Select, {SelectChangeEvent} from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
 
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -50,6 +54,7 @@ export default function ListRoleRequests() {
   const [requesterUserId, setRequesterUserId] = React.useState<string | null>(null);
   const [assigneeUserId, setAssigneeUserId] = React.useState<string | null>(null);
   const [resolverUserId, setResolverUserId] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>('ALL');
 
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
   const [searchInput, setSearchInput] = React.useState('');
@@ -62,6 +67,7 @@ export default function ListRoleRequests() {
     setRequesterUserId(searchParams.get('requester_user_id') ?? null);
     setAssigneeUserId(searchParams.get('assignee_user_id') ?? null);
     setResolverUserId(searchParams.get('resolver_user_id') ?? null);
+    setStatusFilter((searchParams.get('status') as 'PENDING' | 'APPROVED' | 'REJECTED') ?? 'ALL');
     setSearchQuery(searchParams.get('q') ?? null);
     if (searchInput == '') {
       setSearchInput(searchParams.get('q') ?? '');
@@ -78,6 +84,7 @@ export default function ListRoleRequests() {
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
       assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},
       resolverUserId == null ? null : {resolver_user_id: resolverUserId},
+      statusFilter === 'ALL' ? null : {status: statusFilter},
     ),
   });
 
@@ -136,12 +143,40 @@ export default function ListRoleRequests() {
     setSearchQuery(newValue);
   };
 
+  const handleStatusFilter = (event: SelectChangeEvent<'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL'>) => {
+    const newValue = event.target.value as 'PENDING' | 'APPROVED' | 'REJECTED' | 'ALL';
+    if (newValue === 'ALL') {
+      setSearchParams((params) => {
+        params.delete('status');
+        params.set('page', '0');
+        return params;
+      });
+    } else {
+      setSearchParams((params) => {
+        params.set('page', '0');
+        params.set('status', newValue);
+        return params;
+      });
+    }
+    setPage(0);
+    setStatusFilter(newValue);
+  };
+
   return (
     <>
       <ChangeTitle title="Role Requests" />
       <TableContainer component={Paper}>
         <TableTopBar title="Role Requests">
           <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
+          <FormControl size="small" sx={{minWidth: 120}}>
+            <InputLabel id="status-filter-label">Status</InputLabel>
+            <Select labelId="status-filter-label" value={statusFilter} label="Status" onChange={handleStatusFilter}>
+              <MenuItem value="ALL">All</MenuItem>
+              <MenuItem value="PENDING">Pending</MenuItem>
+              <MenuItem value="APPROVED">Approved</MenuItem>
+              <MenuItem value="REJECTED">Rejected</MenuItem>
+            </Select>
+          </FormControl>
           <TableTopBarAutocomplete
             options={searchRows.map(
               (row) =>
