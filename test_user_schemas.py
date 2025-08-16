@@ -22,9 +22,9 @@ flask_app = create_app(testing=True)
 
 with flask_app.app_context():
     try:
-        # Test user schemas
-        from api_v2.schemas.users import (
-            UserSummary, UserBase, UserDetail, UserList, UserSearch, UserGroupMember
+        # Test user schemas - import from __init__ to get rebuilt models
+        from api_v2.schemas import (
+            UserSummary, UserDetail, UserList, UserSearch, UserGroupMember
         )
         print("✓ User schemas imported successfully")
         

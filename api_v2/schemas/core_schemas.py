@@ -1,8 +1,9 @@
 """
-Pydantic schemas for Group-related models.
-Converts from Marshmallow group schemas to Pydantic models with discriminated unions.
+Pydantic schemas for User-related models.
+Converts from Marshmallow OktaUserSchema to Pydantic models.
 
-This handles the polymorphic OktaGroup, RoleGroup, and AppGroup models.
+Note: Users are managed by Okta and synchronized, not created/updated via API.
+Only read operations are supported.
 """
 
 from __future__ import annotations
@@ -10,12 +11,104 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import Discriminator, Field
+from pydantic import Discriminator, EmailStr, Field
 
-from api_v2.schemas.base import BaseCreateSchema, BaseReadSchema, BaseSchema, BaseUpdateSchema
+from api_v2.schemas.base import BaseCreateSchema, BaseReadSchema, BaseSchema, BaseUpdateSchema, ProfileDict
 
-# Only import what we actually use directly in the code (not just type hints)
-from api_v2.schemas.users import UserSummary
+
+class UserSummary(BaseSchema):
+    """
+    Minimal user information for use in relationships.
+    Avoids circular references and reduces payload size.
+    """
+
+    id: str = Field(..., description="User ID")
+    email: EmailStr = Field(..., description="User's email address")
+    first_name: str = Field(..., description="User's first name")
+    last_name: str = Field(..., description="User's last name")
+    display_name: str | None = Field(None, description="User's display name")
+    deleted_at: datetime | None = Field(None, description="When user was deleted")
+
+
+class UserBase(BaseSchema):
+    """
+    Base user model with core fields.
+    Maps to OktaUser model fields.
+    """
+
+    email: EmailStr = Field(..., description="User's email address")
+    first_name: str = Field(..., max_length=255, description="User's first name")
+    last_name: str = Field(..., max_length=255, description="User's last name")
+    display_name: str | None = Field(None, max_length=255, description="User's display name")
+    profile: ProfileDict = Field(default_factory=dict, description="Custom Okta profile attributes")
+
+
+class UserDetail(BaseReadSchema, UserBase):
+    """
+    Schema for detailed user data with relationships.
+    Used by GET /users/{user_id} endpoint.
+    """
+
+    # Manager relationship (avoid circular reference with Optional)
+    manager: UserSummary | None = Field(None, description="User's manager")
+
+    # Membership relationships - populated by the API layer
+    all_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
+        default_factory=list, description="All user memberships and ownerships"
+    )
+    active_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
+        default_factory=list, description="Current active group memberships and ownerships"
+    )
+    active_group_memberships: list["UserGroupMember"] = Field(
+        default_factory=list, description="Current active group memberships (not ownerships)"
+    )
+    active_group_ownerships: list["UserGroupMember"] = Field(
+        default_factory=list, description="Current active group ownerships"
+    )
+
+
+class UserList(BaseReadSchema, UserBase):
+    """
+    Schema for user list/search results.
+    Used by GET /users endpoint - includes minimal fields for performance.
+    """
+
+    # Only includes basic fields, no relationships for list view
+    pass
+
+
+class UserSearch(BaseSchema):
+    """
+    Schema for user search parameters.
+    """
+
+    q: str | None = Field(None, description="Search query across name, email, and custom attributes")
+    page: int = Field(1, ge=1, description="Page number")
+    per_page: int = Field(25, ge=1, le=100, description="Items per page")
+
+
+class UserGroupMember(BaseReadSchema):
+    """
+    Schema for user-group membership/ownership relationships.
+    Maps to OktaUserGroupMember model.
+    """
+
+    user_id: str = Field(..., description="User ID")
+    group_id: str = Field(..., description="Group ID")
+    role_group_map_id: int | None = Field(None, description="Role group mapping ID if membership via role")
+    is_owner: bool = Field(False, description="Is this user an owner of the group")
+    created_reason: str = Field(default="", description="Reason for adding user to group")
+    should_expire: bool = Field(False, description="Should this membership expire")
+    ended_at: datetime | None = Field(None, description="When membership ended")
+    created_actor_id: str | None = Field(None, description="ID of user who created this membership")
+    ended_actor_id: str | None = Field(None, description="ID of user who ended this membership")
+
+    # Forward references to avoid circular imports - will be resolved at runtime
+    group: "GroupRead | None" = Field(None, description="Group this membership is for")
+    user: UserSummary | None = Field(None, description="User this membership is for")
+    created_actor: UserSummary | None = Field(None, description="User who created this membership")
+    ended_actor: UserSummary | None = Field(None, description="User who ended this membership")
+
 
 # Type aliases for JSON fields
 ExternallyManagedData = dict[str, Any]
@@ -37,7 +130,7 @@ class GroupBase(BaseSchema):
     plugin_data: PluginData = Field(default_factory=dict, description="Data for group plugin integrations")
 
 
-class GroupReadBase(BaseReadSchema, GroupBase):
+class NonRoleGroupReadBase(BaseReadSchema, GroupBase):
     """
     Base group schema with common fields for all group types.
     """
@@ -77,7 +170,7 @@ class GroupSummary(BaseSchema):
 # Discriminated Union for Polymorphic Groups
 
 
-class OktaGroupRead(GroupReadBase):
+class OktaGroupRead(NonRoleGroupReadBase):
     """
     Standard Okta group schema.
     This is the base group type.
@@ -104,7 +197,7 @@ class OktaGroupRead(GroupReadBase):
     )
 
 
-class RoleGroupRead(GroupReadBase):
+class RoleGroupRead(BaseReadSchema, GroupBase):
     """
     Role group schema.
     Role groups grant permissions to other groups.
@@ -127,7 +220,7 @@ class RoleGroupRead(GroupReadBase):
     )
 
 
-class AppGroupRead(GroupReadBase):
+class AppGroupRead(NonRoleGroupReadBase):
     """
     App group schema.
     App groups are associated with applications.
@@ -268,8 +361,8 @@ class GroupMemberAction(BaseSchema):
 class GroupMemberList(BaseSchema):
     """Schema for listing group members."""
 
-    members: list[UserSummary] = Field(default_factory=list, description="Group members")
-    owners: list[UserSummary] = Field(default_factory=list, description="Group owners")
+    members: list["UserSummary"] = Field(default_factory=list, description="Group members")
+    owners: list["UserSummary"] = Field(default_factory=list, description="Group owners")
     total_members: int = Field(0, description="Total number of members")
     total_owners: int = Field(0, description="Total number of owners")
 
@@ -290,8 +383,8 @@ class RoleGroupMap(BaseReadSchema):
     # Forward references to avoid circular imports
     role_group: RoleGroupRead | None = Field(None, description="Role group")
     group: "GroupRead | None" = Field(None, description="Target group")
-    created_actor: UserSummary | None = Field(None, description="User who created this mapping")
-    ended_actor: UserSummary | None = Field(None, description="User who ended this mapping")
+    created_actor: "UserSummary | None" = Field(None, description="User who created this mapping")
+    ended_actor: "UserSummary | None" = Field(None, description="User who ended this mapping")
 
     # Membership relationships through this role mapping
     all_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
@@ -322,3 +415,156 @@ class OktaGroupTagMap(BaseReadSchema):
 
     app_tag_mapping: "AppTagMap | None" = Field(None, description="Associated app tag mapping")
     active_app_tag_mapping: "AppTagMap | None" = Field(None, description="Active associated app tag mapping")
+
+
+class AppRead(BaseSchema):
+    """Placeholder for App schema - to be implemented."""
+
+    id: str
+    name: str
+
+
+# Type aliases for JSON fields
+ConstraintsDict = dict[str, Any]
+
+
+class TagBase(BaseSchema):
+    """
+    Base tag schema with common fields.
+    """
+
+    name: str = Field(..., min_length=1, max_length=255, description="Tag name")
+    description: str = Field("", max_length=1024, description="Tag description")
+    enabled: bool = Field(True, description="Whether the tag is enabled")
+    constraints: ConstraintsDict = Field(default_factory=dict, description="Tag constraints configuration")
+
+
+class TagSummary(BaseSchema):
+    """
+    Minimal tag information for use in relationships.
+    """
+
+    id: str = Field(..., description="Tag ID")
+    name: str = Field(..., description="Tag name")
+    description: str = Field("", description="Tag description")
+    enabled: bool = Field(True, description="Whether the tag is enabled")
+    deleted_at: datetime | None = Field(None, description="When tag was deleted")
+
+
+class TagRead(BaseReadSchema, TagBase):
+    """
+    Schema for reading tags with full details.
+    """
+
+    # Relationships - would include app and group mappings
+    # apps_count: int = Field(0, description="Number of apps using this tag")
+    # groups_count: int = Field(0, description="Number of groups using this tag")
+
+
+class TagCreate(BaseCreateSchema, TagBase):
+    """
+    Schema for creating tags.
+    """
+
+    # Optional apps to associate with the tag during creation
+    app_ids: list[str] = Field(default_factory=list, description="App IDs to associate with this tag")
+
+
+class TagUpdate(BaseUpdateSchema):
+    """
+    Schema for updating tags.
+    All fields are optional to support partial updates.
+    """
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=1024)
+    enabled: bool | None = None
+    constraints: ConstraintsDict | None = None
+
+    # Apps to add/remove during update
+    app_ids_to_add: list[str] = Field(default_factory=list, description="App IDs to add to this tag")
+    app_ids_to_remove: list[str] = Field(default_factory=list, description="App IDs to remove from this tag")
+
+
+class TagList(BaseReadSchema, TagBase):
+    """
+    Simplified schema for tag lists.
+    Used for search results and basic tag listings.
+    """
+
+    # Include summary counts for list view
+    apps_count: int = Field(0, description="Number of apps using this tag")
+    groups_count: int = Field(0, description="Number of groups using this tag")
+
+
+class TagSearch(BaseSchema):
+    """Schema for tag search parameters."""
+
+    q: str | None = Field(None, description="Search query across name and description")
+    enabled: bool | None = Field(None, description="Filter by enabled status")
+    app_id: str | None = Field(None, description="Filter by associated app")
+    page: int = Field(1, ge=1, description="Page number")
+    per_page: int = Field(25, ge=1, le=100, description="Items per page")
+
+
+# Tag mapping schemas (for associations between tags and apps/groups)
+
+
+class TagMappingBase(BaseSchema):
+    """
+    Base schema for tag mappings (relationships between tags and other entities).
+    """
+
+    tag_id: str = Field(..., description="Tag ID")
+    created_at: datetime = Field(..., description="When the mapping was created")
+    ended_at: datetime | None = Field(None, description="When the mapping ended")
+
+
+class AppTagMappingRead(BaseReadSchema, TagMappingBase):
+    """
+    Schema for app-tag mappings.
+    """
+
+    app_id: str = Field(..., description="App ID")
+
+    # Relationships
+    tag: TagSummary | None = Field(None, description="Associated tag")
+    app: "AppSummary | None" = Field(None, description="Associated app")
+
+
+class GroupTagMappingRead(BaseReadSchema, TagMappingBase):
+    """
+    Schema for group-tag mappings.
+    """
+
+    group_id: str = Field(..., description="Group ID")
+    app_tag_map_id: int | None = Field(None, description="Associated app tag mapping ID")
+
+    # Relationships
+    tag: TagSummary | None = Field(None, description="Associated tag")
+    group: "GroupSummary | None" = Field(None, description="Associated group")
+    app_tag_mapping: AppTagMappingRead | None = Field(None, description="Associated app tag mapping")
+
+
+class TagMappingCreate(BaseCreateSchema):
+    """
+    Schema for creating tag mappings.
+    """
+
+    entity_type: str = Field(..., description="Type of entity (app or group)")
+    entity_id: str = Field(..., description="ID of the entity to map")
+    tag_id: str = Field(..., description="Tag ID")
+
+
+class TagMappingList(BaseSchema):
+    """
+    Schema for listing tag mappings with entity details.
+    """
+
+    id: int = Field(..., description="Mapping ID")
+    tag: TagSummary = Field(..., description="Associated tag")
+    entity_type: str = Field(..., description="Type of entity")
+    entity_id: str = Field(..., description="Entity ID")
+    entity_name: str = Field("", description="Entity name")
+    created_at: datetime = Field(..., description="When mapping was created")
+    ended_at: datetime | None = Field(None, description="When mapping ended")
