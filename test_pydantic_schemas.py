@@ -9,10 +9,14 @@ import os
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Set required environment variables for testing
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Set required environment variables for testing  
 os.environ['FLASK_ENV'] = 'test'
 os.environ['DATABASE_URI'] = 'sqlite:///instance/access.db'
-os.environ['CURRENT_OKTA_USER_EMAIL'] = 'test@example.com'
+# CURRENT_OKTA_USER_EMAIL will be loaded from .env file
 
 # Set up Flask app context
 from api.app import create_app

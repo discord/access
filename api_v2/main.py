@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api_v2.middleware.security import SecurityHeadersMiddleware
-from api_v2.routers import health, users
+from api_v2.routers import health, users, groups
 
 app = FastAPI(
     title="Access Management API v2",
@@ -32,6 +32,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Include routers
 app.include_router(health.router, prefix="/api/v2")
 app.include_router(users.router, prefix="/api/v2")
+app.include_router(groups.router, prefix="/api/v2")
 
 @app.get("/")
 async def root():
