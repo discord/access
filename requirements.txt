@@ -40,6 +40,12 @@ okta==2.9.8
 # Plugins
 pluggy==1.5.0
 
+# FastAPI (for migration to FastAPI)
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
+python-multipart==0.0.20
+
 # Test - TODO: Move test packages to separate file
 tox==4.23.2
 # Lint

@@ -1,0 +1,21 @@
+# Dockerfile for FastAPI app (runs alongside Flask during migration)
+FROM python:3.13
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire application
+COPY . .
+
+# Set environment variables
+ENV FLASK_ENV=production
+ENV PYTHONPATH=/app
+
+# Expose port 8000 for FastAPI
+EXPOSE 8000
+
+# Command to run FastAPI with uvicorn
+CMD ["uvicorn", "api_v2.main:app", "--host", "0.0.0.0", "--port", "8000"]
