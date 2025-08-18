@@ -1,4 +1,5 @@
 declare const ACCESS_CONFIG: any;
+declare const APP_NAME: string;
 
 interface ImportMetaEnv {
   readonly VITE_API_SERVER_URL: string;

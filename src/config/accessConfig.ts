@@ -11,4 +11,4 @@ const accessConfig: AccessConfig = ACCESS_CONFIG as AccessConfig;
 
 export default accessConfig;
 
-export const appName = process.env.REACT_APP_APP_NAME || 'Access';
+export const appName = APP_NAME;
