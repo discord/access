@@ -17,7 +17,7 @@ jobs:
     steps:
       - id: checkout
         name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -48,4 +48,6 @@ jobs:
             SENTRY_RELEASE=${{ github.sha }}
             PUSH_SENTRY_RELEASE=true
           secrets: |
-            "SENTRY_CLI_RC=${{ secrets.SENTRY_CLI_RC }}"
+            "SENTRY_ORG=${{ secrets.SENTRY_ORG }}"
+            "SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}"
+            "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
