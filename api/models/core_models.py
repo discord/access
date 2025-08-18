@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
+from api import config
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, validates
 from sqlalchemy.sql import expression
@@ -625,7 +626,7 @@ class AppGroup(OktaGroup):
 
 
 class App(db.Model):
-    ACCESS_APP_RESERVED_NAME = "Access"
+    ACCESS_APP_RESERVED_NAME = config.APP_NAME
 
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
