@@ -53,16 +53,16 @@ class UserDetail(BaseReadSchema, UserBase):
     manager: UserSummary | None = Field(None, description="User's manager")
 
     # Membership relationships - populated by the API layer
-    all_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
+    all_group_memberships_and_ownerships: list[UserGroupMember] = Field(
         default_factory=list, description="All user memberships and ownerships"
     )
-    active_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
+    active_group_memberships_and_ownerships: list[UserGroupMember] = Field(
         default_factory=list, description="Current active group memberships and ownerships"
     )
-    active_group_memberships: list["UserGroupMember"] = Field(
+    active_group_memberships: list[UserGroupMember] = Field(
         default_factory=list, description="Current active group memberships (not ownerships)"
     )
-    active_group_ownerships: list["UserGroupMember"] = Field(
+    active_group_ownerships: list[UserGroupMember] = Field(
         default_factory=list, description="Current active group ownerships"
     )
 
@@ -110,6 +110,17 @@ class UserGroupMember(BaseReadSchema):
     ended_actor: UserSummary | None = Field(None, description="User who ended this membership")
 
 
+# Discriminated Union for all group types
+def get_group_type(v: Any) -> str:
+    """Discriminator function to determine group type."""
+    if isinstance(v, dict):
+        return v.get("type", "okta_group")
+    return getattr(v, "type", "okta_group")
+
+
+# GroupTypeLiteral = Literal["okta_group", "role_group", "app_group"]
+# GroupType = Field(discriminator=Discriminator(get_group_type))
+
 # Type aliases for JSON fields
 ExternallyManagedData = dict[str, Any]
 PluginData = dict[str, Any]
@@ -129,28 +140,46 @@ class GroupBase(BaseSchema):
     )
     plugin_data: PluginData = Field(default_factory=dict, description="Data for group plugin integrations")
 
+    all_user_memberships_and_ownerships: list[UserGroupMember] = Field(
+        default_factory=list, description="All user memberships and ownerships"
+    )
+    active_user_memberships_and_ownerships: list[UserGroupMember] = Field(
+        default_factory=list, description="Current active user memberships and ownerships"
+    )
+    active_user_memberships: list[UserGroupMember] = Field(
+        default_factory=list, description="Current active user memberships (not ownerships)"
+    )
+    active_user_ownerships: list[UserGroupMember] = Field(
+        default_factory=list, description="Current active user ownerships"
+    )
+
+    all_group_tags: list[OktaGroupTagMap] = Field(default_factory=list, description="All tag mappings for this group")
+    active_group_tags: list[OktaGroupTagMap] = Field(
+        default_factory=list, description="Active tag mappings for this group"
+    )
+
 
 class NonRoleGroupReadBase(BaseReadSchema, GroupBase):
     """
     Base group schema with common fields for all group types.
     """
 
-    all_user_memberships_and_ownerships: list["UserGroupMember"] = Field(
-        default_factory=list, description="All user memberships and ownerships"
+    all_role_mappings: list[RoleGroupMap] = Field(default_factory=list, description="All role mappings to this group")
+    active_role_mappings: list[RoleGroupMap] = Field(
+        default_factory=list, description="Active role mappings to this group"
     )
-    active_user_memberships_and_ownerships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active user memberships and ownerships"
+    active_role_member_mappings: list[RoleGroupMap] = Field(
+        default_factory=list, description="Active role member mappings to this group"
     )
-    active_user_memberships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active user memberships (not ownerships)"
-    )
-    active_user_ownerships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active user ownerships"
+    active_role_owner_mappings: list[RoleGroupMap] = Field(
+        default_factory=list, description="Active role owner mappings to this group"
     )
 
-    all_group_tags: list["OktaGroupTagMap"] = Field(default_factory=list, description="All tag mappings for this group")
-    active_group_tags: list["OktaGroupTagMap"] = Field(
-        default_factory=list, description="Active tag mappings for this group"
+    active_non_role_user_memberships: list[UserGroupMember] = Field(
+        default_factory=list, description="Current active non-role user memberships"
+    )
+    active_non_role_user_ownerships: list[UserGroupMember] = Field(
+        default_factory=list, description="Current active non-role user ownerships"
     )
 
 
@@ -164,12 +193,11 @@ class GroupSummary(BaseSchema):
     type: str = Field(..., description="Group type (okta_group, role_group, app_group)")
     name: str = Field(..., description="Group name")
     description: str = Field("", description="Group description")
+    is_managed: bool = Field(True, description="Whether this group is managed by Access")
     deleted_at: datetime | None = Field(None, description="When group was deleted")
 
 
 # Discriminated Union for Polymorphic Groups
-
-
 class OktaGroupRead(NonRoleGroupReadBase):
     """
     Standard Okta group schema.
@@ -178,24 +206,6 @@ class OktaGroupRead(NonRoleGroupReadBase):
 
     type: Literal["okta_group"] = Field("okta_group", description="Group type discriminator")
 
-    all_role_mappings: list["RoleGroupMap"] = Field(default_factory=list, description="All role mappings to this group")
-    active_role_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role mappings to this group"
-    )
-    active_role_member_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role member mappings to this group"
-    )
-    active_role_owner_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role owner mappings to this group"
-    )
-
-    active_non_role_user_memberships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active non-role user memberships"
-    )
-    active_non_role_user_ownerships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active non-role user ownerships"
-    )
-
 
 class RoleGroupRead(BaseReadSchema, GroupBase):
     """
@@ -203,19 +213,19 @@ class RoleGroupRead(BaseReadSchema, GroupBase):
     Role groups grant permissions to other groups.
     """
 
-    type: Literal["role_group"] = Field("role_group", description="Group type discriminator")
+    type: Literal["role_group"] = Field("role_group", description="Group type discriminator", discriminator="type")
 
     # Role-specific relationships - groups this role grants access to
-    all_role_associated_group_mappings: list["RoleGroupMap"] = Field(
+    all_role_associated_group_mappings: list[RoleGroupMap] = Field(
         default_factory=list, description="Groups that this role grants access to"
     )
-    active_role_associated_group_mappings: list["RoleGroupMap"] = Field(
+    active_role_associated_group_mappings: list[RoleGroupMap] = Field(
         default_factory=list, description="Groups that this role grants access to"
     )
-    active_role_associated_group_member_mappings: list["RoleGroupMap"] = Field(
+    active_role_associated_group_member_mappings: list[RoleGroupMap] = Field(
         default_factory=list, description="Groups that this role grants member access to"
     )
-    active_role_associated_group_owner_mappings: list["RoleGroupMap"] = Field(
+    active_role_associated_group_owner_mappings: list[RoleGroupMap] = Field(
         default_factory=list, description="Groups that this role grants owner access to"
     )
 
@@ -233,35 +243,8 @@ class AppGroupRead(NonRoleGroupReadBase):
     # App-specific relationships
     app: "AppRead | None" = Field(None, description="Associated application")
 
-    all_role_mappings: list["RoleGroupMap"] = Field(default_factory=list, description="All role mappings to this group")
-    active_role_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role mappings to this group"
-    )
-    active_role_member_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role member mappings to this group"
-    )
-    active_role_owner_mappings: list["RoleGroupMap"] = Field(
-        default_factory=list, description="Active role owner mappings to this group"
-    )
-
-    active_non_role_user_memberships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active non-role user memberships"
-    )
-    active_non_role_user_ownerships: list["UserGroupMember"] = Field(
-        default_factory=list, description="Current active non-role user ownerships"
-    )
-
-
-# Discriminated Union for all group types
-def get_group_type(v: Any) -> str:
-    """Discriminator function to determine group type."""
-    if isinstance(v, dict):
-        return v.get("type", "okta_group")
-    return getattr(v, "type", "okta_group")
-
 
 GroupRead = OktaGroupRead | RoleGroupRead | AppGroupRead
-GroupReadAnnotated = Field(discriminator=Discriminator(get_group_type))
 
 
 # Create/Update schemas for groups
@@ -361,8 +344,8 @@ class GroupMemberAction(BaseSchema):
 class GroupMemberList(BaseSchema):
     """Schema for listing group members."""
 
-    members: list["UserSummary"] = Field(default_factory=list, description="Group members")
-    owners: list["UserSummary"] = Field(default_factory=list, description="Group owners")
+    members: list[UserSummary] = Field(default_factory=list, description="Group members")
+    owners: list[UserSummary] = Field(default_factory=list, description="Group owners")
     total_members: int = Field(0, description="Total number of members")
     total_owners: int = Field(0, description="Total number of owners")
 
@@ -382,9 +365,9 @@ class RoleGroupMap(BaseReadSchema):
 
     # Forward references to avoid circular imports
     role_group: RoleGroupRead | None = Field(None, description="Role group")
-    group: "GroupRead | None" = Field(None, description="Target group")
-    created_actor: "UserSummary | None" = Field(None, description="User who created this mapping")
-    ended_actor: "UserSummary | None" = Field(None, description="User who ended this mapping")
+    group: GroupRead | None = Field(None, description="Target group")
+    created_actor: UserSummary | None = Field(None, description="User who created this mapping")
+    ended_actor: UserSummary | None = Field(None, description="User who ended this mapping")
 
     # Membership relationships through this role mapping
     all_group_memberships_and_ownerships: list["UserGroupMember"] = Field(
@@ -415,6 +398,17 @@ class OktaGroupTagMap(BaseReadSchema):
 
     app_tag_mapping: "AppTagMap | None" = Field(None, description="Associated app tag mapping")
     active_app_tag_mapping: "AppTagMap | None" = Field(None, description="Active associated app tag mapping")
+
+
+class AppSummary(BaseSchema):
+    """
+    Minimal app information for use in relationships.
+    Avoids circular references and reduces payload size.
+    """
+
+    id: str = Field(..., description="App ID")
+    name: str = Field(..., description="App name")
+    deleted_at: datetime | None = Field(None, description="When app was deleted")
 
 
 class AppRead(BaseSchema):
@@ -520,6 +514,21 @@ class TagMappingBase(BaseSchema):
     ended_at: datetime | None = Field(None, description="When the mapping ended")
 
 
+class AppTagMap(BaseReadSchema):
+    """
+    Schema for app-tag mappings.
+    Maps to AppTagMap model - represents which tags are applied to apps.
+    """
+
+    app_id: str = Field(..., description="App ID")
+    tag_id: str = Field(..., description="Tag ID")
+    ended_at: datetime | None = Field(None, description="When this tag mapping ended")
+
+    # Relationships
+    tag: TagSummary | None = Field(None, description="Associated tag")
+    app: AppSummary | None = Field(None, description="Associated app")
+
+
 class AppTagMappingRead(BaseReadSchema, TagMappingBase):
     """
     Schema for app-tag mappings.
@@ -529,7 +538,7 @@ class AppTagMappingRead(BaseReadSchema, TagMappingBase):
 
     # Relationships
     tag: TagSummary | None = Field(None, description="Associated tag")
-    app: "AppSummary | None" = Field(None, description="Associated app")
+    app: AppSummary | None = Field(None, description="Associated app")
 
 
 class GroupTagMappingRead(BaseReadSchema, TagMappingBase):
