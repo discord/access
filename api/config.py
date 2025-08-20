@@ -88,4 +88,4 @@ REACT_SENTRY_DSN = os.getenv("REACT_SENTRY_DSN")
 APP_VERSION = os.getenv("APP_VERSION", "Not Defined")
 
 # Specify a custom app name
-APP_NAME = os.getenv("REACT_APP_APP_NAME", "Access")
+APP_NAME = os.getenv("APP_NAME", "Access")
