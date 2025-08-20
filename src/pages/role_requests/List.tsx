@@ -18,6 +18,7 @@ import TextField from '@mui/material/TextField';
 import Box from '@mui/material/Box';
 import Grid from '@mui/material/Grid';
 import Autocomplete from '@mui/material/Autocomplete';
+import {SelectChangeEvent} from '@mui/material/Select';
 
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -29,6 +30,7 @@ import {useGetRoleRequests} from '../../api/apiComponents';
 import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
 import {OktaUserGroupMember} from '../../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
@@ -50,6 +52,7 @@ export default function ListRoleRequests() {
   const [requesterUserId, setRequesterUserId] = React.useState<string | null>(null);
   const [assigneeUserId, setAssigneeUserId] = React.useState<string | null>(null);
   const [resolverUserId, setResolverUserId] = React.useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilterValue>('ALL');
 
   const [searchQuery, setSearchQuery] = React.useState<string | null>(null);
   const [searchInput, setSearchInput] = React.useState('');
@@ -62,6 +65,7 @@ export default function ListRoleRequests() {
     setRequesterUserId(searchParams.get('requester_user_id') ?? null);
     setAssigneeUserId(searchParams.get('assignee_user_id') ?? null);
     setResolverUserId(searchParams.get('resolver_user_id') ?? null);
+    setStatusFilter((searchParams.get('status') as StatusFilterValue) ?? 'ALL');
     setSearchQuery(searchParams.get('q') ?? null);
     if (searchInput == '') {
       setSearchInput(searchParams.get('q') ?? '');
@@ -78,6 +82,7 @@ export default function ListRoleRequests() {
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
       assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},
       resolverUserId == null ? null : {resolver_user_id: resolverUserId},
+      statusFilter === 'ALL' ? null : {status: statusFilter},
     ),
   });
 
@@ -136,12 +141,32 @@ export default function ListRoleRequests() {
     setSearchQuery(newValue);
   };
 
+  const handleStatusFilter = (event: SelectChangeEvent<StatusFilterValue>) => {
+    const newValue = event.target.value as StatusFilterValue;
+    if (newValue === 'ALL') {
+      setSearchParams((params) => {
+        params.delete('status');
+        params.set('page', '0');
+        return params;
+      });
+    } else {
+      setSearchParams((params) => {
+        params.set('page', '0');
+        params.set('status', newValue);
+        return params;
+      });
+    }
+    setPage(0);
+    setStatusFilter(newValue);
+  };
+
   return (
     <>
       <ChangeTitle title="Role Requests" />
       <TableContainer component={Paper}>
         <TableTopBar title="Role Requests">
           <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
+          <StatusFilter value={statusFilter} onChange={handleStatusFilter} />
           <TableTopBarAutocomplete
             options={searchRows.map(
               (row) =>
