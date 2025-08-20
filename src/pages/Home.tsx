@@ -18,9 +18,11 @@ import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
 
+import {appName} from '../config/accessConfig';
+
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
-  general: ['Welcome to Access!', 'Overview', <GeneralIcon />],
+  general: [`Welcome to ${appName}!`, 'Overview', <GeneralIcon />],
   users: ['Guide for All Users', 'All Users', <UserIcon />],
   'people-lead': ['Guide for Group and Role Owners', 'Group and Role Owners', <PeopleLeadIcon />],
   'app owner': ['Guide for App Owners', 'App Owners', <AppOwnerIcon />],
@@ -31,32 +33,25 @@ const sections: Record<string, [string, string, ReactNode]> = {
 const guide: Record<string, Record<string, string>> = {
   // section shorthand --> [question --> answer]
   general: {
-    'What is Access?':
-      'Access is a tool for managing who in your organization has access to different resources. It expands upon the feature set provided by Okta and was created to be transparent and discoverable and to enable employees to view and manage their own access.',
-    'Users, Groups, Roles, Apps':
-      "Users are people in your organization. This may include, but is not limited to, employees and contractors. Users may be a member or owner of a group. \n\nThere are three types of groups in Access with different features, namely 'vanilla' standalone groups, app groups, and roles, all of which map to Okta groups. \n\nRoles may be added as members or owners of app groups and standalone groups. When this happens, all members of the role are added as a member or owner of the group. \n\nApps are resources, such as third-party SaaS applications (eg. GitHub), or first-party services, like an internal administrator dashboard. Any app that is compatible with Okta can be an app within Access. App groups can be tied to specific permissions associated with an app.",
-    'Access Requests':
-      "Users can create access requests to join a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or Access administrator. The 'Access Requests' tab displays all access requests in your organization as well as your own requests and requests assigned to you. Access requests may also be created from that page with the Create Request button and dialog.",
+    [`What is ${appName}?`]: `${appName} is a tool for managing who in your organization has access to different resources. It expands upon the feature set provided by Okta and was created to be transparent and discoverable and to enable employees to view and manage their own access.`,
+    'Users, Groups, Roles, Apps': `Users are people in your organization. This may include, but is not limited to, employees and contractors. Users may be a member or owner of a group. \n\nThere are three types of groups in ${appName} with different features, namely 'vanilla' standalone groups, app groups, and roles, all of which map to Okta groups. \n\nRoles may be added as members or owners of app groups and standalone groups. When this happens, all members of the role are added as a member or owner of the group. \n\nApps are resources, such as third-party SaaS applications (eg. GitHub), or first-party services, like an internal administrator dashboard. Any app that is compatible with Okta can be an app within ${appName}. App groups can be tied to specific permissions associated with an app.`,
+    'Access Requests': `Users can create access requests to join a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Access Requests' tab displays all access requests in your organization as well as your own requests and requests assigned to you. Access requests may also be created from that page with the Create Request button and dialog.`,
     'Audit Pages':
       "Every user, group, and role has a corresponding audit page, which shows the access history for the entity. It can be viewed by clicking the clock-arrow icon next to the user/role/group name on the entity's page. Roles additionally have a 'Role audit' page that can be viewed by clicking the icon below the clock-arrow icon on a role page (it's similar to a Celtic knot). It displays the role's membership and ownership history.",
     'Tags and Constraints':
       "Tags can be used to label groups and apps (for their app groups) and, optionally, to apply constraints. These constraints include setting an ownership or membership time limit, requiring a reason for access, and disabling owners from adding themselves as members of a group. To view tags, click the 'Tags' button at the top of the 'Groups' or 'Apps' pages.",
-    'Auto-approvals and other plugins':
-      'Access uses the Python pluggy framework to allow for additional functionality to be added to the system. Some examples of this include adding a notification plugin to send emails, SMS, etc. when access requests are made and resolved and adding a conditional access plugin to automatically approve or deny requests if they match certain conditions. For more information and examples of plugins, see the Access README at https://github.com/discord/access?tab=readme-ov-file#plugins.',
-    'Learn more about Access':
-      'Access is open-sourced under the Apache 2.0 license. View the source code at https://github.com/discord/access and check out our blog post that talks about the development process at dis.gd/access-blog.',
+    'Auto-approvals and other plugins': `${appName} uses the Python pluggy framework to allow for additional functionality to be added to the system. Some examples of this include adding a notification plugin to send emails, SMS, etc. when access requests are made and resolved and adding a conditional access plugin to automatically approve or deny requests if they match certain conditions. For more information and examples of plugins, see the ${appName} README at https://github.com/discord/access?tab=readme-ov-file#plugins.`,
+    [`Learn more about ${appName}`]: `${appName} is open-sourced under the Apache 2.0 license. View the source code at https://github.com/discord/access and check out our blog post that talks about the development process at dis.gd/access-blog.`,
   },
   users: {
     'Creating an access request':
       "You can create access requests for membership or ownership by clicking 'Request Membership' or 'Request Ownership' directly from the page for the group or role you need access to. Otherwise, navigate to the 'Access Requests' tab then click the 'Create Request' button at the top of the page. From there, you can select the group, duration, and provide a reason for the request. After submitting, the group owner(s) will be notified to approve or deny the request.",
     'View your access':
       'On the top right of any page, you can click the person icon to navigate to your user page. From there, you can see all of the groups you are an owner or member of.',
-    "View someone else's access":
-      "To view someone else's access, navigate to the 'Users' tab. From there, you can scroll through all of the people in your organization or search for a specific user's page. Alternatively, you can click the user's name almost anywhere it appears in Access (on a group page, in an access request, etc.).",
+    "View someone else's access": `To view someone else's access, navigate to the 'Users' tab. From there, you can scroll through all of the people in your organization or search for a specific user's page. Alternatively, you can click the user's name almost anywhere it appears in ${appName} (on a group page, in an access request, etc.).`,
     'View a group or role':
       "The 'Groups' tab shows a list of all groups, app groups, and roles. Click on any row to view the group's details and who has access to the group. \n\nRoles may also be viewed separately by clicking the 'Roles' tab in the menu. In addition to showing owners and members, each role page displays the groups to which role membership grants access.",
-    'View an app':
-      "The 'Apps' tab displays a list of all apps connected to Access. From there, you can select any row to view the details of the app and any app groups associated with the app.",
+    'View an app': `The 'Apps' tab displays a list of all apps connected to ${appName}. From there, you can select any row to view the details of the app and any app groups associated with the app.`,
     'View your access history':
       'From your user page, click the clock-arrow icon to the right of your name to navigate to your user audit page. There, you can see your ownership and membership history as well as additional details like who added or removed you from a group.',
     'View your expiring access':
@@ -78,21 +73,17 @@ const guide: Record<string, Record<string, string>> = {
     'Managing expiring access for groups you own':
       "To view the users whose access is expiring soon for groups you own, navigate to 'Expiring Groups' > 'Owned by Me'. There are filters available to see access that expires during a specific time period, only active or inactive access, and access that has not been reviewed yet or all expring access.\n\nThe 'Bulk Renew' button at the top of the page opens the bulk renewal dialog. Here, you can provide a reason for renewing the access, set an amount of time for the renewal, and select whether or not you would like to renew access for each user. If your organization has notifications enabled, any access that is marked to allow expiration (ie. not renewing the access) will be omitted from subsequent expiring access notifications.\n\nTo view the roles that will be losing access to groups you own soon, navigate to 'Expiring Roles' > 'Owned Groups'. This page also has a bulk renewal dialog that functions in the same way as the one for renewing individual access.",
     'Managing expiring access for roles you own':
-      "To view acess that is expiring for roles that you own, navigate to 'Expiring Roles' > 'Owned Roles.' From there, you can see the access that will be expiring soon for roles you own and create a role request on behalf of the role if continued access is still needed.",
-    'Blocked roles':
-      "If a group is marked with a tag that has the 'Owner can't renew their own access' constraint enabled, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an Access admin renew the role.",
-    'Group tags':
-      'Group/role owners are able to apply existing tags to groups they own. If these tags are applied, any enabled tag constraints will be applied to the group. Only Access administrators are able to remove tags.',
+      "To view access that is expiring for roles that you own, navigate to 'Expiring Roles' > 'Owned Roles.' From there, you can see the access that will be expiring soon for roles you own and create a role request on behalf of the role if continued access is still needed.",
+    'Blocked roles': `If a group is marked with a tag that has the 'Owner can't renew their own access' constraint enabled, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an ${appName} admin renew the role.`,
+    'Group tags': `Group/role owners are able to apply existing tags to groups they own. If these tags are applied, any enabled tag constraints will be applied to the group. Only ${appName} administrators are able to remove tags.`,
   },
   'app owner': {
-    'What is an app owner?':
-      "App owners are the owners of the App-<App name>-Owners group (members of this group have no implicit permissions for the App in Access, but they may be useful in an upstream application that utilizes the group membership for permissions). App owners implicitly own all of the app's app groups. App owners are therefore able to edit the name and description for an app, add app tags, and manage any app group (see the 'Managing a group' section in the 'Group Owners' user guide).",
+    'What is an app owner?': `App owners are the owners of the App-<App name>-Owners group (members of this group have no implicit permissions for the App in ${appName}, but they may be useful in an upstream application that utilizes the group membership for permissions). App owners implicitly own all of the app's app groups. App owners are therefore able to edit the name and description for an app, add app tags, and manage any app group (see the 'Managing a group' section in the 'Group Owners' user guide).`,
     'What are the responsibilities of app owners?':
       'As an App Owner your main responsibility is to grant folks access to your app. This can be done either by directly adding members or roles (recommended) to your app groups. If you want to delegate individuals or roles to be able to manage membership of specific app groups, you can do that by adding them as owners of the specified app group. As with other groups and roles, access can be configured to be automatically expiring as a means to provide temporary access to specific app groups. For example, if you have an app group only used infrequently that provides elevated permissions in the application, consider only granting access this group temporarily and on an ad-hoc basis instead of indefinite standing access.',
   },
   admin: {
-    'About Access administrators':
-      'Access administrators are the users who are members of the App-Access-Owners group. Administrators are able create or edit all groups, roles, and apps and manage the access for any group in the system. Administrators can also create tags, set tag constraints, apply tags to groups or apps, and remove tags.',
+    [`About ${appName} administrators`]: `${appName} administrators are the users who are members of the App-${appName} -Owners group. Administrators are able create or edit all groups, roles, and apps and manage the access for any group in the system. Administrators can also create tags, set tag constraints, apply tags to groups or apps, and remove tags.`,
     'Creating an app':
       "To create an app, click the 'Create App' button at the top of the 'Apps' page. That will open a dialog where you can set the app's name and description. The creator of the application will be automatically assigned as the initial owner of the application.\n\nIf the new App is meant to represent an application in Okta, you can optionally 'Assign' and/or add as a 'Push group' the associated app groups in the Okta Administrator dashboard for the Okta application.",
     'Creating a group':
@@ -103,12 +94,9 @@ const guide: Record<string, Record<string, string>> = {
   faq: {
     'I need to add a role as a member or owner of a group I do not own':
       "In the menu bar, there is a tab called 'Role Requests.' From there, if you own at least one role, you can click the 'Create Request' button to create a request for your role to be added to a group. If your organization has notifications enabled, a notification will be sent to the group owner(s) about the role request. If you do not own any roles, you will not be able to create a role request and you will need to reach out to the role owner.",
-    'I need to create a new group/role':
-      "If you are an Access admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an Access admin, please reach out to one for group creation. At this moment, there is not a way to request that a group is created through Access, although we are considering adding that as a feature in the future.",
-    'I need to create a new app':
-      "If you are an Access admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an Access admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through Access.",
-    'I want to set my up my group to enforce a constraint (like a maximum membership duration)':
-      "Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an Access admin to create the tag for you.",
+    'I need to create a new group/role': `If you are an ${appName} admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for group creation. At this moment, there is not a way to request that a group is created through ${appName}, although we are considering adding that as a feature in the future.`,
+    'I need to create a new app': `If you are an ${appName} admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through ${appName}.`,
+    'I want to set my up my group to enforce a constraint (like a maximum membership duration)': `Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an ${appName} admin to create the tag for you.`,
     'I lost access to something! How can I see more information?':
       'Each user has an audit page that can be accessed from their user page by clicking the clock-arrow icon to the right of their name. On this page, you can see your complete ownership and membership history, when each ownership or membership started and ended, who added or removed your access, and the reason you were added to the group if one was provided. You can filter, sort, and search through this information to troubleshoot your lost access.',
     'I added a role to a group but users in the role were added to the group for less time than I set...':
@@ -165,7 +153,7 @@ export default function Home() {
                     <Box
                       component="img"
                       src="/logo.png"
-                      alt="Access logo"
+                      alt={`${appName} logo`}
                       sx={{
                         width: 250,
                       }}
@@ -177,7 +165,7 @@ export default function Home() {
                 <Grid container justifyContent="center">
                   <Grid item>
                     <Typography variant="h5" fontWeight={500} color="text.accent">
-                      Access User Guides
+                      {appName} User Guides
                     </Typography>
                   </Grid>
                 </Grid>

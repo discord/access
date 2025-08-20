@@ -1,10 +1,10 @@
 /*
- *  JS used in `craco.config.js` to load `ACCESS_CONFIG` as a global variable in the frontend
+ *  JS used in `vite.config.ts` to load `ACCESS_CONFIG` as a global variable in the frontend
  *  If you want to use `AccessConfig` in the frontend, use `accessConfig` in `accessConfig.ts`
  * */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 const ACCESS_TIME_LABELS = 'ACCESS_TIME_LABELS';
 const DEFAULT_ACCESS_TIME = 'DEFAULT_ACCESS_TIME';
@@ -87,7 +87,7 @@ function loadDefaultConfig() {
   return getConfig(defaultConfig, FRONTEND);
 }
 
-function loadAccessConfig() {
+export function loadAccessConfig() {
   try {
     let accessConfig = loadDefaultConfig();
     accessConfig = loadOverrideConfig(accessConfig);
@@ -100,5 +100,3 @@ function loadAccessConfig() {
     throw error;
   }
 }
-
-module.exports = {loadAccessConfig};

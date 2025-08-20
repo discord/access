@@ -2,6 +2,7 @@
   "name": "access",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@mui/base": "^5.0.0-beta.28",
     "@mui/icons-material": "latest",

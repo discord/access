@@ -35,6 +35,7 @@ export default defineConfig({
   },
   define: {
     ACCESS_CONFIG: accessConfig,
+    APP_NAME: JSON.stringify(process.env.APP_NAME || 'Access'),
   },
   server: {
     port: 3000,

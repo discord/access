@@ -9,6 +9,12 @@ import * as Sentry from '@sentry/react';
 import App from './App';
 import Error from './pages/Error';
 
+import {appName} from './config/accessConfig';
+
+document.title = appName;
+const metaDesc = document.querySelector('meta[name="description"]');
+if (metaDesc) metaDesc.setAttribute('content', `${appName}!`);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {retry: false},

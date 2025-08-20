@@ -102,7 +102,7 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     click.echo("Creating Access app and groups")
     CreateApp(
         owner_id=admin_okta_user.id,
-        app={"name": App.ACCESS_APP_RESERVED_NAME, "description": "The Access Portal"},
+        app={"name": App.ACCESS_APP_RESERVED_NAME, "description": f"The {App.ACCESS_APP_RESERVED_NAME} Portal"},
     ).execute()
 
 

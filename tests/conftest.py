@@ -48,7 +48,9 @@ def db(app: Flask) -> Generator[SQLAlchemy, None, None]:
         _db.create_all()
 
     access_owner = OktaUserFactory.build(email=app.config["CURRENT_OKTA_USER_EMAIL"])
-    access_app = AppFactory.build(name=App.ACCESS_APP_RESERVED_NAME, description="The Access Portal")
+    access_app = AppFactory.build(
+        name=App.ACCESS_APP_RESERVED_NAME, description=f"The {App.ACCESS_APP_RESERVED_NAME} Portal"
+    )
     access_app_owner_group = AppGroupFactory.build(
         app_id=access_app.id,
         is_owner=True,

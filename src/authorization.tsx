@@ -1,4 +1,5 @@
 import {OktaUser, AppGroup, PolymorphicGroup} from './api/apiSchemas';
+import {appName} from './config/accessConfig';
 
 export function isGroupOwner(currentUser: OktaUser, groupId: string): boolean {
   const found = (currentUser.active_group_ownerships ?? []).find((ownership) => {
@@ -18,7 +19,7 @@ export function isAppOwnerGroupOwner(currentUser: OktaUser, appId: string): bool
   return found != null;
 }
 
-export const ACCESS_APP_RESERVED_NAME = 'Access';
+export const ACCESS_APP_RESERVED_NAME = appName;
 
 export function isAccessAdmin(currentUser: OktaUser): boolean {
   const found = (currentUser.active_group_memberships ?? []).find((membership) => {
