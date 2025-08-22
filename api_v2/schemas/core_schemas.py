@@ -373,8 +373,8 @@ class OktaGroupTagMap(BaseReadSchema):
     ended_at: datetime | None = Field(None, description="When this tag mapping ended")
     app_tag_map_id: int | None = Field(None, description="Associated app tag mapping ID")
 
-    group: "GroupRead | None" = Field(None, description="Tagged group")
-    active_group: "GroupRead | None" = Field(None, description="Active tagged group")
+    group: GroupRead | None = Field(None, description="Tagged group")
+    active_group: GroupRead | None = Field(None, description="Active tagged group")
 
     tag: TagRead | None = Field(None, description="Applied tag")
     active_tag: TagRead | None = Field(None, description="Active applied tag")
@@ -535,18 +535,8 @@ class GroupTagMappingRead(BaseReadSchema, TagMappingBase):
 
     # Relationships
     tag: TagSummary | None = Field(None, description="Associated tag")
-    group: "GroupSummary | None" = Field(None, description="Associated group")
+    group: GroupSummary | None = Field(None, description="Associated group")
     app_tag_mapping: AppTagMappingRead | None = Field(None, description="Associated app tag mapping")
-
-
-class TagMappingCreate(BaseCreateSchema):
-    """
-    Schema for creating tag mappings.
-    """
-
-    entity_type: str = Field(..., description="Type of entity (app or group)")
-    entity_id: str = Field(..., description="ID of the entity to map")
-    tag_id: str = Field(..., description="Tag ID")
 
 
 class TagMappingList(BaseSchema):
