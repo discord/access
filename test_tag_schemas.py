@@ -24,7 +24,7 @@ flask_app = create_app(testing=True)
 with flask_app.app_context():
     try:
         # Test tag schemas
-        from api_v2.schemas.tags import TagRead, TagCreate, TagUpdate, TagSearch
+        from api_v2.schemas.core_schemas import TagRead, TagCreate, TagUpdate, TagSearch
         print("✓ Tag schemas imported successfully")
         
         # Test TagRead

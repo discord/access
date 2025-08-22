@@ -8,11 +8,10 @@ from typing import Any
 
 from pydantic import Field, field_validator
 
-from api_v2.schemas import TagRead, UserSummary
 from api_v2.schemas.base import BaseReadSchema, BaseSchema
 
 
-class EventType(str, Enum):
+class AuditEventType(str, Enum):
     """Audit log event types."""
 
     ACCESS_APPROVE = "ACCESS_APPROVE"
@@ -37,44 +36,44 @@ class EventType(str, Enum):
     TAG_DELETE = "TAG_DELETE"
 
 
-class UserGroupMembershipSummary(BaseSchema):
+class AuditUserGroupMembershipSummary(BaseSchema):
     """Summary schema for user-group memberships in audit logs."""
 
     user_id: str = Field(..., description="User ID")
     group_id: str = Field(..., description="Group ID")
 
 
-class RoleGroupMapSummary(BaseSchema):
+class AuditRoleGroupMapSummary(BaseSchema):
     """Summary schema for role-group mappings in audit logs."""
 
     role_group_id: str = Field(..., description="Role group ID")
     group_id: str = Field(..., description="Group ID")
 
 
-class AppSummary(BaseSchema):
+class AuditAppSummary(BaseSchema):
     """Summary schema for apps in audit logs."""
 
     id: str = Field(..., description="App ID")
     name: str = Field(..., description="App name")
 
 
-class GroupSummary(BaseSchema):
+class AuditGroupSummary(BaseSchema):
     """Summary schema for groups in audit logs."""
 
     id: str = Field(..., description="Group ID")
     name: str = Field(..., description="Group name")
     type: str = Field(..., description="Group type")
-    app: AppSummary | None = Field(None, description="Associated app")
+    app: AuditAppSummary | None = Field(None, description="Associated app")
 
 
-class RoleGroupSummary(BaseSchema):
+class AuditRoleGroupSummary(BaseSchema):
     """Summary schema for role groups in audit logs."""
 
     id: str = Field(..., description="Role group ID")
     name: str = Field(..., description="Role group name")
 
 
-class AccessRequestSummary(BaseSchema):
+class AuditAccessRequestSummary(BaseSchema):
     """Summary schema for access requests in audit logs."""
 
     id: str = Field(..., description="Request ID")
@@ -85,16 +84,35 @@ class AccessRequestSummary(BaseSchema):
     approval_ending_at: datetime | None = Field(None, description="When approval ends")
 
 
-class RoleRequestSummary(BaseSchema):
+class AuditRoleRequestSummary(BaseSchema):
     """Summary schema for role requests in audit logs."""
 
     id: str = Field(..., description="Request ID")
-    requester_role: RoleGroupSummary | None = Field(None, description="Requester role")
+    requester_role: AuditRoleGroupSummary | None = Field(None, description="Requester role")
     request_reason: str | None = Field(None, description="Request reason")
     request_ending_at: datetime | None = Field(None, description="When request ends")
     request_ownership: bool = Field(False, description="Request ownership")
     resolution_reason: str | None = Field(None, description="Resolution reason")
     approval_ending_at: datetime | None = Field(None, description="When approval ends")
+
+
+class AuditTagSummary(BaseSchema):
+    """Summary schema for tags in audit logs."""
+
+    id: str = Field(..., description="Tag ID")
+    name: str = Field(..., description="Tag name")
+    description: str = Field("", description="Tag description")
+    enabled: bool = Field(True, description="Whether the tag is enabled")
+
+
+class AuditUserSummary(BaseSchema):
+    """Summary schema for users in audit logs."""
+
+    id: str = Field(..., description="User ID")
+    email: str = Field(..., description="User's email address")
+    first_name: str = Field(..., description="User's first name")
+    last_name: str = Field(..., description="User's last name")
+    display_name: str | None = Field(None, description="User's display name")
 
 
 class AuditLogRead(BaseReadSchema):
@@ -103,59 +121,61 @@ class AuditLogRead(BaseReadSchema):
     Maps to AuditLog model with comprehensive event tracking.
     """
 
-    event_type: EventType = Field(..., description="Type of audit event")
+    event_type: AuditEventType = Field(..., description="Type of audit event")
     user_agent: str | None = Field(None, description="User agent string")
     ip: str | None = Field(None, description="IP address")
     current_user_id: str | None = Field(None, description="Current user ID")
     current_user_email: str | None = Field(None, description="Current user email")
 
     # Group-related audit fields
-    group: GroupSummary | None = Field(None, description="Affected group")
+    group: AuditGroupSummary | None = Field(None, description="Affected group")
     old_group_name: str | None = Field(None, description="Previous group name")
     old_group_type: str | None = Field(None, description="Previous group type")
-    group_owners: list[UserSummary] = Field(default_factory=list, description="Group owners")
-    owners_removed_ids_emails: list[UserSummary] = Field(default_factory=list, description="Owners removed")
-    owners_added_ids_emails: list[UserSummary] = Field(default_factory=list, description="Owners added")
-    owners_should_expire_user_id_group_id: list[UserGroupMembershipSummary] = Field(
+    group_owners: list[AuditUserSummary] = Field(default_factory=list, description="Group owners")
+    owners_removed_ids_emails: list[AuditUserSummary] = Field(default_factory=list, description="Owners removed")
+    owners_added_ids_emails: list[AuditUserSummary] = Field(default_factory=list, description="Owners added")
+    owners_should_expire_user_id_group_id: list[AuditUserGroupMembershipSummary] = Field(
         default_factory=list, description="Owner memberships that should expire"
     )
-    members_removed_ids_emails: list[UserSummary] = Field(default_factory=list, description="Members removed")
-    members_added_ids_emails: list[UserSummary] = Field(default_factory=list, description="Members added")
-    members_should_expire_user_id_group_id: list[UserGroupMembershipSummary] = Field(
+    members_removed_ids_emails: list[AuditUserSummary] = Field(default_factory=list, description="Members removed")
+    members_added_ids_emails: list[AuditUserSummary] = Field(default_factory=list, description="Members added")
+    members_should_expire_user_id_group_id: list[AuditUserGroupMembershipSummary] = Field(
         default_factory=list, description="Member memberships that should expire"
     )
 
     # Role-related audit fields
-    role: RoleGroupSummary | None = Field(None, description="Affected role")
+    role: AuditRoleGroupSummary | None = Field(None, description="Affected role")
     groups_added_ending_at: datetime | None = Field(None, description="When added groups end")
-    owner_groups_removed_ids_names: list[RoleGroupSummary] = Field(
+    owner_groups_removed_ids_names: list[AuditRoleGroupSummary] = Field(
         default_factory=list, description="Owner groups removed"
     )
-    owner_groups_added_ids_names: list[RoleGroupSummary] = Field(default_factory=list, description="Owner groups added")
-    owner_groups_should_expire_role_id_group_id: list[RoleGroupMapSummary] = Field(
+    owner_groups_added_ids_names: list[AuditRoleGroupSummary] = Field(
+        default_factory=list, description="Owner groups added"
+    )
+    owner_groups_should_expire_role_id_group_id: list[AuditRoleGroupMapSummary] = Field(
         default_factory=list, description="Owner group mappings that should expire"
     )
-    groups_removed_ids_names: list[RoleGroupSummary] = Field(default_factory=list, description="Groups removed")
-    groups_added_ids_names: list[RoleGroupSummary] = Field(default_factory=list, description="Groups added")
-    groups_should_expire_role_id_group_id: list[RoleGroupMapSummary] = Field(
+    groups_removed_ids_names: list[AuditRoleGroupSummary] = Field(default_factory=list, description="Groups removed")
+    groups_added_ids_names: list[AuditRoleGroupSummary] = Field(default_factory=list, description="Groups added")
+    groups_should_expire_role_id_group_id: list[AuditRoleGroupMapSummary] = Field(
         default_factory=list, description="Group mappings that should expire"
     )
 
     # Request-related audit fields
-    request: AccessRequestSummary | None = Field(None, description="Access request")
-    role_request: RoleRequestSummary | None = Field(None, description="Role request")
-    requester: UserSummary | None = Field(None, description="Requester")
+    request: AuditAccessRequestSummary | None = Field(None, description="Access request")
+    role_request: AuditRoleRequestSummary | None = Field(None, description="Role request")
+    requester: AuditUserSummary | None = Field(None, description="Requester")
 
     # App-related audit fields
-    app: AppSummary | None = Field(None, description="Affected app")
+    app: AuditAppSummary | None = Field(None, description="Affected app")
     old_app_name: str | None = Field(None, description="Previous app name")
     owner_id: str | None = Field(None, description="Owner ID")
 
     # Tag-related audit fields
-    tag: TagRead | None = Field(None, description="Affected tag")
-    old_tag: TagRead | None = Field(None, description="Previous tag state")
-    tags_added: list[TagRead] = Field(default_factory=list, description="Tags added")
-    tags_removed: list[TagRead] = Field(default_factory=list, description="Tags removed")
+    tag: AuditTagSummary | None = Field(None, description="Affected tag")
+    old_tag: AuditTagSummary | None = Field(None, description="Previous tag state")
+    tags_added: list[AuditTagSummary] = Field(default_factory=list, description="Tags added")
+    tags_removed: list[AuditTagSummary] = Field(default_factory=list, description="Tags removed")
 
     @field_validator("*", mode="before")
     @classmethod
@@ -175,7 +195,7 @@ class AuditLogCreate(BaseSchema):
     Used internally by the audit logging system.
     """
 
-    event_type: EventType = Field(..., description="Type of audit event")
+    event_type: AuditEventType = Field(..., description="Type of audit event")
     user_agent: str | None = Field(None, description="User agent string")
     ip: str | None = Field(None, description="IP address")
     current_user_id: str | None = Field(None, description="Current user ID")

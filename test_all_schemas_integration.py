@@ -155,27 +155,27 @@ def test_direct_imports() -> bool:
 
         # Test audit log schemas
         from api_v2.schemas.audit_logs import (
-            AccessRequestSummary,
-            AppSummary,
+            AuditAccessRequestSummary,
+            AuditAppSummary,
+            AuditEventType,
+            AuditGroupSummary,
             AuditLogCreate,
             AuditLogRead,
-            EventType,
-            GroupSummary,
-            RoleGroupMapSummary,
-            RoleGroupSummary,
-            RoleRequestSummary,
-            UserGroupMembershipSummary,
+            AuditRoleGroupMapSummary,
+            AuditRoleGroupSummary,
+            AuditRoleRequestSummary,
+            AuditUserGroupMembershipSummary,
         )
 
         __all__ = [
-            EventType,
-            UserGroupMembershipSummary,
-            RoleGroupMapSummary,
-            AppSummary,
-            GroupSummary,
-            RoleGroupSummary,
-            AccessRequestSummary,
-            RoleRequestSummary,
+            AuditEventType,
+            AuditUserGroupMembershipSummary,
+            AuditRoleGroupMapSummary,
+            AuditAppSummary,
+            AuditGroupSummary,
+            AuditRoleGroupSummary,
+            AuditAccessRequestSummary,
+            AuditRoleRequestSummary,
             AuditLogRead,
             AuditLogCreate,
         ]
@@ -208,7 +208,7 @@ def test_schema_instantiation() -> bool:
         from datetime import datetime, timedelta
 
         from api_v2.schemas import OktaGroupRead, TagRead, UserSummary
-        from api_v2.schemas.audit_logs import AuditLogCreate, EventType
+        from api_v2.schemas.audit_logs import AuditLogCreate, AuditEventType
         from api_v2.schemas.delete_message import DeleteMessage
         from api_v2.schemas.group_memberships import GroupMemberUpdate
         from api_v2.schemas.metrics import Metrics, MetricsData, MetricType
@@ -245,7 +245,7 @@ def test_schema_instantiation() -> bool:
 
         pagination = SearchPagination(page=1, per_page=25, q="search")
 
-        audit = AuditLogCreate(event_type=EventType.ACCESS_CREATE, current_user_id="admin123")
+        audit = AuditLogCreate(event_type=AuditEventType.ACCESS_CREATE, current_user_id="admin123")
 
         group_member = GroupMemberUpdate(members_to_add=[], owners_to_add=[], members_to_remove=[], owners_to_remove=[])
 

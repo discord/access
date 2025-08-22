@@ -29,7 +29,7 @@ with flask_app.app_context():
         print("✓ Base schemas imported successfully")
         
         # Test user schemas
-        from api_v2.schemas.users import UserSummary, UserDetail, UserList, UserSearch
+        from api_v2.schemas.core_schemas import UserSummary, UserDetail, UserList, UserSearch
         print("✓ User schemas imported successfully")
         
         # Test creating a user summary

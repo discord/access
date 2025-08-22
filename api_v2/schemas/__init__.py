@@ -4,30 +4,106 @@ API v2 schemas initialization and forward reference resolution.
 
 from __future__ import annotations
 
+from api_v2.schemas.audit_logs import (
+    AuditAccessRequestSummary,
+    AuditAppSummary,
+    AuditEventType,
+    AuditGroupSummary,
+    AuditLogCreate,
+    AuditLogRead,
+    AuditRoleGroupMapSummary,
+    AuditRoleGroupSummary,
+    AuditRoleRequestSummary,
+    AuditTagSummary,
+    AuditUserGroupMembershipSummary,
+    AuditUserSummary,
+)
+
 # Import base schemas first
 from api_v2.schemas.base import BaseCreateSchema, BaseReadSchema, BaseSchema, BaseUpdateSchema
 
 # Make specific schemas available at package level
 from api_v2.schemas.core_schemas import (
+    # Group schemas
+    AppGroupCreate,
+    # App schemas
     AppGroupRead,
+    AppGroupUpdate,
+    AppRead,
+    AppSummary,
+    AppTagMap,
+    AppTagMappingRead,
+    GroupBase,
     GroupCreate,
     GroupList,
+    GroupMemberAction,
+    GroupMemberList,
     GroupRead,
+    GroupReadBase,
     GroupSearch,
+    GroupSummary,
+    GroupTagMappingRead,
     GroupUpdate,
+    GroupUpdateBase,
+    NonRoleGroupReadBase,
+    OktaGroupCreate,
     OktaGroupRead,
     OktaGroupTagMap,
+    OktaGroupUpdate,
+    RoleGroupCreate,
     RoleGroupMap,
     RoleGroupRead,
+    RoleGroupUpdate,
+    # Tag schemas
+    TagBase,
     TagCreate,
+    TagList,
+    TagMappingBase,
+    TagMappingList,
     TagRead,
     TagSearch,
+    TagSummary,
     TagUpdate,
+    # User schemas
+    UserBase,
     UserDetail,
     UserGroupMember,
     UserList,
     UserSearch,
     UserSummary,
+)
+from api_v2.schemas.delete_message import (
+    DeleteMessage,
+)
+from api_v2.schemas.group_memberships import (
+    GroupMemberRead,
+    GroupMemberUpdate,
+)
+from api_v2.schemas.metrics import (
+    Metrics,
+    MetricsData,
+    MetricType,
+)
+from api_v2.schemas.pagination import (
+    AccessRequestPagination,
+    AppPagination,
+    AuditOrderBy,
+    GroupPagination,
+    GroupRoleAuditPagination,
+    PaginationResponse,
+    RolePagination,
+    RoleRequestPagination,
+    SearchAccessRequestPagination,
+    SearchAuditPagination,
+    SearchGroupPagination,
+    SearchGroupRoleAuditPagination,
+    SearchPagination,
+    SearchRolePagination,
+    SearchRoleRequestPagination,
+    SearchUserGroupAuditPagination,
+    TagPagination,
+    UserGroupAuditPagination,
+    UserPagination,
 )
 from api_v2.schemas.requests import (
     AccessRequestCreate,
@@ -40,47 +116,10 @@ from api_v2.schemas.requests import (
     RoleRequestResolve,
     RoleRequestSearch,
 )
-
-# # Now that all schemas are imported, rebuild models with full namespace
-# def rebuild_models():
-#     """Rebuild all models to resolve forward references."""
-#     import sys
-
-#     current_module = sys.modules[__name__]
-
-#     # Create namespace with all imported types
-#     namespace = {
-#         "UserSummary": UserSummary,
-#         "UserGroupMember": UserGroupMember,
-#         "GroupRead": GroupRead,
-#         "OktaGroupRead": OktaGroupRead,
-#         "RoleGroupRead": RoleGroupRead,
-#         "AppGroupRead": AppGroupRead,
-#         "RoleGroupMap": RoleGroupMap,
-#         "OktaGroupTagMap": OktaGroupTagMap,
-#         "TagRead": TagRead,
-#         "AppRead": None,  # Placeholder for now
-#         "AppTagMap": None,  # Placeholder for now
-#     }
-
-#     # Rebuild in dependency order without namespace
-#     try:
-#         # Rebuild in correct order - UserGroupMember first, then UserDetail
-#         UserDetail.model_rebuild()
-#         UserGroupMember.model_rebuild()
-#         OktaGroupRead.model_rebuild()
-#         RoleGroupRead.model_rebuild()
-#         AppGroupRead.model_rebuild()
-#         RoleGroupMap.model_rebuild()
-#         OktaGroupTagMap.model_rebuild()
-#     except Exception as e:
-#         # If rebuilding fails, it's okay - forward references will still work
-#         # but instantiation may require explicit data for all fields
-#         print(f"Note: Schema rebuilding had issues: {e}")
-
-
-# # Try to rebuild models when this module is imported
-# rebuild_models()
+from api_v2.schemas.role_memberships import (
+    RoleMemberRead,
+    RoleMemberUpdate,
+)
 
 __all__ = [
     # Base schemas
@@ -88,23 +127,78 @@ __all__ = [
     "BaseReadSchema",
     "BaseCreateSchema",
     "BaseUpdateSchema",
-    # User schemas
-    "UserSummary",
-    "UserDetail",
-    "UserList",
-    "UserSearch",
-    "UserGroupMember",
-    # Group schemas
-    "GroupRead",
-    "OktaGroupRead",
-    "RoleGroupRead",
+    # App schemas
     "AppGroupRead",
+    "AppRead",
+    "AppSummary",
+    "AppTagMap",
+    "AppTagMappingRead",
+    # Audit log schemas
+    "AuditAccessRequestSummary",
+    "AuditAppSummary",
+    "AuditEventType",
+    "AuditGroupSummary",
+    "AuditLogCreate",
+    "AuditLogRead",
+    "AuditRoleGroupSummary",
+    "AuditRoleGroupMapSummary",
+    "AuditRoleRequestSummary",
+    "AuditTagSummary",
+    "AuditUserGroupMembershipSummary",
+    "AuditUserSummary",
+    # Delete message schemas
+    "DeleteMessage",
+    # Group schemas
+    "AppGroupCreate",
+    "AppGroupUpdate",
+    "GroupBase",
     "GroupCreate",
-    "GroupUpdate",
-    "GroupSearch",
     "GroupList",
-    "RoleGroupMap",
+    "GroupMemberAction",
+    "GroupMemberList",
+    "GroupRead",
+    "GroupReadBase",
+    "GroupSearch",
+    "GroupSummary",
+    "GroupTagMappingRead",
+    "GroupUpdate",
+    "GroupUpdateBase",
+    "NonRoleGroupReadBase",
+    "OktaGroupCreate",
+    "OktaGroupRead",
     "OktaGroupTagMap",
+    "OktaGroupUpdate",
+    "RoleGroupCreate",
+    "RoleGroupMap",
+    "RoleGroupRead",
+    "RoleGroupUpdate",
+    # Group membership schemas
+    "GroupMemberRead",
+    "GroupMemberUpdate",
+    # Metrics schemas
+    "Metrics",
+    "MetricsData",
+    "MetricType",
+    # Pagination schemas
+    "AccessRequestPagination",
+    "AppPagination",
+    "AuditOrderBy",
+    "GroupPagination",
+    "GroupRoleAuditPagination",
+    "PaginationResponse",
+    "RolePagination",
+    "RoleRequestPagination",
+    "SearchAccessRequestPagination",
+    "SearchAuditPagination",
+    "SearchGroupPagination",
+    "SearchGroupRoleAuditPagination",
+    "SearchPagination",
+    "SearchRolePagination",
+    "SearchRoleRequestPagination",
+    "SearchUserGroupAuditPagination",
+    "TagPagination",
+    "UserGroupAuditPagination",
+    "UserPagination",
     # Request schemas
     "AccessRequestStatus",
     "AccessRequestRead",
@@ -115,9 +209,24 @@ __all__ = [
     "RoleRequestResolve",
     "AccessRequestSearch",
     "RoleRequestSearch",
+    # Role membership schemas
+    "RoleMemberRead",
+    "RoleMemberUpdate",
     # Tag schemas
-    "TagRead",
+    "TagBase",
     "TagCreate",
-    "TagUpdate",
+    "TagList",
+    "TagMappingBase",
+    "TagMappingList",
+    "TagRead",
     "TagSearch",
+    "TagSummary",
+    "TagUpdate",
+    # User schemas
+    "UserBase",
+    "UserDetail",
+    "UserGroupMember",
+    "UserList",
+    "UserSearch",
+    "UserSummary",
 ]

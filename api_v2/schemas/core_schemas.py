@@ -123,6 +123,13 @@ class GroupBase(BaseSchema):
 
     name: str = Field(..., min_length=1, max_length=255, description="Group name")
     description: str = Field("", max_length=1024, description="Group description")
+
+
+class GroupReadBase(BaseReadSchema, GroupBase):
+    """
+    Base group schema with common fields for all group types.
+    """
+
     is_managed: bool = Field(True, description="Whether this group is managed by Access")
     externally_managed_data: ExternallyManagedData = Field(
         default_factory=dict, description="Additional data for externally managed groups"
@@ -148,7 +155,7 @@ class GroupBase(BaseSchema):
     )
 
 
-class NonRoleGroupReadBase(BaseReadSchema, GroupBase):
+class NonRoleGroupReadBase(GroupReadBase):
     """
     Base group schema with common fields for all group types.
     """
@@ -196,7 +203,7 @@ class OktaGroupRead(NonRoleGroupReadBase):
     type: Literal["okta_group"] = Field("okta_group", description="Group type discriminator")
 
 
-class RoleGroupRead(BaseReadSchema, GroupBase):
+class RoleGroupRead(GroupReadBase):
     """
     Role group schema.
     Role groups grant permissions to other groups.
@@ -230,7 +237,7 @@ class AppGroupRead(NonRoleGroupReadBase):
     is_owner: bool = Field(False, description="Whether this is an app owner group")
 
     # App-specific relationships
-    app: "AppRead | None" = Field(None, description="Associated application")
+    app: AppRead | None = Field(None, description="Associated application")
 
 
 GroupRead = Annotated[OktaGroupRead | RoleGroupRead | AppGroupRead, Field(discriminator="type")]
@@ -259,33 +266,51 @@ class AppGroupCreate(BaseCreateSchema, GroupBase):
     """Schema for creating app groups."""
 
     type: Literal["app_group"] = Field("app_group", description="Group type")
-    app_id: str = Field(..., description="ID of the associated application")
-    is_owner: bool = Field(False, description="Whether this is an app owner group")
-
     # App groups have name prefix requirements
     name: str = Field(..., min_length=1, max_length=255, description="App group name (must start with 'App-')")
+    app_id: str = Field(..., description="ID of the associated application")
 
 
 # Union for create operations
 GroupCreate = Annotated[OktaGroupCreate | RoleGroupCreate | AppGroupCreate, Field(discriminator="type")]
 
 
-# Update schemas (all fields optional)
-class GroupUpdate(BaseUpdateSchema):
+# Base update schema for all group types
+class GroupUpdateBase(BaseUpdateSchema, GroupBase):
     """
-    Schema for updating groups.
+    Base schema for updating groups with common fields.
     All fields are optional to support partial updates.
     """
 
-    name: str | None = Field(None, min_length=1, max_length=255)
-    description: str | None = Field(None, max_length=1024)
-    is_managed: bool | None = None
-    externally_managed_data: ExternallyManagedData | None = None
-    plugin_data: PluginData | None = None
-
-    # Tag operations (for group updates)
+    # Tag operations (for okta group updates)
     tags_to_add: list[str] = Field(default_factory=list, description="Tag IDs to add to the group")
     tags_to_remove: list[str] = Field(default_factory=list, description="Tag IDs to remove from the group")
+
+
+# Update schemas (all fields optional) - Union type to support different group types
+class OktaGroupUpdate(GroupUpdateBase):
+    """Schema for updating standard Okta groups."""
+
+    type: Literal["okta_group"] = Field("okta_group", description="Group type")
+
+
+class RoleGroupUpdate(GroupUpdateBase):
+    """Schema for updating role groups."""
+
+    type: Literal["role_group"] = Field("role_group", description="Group type")
+    name: str = Field(..., min_length=1, max_length=255, description="Role group name (must start with 'Role-')")
+
+
+class AppGroupUpdate(GroupUpdateBase):
+    """Schema for updating app groups."""
+
+    type: Literal["app_group"] = Field("app_group", description="Group type")
+    name: str = Field(..., min_length=1, max_length=255, description="App group name (must start with 'App-')")
+    app_id: str = Field(..., description="ID of the associated application")
+
+
+# Union for update operations
+GroupUpdate = Annotated[OktaGroupUpdate | RoleGroupUpdate | AppGroupUpdate, Field(discriminator="type")]
 
 
 # Search and pagination schemas
@@ -308,6 +333,11 @@ class GroupList(BaseReadSchema, GroupBase):
     """
 
     type: str = Field(..., description="Group type")
+    is_managed: bool = Field(True, description="Whether this group is managed by Access")
+    externally_managed_data: ExternallyManagedData = Field(
+        default_factory=dict, description="Additional data for externally managed groups"
+    )
+    plugin_data: PluginData = Field(default_factory=dict, description="Data for group plugin integrations")
 
     # For app groups, include app info
     app_id: str | None = Field(None, description="Application ID (app groups only)")
