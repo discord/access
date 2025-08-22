@@ -41,47 +41,46 @@ from api_v2.schemas.requests import (
     RoleRequestSearch,
 )
 
+# # Now that all schemas are imported, rebuild models with full namespace
+# def rebuild_models():
+#     """Rebuild all models to resolve forward references."""
+#     import sys
 
-# Now that all schemas are imported, rebuild models with full namespace
-def rebuild_models():
-    """Rebuild all models to resolve forward references."""
-    import sys
+#     current_module = sys.modules[__name__]
 
-    current_module = sys.modules[__name__]
+#     # Create namespace with all imported types
+#     namespace = {
+#         "UserSummary": UserSummary,
+#         "UserGroupMember": UserGroupMember,
+#         "GroupRead": GroupRead,
+#         "OktaGroupRead": OktaGroupRead,
+#         "RoleGroupRead": RoleGroupRead,
+#         "AppGroupRead": AppGroupRead,
+#         "RoleGroupMap": RoleGroupMap,
+#         "OktaGroupTagMap": OktaGroupTagMap,
+#         "TagRead": TagRead,
+#         "AppRead": None,  # Placeholder for now
+#         "AppTagMap": None,  # Placeholder for now
+#     }
 
-    # Create namespace with all imported types
-    namespace = {
-        "UserSummary": UserSummary,
-        "UserGroupMember": UserGroupMember,
-        "GroupRead": GroupRead,
-        "OktaGroupRead": OktaGroupRead,
-        "RoleGroupRead": RoleGroupRead,
-        "AppGroupRead": AppGroupRead,
-        "RoleGroupMap": RoleGroupMap,
-        "OktaGroupTagMap": OktaGroupTagMap,
-        "TagRead": TagRead,
-        "AppRead": None,  # Placeholder for now
-        "AppTagMap": None,  # Placeholder for now
-    }
-
-    # Rebuild in dependency order without namespace
-    try:
-        # Rebuild in correct order - UserGroupMember first, then UserDetail
-        UserDetail.model_rebuild()
-        UserGroupMember.model_rebuild()
-        OktaGroupRead.model_rebuild()
-        RoleGroupRead.model_rebuild()
-        AppGroupRead.model_rebuild()
-        RoleGroupMap.model_rebuild()
-        OktaGroupTagMap.model_rebuild()
-    except Exception as e:
-        # If rebuilding fails, it's okay - forward references will still work
-        # but instantiation may require explicit data for all fields
-        print(f"Note: Schema rebuilding had issues: {e}")
+#     # Rebuild in dependency order without namespace
+#     try:
+#         # Rebuild in correct order - UserGroupMember first, then UserDetail
+#         UserDetail.model_rebuild()
+#         UserGroupMember.model_rebuild()
+#         OktaGroupRead.model_rebuild()
+#         RoleGroupRead.model_rebuild()
+#         AppGroupRead.model_rebuild()
+#         RoleGroupMap.model_rebuild()
+#         OktaGroupTagMap.model_rebuild()
+#     except Exception as e:
+#         # If rebuilding fails, it's okay - forward references will still work
+#         # but instantiation may require explicit data for all fields
+#         print(f"Note: Schema rebuilding had issues: {e}")
 
 
-# Try to rebuild models when this module is imported
-rebuild_models()
+# # Try to rebuild models when this module is imported
+# rebuild_models()
 
 __all__ = [
     # Base schemas

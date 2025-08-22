@@ -9,9 +9,9 @@ Only read operations are supported.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Discriminator, EmailStr, Field
+from pydantic import EmailStr, Field
 
 from api_v2.schemas.base import BaseCreateSchema, BaseReadSchema, BaseSchema, BaseUpdateSchema, ProfileDict
 
@@ -110,17 +110,6 @@ class UserGroupMember(BaseReadSchema):
     ended_actor: UserSummary | None = Field(None, description="User who ended this membership")
 
 
-# Discriminated Union for all group types
-def get_group_type(v: Any) -> str:
-    """Discriminator function to determine group type."""
-    if isinstance(v, dict):
-        return v.get("type", "okta_group")
-    return getattr(v, "type", "okta_group")
-
-
-# GroupTypeLiteral = Literal["okta_group", "role_group", "app_group"]
-# GroupType = Field(discriminator=Discriminator(get_group_type))
-
 # Type aliases for JSON fields
 ExternallyManagedData = dict[str, Any]
 PluginData = dict[str, Any]
@@ -213,7 +202,7 @@ class RoleGroupRead(BaseReadSchema, GroupBase):
     Role groups grant permissions to other groups.
     """
 
-    type: Literal["role_group"] = Field("role_group", description="Group type discriminator", discriminator="type")
+    type: Literal["role_group"] = Field("role_group", description="Group type discriminator")
 
     # Role-specific relationships - groups this role grants access to
     all_role_associated_group_mappings: list[RoleGroupMap] = Field(
@@ -244,12 +233,10 @@ class AppGroupRead(NonRoleGroupReadBase):
     app: "AppRead | None" = Field(None, description="Associated application")
 
 
-GroupRead = OktaGroupRead | RoleGroupRead | AppGroupRead
+GroupRead = Annotated[OktaGroupRead | RoleGroupRead | AppGroupRead, Field(discriminator="type")]
 
 
 # Create/Update schemas for groups
-
-
 class OktaGroupCreate(BaseCreateSchema, GroupBase):
     """Schema for creating standard Okta groups."""
 
@@ -280,13 +267,10 @@ class AppGroupCreate(BaseCreateSchema, GroupBase):
 
 
 # Union for create operations
-GroupCreate = OktaGroupCreate | RoleGroupCreate | AppGroupCreate
-GroupCreateAnnotated = Field(discriminator=Discriminator(get_group_type))
+GroupCreate = Annotated[OktaGroupCreate | RoleGroupCreate | AppGroupCreate, Field(discriminator="type")]
 
 
 # Update schemas (all fields optional)
-
-
 class GroupUpdate(BaseUpdateSchema):
     """
     Schema for updating groups.
@@ -392,12 +376,12 @@ class OktaGroupTagMap(BaseReadSchema):
     group: "GroupRead | None" = Field(None, description="Tagged group")
     active_group: "GroupRead | None" = Field(None, description="Active tagged group")
 
-    tag: "TagRead | None" = Field(None, description="Applied tag")
-    active_tag: "TagRead | None" = Field(None, description="Active applied tag")
-    enabled_active_tag: "TagRead | None" = Field(None, description="Enabled active applied tag")
+    tag: TagRead | None = Field(None, description="Applied tag")
+    active_tag: TagRead | None = Field(None, description="Active applied tag")
+    enabled_active_tag: TagRead | None = Field(None, description="Enabled active applied tag")
 
-    app_tag_mapping: "AppTagMap | None" = Field(None, description="Associated app tag mapping")
-    active_app_tag_mapping: "AppTagMap | None" = Field(None, description="Active associated app tag mapping")
+    app_tag_mapping: AppTagMap | None = Field(None, description="Associated app tag mapping")
+    active_app_tag_mapping: AppTagMap | None = Field(None, description="Active associated app tag mapping")
 
 
 class AppSummary(BaseSchema):
