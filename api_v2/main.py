@@ -2,11 +2,59 @@
 FastAPI application main entry point.
 This runs alongside the existing Flask app during the migration.
 """
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import logging
+import os
+import sys
 
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
+
+from api_v2.exceptions import (
+    general_exception_handler,
+    pydantic_validation_exception_handler,
+    sqlalchemy_exception_handler,
+    validation_exception_handler,
+)
+from api_v2.log_filters import TokenSanitizingFilter
 from api_v2.middleware.security import SecurityHeadersMiddleware
-from api_v2.routers import health, users, groups
+from api_v2.routers import groups, health, users
+
+
+def setup_logging():
+    """Configure logging for FastAPI application"""
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
+    
+    # Apply token sanitizing filter to prevent sensitive information in logs
+    token_filter = TokenSanitizingFilter()
+    
+    # Apply filter to relevant loggers
+    logging.getLogger("fastapi").addFilter(token_filter)
+    logging.getLogger("uvicorn").addFilter(token_filter)
+    logging.root.addFilter(token_filter)
+
+
+def initialize_services():
+    """Initialize external services like Okta"""
+    try:
+        from api.services import okta
+        
+        okta_domain = os.getenv("OKTA_DOMAIN")
+        okta_token = os.getenv("OKTA_API_TOKEN")
+        use_group_owners = os.getenv("OKTA_USE_GROUP_OWNERS_API", "False") == "True"
+        
+        if okta_domain and okta_token:
+            okta.initialize(okta_domain, okta_token, use_group_owners_api=use_group_owners)
+            logging.info("✓ Okta service initialized")
+    except ImportError:
+        logging.warning("⚠ Okta service not available")
+
+
+# Setup logging and services on module import
+setup_logging()
+initialize_services()
 
 app = FastAPI(
     title="Access Management API v2",
@@ -28,6 +76,12 @@ app.add_middleware(
 
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add exception handlers
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
+app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 # Include routers
 app.include_router(health.router, prefix="/api/v2")

@@ -11,7 +11,7 @@ from api.models import OktaUser
 
 # Using Python 3.10+ union syntax instead of typing.Optional
 from api_v2.database import get_db
-from api_v2.dependencies import get_current_user
+from api_v2.auth import get_current_user
 from api_v2.schemas import UserDetail, UserList
 
 router = APIRouter(prefix="/users", tags=["users"])

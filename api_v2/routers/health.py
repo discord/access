@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from api_v2.database import get_db
-from api_v2.dependencies import get_current_user_optional
+from api_v2.auth import get_current_user_optional
 from api.models import OktaUser
 
 router = APIRouter(tags=["health"])
