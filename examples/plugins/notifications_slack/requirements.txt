@@ -1,2 +1,2 @@
-pluggy==1.4.0
+pluggy==1.5.0
 slack-sdk==3.27.2
