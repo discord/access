@@ -3,28 +3,14 @@
 Test script for Pydantic group schemas with discriminated unions.
 """
 
-import os
-import sys
+import pytest
 
-# Add the project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Test group schemas
+from api_v2.schemas import AppGroupRead, OktaGroupCreate, OktaGroupRead, RoleGroupRead
 
-# Load environment variables from .env file
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Set required environment variables for testing
-os.environ["FLASK_ENV"] = "test"
-os.environ["DATABASE_URI"] = "sqlite:///instance/access.db"
-# CURRENT_OKTA_USER_EMAIL will be loaded from .env file
-
-try:
-    # Test group schemas
-    from api_v2.schemas import AppGroupRead, OktaGroupCreate, OktaGroupRead, RoleGroupRead
-
-    print("✓ Group schemas imported successfully")
-
+def test_group_schemas():
+    """Test Pydantic group schemas with discriminated unions."""
     # Test OktaGroup creation and serialization
     okta_group_data = {
         "id": "group123",
@@ -40,7 +26,8 @@ try:
     }
 
     okta_group = OktaGroupRead(**okta_group_data)
-    print(f"✓ OktaGroup created: {okta_group.name} (type: {okta_group.type})")
+    assert okta_group.name == "Test Group"
+    assert okta_group.type == "okta_group"
 
     # Test RoleGroup
     role_group_data = {
@@ -57,7 +44,8 @@ try:
     }
 
     role_group = RoleGroupRead(**role_group_data)
-    print(f"✓ RoleGroup created: {role_group.name} (type: {role_group.type})")
+    assert role_group.name == "Role-AdminRole"
+    assert role_group.type == "role_group"
 
     # Test AppGroup
     app_group_data = {
@@ -76,7 +64,9 @@ try:
     }
 
     app_group = AppGroupRead(**app_group_data)
-    print(f"✓ AppGroup created: {app_group.name} (type: {app_group.type}, app_id: {app_group.app_id})")
+    assert app_group.name == "App-MyApp-Users"
+    assert app_group.type == "app_group"
+    assert app_group.app_id == "app456"
 
     # Test discriminated union - this is the key feature
     # We should be able to parse different group types from the same input
@@ -93,15 +83,15 @@ try:
         else:
             raise ValueError(f"Unknown group type: {group_data['type']}")
 
-        print(f"✓ Group {i+1} parsed correctly as {parsed.__class__.__name__}")
+        assert parsed.__class__.__name__ in ["OktaGroupRead", "RoleGroupRead", "AppGroupRead"]
 
     # Test JSON serialization
     okta_json = okta_group.model_dump()
-    print(f"✓ JSON serialization works: {len(okta_json)} fields")
+    assert len(okta_json) > 0, "JSON serialization should produce fields"
 
     # Test validation - missing required field
-    try:
-        invalid_group = OktaGroupRead(
+    with pytest.raises(Exception):
+        OktaGroupRead(
             id="123",
             created_at="2023-01-01T00:00:00",
             updated_at="2023-01-01T00:00:00",
@@ -112,9 +102,6 @@ try:
             externally_managed_data={},
             plugin_data={},
         )
-        print("✗ Validation should have failed for missing name")
-    except Exception:
-        print("✓ Validation correctly rejected missing required field")
 
     # Test create schemas
     create_data = {
@@ -125,17 +112,4 @@ try:
     }
 
     new_group = OktaGroupCreate(**create_data)
-    print(f"✓ Create schema works: {new_group.name}")
-
-    print("\n🎯 Group schemas test completed successfully!")
-    print("✓ All group types working")
-    print("✓ Discriminated unions working")
-    print("✓ Validation working")
-    print("✓ Create/Read schemas working")
-    print("✓ JSON serialization working")
-
-except Exception as e:
-    print(f"✗ Group schema test failed: {e}")
-    import traceback
-
-    traceback.print_exc()
+    assert new_group.name == "New Test Group"
