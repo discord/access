@@ -5,6 +5,7 @@ from sqlalchemy.orm import (
     selectinload,
 )
 
+from api.access_config import get_access_config
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import coalesce_constraints
@@ -44,7 +45,21 @@ class CheckForReason:
 
     @staticmethod
     def invalid_reason(reason: Optional[str]) -> bool:
-        return reason is None or reason.strip() == ""
+        if reason is None or reason.strip() == "":
+            return True
+
+        # Check if the reason is just the template without modification
+        access_config = get_access_config()
+        if access_config.reason_template and reason.strip() == access_config.reason_template.strip():
+            return True
+
+        # Check if the reason is missing required fields from the template
+        if access_config.reason_template_required and reason:
+            for required_field in access_config.reason_template_required:
+                if required_field not in reason:
+                    return True
+
+        return False
 
     def execute_for_group(self) -> Tuple[bool, str]:
         if self.invalid_reason(self.reason):
