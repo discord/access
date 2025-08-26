@@ -6,7 +6,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from api.models import AccessRequestStatus
+from api_v2.models import AccessRequestStatus
 from api_v2.schemas.base import BaseSchema
 from api_v2.schemas.core_schemas import GroupRead, RoleGroupRead, TagRead, UserGroupMember, UserSummary
 from api_v2.schemas.requests import AccessRequestRead, RoleRequestRead

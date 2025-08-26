@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import Session
 
-from api.models import AppGroup, OktaGroup, OktaUser
+from api_v2.models import AppGroup, OktaGroup, OktaUser
 from api_v2.database import get_db
 from api_v2.auth import get_current_user
 from api_v2.schemas import AppGroupRead, GroupCreate, GroupList, GroupRead, GroupUpdate, OktaGroupRead, RoleGroupRead

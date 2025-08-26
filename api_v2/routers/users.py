@@ -5,14 +5,24 @@ Migrated from Flask users_views.py and resources/user.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, nullsfirst, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload, selectin_polymorphic, with_polymorphic
 
-from api.models import OktaUser
+from api_v2.models import (
+    AppGroup,
+    OktaGroup,
+    OktaGroupTagMap,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+)
 
-# Using Python 3.10+ union syntax instead of typing.Optional
 from api_v2.database import get_db
 from api_v2.auth import get_current_user
 from api_v2.schemas import UserDetail, UserList
+
+# Polymorphic group types for eager loading
+ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
 
 router = APIRouter(prefix="/users", tags=["users"])
 

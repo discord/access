@@ -9,8 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
-from api.extensions import db
-from api.models import *  # Import all existing models
+from api_v2.models import *  # Import all models
 
 def get_database_url() -> str:
     """Get database URL from Flask config or environment"""

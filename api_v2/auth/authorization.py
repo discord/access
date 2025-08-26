@@ -10,7 +10,7 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload, with_polymorphic
 
-from api.models import (
+from api_v2.models import (
     App,
     AppGroup,
     OktaGroup,

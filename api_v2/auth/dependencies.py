@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from api.models import OktaUser
+from api_v2.models import OktaUser
 from api_v2.database import get_db
 
 
