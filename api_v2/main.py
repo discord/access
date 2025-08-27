@@ -9,6 +9,7 @@ import sys
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -89,7 +90,4 @@ app.include_router(users.router, prefix="/api/v2")
 app.include_router(groups.router, prefix="/api/v2")
 
 
-@app.get("/")
-async def root():
-    """Root endpoint for FastAPI app"""
-    return {"message": "Access Management API v2", "status": "running"}
+app.mount("/", StaticFiles(directory="build", html=True), name="static")
