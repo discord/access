@@ -4,7 +4,6 @@ Provides authentication and authorization logic converted from Flask.
 """
 
 import json
-import os
 from typing import Any, Dict, Optional
 
 import httpx
@@ -14,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from api_v2.config import settings
 from api_v2.models import OktaUser
 from api_v2.database import get_db
 
@@ -22,8 +22,8 @@ class CloudflareAuth:
     """Cloudflare Access authentication helper"""
 
     def __init__(self):
-        self.team_domain = os.getenv("CLOUDFLARE_TEAM_DOMAIN")
-        self.application_audience = os.getenv("CLOUDFLARE_APPLICATION_AUDIENCE")
+        self.team_domain = settings.cloudflare_team_domain
+        self.application_audience = settings.cloudflare_application_audience
         self._public_keys_cache: Optional[Dict[str, RSAPrivateKey | RSAPublicKey]] = None
 
         if not self.team_domain:
@@ -135,20 +135,19 @@ class OIDCAuth:
         if self._config_cache is not None:
             return self._config_cache
 
-        client_secrets_env = os.getenv("OIDC_CLIENT_SECRETS")
-        if not client_secrets_env:
+        if not settings.oidc_client_secrets:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OIDC_CLIENT_SECRETS not configured"
             )
 
         try:
             # Handle both inline JSON and file path
-            if client_secrets_env.startswith("{") and client_secrets_env.endswith("}"):
+            if settings.oidc_client_secrets.startswith("{") and settings.oidc_client_secrets.endswith("}"):
                 # Inline JSON
-                client_secrets = json.loads(client_secrets_env)
+                client_secrets = json.loads(settings.oidc_client_secrets)
             else:
                 # File path
-                with open(client_secrets_env, "r") as f:
+                with open(settings.oidc_client_secrets, "r") as f:
                     client_secrets = json.load(f)
 
             # Extract configuration
@@ -166,7 +165,7 @@ class OIDCAuth:
                 )
 
             # Create OpenID Connect discovery URL
-            openid_connect_url = os.getenv("OIDC_SERVER_METADATA_URL") or f"{issuer}/.well-known/openid_configuration"
+            openid_connect_url = settings.oidc_server_metadata_url or f"{issuer}/.well-known/openid_configuration"
 
             config = {"issuer": issuer, "client_id": client_id, "openid_connect_url": openid_connect_url}
 
@@ -226,8 +225,6 @@ class OIDCAuth:
             )
 
         # Validate and decode the token
-        clock_skew = int(os.getenv("OIDC_CLOCK_SKEW", "60"))
-
         try:
             payload = jwt.decode(
                 token,
@@ -235,7 +232,7 @@ class OIDCAuth:
                 algorithms=["RS256"],
                 audience=self.config["client_id"],
                 issuer=self.config["issuer"],
-                leeway=clock_skew,
+                leeway=settings.oidc_clock_skew,
             )
 
             return payload
@@ -318,11 +315,9 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
     Raises:
         HTTPException: If authentication fails
     """
-    env = os.getenv("FLASK_ENV", os.getenv("ENV", "production"))
-
     # Development/test mode - bypass authentication
-    if env in ("development", "test"):
-        test_email = os.getenv("CURRENT_OKTA_USER_EMAIL")
+    if settings.env in ("development", "test"):
+        test_email = settings.current_okta_user_email
         if not test_email:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Test user email not configured"
@@ -339,7 +334,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
         return current_user
 
     # Cloudflare Access authentication
-    elif os.getenv("CLOUDFLARE_TEAM_DOMAIN"):
+    elif settings.cloudflare_team_domain:
         payload = await get_cloudflare_auth().verify_cloudflare_token(request)
 
         if "email" in payload:
@@ -362,7 +357,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid token payload")
 
     # OIDC authentication
-    elif os.getenv("OIDC_CLIENT_SECRETS"):
+    elif settings.oidc_client_secrets:
         payload = await get_oidc_auth().verify_oidc_token(request)
 
         # Extract email from token

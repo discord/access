@@ -2,28 +2,21 @@
 Database configuration for FastAPI.
 This reuses the existing SQLAlchemy models from the Flask app.
 """
-import os
 from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
+from api_v2.config import settings
 from api_v2.models import *  # Import all models
 
 def get_database_url() -> str:
-    """Get database URL from Flask config or environment"""
-    from flask import current_app
-    try:
-        # Try to get from Flask app context if available
-        return current_app.config['SQLALCHEMY_DATABASE_URI']
-    except RuntimeError:
-        # Fallback to environment variables (same as api.config)
-        database_uri = os.getenv("DATABASE_URI")
-        if database_uri:
-            return database_uri
-        # Default fallback for development
-        return "sqlite:///instance/access.db"
+    """Get database URL from settings"""
+    if settings.database_uri:
+        return settings.database_uri
+    # Default fallback for development
+    return "sqlite:///instance/access.db"
 
 # Global variables for lazy initialization
 _engine = None
@@ -38,7 +31,7 @@ def get_engine():
             database_url,
             poolclass=StaticPool if "sqlite" in database_url else None,
             connect_args={"check_same_thread": False} if "sqlite" in database_url else {},
-            echo=False  # Set to True for SQL debugging
+            echo=settings.sqlalchemy_echo  # Use settings for SQL debugging
         )
     return _engine
 

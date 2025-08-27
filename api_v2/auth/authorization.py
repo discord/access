@@ -3,13 +3,13 @@ FastAPI authorization dependencies.
 Provides authorization logic converted from Flask authorization system.
 """
 
-import os
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload, with_polymorphic
 
+from api_v2.config import settings
 from api_v2.models import (
     App,
     AppGroup,
@@ -166,7 +166,7 @@ async def require_access_admin_or_app_creator(
         HTTPException: If user is not authorized
     """
     # Check if the current user is an app creator
-    app_creator_id = os.getenv("APP_CREATOR_ID")
+    app_creator_id = settings.app_creator_id
     if app_creator_id and current_user.id == app_creator_id:
         return current_user
 
