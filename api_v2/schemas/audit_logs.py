@@ -187,19 +187,3 @@ class AuditLogRead(BaseReadSchema):
             if v is None and field_name not in allowed_keys:
                 return None
         return v
-
-
-class AuditLogCreate(BaseSchema):
-    """
-    Schema for creating audit log entries.
-    Used internally by the audit logging system.
-    """
-
-    event_type: AuditEventType = Field(..., description="Type of audit event")
-    user_agent: str | None = Field(None, description="User agent string")
-    ip: str | None = Field(None, description="IP address")
-    current_user_id: str | None = Field(None, description="Current user ID")
-    current_user_email: str | None = Field(None, description="Current user email")
-
-    # Additional fields can be added dynamically based on event type
-    additional_data: dict[str, Any] = Field(default_factory=dict, description="Additional event data")
