@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional
 
 import httpx
 import jwt
-import requests
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import func
@@ -37,7 +36,7 @@ class CloudflareAuth:
                 detail="Cloudflare application audience not configured",
             )
 
-    def get_public_keys(self) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
+    async def get_public_keys(self) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
         """
         Fetch and parse Cloudflare public keys for JWT verification (cached).
 
@@ -47,17 +46,18 @@ class CloudflareAuth:
         if self._public_keys_cache is not None:
             return self._public_keys_cache
 
-        r = requests.get(f"https://{self.team_domain}/cdn-cgi/access/certs")
-        r.raise_for_status()
-        public_keys = {}
-        jwk_set = r.json()
-        for key_dict in jwk_set["keys"]:
-            public_keys[key_dict["kid"]] = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_dict))
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"https://{self.team_domain}/cdn-cgi/access/certs")
+            response.raise_for_status()
+            public_keys = {}
+            jwk_set = response.json()
+            for key_dict in jwk_set["keys"]:
+                public_keys[key_dict["kid"]] = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_dict))
 
         self._public_keys_cache = public_keys
         return public_keys
 
-    def verify_cloudflare_token(self, request: Request) -> Dict[str, Any]:
+    async def verify_cloudflare_token(self, request: Request) -> Dict[str, Any]:
         """
         Verify Cloudflare Access token from request headers or cookies.
 
@@ -98,7 +98,7 @@ class CloudflareAuth:
             )
 
         # Get cached public keys
-        keys = self.get_public_keys()
+        keys = await self.get_public_keys()
 
         if unverified_payload["kid"] not in keys:
             raise HTTPException(
@@ -340,7 +340,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)) -> O
 
     # Cloudflare Access authentication
     elif os.getenv("CLOUDFLARE_TEAM_DOMAIN"):
-        payload = get_cloudflare_auth().verify_cloudflare_token(request)
+        payload = await get_cloudflare_auth().verify_cloudflare_token(request)
 
         if "email" in payload:
             current_user = (
