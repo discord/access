@@ -4,18 +4,20 @@ Provides authentication and authorization logic converted from Flask.
 """
 
 import json
+from functools import lru_cache
 from typing import Any, Dict, Optional
 
 import httpx
 import jwt
+from async_lru import alru_cache
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from api_v2.config import settings
-from api_v2.models import OktaUser
 from api_v2.database import get_db
+from api_v2.models import OktaUser
 
 
 class CloudflareAuth:
@@ -24,7 +26,6 @@ class CloudflareAuth:
     def __init__(self):
         self.team_domain = settings.cloudflare_team_domain
         self.application_audience = settings.cloudflare_application_audience
-        self._public_keys_cache: Optional[Dict[str, RSAPrivateKey | RSAPublicKey]] = None
 
         if not self.team_domain:
             raise HTTPException(
@@ -36,16 +37,14 @@ class CloudflareAuth:
                 detail="Cloudflare application audience not configured",
             )
 
-    async def get_public_keys(self) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
+    @alru_cache(maxsize=1)
+    async def _get_public_keys(self) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
         """
         Fetch and parse Cloudflare public keys for JWT verification (cached).
 
         Returns:
             Dictionary mapping kid to RSA public keys usable by PyJWT.
         """
-        if self._public_keys_cache is not None:
-            return self._public_keys_cache
-
         async with httpx.AsyncClient() as client:
             response = await client.get(f"https://{self.team_domain}/cdn-cgi/access/certs")
             response.raise_for_status()
@@ -54,7 +53,6 @@ class CloudflareAuth:
             for key_dict in jwk_set["keys"]:
                 public_keys[key_dict["kid"]] = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key_dict))
 
-        self._public_keys_cache = public_keys
         return public_keys
 
     async def verify_cloudflare_token(self, request: Request) -> Dict[str, Any]:
@@ -98,7 +96,7 @@ class CloudflareAuth:
             )
 
         # Get cached public keys
-        keys = await self.get_public_keys()
+        keys = await self._get_public_keys()
 
         if unverified_payload["kid"] not in keys:
             raise HTTPException(
@@ -125,16 +123,12 @@ class OIDCAuth:
     """OIDC authentication helper"""
 
     def __init__(self):
-        self._config_cache: Optional[Dict[str, Any]] = None
-        self._jwks_cache: Optional[Dict[str, Any]] = None
         # Load and validate configuration on initialization
         self.config = self._load_oidc_config()
 
+    @lru_cache(maxsize=1)
     def _load_oidc_config(self) -> Dict[str, Any]:
         """Load OIDC configuration from environment (cached)"""
-        if self._config_cache is not None:
-            return self._config_cache
-
         if not settings.oidc_client_secrets:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="OIDC_CLIENT_SECRETS not configured"
@@ -169,7 +163,6 @@ class OIDCAuth:
 
             config = {"issuer": issuer, "client_id": client_id, "openid_connect_url": openid_connect_url}
 
-            self._config_cache = config
             return config
 
         except json.JSONDecodeError as e:
@@ -246,11 +239,9 @@ class OIDCAuth:
         except jwt.InvalidTokenError as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid OIDC token: {e}")
 
+    @alru_cache(maxsize=1)
     async def _get_jwks(self) -> Dict[str, Any]:
         """Get JWKS from discovery document (cached)"""
-        if self._jwks_cache is not None:
-            return self._jwks_cache
-
         async with httpx.AsyncClient() as client:
             try:
                 # Get discovery document
@@ -270,7 +261,6 @@ class OIDCAuth:
                 jwks_response.raise_for_status()
                 jwks = jwks_response.json()
 
-                self._jwks_cache = jwks
                 return jwks
 
             except httpx.RequestError as e:
@@ -279,25 +269,16 @@ class OIDCAuth:
                 )
 
 
-# Global instances for memoization
-_cloudflare_auth_instance: Optional[CloudflareAuth] = None
-_oidc_auth_instance: Optional[OIDCAuth] = None
-
-
+@lru_cache(maxsize=1)
 def get_cloudflare_auth() -> CloudflareAuth:
     """Get or create CloudflareAuth instance (memoized)"""
-    global _cloudflare_auth_instance
-    if _cloudflare_auth_instance is None:
-        _cloudflare_auth_instance = CloudflareAuth()
-    return _cloudflare_auth_instance
+    return CloudflareAuth()
 
 
+@lru_cache(maxsize=1)
 def get_oidc_auth() -> OIDCAuth:
     """Get or create OIDCAuth instance (memoized)"""
-    global _oidc_auth_instance
-    if _oidc_auth_instance is None:
-        _oidc_auth_instance = OIDCAuth()
-    return _oidc_auth_instance
+    return OIDCAuth()
 
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)) -> OktaUser:
