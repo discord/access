@@ -5,6 +5,7 @@ This runs alongside the existing Flask app during the migration.
 
 import logging
 import sys
+from os import path
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -13,15 +14,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
+from api_v2.auth.middleware import AuthenticationMiddleware
 from api_v2.config import settings
 from api_v2.exceptions import (
     general_exception_handler,
+    http_not_found_exception_handler,
     pydantic_validation_exception_handler,
     sqlalchemy_exception_handler,
     validation_exception_handler,
 )
 from api_v2.log_filters import TokenSanitizingFilter
-from api_v2.auth.middleware import AuthenticationMiddleware
 from api_v2.middleware.security import SecurityHeadersMiddleware
 from api_v2.routers import groups, health, users
 from api_v2.services import okta
@@ -82,6 +84,7 @@ app.add_middleware(AuthenticationMiddleware)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
 app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(404, http_not_found_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 # Include routers
@@ -90,4 +93,4 @@ app.include_router(users.router, prefix="/api/v2")
 app.include_router(groups.router, prefix="/api/v2")
 
 
-app.mount("/", StaticFiles(directory="build", html=True), name="static")
+app.mount("/", StaticFiles(directory=path.join(path.dirname(__file__), "..", "build"), html=True), name="static")

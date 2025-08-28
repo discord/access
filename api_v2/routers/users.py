@@ -5,20 +5,16 @@ Migrated from Flask users_views.py and resources/user.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, nullsfirst, or_
-from sqlalchemy.orm import Session, joinedload, selectinload, selectin_polymorphic, with_polymorphic
+from sqlalchemy.orm import Session, with_polymorphic
 
+from api_v2.auth import get_current_user
+from api_v2.database import get_db
 from api_v2.models import (
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
-    OktaUserGroupMember,
     RoleGroup,
-    RoleGroupMap,
 )
-
-from api_v2.database import get_db
-from api_v2.auth.middleware import get_authenticated_user
 from api_v2.schemas import UserDetail, UserList
 
 # Polymorphic group types for eager loading
@@ -28,14 +24,11 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("/{user_id}", response_model=UserDetail)
-async def get_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+async def get_user(user_id: str, current_user: OktaUser = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Get a user by ID or email.
     Support special "@me" user_id to get current user.
     """
-    # Get current authenticated user from middleware
-    current_user = get_authenticated_user(request)
-    
     # Handle special "@me" user_id
     if user_id == "@me":
         user_id = current_user.id
