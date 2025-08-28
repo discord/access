@@ -23,6 +23,7 @@ from api_v2.exceptions import (
 from api_v2.log_filters import TokenSanitizingFilter
 from api_v2.middleware.security import SecurityHeadersMiddleware
 from api_v2.routers import groups, health, users
+from api_v2.services import okta
 
 
 def setup_logging():
@@ -40,16 +41,11 @@ def setup_logging():
 
 def initialize_services():
     """Initialize external services like Okta"""
-    try:
-        from api.services import okta
-
-        if settings.okta_domain and settings.okta_api_token:
-            okta.initialize(
-                settings.okta_domain, settings.okta_api_token, use_group_owners_api=settings.okta_use_group_owners_api
-            )
-            logging.info("✓ Okta service initialized")
-    except ImportError:
-        logging.warning("⚠ Okta service not available")
+    if settings.okta_domain and settings.okta_api_token:
+        okta.configure(
+            settings.okta_domain, settings.okta_api_token, use_group_owners_api=settings.okta_use_group_owners_api
+        )
+        logging.info("✓ Okta service initialized")
 
 
 # Setup logging and services on module import

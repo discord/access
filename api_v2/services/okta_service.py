@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from functools import lru_cache
 from typing import Any, Callable, Optional
 
 import aiohttp
@@ -14,13 +15,8 @@ from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from okta.request_executor import RequestExecutor as OktaRequestExecutor
 
+from api_v2.config import settings
 from api_v2.models import OktaGroup, OktaUser
-
-# TODO: Move config to api_v2 when available
-try:
-    from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
-except ImportError:
-    OKTA_GROUP_PROFILE_CUSTOM_ATTR = None
 
 REQUEST_MAX_RETRIES = 3
 RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
@@ -36,21 +32,28 @@ logger = logging.getLogger(__name__)
 class OktaService:
     """For interacting with the Okta API"""
 
-    def initialize(
-        self, okta_domain: Optional[str], okta_api_token: Optional[str], use_group_owners_api: bool = False
-    ) -> None:
-        # Ignore an okta domain and api token when testing
-        if okta_domain is None or okta_api_token is None:
-            return
+    def configure(
+        self,
+        okta_domain: Optional[str] = None,
+        okta_api_token: Optional[str] = None,
+        use_group_owners_api: bool = False,
+    ):
+        """Initialize the Okta service with domain and API token"""
         self.okta_domain = okta_domain
         self.okta_api_token = okta_api_token
-        self.okta_client = OktaClient(
-            {
-                "orgUrl": f"https://{okta_domain}",
-                "token": okta_api_token,
-            }
-        )
         self.use_group_owners_api = use_group_owners_api
+
+        # Initialize Okta client if credentials are provided
+        if okta_domain and okta_api_token:
+            self.okta_client = OktaClient(
+                {
+                    "orgUrl": f"https://{okta_domain}",
+                    "token": okta_api_token,
+                }
+            )
+        else:
+            self.okta_client = None
+            logger.warning("OktaService initialized without credentials - API calls will fail")
 
     def _get_sessioned_okta_request_executor(self) -> SessionedOktaRequestExecutor:
         """Establishes an Okta client session to pool connections"""
@@ -571,8 +574,12 @@ class Group:
 def is_managed_group(
     group: Group,
     group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]],
-    custom_attr: Optional[str] = OKTA_GROUP_PROFILE_CUSTOM_ATTR,
+    custom_attr: Optional[str] = None,
 ) -> bool:
+    # Use the custom attribute from settings if not provided
+    if custom_attr is None:
+        custom_attr = settings.okta_group_profile_custom_attr
+
     # Check if OKTA_GROUP_PROFILE_CUSTOM_ATTR attribute exists as a custom Okta Group Profile attribute and retrieve its value
     if custom_attr:
         custom_manage_attr = getattr(group.profile, custom_attr, None)
@@ -587,3 +594,17 @@ def is_managed_group(
 
     # By default, the group should be of type OKTA_GROUP and should not have any group rules to be managed
     return (group.type == "OKTA_GROUP") and (group.id not in group_ids_with_group_rules)
+
+
+@lru_cache(maxsize=1)
+def get_okta_service() -> OktaService:
+    """
+    Get or create the singleton OktaService instance.
+
+    This function returns a cached OktaService instance initialized with
+    settings from the pydantic configuration.
+
+    Returns:
+        OktaService: The singleton OktaService instance
+    """
+    return OktaService()

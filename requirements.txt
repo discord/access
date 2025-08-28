@@ -44,6 +44,7 @@ pluggy==1.5.0
 fastapi[standard]==0.116.1
 pydantic==2.11.7
 pydantic-settings==2.10.1
+async-lru==2.0.5
 
 # Test - TODO: Move test packages to separate file
 tox==4.23.2
