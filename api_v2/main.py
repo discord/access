@@ -21,6 +21,7 @@ from api_v2.exceptions import (
     validation_exception_handler,
 )
 from api_v2.log_filters import TokenSanitizingFilter
+from api_v2.auth.middleware import AuthenticationMiddleware
 from api_v2.middleware.security import SecurityHeadersMiddleware
 from api_v2.routers import groups, health, users
 from api_v2.services import okta
@@ -73,6 +74,9 @@ if settings.env == "development":
 
 # Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
+
+# Add authentication middleware (opt-out approach - all routes protected by default)
+app.add_middleware(AuthenticationMiddleware)
 
 # Add exception handlers
 app.add_exception_handler(RequestValidationError, validation_exception_handler)

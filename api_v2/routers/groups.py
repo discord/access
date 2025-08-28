@@ -3,13 +3,13 @@ Group endpoints for FastAPI.
 Migrated from Flask groups_views.py and resources/group.py
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import Session
 
 from api_v2.models import AppGroup, OktaGroup, OktaUser
 from api_v2.database import get_db
-from api_v2.auth import get_current_user
+from api_v2.auth.middleware import get_authenticated_user
 from api_v2.schemas import AppGroupRead, GroupCreate, GroupList, GroupRead, GroupUpdate, OktaGroupRead, RoleGroupRead
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -35,7 +35,7 @@ def convert_group_to_schema(group: OktaGroup) -> GroupRead:
 
 @router.get("/{group_id}")
 async def get_group(
-    group_id: str, current_user: OktaUser = Depends(get_current_user), db: Session = Depends(get_db)
+    group_id: str, request: Request, db: Session = Depends(get_db)
 ) -> GroupRead:
     """
     Get a group by ID.
@@ -59,7 +59,7 @@ async def list_groups(
     app_id: str | None = Query(None, description="Filter by application ID"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(25, ge=1, le=100, description="Items per page"),
-    current_user: OktaUser = Depends(get_current_user),
+    request: Request = None,  # Request is injected by FastAPI, authentication handled by middleware
     db: Session = Depends(get_db),
 ) -> list[GroupList]:
     """
