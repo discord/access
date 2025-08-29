@@ -1,6 +1,6 @@
+import logging
 import random
 import string
-import logging
 from datetime import datetime
 from typing import Optional
 
@@ -21,7 +21,14 @@ from api_v2.models.okta_group import get_group_managers
 from api_v2.operations.approve_access_request import ApproveAccessRequest
 from api_v2.operations.reject_access_request import RejectAccessRequest
 from api_v2.plugins import get_conditional_access_hook, get_notification_hook
-from api_v2.schemas import AuditEventType, AuditLogRead, AuditGroupSummary, AuditAppSummary, AuditAccessRequestSummary, AuditUserSummary
+from api_v2.schemas import (
+    AuditAccessRequestSummary,
+    AuditAppSummary,
+    AuditEventType,
+    AuditGroupSummary,
+    AuditLogRead,
+    AuditUserSummary,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +47,7 @@ class CreateAccessRequest:
     ):
         self.db = db
         self.request = request
-        self.id = self.__generate_id()
+        self.id = self._generate_id()
 
         if isinstance(requester_user, str):
             self.requester = self.db.get(OktaUser, requester_user)
@@ -75,23 +82,22 @@ class CreateAccessRequest:
                 id=group.id,
                 name=group.name,
                 type=group.type,
-                app=AuditAppSummary(
-                    id=group.app.id,
-                    name=group.app.name
-                ) if hasattr(group, 'app') and group.app else None
+                app=AuditAppSummary(id=group.app.id, name=group.app.name)
+                if hasattr(group, "app") and group.app
+                else None,
             ),
             "request": AuditAccessRequestSummary(
                 id=access_request.id,
                 request_reason=access_request.request_reason,
                 request_ending_at=access_request.request_ending_at,
-                request_ownership=access_request.request_ownership
+                request_ownership=access_request.request_ownership,
             ),
             "requester": AuditUserSummary(
                 id=self.requester.id,
                 email=self.requester.email,
                 first_name=self.requester.first_name,
                 last_name=self.requester.last_name,
-                display_name=self.requester.display_name
+                display_name=self.requester.display_name,
             ),
             "group_owners": [
                 AuditUserSummary(
@@ -99,17 +105,20 @@ class CreateAccessRequest:
                     email=approver.email,
                     first_name=approver.first_name,
                     last_name=approver.last_name,
-                    display_name=approver.display_name
-                ) for approver in approvers
+                    display_name=approver.display_name,
+                )
+                for approver in approvers
             ],
         }
 
         if self.request:
             audit_data["user_agent"] = self.request.headers.get("User-Agent")
             audit_data["ip"] = (
-                self.request.headers.get("X-Forwarded-For") or
-                self.request.headers.get("X-Real-IP") or
-                self.request.client.host if self.request.client else None
+                self.request.headers.get("X-Forwarded-For")
+                or self.request.headers.get("X-Real-IP")
+                or self.request.client.host
+                if self.request.client
+                else None
             )
 
         audit_log = AuditLogRead(**audit_data)
@@ -205,5 +214,5 @@ class CreateAccessRequest:
         return access_request
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
-    def __generate_id(self) -> str:
+    def _generate_id(self) -> str:
         return "".join(random.choices(string.ascii_letters, k=20))

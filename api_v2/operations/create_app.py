@@ -1,6 +1,6 @@
+import logging
 import random
 import string
-import logging
 from typing import Optional, TypedDict
 
 from fastapi import Request
@@ -13,7 +13,7 @@ from api_v2.operations.create_group import CreateGroup, GroupDict
 from api_v2.operations.modify_group_type import ModifyGroupType
 from api_v2.operations.modify_group_users import ModifyGroupUsers
 from api_v2.operations.modify_role_groups import ModifyRoleGroups
-from api_v2.schemas import AuditEventType, AuditLogRead, AuditAppSummary
+from api_v2.schemas import AuditAppSummary, AuditEventType, AuditLogRead
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +38,30 @@ class CreateApp:
     ):
         self.db = db
         self.request = request
-        
-        id = self.__generate_id()
+
+        id = self._generate_id()
         if isinstance(app, dict):
             self.app = App(id=id, name=app["name"], description=app["description"])
         else:
             app.id = id
             self.app = app
 
-        self.tag_ids = [tag.id for tag in self.db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()]
+        self.tag_ids = [
+            tag.id for tag in self.db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
+        ]
 
         self.owner_id = getattr(
-            self.db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == owner_id).first(), "id", None
+            self.db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == owner_id).first(),
+            "id",
+            None,
         )
         self.owner_role_ids = None
         if owner_role_ids is not None:
             self.owner_roles = (
-                self.db.query(RoleGroup).filter(RoleGroup.id.in_(owner_role_ids)).filter(RoleGroup.deleted_at.is_(None)).all()
+                self.db.query(RoleGroup)
+                .filter(RoleGroup.id.in_(owner_role_ids))
+                .filter(RoleGroup.deleted_at.is_(None))
+                .all()
             )
             self.owner_role_ids = [role.id for role in self.owner_roles]
 
@@ -79,7 +86,10 @@ class CreateApp:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
         self.current_user_id = getattr(
-            self.db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            self.db.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -97,19 +107,18 @@ class CreateApp:
             "ip": None,
             "current_user_id": self.current_user_id,
             "current_user_email": email,
-            "app": AuditAppSummary(
-                id=self.app.id,
-                name=self.app.name
-            ),
+            "app": AuditAppSummary(id=self.app.id, name=self.app.name),
             "owner_id": self.owner_id,
         }
 
         if self.request:
             audit_data["user_agent"] = self.request.headers.get("User-Agent")
             audit_data["ip"] = (
-                self.request.headers.get("X-Forwarded-For") or
-                self.request.headers.get("X-Real-IP") or
-                self.request.client.host if self.request.client else None
+                self.request.headers.get("X-Forwarded-For")
+                or self.request.headers.get("X-Real-IP")
+                or self.request.client.host
+                if self.request.client
+                else None
             )
 
         audit_log = AuditLogRead(**audit_data)
@@ -118,7 +127,10 @@ class CreateApp:
     def execute(self) -> App:
         # Do not allow non-deleted apps with the same name
         existing_app = (
-            self.db.query(App).filter(func.lower(App.name) == func.lower(self.app.name)).filter(App.deleted_at.is_(None)).first()
+            self.db.query(App)
+            .filter(func.lower(App.name) == func.lower(self.app.name))
+            .filter(App.deleted_at.is_(None))
+            .first()
         )
         if existing_app is not None:
             return existing_app
@@ -147,7 +159,7 @@ class CreateApp:
             )
             owner_app_group = CreateGroup(
                 self.db,
-                group=owner_app_group, 
+                group=owner_app_group,
                 current_user_id=self.current_user_id,
                 request=self.request,
             ).execute()
@@ -225,7 +237,7 @@ class CreateApp:
                 if existing_group is None:
                     CreateGroup(
                         self.db,
-                        group=app_group, 
+                        group=app_group,
                         current_user_id=self.current_user_id,
                         request=self.request,
                     ).execute()
@@ -259,7 +271,8 @@ class CreateApp:
             self.db.commit()
 
             new_app_tag_maps = (
-                self.db.query(AppTagMap).filter(AppTagMap.app_id == app_id)
+                self.db.query(AppTagMap)
+                .filter(AppTagMap.app_id == app_id)
                 .filter(
                     or_(
                         AppTagMap.ended_at.is_(None),
@@ -283,5 +296,5 @@ class CreateApp:
         return self.db.get(App, app_id)
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
-    def __generate_id(self) -> str:
+    def _generate_id(self) -> str:
         return "".join(random.choices(string.ascii_letters, k=20))

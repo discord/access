@@ -31,7 +31,7 @@ class CreateTag:
         self.db = db
         self.request = request
 
-        id = self.__generate_id()
+        id = self._generate_id()
         if isinstance(tag, dict):
             self.tag = Tag(id=id, name=tag["name"], description=tag["description"], constraints=tag["constraints"])
         else:
@@ -98,5 +98,5 @@ class CreateTag:
         return self.tag
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
-    def __generate_id(self) -> str:
+    def _generate_id(self) -> str:
         return "".join(random.choices(string.ascii_letters, k=20))
