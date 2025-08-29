@@ -9,7 +9,6 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.routing import Match
 
 from api_v2.auth.authentication import get_cloudflare_auth, get_oidc_auth
 from api_v2.config import settings
@@ -86,20 +85,18 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             if path.startswith(prefix):
                 return True
 
-        # Check if path is root or ends with /
-        if path == "/" or path == "":
-            return True
-
+        # TODO: Uncomment this when we want to use the public_route decorator as doing this on every request is too expensive
+        # TODO: We should also add a cache to the _is_public_route method potentially using cachetools https://stackoverflow.com/a/32655449
         # Check if the matched route's endpoint has the _public attribute
-        for route in request.app.routes:
-            match, scope = route.matches(request.scope)
-            if match == Match.FULL:
-                # Check if the endpoint has the _public attribute set by public_route decorator
-                if hasattr(route, "endpoint"):
-                    endpoint = route.endpoint
-                    if hasattr(endpoint, "_public") and endpoint._public:
-                        return True
-                break
+        # for route in request.app.routes:
+        #     match, scope = route.matches(request.scope)
+        #     if match == Match.FULL:
+        #         # Check if the endpoint has the _public attribute set by public_route decorator
+        #         if hasattr(route, "endpoint"):
+        #             endpoint = route.endpoint
+        #             if hasattr(endpoint, "_public") and endpoint._public:
+        #                 return True
+        #         break
 
         return False
 
@@ -193,6 +190,8 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
 
 def public_route(func):
     """
+    CURRENTLY NOT USED - USE PUBLIC_ROUTES AND PUBLIC_PREFIXES INSTEAD
+
     Decorator to mark an endpoint as public (no authentication required).
     Use this for individual endpoints that should bypass authentication.
 

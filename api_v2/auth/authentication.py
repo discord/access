@@ -28,7 +28,7 @@ class CloudflareAuth:
                 detail="Cloudflare application audience not configured",
             )
 
-    @alru_cache(maxsize=1)
+    @alru_cache(maxsize=1, ttl=60 * 60 * 24)  # 24 hours TTL
     async def _get_public_keys(self) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
         """
         Fetch and parse Cloudflare public keys for JWT verification (cached).
@@ -66,7 +66,7 @@ class CloudflareAuth:
 
         return await self.verify_cloudflare_token(token)
 
-    @alru_cache()
+    @alru_cache(ttl=60)  # 1 minute TTL for token verification as they expire periodically
     async def verify_cloudflare_token(self, token: str) -> Dict[str, Any]:
         """
         Verify Cloudflare Access token from request headers or cookies.
@@ -187,7 +187,7 @@ class OIDCAuth:
 
         return await self.verify_oidc_token(token)
 
-    @alru_cache()
+    @alru_cache(ttl=60)  # 1 minute TTL for token verification as they expire periodically
     async def verify_oidc_token(self, token: str) -> Dict[str, Any]:
         """
         Verify OIDC JWT token from request headers and return user email.
@@ -245,7 +245,7 @@ class OIDCAuth:
         except jwt.InvalidTokenError as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid OIDC token: {e}")
 
-    @alru_cache(maxsize=1)
+    @alru_cache(maxsize=1, ttl=60 * 60 * 24)  # 24 hours TTL
     async def _get_jwks(self) -> Dict[str, Any]:
         """Get JWKS from discovery document (cached)"""
         async with httpx.AsyncClient() as client:
