@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
-from api_v2.auth.middleware import AuthenticationMiddleware
+from api_v2.auth import AuthenticationMiddleware
 from api_v2.config import settings
 from api_v2.exceptions import (
     general_exception_handler,
@@ -24,8 +24,8 @@ from api_v2.exceptions import (
     validation_exception_handler,
 )
 from api_v2.log_filters import TokenSanitizingFilter
-from api_v2.middleware.security import SecurityHeadersMiddleware
 from api_v2.routers import groups, health, users
+from api_v2.security import SecurityHeadersMiddleware
 from api_v2.services import okta
 
 

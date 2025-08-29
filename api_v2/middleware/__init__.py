@@ -1,3 +1,0 @@
-"""
-Middleware components for FastAPI.
-"""
