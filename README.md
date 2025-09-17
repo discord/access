@@ -45,7 +45,7 @@ OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.oktapreview.com"
 OKTA_API_TOKEN=<YOUR_SANDBOX_API_TOKEN>
 DATABASE_URI="sqlite:///access.db"
 CLIENT_ORIGIN_URL=http://localhost:3000
-REACT_APP_API_SERVER_URL=http://localhost:6060
+VITE_API_SERVER_URL=http://localhost:6060
 ```
 
 Next, run the following commands to set up your python virtual environment. Access can be run with Python 3.11 and above:
@@ -116,7 +116,7 @@ OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
 OKTA_API_TOKEN=<YOUR_OKTA_API_TOKEN>
 DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://postgres:postgres@localhost:5432/access"
 CLIENT_ORIGIN_URL=http://localhost:3000
-REACT_APP_API_SERVER_URL=""
+VITE_API_SERVER_URL=""
 FLASK_SENTRY_DSN=https://<key>@sentry.io/<project>
 REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 ```
@@ -232,7 +232,7 @@ The `.env.production` file is where you configure the application.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
 - `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`.
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
-- `REACT_APP_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
+- `VITE_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
@@ -301,7 +301,7 @@ To override values on the front-end, modify these key-value pairs inside the `FR
 | `NAME_VALIDATION_PATTERN` | Specifies the regex pattern to use for validating role, group, and tag names.  Should include preceding `^` and trailing `$` but is not a regex literal so omit `/`  at beginning and end of the pattern | `"^[a-zA-Z0-9-]*$"`                                            |
 | `NAME_VALIDATION_ERROR`   | Specifies the error message to display when a name does not match the validation pattern.                                                                                                                | `"Name must contain only letters, numbers, and underscores."`  |
 
-The front-end config is loaded in [`craco.config.js`](craco.config.js). See
+The front-end config is loaded in [`vite.config.ts`](vite.config.ts). See
 [`src/config/loadAccessConfig.js`](src/config/loadAccessConfig.js) for more details.
 
 #### Backend Configuration
