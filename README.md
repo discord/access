@@ -2,19 +2,19 @@
 
 # ACCESS
 
-Meet Access, a centralized portal for employees to transparently discover, request, and manage their access for all internal systems needed to do their jobs. If you're interested in the project, come chat with us!
+Meet Access, a centralized portal for employees to transparently discover, request, and manage their access to all internal systems needed to do their jobs. If you're interested in the project, come chat with us!
 
 <p align="center"><a href="https://discord.gg/access-enjoyers"><img src="https://discordapp.com/api/guilds/1232815453907189922/widget.png?style=banner2" alt="Join our Discord!"></a></p>
 
 ## Purpose
 
-The access service exists to help answer the following questions for each persona:
+The Access service exists to help answer the following questions for each persona:
 
 - All Users
   - What do I have access to?
   - What does a teammate have access to that I don’t?
   - What groups and roles are available?
-  - Can I get access?
+  - Can I request access?
 - Team Leads
   - How do I give access to a new team member easily?
   - How do I give temporary access to an individual for a cross-functional effort?
@@ -48,7 +48,7 @@ CLIENT_ORIGIN_URL=http://localhost:3000
 VITE_API_SERVER_URL=http://localhost:6060
 ```
 
-Next, run the following commands to set up your python virtual environment. Access can be run with Python 3.11 and above:
+Next, run the following commands to set up your python virtual environment. Access can run on Python 3.11 and above:
 
 ```
 python3 -m venv venv
@@ -56,7 +56,7 @@ python3 -m venv venv
 pip install -r requirements.txt
 ```
 
-Afterwards, seed the db:
+Afterward, seed the DB:
 
 ```
 flask db upgrade
@@ -73,7 +73,7 @@ Go to [http://localhost:6060/api/users](http://localhost:6060/api/users) to view
 
 ### Node
 
-In a separate window, setup and run nodejs:
+In a separate window, setup and run Node.js:
 
 ```
 npm install
@@ -85,9 +85,9 @@ npm start
 
 Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
 
-#### Generating Typescript React-Query API Client
+#### Generating Typescript React Query API Client
 
-We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified that generated Swagger schema in [api/swagger.json](api/swagger.json), which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands:
+We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified the generated Swagger schema in [api/swagger.json](api/swagger.json), which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands:
 
 ```
 npm install @openapi-codegen/cli
@@ -98,7 +98,7 @@ npx openapi-codegen gen api
 
 ## Tests
 
-We use tox to run our tests, which should be installed into the python venv from
+We use tox to run our tests, which should be installed into the Python venv from 
 our `requirements.txt`.
 
 Invoke the tests using `tox -e test`.
@@ -121,9 +121,9 @@ FLASK_SENTRY_DSN=https://<key>@sentry.io/<project>
 REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 ```
 
-### Google Cloud CloudSQL Configuration
+### Google Cloud Cloud SQL Configuration
 
-If you want to use the CloudSQL Python Connector, set the following variables in your `.env.production` file:
+If you want to use the Cloud SQL Python Connector, set the following variables in your `.env.production` file:
 
 ```
 CLOUDSQL_CONNECTION_NAME=<YOUR_CLOUDSQL_CONNECTION_NAME> # For example, "project:region:instance-name"
@@ -173,7 +173,7 @@ Create a `client_secrets.json` file containing your OIDC client secrets, that lo
 
 Then set the following variables in your `.env.production` file:
 ```
-# Generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`
+# Generate a secure secret key using `python -c 'import secrets; print(secrets.token_hex())'`
 # this is used to encrypt Flask cookies
 SECRET_KEY=<YOUR_SECRET_KEY>
 # The path to your client_secrets.json file or if you prefer, inline the entire JSON string
@@ -192,7 +192,7 @@ using a Cloudflare Tunnel. Next, set the following variables in your `.env.produ
 CLOUDFLARE_TEAM_DOMAIN=<CLOUDFLARE_ACCESS_TEAM_DOMAIN>
 # Your Cloudflare "Audience" tag under Zero Trust -> Access -> Applications -> <Your Application> -> Overview in the Cloudflare dashboard
 # found under "Application Audience (AUD) Tag"
-CLOUDFLARE_APPLICATION_AUDIENCE=<CLOUFLARE_ACCESS_AUDIENCE_TAG>
+CLOUDFLARE_APPLICATION_AUDIENCE=<CLOUDFLARE_ACCESS_AUDIENCE_TAG>
 ```
 
 ### Docker Build and Run
