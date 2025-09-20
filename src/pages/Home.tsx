@@ -84,7 +84,7 @@ const guide: Record<string, Record<string, string>> = {
     'Creating and managing groups for your app':
       'As an app owner, you own all the groups associated with your app. This means that you can manage their ownership, membership, and tags.\n\nTo create a group associated with your app, navigate to the app\'s page and click the "Create App Group" button. Once you have created the group, you can add members or roles to it from the group\'s page.',
     'Managing tags for your app':
-      "As an app owner, you can manage the set of tags applied to your app. These tags and their associated constraintsare inherited by all the groups associated with your app. To modify your app's tags, navigate to the app's page and click the edit button (pencil icon).",
+      "As an app owner, you can manage the set of tags applied to your app. These tags and their associated constraints are inherited by all the groups associated with your app. To modify your app's tags, navigate to the app's page and click the edit button (pencil icon).",
   },
   admin: {
     [`About ${appName} administrators`]: `${appName} administrators are the users who are members of the App-${appName} -Owners group. Administrators are able create or edit all groups, roles, and apps and manage the access for any group in the system. Administrators can also create tags, set tag constraints, apply tags to groups or apps, and remove tags.`,
