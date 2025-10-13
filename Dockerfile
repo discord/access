@@ -35,7 +35,7 @@ RUN --mount=type=secret,id=SENTRY_AUTH_TOKEN \
 RUN touch sentry
 
 # Build step #3: build the API with the client as static files
-FROM python:3.13 AS false
+FROM python:3.14 AS false
 ARG SENTRY_RELEASE=""
 WORKDIR /app
 COPY --from=build-step /app/build ./build
