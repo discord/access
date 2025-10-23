@@ -54,11 +54,11 @@ import {DarkMode, LightMode, Monitor} from '@mui/icons-material';
 import {lightGreen, red, yellow, grey} from '@mui/material/colors';
 
 const drawerWidth: number = 240;
-const darkBg1: string = '#181818';
-const darkBg2: string = '#242424';
+const darkBg1: string = '#191919';
+const darkBg2: string = '#232323';
 const darkBg3: string = '#080808';
 const darkModeText: string = '#EAEAEA';
-const darkPrimary: string = '#413E70';
+const darkPrimary: string = '#47447C';
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
@@ -246,7 +246,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
       <Box
         component="main"
         sx={{
-          backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.grey[200] : '#1E1E1E'),
+          backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.grey[200] : '#1B1B1B'),
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
