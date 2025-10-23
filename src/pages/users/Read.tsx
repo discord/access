@@ -67,7 +67,7 @@ function ProfileToCard({user}: ProfileToCardProps) {
         </Typography>
         <List>
           {Object.entries(user.profile)
-            .filter(([_, v]) => v != null)
+            .filter(([u, v]) => v != null && u != 'Pronouns' && u != 'Name Pronunciation')
             .map(([key, value]: [string, string]) => (
               <ListItem key={key} sx={{padding: 0}}>
                 <ListItemText primary={key} secondary={value} />
@@ -437,6 +437,11 @@ export default function ReadUser() {
                   </Typography>
                   <Typography variant="h5" textAlign="center">
                     {user.email?.toLowerCase()}
+                  </Typography>
+                  <Typography>
+                    {user.profile?.Pronouns}
+                    {user.profile?.Pronouns && user.profile?.['Name Pronunciation'] && <> • </>}
+                    {user.profile?.['Name Pronunciation']}
                   </Typography>
                 </Stack>
                 <Divider />
