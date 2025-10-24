@@ -300,6 +300,7 @@ function GroupDialog(props: GroupDialogProps) {
                 }
                 return '';
               }}
+              required
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>

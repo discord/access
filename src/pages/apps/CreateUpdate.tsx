@@ -185,6 +185,7 @@ function AppDialog(props: AppDialogProps) {
                 }
                 return '';
               }}
+              required
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>

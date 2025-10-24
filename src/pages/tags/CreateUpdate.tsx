@@ -258,6 +258,7 @@ function TagDialog(props: TagDialogProps) {
                 }
                 return '';
               }}
+              required
             />
           </FormControl>
           <Box sx={{fontWeight: 'medium', fontSize: 18, margin: '8px 0 4px 0'}}>Optional constraints</Box>

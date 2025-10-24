@@ -255,7 +255,7 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(load_default="", validate=validate.Length(max=1024))
+    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
 
     externally_managed_data = fields.Dict()
 
@@ -628,7 +628,7 @@ class RoleGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(load_default="", validate=validate.Length(max=1024))
+    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
 
     externally_managed_data = fields.Dict()
 
@@ -847,7 +847,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(load_default="", validate=validate.Length(max=1024))
+    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
 
     externally_managed_data = fields.Dict()
 
@@ -1138,7 +1138,7 @@ class InitialAppGroupSchema(Schema):
             ),
         ),
     )
-    description = fields.String(load_default="", validate=validate.Length(max=1024))
+    description = fields.String(required=True, validate=validate.Length(min=1, max=1024))
 
 
 class AppSchema(SQLAlchemyAutoSchema):
@@ -1152,7 +1152,7 @@ class AppSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(validate=validate.Length(max=1024))
+    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
 
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1466,7 +1466,7 @@ class TagSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(load_default="", validate=validate.Length(max=1024))
+    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
 
     def validate_constraints(value) -> bool:
         if not isinstance(value, dict):
