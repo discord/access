@@ -219,6 +219,19 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     docs.init_app(app)
 
     ##########################################
+    # Validate plugins
+    ##########################################
+    # Validate app group lifecycle plugins at startup to ensure uniqueness
+    # and proper registration
+    try:
+        from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
+
+        _ = get_app_group_lifecycle_plugins()
+    except Exception:
+        logger.exception("Failed to validate app group lifecycle plugins.")
+        raise
+
+    ##########################################
     # Blueprint Registration
     ##########################################
 

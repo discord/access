@@ -2,12 +2,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
-from api import config
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, validates
 from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
+from api import config
 from api.extensions import db
 
 
@@ -698,9 +698,14 @@ class App(db.Model):
         if not isinstance(plugin_id, str) or not plugin_id.strip():
             raise ValueError("app_group_lifecycle_plugin must be a non-empty string")
 
-        # TODO: Once the plugin system is implemented, validate that plugin_id
-        # corresponds to a registered AppGroupLifecyclePlugin implementation
-        # This will be added in a later step per the design doc
+        # Validate that plugin_id corresponds to a registered app group lifecycle plugin.
+        from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
+
+        if plugin_id not in get_app_group_lifecycle_plugins():
+            raise ValueError(
+                f"Invalid app_group_lifecycle_plugin: '{plugin_id}' is not a registered plugin. " +
+                "Please ensure the plugin is properly installed and registered."
+            )
 
         return plugin_id
 
