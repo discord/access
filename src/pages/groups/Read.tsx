@@ -40,6 +40,7 @@ import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import Ending from '../../components/Ending';
+import MarkdownDescription from '../../components/MarkdownDescription';
 import {groupBy, displayGroupType, displayUserName} from '../../helpers';
 import {useGetAppById, useGetGroupById, usePutGroupMembersById} from '../../api/apiComponents';
 import {
@@ -241,9 +242,7 @@ export default function ReadGroup() {
                         group.name
                       )}
                     </Typography>
-                    <Typography variant="h5" align="center">
-                      {group.description}
-                    </Typography>
+                    <MarkdownDescription description={group.description} />
                     <Box>
                       {group.active_group_tags?.map((tagMap) => (
                         <Chip

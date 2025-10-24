@@ -38,6 +38,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
+import MarkdownDescription from '../../components/MarkdownDescription';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -129,9 +130,7 @@ export default function ReadTag() {
                   <Typography variant="h3" textAlign="center">
                     {tag.name}
                   </Typography>
-                  <Typography variant="h5" textAlign="center">
-                    {tag.description}
-                  </Typography>
+                  <MarkdownDescription description={tag.description} />
                   {tag.enabled ? (
                     <Box>
                       <Chip color="primary" icon={<Enabled />} label="Enabled" sx={{marginTop: '10px'}} />

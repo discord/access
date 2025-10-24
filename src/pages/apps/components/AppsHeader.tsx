@@ -1,5 +1,4 @@
 import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
-import {grey} from '@mui/material/colors';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
 import {App, OktaUser} from '../../../api/apiSchemas';
@@ -8,6 +7,7 @@ import React from 'react';
 
 import TagIcon from '@mui/icons-material/LocalOffer';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../../authorization';
+import MarkdownDescription from '../../../components/MarkdownDescription';
 
 interface AppsHeaderProps {
   app: App;
@@ -49,9 +49,7 @@ export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUs
             <Typography variant="h3" textAlign={'center'}>
               {app.name}
             </Typography>
-            <Typography variant="h5" textAlign={'center'}>
-              {app.description}
-            </Typography>
+            <MarkdownDescription description={app.description} />
             {tagChips && <Box>{tagChips}</Box>}
           </Stack>
           {hasActions && (
