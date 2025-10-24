@@ -639,6 +639,9 @@ class App(db.Model):
     name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
     description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
 
+    # Optional plugin ID for managing app group lifecycle
+    app_group_lifecycle_plugin: Mapped[Optional[str]] = mapped_column(db.Unicode(255))
+
     app_groups: Mapped[List[AppGroup]] = db.relationship("AppGroup", back_populates="app", lazy="raise_on_sql")
 
     active_app_groups: Mapped[List[AppGroup]] = db.relationship(
@@ -684,6 +687,22 @@ class App(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
+
+    @validates("app_group_lifecycle_plugin")
+    def validate_app_group_lifecycle_plugin(self, key: str, plugin_id: Optional[str]) -> Optional[str]:
+        # Allow None since this is an optional field
+        if plugin_id is None:
+            return plugin_id
+
+        # Basic validation: ensure it's a non-empty string
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise ValueError("app_group_lifecycle_plugin must be a non-empty string")
+
+        # TODO: Once the plugin system is implemented, validate that plugin_id
+        # corresponds to a registered AppGroupLifecyclePlugin implementation
+        # This will be added in a later step per the design doc
+
+        return plugin_id
 
 
 # Use StrEnum to make it JSON serializable
