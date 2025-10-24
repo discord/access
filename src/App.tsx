@@ -57,8 +57,8 @@ const drawerWidth: number = 240;
 const darkBg1: string = '#191919';
 const darkBg2: string = '#232323';
 const darkBg3: string = '#080808';
-const darkModeText: string = '#EAEAEA';
-const darkPrimary: string = '#47447C';
+const darkModeText: string = '#F5F5F5';
+const darkPrimary: string = '#43468A';
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
@@ -246,7 +246,7 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
       <Box
         component="main"
         sx={{
-          backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.grey[200] : '#1B1B1B'),
+          backgroundColor: (theme) => (theme.palette.mode === 'light' ? theme.palette.grey[200] : '#1E1E1E'),
           flexGrow: 1,
           height: '100vh',
           overflow: 'auto',
