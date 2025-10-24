@@ -19,6 +19,7 @@
     "react-dom": "^18.0.0",
     "react-hook-form": "latest",
     "react-hook-form-mui": "latest",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "latest",
     "styled-components": "latest"
   },
