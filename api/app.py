@@ -28,6 +28,7 @@ from api.views import (
     exception_views,
     groups_views,
     health_check_views,
+    plugins_views,
     role_requests_views,
     roles_views,
     tags_views,
@@ -263,5 +264,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     tags_views.register_docs()
     app.register_blueprint(webhook_views.bp)
     app.register_blueprint(bugs_views.bp)
+    app.register_blueprint(plugins_views.bp)
+    plugins_views.register_docs()
 
     return app
