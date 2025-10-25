@@ -13,19 +13,20 @@ hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
 hookimpl = pluggy.HookimplMarker(app_group_lifecycle_plugin_name)
 
 _cached_app_group_lifecycle_hook: pluggy.HookRelay | None = None
-_cached_plugin_registry: Dict[str, Dict[str, str]] | None = None
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AppGroupLifecyclePluginStatusProperty:
-    """Schema for a status property exposed by an app group lifecycle plugin."""
+class AppGroupLifecyclePluginMetadata:
+    """Schema for an app group lifecycle plugin."""
 
+    id: str
     display_name: str
-    help_text: Optional[str] = None
-    type: Literal["text", "number", "date", "boolean"] = "text"
+    description: str
 
+
+_cached_plugin_registry: List[AppGroupLifecyclePluginMetadata] | None = None
 
 @dataclass
 class AppGroupLifecyclePluginConfigProperty:
@@ -39,30 +40,29 @@ class AppGroupLifecyclePluginConfigProperty:
     validation: Optional[Dict[str, Any]] = None
 
 
+@dataclass
+class AppGroupLifecyclePluginStatusProperty:
+    """Schema for a status property exposed by an app group lifecycle plugin."""
+
+    display_name: str
+    help_text: Optional[str] = None
+    type: Literal["text", "number", "date", "boolean"] = "text"
+
+
 class AppGroupLifecyclePluginSpec:
     """Plugin specification for managing app group lifecycles."""
 
+    @hookspec
+    def get_plugin_metadata(self) -> Optional[AppGroupLifecyclePluginMetadata]:
+        """Return the metadata for this plugin implementation."""
+
     # Configuration hooks
-    @hookspec
-    def get_plugin_id(self) -> Optional[str]:
-        """Return a unique plugin ID."""
-
-    @hookspec
-    def get_plugin_display_name(self) -> Optional[str]:
-        """Return a human-readable name."""
-
-    @hookspec
-    def get_plugin_description(self) -> Optional[str]:
-        """Return a description of the plugin's functionality."""
-
     @hookspec
     def get_plugin_config_properties(self) -> Optional[Dict[str, AppGroupLifecyclePluginConfigProperty]]:
         """Return the schema for configuration plugin data, a mapping of property IDs to descriptors."""
 
     @hookspec
-    def validate_plugin_config(
-        self, session: Session, app: App, group: AppGroup, config: Dict[str, Any]
-    ) -> Optional[Dict[str, str]]:
+    def validate_plugin_config(self, config: Dict[str, Any]) -> Optional[Dict[str, str]]:
         """Validate plugin config before saving. Returns a mapping of fields to error messages."""
 
     # Status hooks
@@ -114,7 +114,7 @@ def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
     return _cached_app_group_lifecycle_hook
 
 
-def get_app_group_lifecycle_plugins() -> Dict[str, Dict[str, str]]:
+def get_app_group_lifecycle_plugins() -> List[AppGroupLifecyclePluginMetadata]:
     """
     Get a registry of all loaded app group lifecycle plugins with their metadata.
     Returns a dictionary mapping plugin IDs to plugin metadata.
@@ -125,51 +125,38 @@ def get_app_group_lifecycle_plugins() -> Dict[str, Dict[str, str]]:
         return _cached_plugin_registry
 
     hook = get_app_group_lifecycle_hook()
-    registry = {}
 
     # Collect metadata from all registered plugins
-    plugin_ids: List[Optional[str]] = hook.get_plugin_id()
-    display_names: List[Optional[str]] = hook.get_plugin_display_name()
-    descriptions: List[Optional[str]] = hook.get_plugin_description()
+    plugins: List[AppGroupLifecyclePluginMetadata] = [plugin for plugin in hook.get_plugin_metadata() if plugin is not None]
 
     # Validate uniqueness
     seen_ids: Set[str] = set()
     seen_display_names: Set[str] = set()
     seen_descriptions: Set[str] = set()
 
-    for plugin_id, display_name, description in zip(plugin_ids, display_names, descriptions):
-        if not plugin_id:
+    for plugin in plugins:
+        if not plugin.id:
             raise ValueError("Plugin ID is required")
-        if not display_name:
-            raise ValueError(f"Display name is required but missing for plugin {plugin_id}")
-        if not description:
-            raise ValueError(f"Description is required but missing for plugin {plugin_id}")
-        if plugin_id in seen_ids:
-            raise ValueError(f"Duplicate plugin ID detected: {plugin_id}")
-        if display_name in seen_display_names:
-            raise ValueError(f"Duplicate plugin display name detected: {display_name}")
-        if description in seen_descriptions:
-            raise ValueError(f"Duplicate plugin description detected: {description}")
+        if not plugin.display_name:
+            raise ValueError(f"Display name is required but missing for plugin {plugin.id}")
+        if not plugin.description:
+            raise ValueError(f"Description is required but missing for plugin {plugin.id}")
 
-        seen_ids.add(plugin_id)
-        seen_display_names.add(display_name)
-        seen_descriptions.add(description)
+        if plugin.id in seen_ids:
+            raise ValueError(f"Duplicate plugin ID detected: {plugin.id}")
+        if plugin.display_name in seen_display_names:
+            raise ValueError(f"Duplicate plugin display name detected: {plugin.display_name}")
+        if plugin.description in seen_descriptions:
+            raise ValueError(f"Duplicate plugin description detected: {plugin.description}")
 
-        registry[plugin_id] = {
-            "display_name": display_name,
-            "description": description,
-        }
+        seen_ids.add(plugin.id)
+        seen_display_names.add(plugin.display_name)
+        seen_descriptions.add(plugin.description)
 
-    _cached_plugin_registry = registry
-    logger.info(f"Registered {len(registry)} app group lifecycle plugin(s): {list(registry.keys())}")
+    _cached_plugin_registry = plugins
+    logger.info(f"Registered {len(plugins)} app group lifecycle plugin(s): {[plugin.id for plugin in plugins]}")
 
     return _cached_plugin_registry
-
-
-def get_app_group_lifecycle_plugin_by_id(plugin_id: str) -> Optional[Dict[str, str]]:
-    """Get app group lifecycle plugin metadata by ID."""
-    registry = get_app_group_lifecycle_plugins()
-    return registry.get(plugin_id)
 
 
 def should_invoke_app_group_lifecycle_plugin(group: Any) -> bool:

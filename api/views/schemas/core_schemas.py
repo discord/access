@@ -5,6 +5,7 @@ from marshmallow import Schema, ValidationError, fields, utils, validate, valida
 from marshmallow.schema import SchemaMeta, SchemaOpts
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema, auto_field
 from sqlalchemy.orm import Session
+
 from api.access_config import get_access_config
 from api.extensions import db
 from api.models import (
@@ -21,6 +22,7 @@ from api.models import (
     RoleRequest,
     Tag,
 )
+from api.plugins.app_group_lifecycle import app_group_lifecycle_plugin_name
 
 access_config = get_access_config()
 
@@ -850,6 +852,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
     description = auto_field(load_default="", validate=validate.Length(max=1024))
 
     externally_managed_data = fields.Dict()
+    plugin_data = fields.Dict()
 
     @validates_schema
     def validate_app_group(self, data: Dict[str, Any], **kwargs: Any) -> None:
@@ -864,6 +867,65 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
                     data["name"], app_group_name_prefix
                 )
             )
+
+    @validates_schema
+    def validate_plugin_data(self, data: Dict[str, Any], **kwargs: Any) -> None:
+        # Only validate plugin_data if it's present in the data
+        if "plugin_data" not in data or data["plugin_data"] is None:
+            return
+
+        # Get the app to check if it has a plugin configured
+        app = None
+        if "app_id" in data:
+            app = App.query.filter(App.id == data["app_id"]).filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).first()
+
+        # If no app or no plugin configured, skip validation
+        if app is None:
+            return
+
+        plugin_data_key = f"{app_group_lifecycle_plugin_name}_{app.app_group_lifecycle_plugin_id}"
+        plugin_data = data["plugin_data"]
+
+        # Check if plugin_data contains configuration for this plugin
+        if not isinstance(plugin_data, dict):
+            raise ValidationError("plugin_data must be a dictionary", field_name="plugin_data")
+
+        if plugin_data_key not in plugin_data:
+            # No configuration for this plugin, skip validation
+            return
+
+        plugin_config_data = plugin_data[plugin_data_key]
+        if not isinstance(plugin_config_data, dict):
+            raise ValidationError(
+                f"plugin_data['{plugin_data_key}'] must be a dictionary", field_name="plugin_data"
+            )
+
+        # Extract configuration from the nested structure
+        configuration = plugin_config_data.get("configuration", {})
+        if not isinstance(configuration, dict):
+            raise ValidationError(
+                f"plugin_data['{plugin_data_key}']['configuration'] must be a dictionary", field_name="plugin_data"
+            )
+
+        # Validate the configuration using the plugin's validate_plugin_config hook
+        try:
+            from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
+
+            hook = get_app_group_lifecycle_hook()
+            validation_errors = hook.validate_plugin_config(config=configuration)
+
+            if validation_errors:
+                raise ValidationError(
+                    f"Configuration validation for plugin '{plugin_data_key}' failed: {validation_errors}",
+                    field_name="plugin_data",
+                )
+        except Exception as e:
+            # If the plugin validation itself fails, log and raise
+            if isinstance(e, ValidationError):
+                raise
+            raise ValidationError(
+                f"Failed to call validate_plugin_config hook for plugin '{plugin_data_key}'", field_name="plugin_data"
+            ) from e
 
     app_id = auto_field(required=True, validate=validate.Length(equal=20))
     app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at")))
@@ -1078,6 +1140,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             "description",
             "is_managed",
             "externally_managed_data",
+            "plugin_data",
             "is_owner",
             "app",
             "app_id",
@@ -1153,6 +1216,31 @@ class AppSchema(SQLAlchemyAutoSchema):
         ),
     )
     description = auto_field(validate=validate.Length(max=1024))
+    app_group_lifecycle_plugin = auto_field(validate=validate.Length(max=255), allow_none=True)
+
+    @validates_schema
+    def validate_app_group_lifecycle_plugin(self, data: Dict[str, Any], **kwargs: Any) -> None:
+        # Only validate if app_group_lifecycle_plugin is present and not None
+        if "app_group_lifecycle_plugin" not in data or data["app_group_lifecycle_plugin"] is None:
+            return
+
+        plugin_id = data["app_group_lifecycle_plugin"]
+
+        # Basic validation: ensure it's a non-empty string
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise ValidationError(
+                "app_group_lifecycle_plugin must be a non-empty string", field_name="app_group_lifecycle_plugin"
+            )
+
+        # Validate that plugin_id corresponds to a registered app group lifecycle plugin
+        from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
+
+        registered_plugins = [plugin.id for plugin in get_app_group_lifecycle_plugins()]
+        if plugin_id not in registered_plugins:
+            raise ValidationError(
+                f"Invalid app_group_lifecycle_plugin: '{plugin_id}' is not a registered plugin. Available plugins: {', '.join(registered_plugins)}",
+                field_name="app_group_lifecycle_plugin",
+            )
 
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1201,6 +1289,7 @@ class AppSchema(SQLAlchemyAutoSchema):
             "deleted_at",
             "name",
             "description",
+            "app_group_lifecycle_plugin",
             "initial_owner_id",
             "initial_owner_role_ids",
             "initial_additional_app_groups",

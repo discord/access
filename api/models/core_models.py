@@ -688,27 +688,6 @@ class App(db.Model):
         innerjoin=True,
     )
 
-    @validates("app_group_lifecycle_plugin")
-    def validate_app_group_lifecycle_plugin(self, key: str, plugin_id: Optional[str]) -> Optional[str]:
-        # Allow None since this is an optional field
-        if plugin_id is None:
-            return plugin_id
-
-        # Basic validation: ensure it's a non-empty string
-        if not isinstance(plugin_id, str) or not plugin_id.strip():
-            raise ValueError("app_group_lifecycle_plugin must be a non-empty string")
-
-        # Validate that plugin_id corresponds to a registered app group lifecycle plugin.
-        from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
-
-        if plugin_id not in get_app_group_lifecycle_plugins():
-            raise ValueError(
-                f"Invalid app_group_lifecycle_plugin: '{plugin_id}' is not a registered plugin. " +
-                "Please ensure the plugin is properly installed and registered."
-            )
-
-        return plugin_id
-
 
 # Use StrEnum to make it JSON serializable
 class AccessRequestStatus(StrEnum):

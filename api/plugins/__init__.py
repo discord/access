@@ -4,7 +4,6 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginStatusProperty,
     get_app_group_lifecycle_hook,
-    get_app_group_lifecycle_plugin_by_id,
     get_app_group_lifecycle_plugins,
     should_invoke_app_group_lifecycle_plugin,
 )
@@ -20,7 +19,6 @@ __all__ = [
     "AppGroupLifecyclePluginStatusProperty",
     "app_group_lifecycle_hook_impl",
     "get_app_group_lifecycle_hook",
-    "get_app_group_lifecycle_plugin_by_id",
     "get_app_group_lifecycle_plugins",
     "should_invoke_app_group_lifecycle_plugin",
     "ConditionalAccessResponse",
