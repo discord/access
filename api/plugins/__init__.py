@@ -4,8 +4,8 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginStatusProperty,
     get_app_group_lifecycle_hook,
+    get_app_group_lifecycle_plugin_to_invoke,
     get_app_group_lifecycle_plugins,
-    should_invoke_app_group_lifecycle_plugin,
 )
 from api.plugins.conditional_access import ConditionalAccessResponse, get_conditional_access_hook
 from api.plugins.notifications import get_notification_hook
@@ -20,7 +20,7 @@ __all__ = [
     "app_group_lifecycle_hook_impl",
     "get_app_group_lifecycle_hook",
     "get_app_group_lifecycle_plugins",
-    "should_invoke_app_group_lifecycle_plugin",
+    "get_app_group_lifecycle_plugin_to_invoke",
     "ConditionalAccessResponse",
     "get_conditional_access_hook",
     "get_notification_hook",

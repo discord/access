@@ -58,39 +58,95 @@ class AppGroupLifecyclePluginSpec:
 
     # Configuration hooks
     @hookspec
-    def get_plugin_config_properties(self) -> Optional[Dict[str, AppGroupLifecyclePluginConfigProperty]]:
-        """Return the schema for configuration plugin data, a mapping of property IDs to descriptors."""
+    def get_plugin_config_properties(self, plugin_id: Optional[str] = None) -> Optional[Dict[str, AppGroupLifecyclePluginConfigProperty]]:
+        """
+        Return the schema for configuration plugin data, a mapping of property IDs to descriptors.
+
+        Args:
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     @hookspec
-    def validate_plugin_config(self, config: Dict[str, Any]) -> Optional[Dict[str, str]]:
-        """Validate plugin config before saving. Returns a mapping of fields to error messages."""
+    def validate_plugin_config(self, config: Dict[str, Any], plugin_id: Optional[str] = None) -> Optional[Dict[str, str]]:
+        """
+        Validate plugin config before saving. Returns a mapping of fields to error messages.
+
+        Args:
+            config: The configuration to validate.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     # Status hooks
     @hookspec
-    def get_plugin_status_properties(self) -> Optional[Dict[str, AppGroupLifecyclePluginStatusProperty]]:
-        """Return the schema for status plugin data, a mapping of property IDs to descriptors."""
+    def get_plugin_status_properties(self, plugin_id: Optional[str] = None) -> Optional[Dict[str, AppGroupLifecyclePluginStatusProperty]]:
+        """
+        Return the schema for status plugin data, a mapping of property IDs to descriptors.
+
+        Args:
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     # Group lifecycle hooks
     @hookspec
-    def group_created(self, session: Session, group: AppGroup) -> None:
-        """Handle group creation."""
+    def group_created(self, session: Session, group: AppGroup, plugin_id: Optional[str] = None) -> None:
+        """Handle group creation.
+
+        Args:
+            session: The Access database session.
+            group: The app group that was created.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     @hookspec
-    def group_deleted(self, session: Session, group: AppGroup) -> None:
-        """Handle group deletion."""
+    def group_deleted(self, session: Session, group: AppGroup, plugin_id: Optional[str] = None) -> None:
+        """Handle group deletion.
+
+        Args:
+            session: The Access database session.
+            group: The app group that was deleted.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     # Membership hooks
     @hookspec
-    def group_members_added(self, session: Session, group: AppGroup, members: List[OktaUser]) -> None:
-        """Handle member addition."""
+    def group_members_added(self, session: Session, group: AppGroup, members: List[OktaUser], plugin_id: Optional[str] = None) -> None:
+        """Handle member addition.
+
+        Args:
+            session: The Access database session.
+            group: The app group to which members were added.
+            members: The list of users that were added to the group.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     @hookspec
-    def group_members_removed(self, session: Session, group: AppGroup, members: List[OktaUser]) -> None:
-        """Handle member removal."""
+    def group_members_removed(self, session: Session, group: AppGroup, members: List[OktaUser], plugin_id: Optional[str] = None) -> None:
+        """Handle member removal.
+
+        Args:
+            session: The Access database session.
+            group: The app group from which members were removed.
+            members: The list of users that were removed from the group.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
     @hookspec
-    def sync_all_group_membership(self, session: Session, app: App) -> None:
-        """Bulk sync all groups for an app."""
+    def sync_all_group_membership(self, session: Session, app: App, plugin_id: Optional[str] = None) -> None:
+        """Bulk sync all groups for an app.
+
+        Args:
+            session: The Access database session.
+            app: The app for which to sync all group membership.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
 
 
 def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
@@ -159,6 +215,9 @@ def get_app_group_lifecycle_plugins() -> List[AppGroupLifecyclePluginMetadata]:
     return _cached_plugin_registry
 
 
-def should_invoke_app_group_lifecycle_plugin(group: Any) -> bool:
-    """Determine if an app group lifecycle plugin should be invoked for a given group."""
-    return type(group) is AppGroup and group.app.app_group_lifecycle_plugin is not None
+def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> Optional[str]:
+    """Determine the ID of the app group lifecycle plugin to invoke for a given group, if any."""
+    if type(group) is not AppGroup or group.app.app_group_lifecycle_plugin is None:
+        return None
+
+    return group.app.app_group_lifecycle_plugin

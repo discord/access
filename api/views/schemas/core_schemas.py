@@ -883,7 +883,8 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
         if app is None:
             return
 
-        plugin_data_key = f"{app_group_lifecycle_plugin_name}_{app.app_group_lifecycle_plugin_id}"
+        plugin_id = app.app_group_lifecycle_plugin
+        plugin_data_key = f"{app_group_lifecycle_plugin_name}_{plugin_id}"
         plugin_data = data["plugin_data"]
 
         # Check if plugin_data contains configuration for this plugin
@@ -912,7 +913,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
 
             hook = get_app_group_lifecycle_hook()
-            validation_errors = hook.validate_plugin_config(config=configuration)
+            validation_errors = hook.validate_plugin_config(config=configuration, plugin_id=plugin_id)
 
             if validation_errors:
                 raise ValidationError(

@@ -22,7 +22,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, should_invoke_app_group_lifecycle_plugin
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -396,12 +396,13 @@ class ModifyGroupUsers:
         db.session.commit()
 
         # Invoke app group lifecycle plugin hooks for removed members
-        if should_invoke_app_group_lifecycle_plugin(self.group) and len(self.members_to_remove) > 0:
+        plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+        if plugin_id is not None and len(self.members_to_remove) > 0:
             try:
                 hook = get_app_group_lifecycle_hook()
-                hook.group_members_removed(session=db.session, group=self.group, members=self.members_to_remove)
+                hook.group_members_removed(session=db.session, group=self.group, members=self.members_to_remove, plugin_id=plugin_id)
             except Exception:
-                current_app.logger.exception(f"Failed to invoke group_members_removed hook for group {self.group.id}")
+                current_app.logger.exception(f"Failed to invoke group_members_removed hook for group {self.group.id} with plugin '{plugin_id}'")
 
         # Add new group members and group owners and add them to Okta
         if len(self.members_to_add) > 0 or len(self.owners_to_add) > 0:
@@ -515,12 +516,13 @@ class ModifyGroupUsers:
             db.session.commit()
 
             # Invoke app group lifecycle plugin hooks for added members
-            if should_invoke_app_group_lifecycle_plugin(self.group) and len(self.members_to_add) > 0:
+            plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+            if plugin_id is not None and len(self.members_to_add) > 0:
                 try:
                     hook = get_app_group_lifecycle_hook()
-                    hook.group_members_added(session=db.session, group=self.group, members=self.members_to_add)
+                    hook.group_members_added(session=db.session, group=self.group, members=self.members_to_add, plugin_id=plugin_id)
                 except Exception:
-                    current_app.logger.exception(f"Failed to invoke group_members_added hook for group {self.group.id}")
+                    current_app.logger.exception(f"Failed to invoke group_members_added hook for group {self.group.id} with plugin '{plugin_id}'")
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (

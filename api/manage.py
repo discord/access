@@ -234,7 +234,7 @@ def sync_app_group_memberships() -> None:
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
         try:
-            hook.sync_all_group_membership(session=db.session, app=app)
+            hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
             db.session.commit()
             click.echo(f"  ✓ Synced app '{app.name}'")
         except Exception as e:
