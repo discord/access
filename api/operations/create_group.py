@@ -6,6 +6,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, should_invoke_app_group_lifecycle_plugin
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -103,6 +104,14 @@ class CreateGroup:
             .filter(OktaGroup.id == self.group.id)
             .first()
         )
+
+        # Invoke app group lifecycle plugin hook if configured
+        if should_invoke_app_group_lifecycle_plugin(group):
+            try:
+                hook = get_app_group_lifecycle_hook()
+                hook.group_created(session=db.session, group=group)
+            except Exception:
+                current_app.logger.exception(f"Failed to invoke group_created hook for group {group.id}")
 
         context = has_request_context()
 

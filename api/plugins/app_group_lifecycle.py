@@ -72,20 +72,20 @@ class AppGroupLifecyclePluginSpec:
 
     # Group lifecycle hooks
     @hookspec
-    def group_created(self, session: Session, group: AppGroup, requester: OktaUser) -> None:
+    def group_created(self, session: Session, group: AppGroup) -> None:
         """Handle group creation."""
 
     @hookspec
-    def group_deleted(self, session: Session, group: AppGroup, requester: OktaUser) -> None:
+    def group_deleted(self, session: Session, group: AppGroup) -> None:
         """Handle group deletion."""
 
     # Membership hooks
     @hookspec
-    def group_member_added(self, session: Session, group: AppGroup, member: OktaUser) -> None:
+    def group_members_added(self, session: Session, group: AppGroup, members: List[OktaUser]) -> None:
         """Handle member addition."""
 
     @hookspec
-    def group_member_removed(self, session: Session, group: AppGroup, member: OktaUser) -> None:
+    def group_members_removed(self, session: Session, group: AppGroup, members: List[OktaUser]) -> None:
         """Handle member removal."""
 
     @hookspec
@@ -170,3 +170,8 @@ def get_app_group_lifecycle_plugin_by_id(plugin_id: str) -> Optional[Dict[str, s
     """Get app group lifecycle plugin metadata by ID."""
     registry = get_app_group_lifecycle_plugins()
     return registry.get(plugin_id)
+
+
+def should_invoke_app_group_lifecycle_plugin(group: Any) -> bool:
+    """Determine if an app group lifecycle plugin should be invoked for a given group."""
+    return type(group) is AppGroup and group.app.app_group_lifecycle_plugin is not None

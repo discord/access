@@ -6,6 +6,7 @@ from api.plugins.app_group_lifecycle import (
     get_app_group_lifecycle_hook,
     get_app_group_lifecycle_plugin_by_id,
     get_app_group_lifecycle_plugins,
+    should_invoke_app_group_lifecycle_plugin,
 )
 from api.plugins.conditional_access import ConditionalAccessResponse, get_conditional_access_hook
 from api.plugins.notifications import get_notification_hook
@@ -21,8 +22,8 @@ __all__ = [
     "get_app_group_lifecycle_hook",
     "get_app_group_lifecycle_plugin_by_id",
     "get_app_group_lifecycle_plugins",
+    "should_invoke_app_group_lifecycle_plugin",
     "ConditionalAccessResponse",
-    "conditional_access_hook_impl",
     "get_conditional_access_hook",
     "get_notification_hook",
     "notification_hook_impl",
