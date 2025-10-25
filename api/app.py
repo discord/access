@@ -202,6 +202,7 @@ def create_app(testing: Optional[bool] = False) -> Flask:
     app.cli.add_command(manage.fix_unmanaged_groups)
     app.cli.add_command(manage.fix_role_memberships)
     app.cli.add_command(manage.notify)
+    app.cli.add_command(manage.sync_app_group_memberships)
 
     # Register dynamically loaded commands
     flask_commands = entry_points(group="flask.commands")
