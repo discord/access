@@ -22,7 +22,10 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.plugins.app_group_lifecycle import app_group_lifecycle_plugin_name
+from api.plugins.app_group_lifecycle import (
+    get_app_group_lifecycle_plugin_data_key,
+    validate_app_group_lifecycle_plugin_data,
+)
 
 access_config = get_access_config()
 
@@ -877,56 +880,31 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
         # Get the app to check if it has a plugin configured
         app = None
         if "app_id" in data:
-            app = App.query.filter(App.id == data["app_id"]).filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).first()
+            app = App.query.filter(App.id == data["app_id"]).filter(App.deleted_at.is_(None)).first()
 
         # If no app or no plugin configured, skip validation
         if app is None:
             return
 
-        plugin_id = app.app_group_lifecycle_plugin
-        plugin_data_key = f"{app_group_lifecycle_plugin_name}_{plugin_id}"
+        # Check if plugin_data contains data for individual plugins
         plugin_data = data["plugin_data"]
-
-        # Check if plugin_data contains configuration for this plugin
         if not isinstance(plugin_data, dict):
             raise ValidationError("plugin_data must be a dictionary", field_name="plugin_data")
 
-        if plugin_data_key not in plugin_data:
-            # No configuration for this plugin, skip validation
-            return
+        for plugin_data_key in plugin_data:
+            if app.app_group_lifecycle_plugin is not None and plugin_data_key == get_app_group_lifecycle_plugin_data_key(app.app_group_lifecycle_plugin):
+                # Validate the configuration for an app group lifecycle plugin.
+                data = plugin_data[plugin_data_key]
+                try:
+                    errors = validate_app_group_lifecycle_plugin_data(data, app.app_group_lifecycle_plugin)
+                except Exception as e:
+                    raise ValidationError(f"Configuration validation for plugin '{plugin_data_key}' failed: {e}", field_name="plugin_data")
 
-        plugin_config_data = plugin_data[plugin_data_key]
-        if not isinstance(plugin_config_data, dict):
-            raise ValidationError(
-                f"plugin_data['{plugin_data_key}'] must be a dictionary", field_name="plugin_data"
-            )
-
-        # Extract configuration from the nested structure
-        configuration = plugin_config_data.get("configuration", {})
-        if not isinstance(configuration, dict):
-            raise ValidationError(
-                f"plugin_data['{plugin_data_key}']['configuration'] must be a dictionary", field_name="plugin_data"
-            )
-
-        # Validate the configuration using the plugin's validate_plugin_config hook
-        try:
-            from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
-
-            hook = get_app_group_lifecycle_hook()
-            validation_errors = hook.validate_plugin_config(config=configuration, plugin_id=plugin_id)
-
-            if validation_errors:
-                raise ValidationError(
-                    f"Configuration validation for plugin '{plugin_data_key}' failed: {validation_errors}",
-                    field_name="plugin_data",
-                )
-        except Exception as e:
-            # If the plugin validation itself fails, log and raise
-            if isinstance(e, ValidationError):
-                raise
-            raise ValidationError(
-                f"Failed to call validate_plugin_config hook for plugin '{plugin_data_key}'", field_name="plugin_data"
-            ) from e
+                if errors:
+                    raise ValidationError(
+                        f"Configuration validation for plugin '{plugin_data_key}' failed: {errors}",
+                        field_name="plugin_data",
+                    )
 
     app_id = auto_field(required=True, validate=validate.Length(equal=20))
     app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at")))

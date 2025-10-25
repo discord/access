@@ -70,12 +70,15 @@ class AppGroupLifecyclePluginSpec:
     @hookspec
     def validate_plugin_config(self, config: Dict[str, Any], plugin_id: Optional[str] = None) -> Optional[Dict[str, str]]:
         """
-        Validate plugin config before saving. Returns a mapping of fields to error messages.
+        Validate plugin config before saving.
 
         Args:
             config: The configuration to validate.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+
+        Returns:
+            A dictionary mapping any invalid fields to error messages.
         """
 
     # Status hooks
@@ -216,8 +219,85 @@ def get_app_group_lifecycle_plugins() -> List[AppGroupLifecyclePluginMetadata]:
 
 
 def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> Optional[str]:
-    """Determine the ID of the app group lifecycle plugin to invoke for a given group, if any."""
+    """
+    Determine the ID of the app group lifecycle plugin to invoke for a given group, if any.
+
+    Args:
+        group: The app group for which to determine the app group lifecycle plugin to invoke.
+    """
     if type(group) is not AppGroup or group.app.app_group_lifecycle_plugin is None:
         return None
 
     return group.app.app_group_lifecycle_plugin
+
+def get_app_group_lifecycle_plugin_data_key(plugin_id: str) -> str:
+    """
+    Get the key for storing data for a particular app group lifecycle plugin in the plugin_data property of an app group.
+
+    Args:
+        plugin_id: The ID of the app group lifecycle plugin.
+    """
+    return f"{app_group_lifecycle_plugin_name}___{plugin_id}"
+
+def get_app_group_lifecycle_plugin_configuration_properties(plugin_id: str) -> Dict[str, Any]:
+    """
+    Get the configuration propertiesfor a particular app group lifecycle plugin.
+
+    Args:
+        plugin_id: The ID of the app group lifecycle plugin.
+
+    Returns:
+        A dictionary mapping configuration property names to schemas.
+    """
+    hook = get_app_group_lifecycle_hook()
+    responses = [response for response in hook.get_plugin_config_properties(plugin_id=plugin_id) if response is not None]
+    
+    assert len(responses) == 1, f"Expected one response for plugin '{plugin_id}' but got {len(responses)}"
+    return responses[0]
+
+def validate_app_group_lifecycle_plugin_data(plugin_data:Any, plugin_id: str) -> Dict[str, str]:
+    """
+    Validate the data for a particular app group lifecycle plugin.
+
+    Args:
+        plugin_data: The data to validate.
+        plugin_id: The ID of the app group lifecycle plugin.
+
+    Returns:
+        A dictionary mapping any invalid fields to error messages.
+    """
+    if not isinstance(plugin_data, dict):
+        raise ValueError(
+            f"The data for app group lifecycle plugin '{plugin_id}' must be a dictionary"
+        )
+
+    # Extract configuration from the nested structure
+    configuration = plugin_data.get("configuration", {})
+    if not isinstance(configuration, dict):
+        raise ValueError(
+            f"The configuration property in the data for app group lifecycle plugin '{plugin_id}' must be a dictionary"
+        )
+
+    hook = get_app_group_lifecycle_hook()
+    responses = [response for response in hook.validate_plugin_config(config=configuration, plugin_id=plugin_id) if response is not None]
+
+    assert len(responses) == 1, f"Expected one validation response for app group lifecycle plugin '{plugin_id}', but got {len(responses)}"
+
+    return responses[0]
+
+def get_app_group_lifecycle_plugin_status_properties(plugin_id: str) -> Dict[str, Any]:
+    """
+    Get the status properties for a particular app group lifecycle plugin.
+
+    Args:
+        plugin_id: The ID of the app group lifecycle plugin.
+
+    Returns:
+        A dictionary mapping status property names to schemas.
+    """
+    hook = get_app_group_lifecycle_hook()
+    responses = [response for response in hook.get_plugin_status_properties(plugin_id=plugin_id) if response is not None]
+
+    assert len(responses) == 1, f"Expected one response for plugin '{plugin_id}' but got {len(responses)}"
+
+    return responses[0]
