@@ -28,7 +28,7 @@ import {
 } from '../../api/apiComponents';
 import {App, AppTagMap, OktaUser, Tag} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface AppButtonProps {
   setOpen(open: boolean): any;
@@ -181,11 +181,11 @@ function AppDialog(props: AppDialogProps) {
                   return error?.message ?? '';
                 }
                 if (error.type == 'maxLength') {
-                  return 'Name can be at most 1024 characters in length';
+                  return 'Description can be at most 1024 characters in length';
                 }
                 return '';
               }}
-              required
+              required={requireDescriptions}
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>

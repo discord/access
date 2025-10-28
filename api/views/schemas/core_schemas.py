@@ -5,6 +5,8 @@ from marshmallow import Schema, ValidationError, fields, utils, validate, valida
 from marshmallow.schema import SchemaMeta, SchemaOpts
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema, auto_field
 from sqlalchemy.orm import Session
+
+from api import config
 from api.access_config import get_access_config
 from api.extensions import db
 from api.models import (
@@ -23,6 +25,14 @@ from api.models import (
 )
 
 access_config = get_access_config()
+
+DESCRIPTION_VALIDATOR = validate.Length(
+    min=1 if config.REQUIRE_DESCRIPTIONS else 0,
+    max=1024,
+    error="Description must be between {min} and {max} characters"
+    if config.REQUIRE_DESCRIPTIONS
+    else "Description must be {max} characters or less",
+)
 
 
 # See https://stackoverflow.com/a/58646612
@@ -255,7 +265,12 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
+    description = auto_field(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
     externally_managed_data = fields.Dict()
 
@@ -628,7 +643,12 @@ class RoleGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
+    description = auto_field(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
     externally_managed_data = fields.Dict()
 
@@ -847,7 +867,12 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
+    description = auto_field(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
     externally_managed_data = fields.Dict()
 
@@ -1138,7 +1163,12 @@ class InitialAppGroupSchema(Schema):
             ),
         ),
     )
-    description = fields.String(required=True, validate=validate.Length(min=1, max=1024))
+    description = fields.String(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
 
 class AppSchema(SQLAlchemyAutoSchema):
@@ -1152,7 +1182,12 @@ class AppSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
+    description = auto_field(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1466,7 +1501,12 @@ class TagSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(required=True, validate=validate.Length(min=1, max=1024))
+    description = auto_field(
+        required=config.REQUIRE_DESCRIPTIONS,
+        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
+        validate=DESCRIPTION_VALIDATOR,
+    )
 
     def validate_constraints(value) -> bool:
         if not isinstance(value, dict):

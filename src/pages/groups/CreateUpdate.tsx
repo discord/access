@@ -31,7 +31,7 @@ import {
 } from '../../api/apiComponents';
 import {PolymorphicGroup, AppGroup, App, OktaUser, Tag, OktaGroupTagMap} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -296,11 +296,11 @@ function GroupDialog(props: GroupDialogProps) {
                   return error?.message ?? '';
                 }
                 if (error.type == 'maxLength') {
-                  return 'Name can be at most 1024 characters in length';
+                  return 'Description can be at most 1024 characters in length';
                 }
                 return '';
               }}
-              required
+              required={requireDescriptions}
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>
