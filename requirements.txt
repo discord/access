@@ -13,7 +13,7 @@ SQLAlchemy==2.0.36
 Flask-Migrate==4.0.7
 sqlalchemy-json==0.7.0
 cloud-sql-python-connector==1.14.0
-pg8000==1.31.2
+pg8000==1.31.5
 
 # API and Models
 Flask-RESTful==0.3.10
