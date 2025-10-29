@@ -131,7 +131,7 @@ class AppResource(MethodResource):
                 abort(400, "Only tags can be modified for the Access application")
 
         old_app_name = app.name
-        app = schema.load(request.json, instance=app)
+        app = schema.load(request.json, instance=app, partial=True)
 
         # Update all app group names when updating app name
         if app.name != old_app_name:

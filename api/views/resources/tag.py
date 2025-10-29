@@ -80,7 +80,7 @@ class TagResource(MethodResource):
             if existing_tag is not None:
                 abort(400, "Tag already exists with the same name")
 
-        tag = schema.load(request.json, instance=tag)
+        tag = schema.load(request.json, instance=tag, partial=True)
         db.session.commit()
 
         # Handle group time limit constraints when modifying tags

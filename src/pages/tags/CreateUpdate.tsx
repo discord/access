@@ -29,7 +29,7 @@ import {
 import NumberInput from '../../components/NumberInput';
 import {OktaUser, Tag} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface TagButtonProps {
   setOpen(open: boolean): any;
@@ -254,10 +254,11 @@ function TagDialog(props: TagDialogProps) {
                   return error?.message ?? '';
                 }
                 if (error.type == 'maxLength') {
-                  return 'Name can be at most 1024 characters in length';
+                  return 'Description can be at most 1024 characters in length';
                 }
                 return '';
               }}
+              required={requireDescriptions}
             />
           </FormControl>
           <Box sx={{fontWeight: 'medium', fontSize: 18, margin: '8px 0 4px 0'}}>Optional constraints</Box>
