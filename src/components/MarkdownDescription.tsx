@@ -6,7 +6,7 @@ interface MarkdownDescriptionProps {
 }
 
 /**
- * Component for rendering markdown descriptions with proper styling and a subtle border.
+ * Component for rendering markdown descriptions with proper styling.
  * Used on detail pages for apps, groups, and tags.
  */
 export default function MarkdownDescription({description}: MarkdownDescriptionProps) {
@@ -22,6 +22,7 @@ export default function MarkdownDescription({description}: MarkdownDescriptionPr
         maxWidth: '100%',
         mx: 'auto',
         px: 2,
+        // Styling for links, using a color with better contrast in dark mode.
         '& a': {
           color: 'text.accent',
           textDecoration: 'none',
