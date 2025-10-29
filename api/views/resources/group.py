@@ -172,7 +172,7 @@ class GroupResource(MethodResource):
             ).execute()
 
         # Update additional fields like name, description, etc.
-        group = schema.load(request.json, instance=group)
+        group = schema.load(request.json, instance=group, partial=True)
         okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 
