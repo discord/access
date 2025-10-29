@@ -3,14 +3,13 @@ import ReactMarkdown from 'react-markdown';
 
 interface MarkdownDescriptionProps {
   description: string | null | undefined;
-  maxHeight?: string;
 }
 
 /**
- * Component for rendering markdown descriptions with proper styling and scrolling.
+ * Component for rendering markdown descriptions with proper styling and a subtle border.
  * Used on detail pages for apps, groups, and tags.
  */
-export default function MarkdownDescription({description, maxHeight = '400px'}: MarkdownDescriptionProps) {
+export default function MarkdownDescription({description}: MarkdownDescriptionProps) {
   if (!description) {
     return null;
   }
@@ -18,9 +17,6 @@ export default function MarkdownDescription({description, maxHeight = '400px'}: 
   return (
     <Box
       sx={{
-        maxHeight,
-        overflowY: 'auto',
-        overflowX: 'hidden',
         textAlign: 'left',
         width: 'fit-content',
         maxWidth: '100%',
