@@ -2,12 +2,12 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
-from api import config
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, validates
 from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
+from api import config
 from api.extensions import db
 
 
@@ -638,6 +638,9 @@ class App(db.Model):
 
     name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
     description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+
+    # Optional plugin ID for managing app group lifecycle
+    app_group_lifecycle_plugin: Mapped[Optional[str]] = mapped_column(db.Unicode(255))
 
     app_groups: Mapped[List[AppGroup]] = db.relationship("AppGroup", back_populates="app", lazy="raise_on_sql")
 
