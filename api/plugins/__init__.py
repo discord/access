@@ -25,7 +25,7 @@ from api.plugins.conditional_access import ConditionalAccessResponse, get_condit
 from api.plugins.notifications import get_notification_hook
 
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
-condtional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
+conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 
 __all__ = [
