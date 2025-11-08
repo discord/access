@@ -1815,3 +1815,25 @@ class AppTagMapSchema(SQLAlchemyAutoSchema):
             "group_tag_mapping",
             "active_group_tag_mappings",
         )
+
+
+# Plugin-related schemas
+class AppGroupLifecyclePluginMetadataSchema(Schema):
+    id = fields.String(required=True)
+    display_name = fields.String(required=True)
+    description = fields.String(required=False, allow_none=True)
+
+
+class AppGroupLifecyclePluginConfigPropertySchema(Schema):
+    display_name = fields.String(required=True)
+    help_text = fields.String(required=False, allow_none=True)
+    type = fields.String(required=True, validate=validate.OneOf(["text", "number", "boolean"]))
+    default_value = fields.Raw(required=False, allow_none=True)
+    required = fields.Boolean(required=False, load_default=False)
+    validation = fields.Dict(required=False, allow_none=True)
+
+
+class AppGroupLifecyclePluginStatusPropertySchema(Schema):
+    display_name = fields.String(required=True)
+    help_text = fields.String(required=False, allow_none=True)
+    type = fields.String(required=True, validate=validate.OneOf(["text", "number", "date", "boolean"]))
