@@ -897,6 +897,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
     description = context_aware_description_field()
 
     externally_managed_data = fields.Dict()
+    plugin_data = fields.Dict()
 
     @validates_schema
     def validate_app_group(self, data: Dict[str, Any], **kwargs: Any) -> None:
@@ -913,7 +914,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             )
 
     app_id = auto_field(required=True, validate=validate.Length(equal=20))
-    app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at")))
+    app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at", "app_group_lifecycle_plugin")))
 
     tags_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
     tags_to_remove = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1125,6 +1126,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             "description",
             "is_managed",
             "externally_managed_data",
+            "plugin_data",
             "is_owner",
             "app",
             "app_id",
@@ -1201,6 +1203,9 @@ class AppSchema(SQLAlchemyAutoSchema):
     )
     description = context_aware_description_field()
 
+    app_group_lifecycle_plugin = auto_field(validate=validate.Length(max=255), allow_none=True)
+    plugin_data = fields.Dict()
+
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
     initial_additional_app_groups = fields.Nested(lambda: InitialAppGroupSchema, many=True, load_only=True)
@@ -1248,6 +1253,8 @@ class AppSchema(SQLAlchemyAutoSchema):
             "deleted_at",
             "name",
             "description",
+            "app_group_lifecycle_plugin",
+            "plugin_data",
             "initial_owner_id",
             "initial_owner_role_ids",
             "initial_additional_app_groups",

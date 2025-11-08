@@ -104,6 +104,8 @@ export type App = {
    * @format date-time
    */
   updated_at?: string;
+  app_group_lifecycle_plugin?: string | null;
+  plugin_data?: Record<string, any>;
 };
 
 export type AppGroup = OktaGroup & {
@@ -129,6 +131,7 @@ export type AppGroup = OktaGroup & {
   description?: string;
   tags_to_add?: string[];
   tags_to_remove?: string[];
+  plugin_data?: Record<string, any>;
 };
 
 export type AppPagination = {
