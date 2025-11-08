@@ -615,3 +615,32 @@ export type UserPagination = {
   results?: OktaUser[];
   total?: number;
 };
+
+export type AppGroupLifecyclePluginMetadata = {
+  id: string;
+  display_name: string;
+  description: string;
+};
+
+export type AppGroupLifecyclePluginConfigProperty = {
+  display_name: string;
+  help_text?: string;
+  type: 'text' | 'number' | 'boolean';
+  default_value?: any;
+  required?: boolean;
+  validation?: Record<string, any>;
+};
+
+export type AppGroupLifecyclePluginStatusProperty = {
+  display_name: string;
+  help_text?: string;
+  type: 'text' | 'number' | 'date' | 'boolean';
+};
+
+export type AppGroupLifecyclePluginConfigProperties = {
+  [propertyId: string]: AppGroupLifecyclePluginConfigProperty;
+};
+
+export type AppGroupLifecyclePluginStatusProperties = {
+  [propertyId: string]: AppGroupLifecyclePluginStatusProperty;
+};
