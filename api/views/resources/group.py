@@ -22,6 +22,7 @@ from api.operations import (
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
+from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.services import okta
 from api.views.schemas import (
     AuditLogSchema,
@@ -117,6 +118,17 @@ class GroupResource(MethodResource):
                 "Groups not managed by Access cannot be modified",
             )
 
+        # Enforce stricter authorization for plugin configuration changes to prevent
+        # privilege escalation in the managed apps.
+        if group_changes.plugin_data != group.plugin_data and not (
+            AuthorizationHelpers.is_access_admin()
+            or (type(group) is AppGroup and AuthorizationHelpers.is_app_owner_group_owner(app_group=group))
+        ):
+            abort(
+                403,
+                "Only Access owners and app owners are allowed to configure plugins at the group level",
+            )
+
         json_data = request.get_json()
         if "tags_to_remove" in json_data:
             if len(json_data["tags_to_remove"]) > 0 and not AuthorizationHelpers.is_access_admin():
@@ -171,8 +183,20 @@ class GroupResource(MethodResource):
                 group=group, group_changes=group_changes, current_user_id=g.current_user_id
             ).execute()
 
+        old_plugin_data = group.plugin_data
+
         # Update additional fields like name, description, etc.
         group = schema.load(request.json, instance=group, partial=True)
+
+        if old_plugin_data and group.plugin_data != old_plugin_data:
+            # Apply partial updates to the plugin data
+            for key in old_plugin_data:
+                if key not in group.plugin_data:
+                    group.plugin_data[key] = old_plugin_data[key]
+
+            if type(group) is AppGroup:
+                merge_app_lifecycle_plugin_data(group, old_plugin_data)
+
         okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 
