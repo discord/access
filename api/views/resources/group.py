@@ -215,7 +215,7 @@ class GroupResource(MethodResource):
             .first()
         )
 
-        # Audit logging gnly log if group name changed
+        # Audit logging, only if group name changed
         if old_group_name.lower() != group.name.lower():
             current_app.logger.info(
                 AuditLogSchema().dumps(
