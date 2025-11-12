@@ -91,4 +91,4 @@ APP_VERSION = os.getenv("APP_VERSION", "Not Defined")
 APP_NAME = os.getenv("APP_NAME", "Access")
 
 # Require descriptions for apps, groups, and tags
-REQUIRE_DESCRIPTIONS = os.getenv("REQUIRE_DESCRIPTIONS", "False") == "True"
+REQUIRE_DESCRIPTIONS = os.getenv("REQUIRE_DESCRIPTIONS", "false").lower() == "true"
