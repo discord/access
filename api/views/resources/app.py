@@ -92,7 +92,7 @@ class AppResource(MethodResource):
         schema = AppSchema(
             exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS,
         )
-        app_changes = schema.load(request.json)
+        app_changes = schema.load(request.json, partial=True)
 
         if app_changes.name.lower() != app.name.lower():
             existing_app = (

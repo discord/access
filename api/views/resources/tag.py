@@ -69,7 +69,7 @@ class TagResource(MethodResource):
         )
 
         schema = TagSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
-        tag_changes = schema.load(request.json)
+        tag_changes = schema.load(request.json, partial=True)
 
         if tag_changes.name.lower() != tag.name.lower():
             existing_tag = (

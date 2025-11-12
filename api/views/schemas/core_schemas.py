@@ -1317,7 +1317,7 @@ class PolymorphicGroupSchema(Schema, metaclass=PolymorphicGroupSchemaMeta):
                 exclude=self._polymorphic_fields_intersection(group_class, self.exclude),
                 load_only=self._polymorphic_fields_intersection(group_class, self.load_only),
                 dump_only=self._polymorphic_fields_intersection(group_class, self.dump_only),
-            ).load(data, session=session, instance=instance, transient=transient)
+            ).load(data, session=session, instance=instance, transient=transient, **kwargs)
         else:
             raise ValidationError(f"Unexpected group type, expecting one of {self.TYPE_TO_GROUP_SCHEMA_MAP.keys()}")
         raise ValidationError(f"Unable to validate with: {self.TYPE_TO_GROUP_SCHEMA_MAP}")
