@@ -32,7 +32,30 @@ export default function MarkdownDescription({description}: MarkdownDescriptionPr
         },
       }}>
       <Typography variant="body1" component="div">
-        <ReactMarkdown>{description}</ReactMarkdown>
+        <ReactMarkdown
+          allowedElements={[
+            'p',
+            'strong',
+            'em',
+            'code',
+            'pre',
+            'del',
+            'a',
+            'ul',
+            'ol',
+            'li',
+            'h1',
+            'h2',
+            'h3',
+            'h4',
+            'h5',
+            'h6',
+            'blockquote',
+            'hr',
+            'br',
+          ]}>
+          {description}
+        </ReactMarkdown>
       </Typography>
     </Box>
   );
