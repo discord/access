@@ -198,9 +198,7 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
         assert any(u["id"] == tag.id for u in results["results"])
 
 
-def test_create_tag_with_and_without_description(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
-) -> None:
+def test_create_tag_with_and_without_description(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) -> None:
     """Test default behavior: tags don't require descriptions when REQUIRE_DESCRIPTIONS=False (default)"""
     tags_url = url_for("api-tags.tags")
 

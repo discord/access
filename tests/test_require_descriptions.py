@@ -7,6 +7,7 @@ variable set to 'true' before pytest starts. Use the dedicated tox environment:
 
 This tests the production scenario where the env var is set at application startup.
 """
+
 from typing import Any, Protocol, cast
 
 from faker import Faker
@@ -29,7 +30,7 @@ def test_create_app_requires_description(
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
-    faker: Faker,  # type: ignore[type-arg]
+    faker: Faker,
 ) -> None:
     """Test that apps require descriptions when REQUIRE_DESCRIPTIONS=True"""
     create_group_spy = mocker.patch.object(
@@ -69,7 +70,7 @@ def test_create_group_requires_description(
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
-    faker: Faker,  # type: ignore[type-arg]
+    faker: Faker,
     access_app: App,
 ) -> None:
     """Test that groups require descriptions when REQUIRE_DESCRIPTIONS=True"""
@@ -107,9 +108,7 @@ def test_create_group_requires_description(
     assert result["description"] == "This has a description"
 
 
-def test_create_tag_requires_description(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
-) -> None:
+def test_create_tag_requires_description(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) -> None:
     """Test that tags require descriptions when REQUIRE_DESCRIPTIONS=True"""
     tags_url = url_for("api-tags.tags")
 
@@ -143,7 +142,7 @@ def test_update_app_requires_description(
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
-    faker: Faker,  # type: ignore[type-arg]
+    faker: Faker,
 ) -> None:
     """Test that app updates require descriptions when REQUIRE_DESCRIPTIONS=True"""
     create_group_spy = mocker.patch.object(
@@ -191,7 +190,7 @@ def test_update_group_requires_description(
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
-    faker: Faker,  # type: ignore[type-arg]
+    faker: Faker,
     access_app: App,
 ) -> None:
     """Test that group updates require descriptions when REQUIRE_DESCRIPTIONS=True"""
@@ -237,9 +236,7 @@ def test_update_group_requires_description(
     assert result["description"] == "New description"
 
 
-def test_update_tag_requires_description(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
-) -> None:
+def test_update_tag_requires_description(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) -> None:
     """Test that tag updates require descriptions when REQUIRE_DESCRIPTIONS=True"""
     tags_url = url_for("api-tags.tags")
 
