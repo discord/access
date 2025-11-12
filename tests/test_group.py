@@ -823,3 +823,64 @@ def test_do_not_renew(
     assert len(membership_user2) == 1
     assert membership_user2[0].ended_at == expiration_datetime
     assert membership_user2[0].should_expire is True
+
+
+def test_create_groups_with_and_without_description(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    access_app: App,
+) -> None:
+    """Test that groups work with or without descriptions (REQUIRE_DESCRIPTIONS=False by default)"""
+    db.session.add(access_app)
+    db.session.commit()
+
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+
+    groups_url = url_for("api-groups.groups")
+
+    # Test creating okta_group without description should succeed (backwards compatibility)
+    data: dict[str, Any] = {"type": "okta_group", "name": "TestGroupNoDesc"}
+    rep = client.post(groups_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    assert result["name"] == "TestGroupNoDesc"
+    assert result["description"] == ""
+
+    # Test creating groups with descriptions should also succeed
+    data = {"type": "role_group", "name": "Role-TestGroupWithDesc", "description": "This has a description"}
+    rep = client.post(groups_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    assert result["name"] == "Role-TestGroupWithDesc"
+    assert result["description"] == "This has a description"
+
+
+def test_partial_group_update_preserves_description(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    okta_group: OktaGroup,
+) -> None:
+    """Test that group descriptions can be updated"""
+    # Set up the group with a description
+    okta_group.description = "Original description"
+    db.session.add(okta_group)
+    db.session.commit()
+
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
+
+    # Test partial update without description should preserve existing description
+    data = {"type": "okta_group", "name": "UpdatedName"}
+    rep = client.put(group_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedName"
+    assert result["description"] == "Original description"

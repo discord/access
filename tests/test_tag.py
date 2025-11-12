@@ -196,3 +196,68 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
     assert len(results["results"]) == 3
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])
+
+
+def test_create_tag_with_and_without_description(
+    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
+) -> None:
+    """Test default behavior: tags don't require descriptions when REQUIRE_DESCRIPTIONS=False (default)"""
+    tags_url = url_for("api-tags.tags")
+
+    # Test creating tag without description should succeed (backwards compatibility)
+    data: dict[str, Any] = {"name": "TestTag"}
+    rep = client.post(tags_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    tag = db.session.get(Tag, result["id"])
+    assert tag.name == "TestTag"
+    assert tag.description == ""
+
+    # Test creating tag with empty description should succeed
+    data = {"name": "TestTag2", "description": ""}
+    rep = client.post(tags_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    tag = db.session.get(Tag, result["id"])
+    assert tag.name == "TestTag2"
+    assert tag.description == ""
+
+    # Test creating tag with a description should also succeed
+    data = {"name": "TestTag3", "description": "This has a description"}
+    rep = client.post(tags_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    tag = db.session.get(Tag, result["id"])
+    assert tag.name == "TestTag3"
+    assert tag.description == "This has a description"
+
+
+def test_partial_tag_update_preserves_description(
+    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, tag: Tag
+) -> None:
+    """Test that tag updates handle descriptions correctly in default configuration"""
+    # Set up the tag with a description
+    tag.description = "Original description"
+    db.session.add(tag)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
+
+    # Test partial update without description should preserve existing description
+    data = {"name": "UpdatedTag"}
+    rep = client.put(tag_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedTag"
+    assert result["description"] == "Original description"  # Description is preserved
+
+    # Test updating with valid description should succeed
+    data = {"name": "UpdatedTag2", "description": "Updated description"}
+    rep = client.put(tag_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedTag2"
+    assert result["description"] == "Updated description"

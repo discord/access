@@ -473,3 +473,74 @@ def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
     results = rep.get_json()
     for app in apps:
         assert any(u["id"] == app.id for u in results["results"])
+
+
+def test_create_app_with_and_without_description(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+) -> None:
+    """Test that apps work with or without descriptions (REQUIRE_DESCRIPTIONS=False by default)"""
+    create_group_spy = mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+
+    apps_url = url_for("api-apps.apps")
+
+    # Test creating app without description should succeed (backwards compatibility)
+    data: dict[str, Any] = {"name": "TestAppNoDesc"}
+    rep = client.post(apps_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    assert result["name"] == "TestAppNoDesc"
+    assert result["description"] == ""
+
+    # Test creating app with a description should also succeed
+    data = {"name": "TestAppWithDesc", "description": "This has a description"}
+    rep = client.post(apps_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    assert result["name"] == "TestAppWithDesc"
+    assert result["description"] == "This has a description"
+
+
+def test_partial_app_update_preserves_description(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+) -> None:
+    """Test that app updates handle descriptions correctly in default configuration"""
+    # Set up the app with a description
+    access_app.description = "Original description"
+    db.session.add(access_app)
+    db.session.commit()
+    app_group.app_id = access_app.id
+    db.session.add(app_group)
+    db.session.commit()
+
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
+
+    # Test partial update without description should preserve existing description
+    data = {"name": "UpdatedName"}
+    rep = client.put(app_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedName"
+    assert result["description"] == "Original description"  # Description is preserved
+
+    # Test updating with valid description should succeed
+    data = {"name": "UpdatedName2", "description": "Updated description"}
+    rep = client.put(app_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedName2"
+    assert result["description"] == "Updated description"
