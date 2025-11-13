@@ -33,11 +33,11 @@ def test_create_app_requires_description(
     faker: Faker,
 ) -> None:
     """Test that apps require descriptions when REQUIRE_DESCRIPTIONS=True"""
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
 
     apps_url = url_for("api-apps.apps")
 
@@ -77,7 +77,7 @@ def test_create_group_requires_description(
     db.session.add(access_app)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
@@ -145,12 +145,12 @@ def test_update_app_requires_description(
     faker: Faker,
 ) -> None:
     """Test that app updates require descriptions when REQUIRE_DESCRIPTIONS=True"""
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    update_group_spy = mocker.patch.object(okta, "update_group")
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "update_group")
 
     apps_url = url_for("api-apps.apps")
 
@@ -197,10 +197,10 @@ def test_update_group_requires_description(
     db.session.add(access_app)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    update_group_spy = mocker.patch.object(okta, "update_group")
+    mocker.patch.object(okta, "update_group")
 
     groups_url = url_for("api-groups.groups")
 

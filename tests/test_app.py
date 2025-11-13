@@ -482,11 +482,11 @@ def test_create_app_with_and_without_description(
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
     """Test that apps work with or without descriptions (REQUIRE_DESCRIPTIONS=False by default)"""
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
 
     apps_url = url_for("api-apps.apps")
 
@@ -525,7 +525,7 @@ def test_partial_app_update_preserves_description(
     db.session.add(app_group)
     db.session.commit()
 
-    update_group_spy = mocker.patch.object(okta, "update_group")
+    mocker.patch.object(okta, "update_group")
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
 

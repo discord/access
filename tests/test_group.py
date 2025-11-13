@@ -836,7 +836,7 @@ def test_create_groups_with_and_without_description(
     db.session.add(access_app)
     db.session.commit()
 
-    create_group_spy = mocker.patch.object(
+    mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
@@ -873,7 +873,7 @@ def test_partial_group_update_preserves_description(
     db.session.add(okta_group)
     db.session.commit()
 
-    update_group_spy = mocker.patch.object(okta, "update_group")
+    mocker.patch.object(okta, "update_group")
 
     group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
 
