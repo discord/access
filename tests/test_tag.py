@@ -1,6 +1,7 @@
 from typing import Any
 
-from flask import url_for
+import pytest
+from flask import Flask, url_for
 from flask.testing import FlaskClient
 from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
@@ -196,3 +197,108 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
     assert len(results["results"]) == 3
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])
+
+
+@pytest.mark.parametrize("app", [False, True], indirect=True)
+def test_create_tag_with_and_without_description(
+    app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
+) -> None:
+    """Test that tags work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
+    tags_url = url_for("api-tags.tags")
+
+    # Test creating tag without description
+    data: dict[str, Any] = {"name": "TestTag"}
+    rep = client.post(tags_url, json=data)
+    if require_descriptions:
+        # Should fail when REQUIRE_DESCRIPTIONS=True
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "required" in str(response_data).lower()
+    else:
+        # Should succeed with backwards compatibility
+        assert rep.status_code == 201
+        result = rep.get_json()
+        tag = db.session.get(Tag, result["id"])
+        assert tag.name == "TestTag"
+        assert tag.description == ""
+
+    # Test creating tag with empty description
+    data = {"name": "TestTag2", "description": ""}
+    rep = client.post(tags_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed with empty description
+        assert rep.status_code == 201
+        result = rep.get_json()
+        tag = db.session.get(Tag, result["id"])
+        assert tag.name == "TestTag2"
+        assert tag.description == ""
+
+    # Test creating tag with a description should always succeed
+    data = {"name": "TestTag3", "description": "This has a description"}
+    rep = client.post(tags_url, json=data)
+    assert rep.status_code == 201
+
+    result = rep.get_json()
+    tag = db.session.get(Tag, result["id"])
+    assert tag.name == "TestTag3"
+    assert tag.description == "This has a description"
+
+
+@pytest.mark.parametrize("app", [False, True], indirect=True)
+def test_partial_tag_update_preserves_description(
+    app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, tag: Tag
+) -> None:
+    """Test that tag updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
+    # Set up the tag with a description
+    tag.description = "Original description"
+    db.session.add(tag)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
+
+    # Test updating with empty description
+    data = {"name": "UpdatedWithEmpty", "description": ""}
+    rep = client.put(tag_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed
+        assert rep.status_code == 200
+        result = rep.get_json()
+        assert result["name"] == "UpdatedWithEmpty"
+        assert result["description"] == ""
+
+    # Reset the tag description back to "Original description" for the partial update test
+    if not require_descriptions:
+        # Need to reset since empty description succeeded above
+        data = {"name": "UpdatedWithEmpty", "description": "Original description"}
+        rep = client.put(tag_url, json=data)
+        assert rep.status_code == 200
+
+    # Test partial update without description should preserve existing description
+    data = {"name": "UpdatedTag"}
+    rep = client.put(tag_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedTag"
+    assert result["description"] == "Original description"  # Description is preserved
+
+    # Test updating with valid description should succeed
+    data = {"name": "UpdatedTag2", "description": "Updated description"}
+    rep = client.put(tag_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedTag2"
+    assert result["description"] == "Updated description"

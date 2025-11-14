@@ -108,7 +108,7 @@ class GroupResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(PolymorphicGroupSchema)
     def put(self, group: OktaGroup) -> ResponseReturnValue:
         schema = PolymorphicGroupSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
-        group_changes = schema.load(request.json)
+        group_changes = schema.load(request.json, partial=True)
         old_group_name = group.name
 
         if not group.is_managed:
@@ -172,7 +172,7 @@ class GroupResource(MethodResource):
             ).execute()
 
         # Update additional fields like name, description, etc.
-        group = schema.load(request.json, instance=group)
+        group = schema.load(request.json, instance=group, partial=True)
         okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 

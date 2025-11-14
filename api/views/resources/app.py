@@ -92,7 +92,7 @@ class AppResource(MethodResource):
         schema = AppSchema(
             exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS,
         )
-        app_changes = schema.load(request.json)
+        app_changes = schema.load(request.json, partial=True)
 
         if app_changes.name.lower() != app.name.lower():
             existing_app = (
@@ -131,7 +131,7 @@ class AppResource(MethodResource):
                 abort(400, "Only tags can be modified for the Access application")
 
         old_app_name = app.name
-        app = schema.load(request.json, instance=app)
+        app = schema.load(request.json, instance=app, partial=True)
 
         # Update all app group names when updating app name
         if app.name != old_app_name:

@@ -69,7 +69,7 @@ class TagResource(MethodResource):
         )
 
         schema = TagSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
-        tag_changes = schema.load(request.json)
+        tag_changes = schema.load(request.json, partial=True)
 
         if tag_changes.name.lower() != tag.name.lower():
             existing_tag = (
@@ -80,7 +80,7 @@ class TagResource(MethodResource):
             if existing_tag is not None:
                 abort(400, "Tag already exists with the same name")
 
-        tag = schema.load(request.json, instance=tag)
+        tag = schema.load(request.json, instance=tag, partial=True)
         db.session.commit()
 
         # Handle group time limit constraints when modifying tags
