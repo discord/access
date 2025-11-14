@@ -1,4 +1,4 @@
-from typing import AbstractSet, Any, Dict, List, Optional, Sequence, cast
+from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Sequence, cast
 
 from flask import current_app
 from marshmallow import Schema, ValidationError, fields, utils, validate, validates_schema
@@ -6,7 +6,6 @@ from marshmallow.schema import SchemaMeta, SchemaOpts
 from marshmallow_sqlalchemy import SQLAlchemyAutoSchema, auto_field
 from sqlalchemy.orm import Session
 
-from api import config
 from api.access_config import get_access_config
 from api.extensions import db
 from api.models import (
@@ -26,13 +25,51 @@ from api.models import (
 
 access_config = get_access_config()
 
-DESCRIPTION_VALIDATOR = validate.Length(
-    min=1 if config.REQUIRE_DESCRIPTIONS else 0,
-    max=1024,
-    error="Description must be between {min} and {max} characters"
-    if config.REQUIRE_DESCRIPTIONS
-    else "Description must be {max} characters or less",
-)
+
+def context_aware_description_field() -> fields.Field:
+    """
+    Returns a context-aware description field that reads REQUIRE_DESCRIPTIONS
+    from Flask app config at validation time instead of module import time.
+
+    This allows tests to parametrize the REQUIRE_DESCRIPTIONS setting without
+    needing separate test environments or module reloading.
+    """
+
+    class ContextAwareDescriptionField(fields.String):
+        def deserialize(
+            self, value: Any, attr: Optional[str] = None, data: Optional[Mapping[str, Any]] = None, **kwargs: Any
+        ) -> Any:
+            # Read config at deserialization time (when processing request data)
+            require_descriptions = current_app.config.get("REQUIRE_DESCRIPTIONS", False)
+
+            # Check if field was provided in the input data
+            field_was_provided = data is not None and attr is not None and attr in data
+
+            # If field wasn't provided and descriptions are required, raise error
+            if not field_was_provided and require_descriptions:
+                raise ValidationError("Description is required.")
+
+            # If field wasn't provided and descriptions are not required, return empty string
+            if not field_was_provided:
+                return ""
+
+            # Field was provided, validate it
+            if value == "" and require_descriptions:
+                raise ValidationError("Description must be between 1 and 1024 characters")
+
+            # Use parent deserialization for type conversion
+            if value is None or value == "":
+                return "" if not require_descriptions else self.fail("required")
+
+            result = super().deserialize(value, attr, data, **kwargs)
+
+            # Validate length
+            if result and len(result) > 1024:
+                raise ValidationError("Description must be 1024 characters or less")
+
+            return result
+
+    return ContextAwareDescriptionField(allow_none=True, load_default="", dump_default="")
 
 
 # See https://stackoverflow.com/a/58646612
@@ -265,12 +302,7 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
     externally_managed_data = fields.Dict()
 
@@ -643,12 +675,7 @@ class RoleGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
     externally_managed_data = fields.Dict()
 
@@ -867,12 +894,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
     externally_managed_data = fields.Dict()
 
@@ -1163,12 +1185,7 @@ class InitialAppGroupSchema(Schema):
             ),
         ),
     )
-    description = fields.String(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
 
 class AppSchema(SQLAlchemyAutoSchema):
@@ -1182,12 +1199,7 @@ class AppSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1501,12 +1513,7 @@ class TagSchema(SQLAlchemyAutoSchema):
             ),
         ),
     )
-    description = auto_field(
-        required=config.REQUIRE_DESCRIPTIONS,
-        load_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        dump_default="" if not config.REQUIRE_DESCRIPTIONS else utils.missing,
-        validate=DESCRIPTION_VALIDATOR,
-    )
+    description = context_aware_description_field()
 
     def validate_constraints(value) -> bool:
         if not isinstance(value, dict):

@@ -1,7 +1,8 @@
 from typing import Any, Protocol, cast
 
+import pytest
 from factory import Faker
-from flask import url_for
+from flask import Flask, url_for
 from flask.testing import FlaskClient
 from flask_sqlalchemy import SQLAlchemy
 from okta.models.group import Group
@@ -475,13 +476,17 @@ def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
         assert any(u["id"] == app.id for u in results["results"])
 
 
+@pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_app_with_and_without_description(
+    app: Flask,
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
-    """Test that apps work with or without descriptions (REQUIRE_DESCRIPTIONS=False by default)"""
+    """Test that apps work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
@@ -490,16 +495,37 @@ def test_create_app_with_and_without_description(
 
     apps_url = url_for("api-apps.apps")
 
-    # Test creating app without description should succeed (backwards compatibility)
+    # Test creating app without description
     data: dict[str, Any] = {"name": "TestAppNoDesc"}
     rep = client.post(apps_url, json=data)
-    assert rep.status_code == 201
+    if require_descriptions:
+        # Should fail when REQUIRE_DESCRIPTIONS=True
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "required" in str(response_data).lower()
+    else:
+        # Should succeed with backwards compatibility
+        assert rep.status_code == 201
+        result = rep.get_json()
+        assert result["name"] == "TestAppNoDesc"
+        assert result["description"] == ""
 
-    result = rep.get_json()
-    assert result["name"] == "TestAppNoDesc"
-    assert result["description"] == ""
+    # Test creating app with empty description
+    data = {"name": "TestAppEmptyDesc", "description": ""}
+    rep = client.post(apps_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed with empty description
+        assert rep.status_code == 201
+        result = rep.get_json()
+        assert result["name"] == "TestAppEmptyDesc"
+        assert result["description"] == ""
 
-    # Test creating app with a description should also succeed
+    # Test creating app with a description should always succeed
     data = {"name": "TestAppWithDesc", "description": "This has a description"}
     rep = client.post(apps_url, json=data)
     assert rep.status_code == 201
@@ -509,14 +535,18 @@ def test_create_app_with_and_without_description(
     assert result["description"] == "This has a description"
 
 
+@pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_app_update_preserves_description(
+    app: Flask,
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
 ) -> None:
-    """Test that app updates handle descriptions correctly in default configuration"""
+    """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
     # Set up the app with a description
     access_app.description = "Original description"
     db.session.add(access_app)
@@ -528,6 +558,28 @@ def test_partial_app_update_preserves_description(
     mocker.patch.object(okta, "update_group")
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
+
+    # Test updating with empty description
+    data = {"name": "UpdatedWithEmpty", "description": ""}
+    rep = client.put(app_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed
+        assert rep.status_code == 200
+        result = rep.get_json()
+        assert result["name"] == "UpdatedWithEmpty"
+        assert result["description"] == ""
+
+    # Reset the app description back to "Original description" for the partial update test
+    if not require_descriptions:
+        # Need to reset since empty description succeeded above
+        data = {"name": "UpdatedWithEmpty", "description": "Original description"}
+        rep = client.put(app_url, json=data)
+        assert rep.status_code == 200
 
     # Test partial update without description should preserve existing description
     data = {"name": "UpdatedName"}

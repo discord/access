@@ -43,8 +43,6 @@ jobs:
         run: tox -e test
       - name: Test with tox with postgresql
         run: tox -e test-with-postgresql
-      - name: Test with tox with require descriptions
-        run: tox -e test-require-descriptions
       - name: Test installing notifications plugin
         run: |
           # Install the notifications plugin from examples/plugins/notifications

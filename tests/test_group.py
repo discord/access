@@ -2,8 +2,9 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Protocol, cast
 from unittest.mock import Mock
 
+import pytest
 from factory import Faker
-from flask import url_for
+from flask import Flask, url_for
 from flask.testing import FlaskClient
 from flask_sqlalchemy import SQLAlchemy
 from okta.models.group import Group
@@ -825,14 +826,18 @@ def test_do_not_renew(
     assert membership_user2[0].should_expire is True
 
 
+@pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_groups_with_and_without_description(
+    app: Flask,
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
 ) -> None:
-    """Test that groups work with or without descriptions (REQUIRE_DESCRIPTIONS=False by default)"""
+    """Test that groups work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
     db.session.add(access_app)
     db.session.commit()
 
@@ -842,16 +847,37 @@ def test_create_groups_with_and_without_description(
 
     groups_url = url_for("api-groups.groups")
 
-    # Test creating okta_group without description should succeed (backwards compatibility)
+    # Test creating okta_group without description
     data: dict[str, Any] = {"type": "okta_group", "name": "TestGroupNoDesc"}
     rep = client.post(groups_url, json=data)
-    assert rep.status_code == 201
+    if require_descriptions:
+        # Should fail when REQUIRE_DESCRIPTIONS=True
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "required" in str(response_data).lower()
+    else:
+        # Should succeed with backwards compatibility
+        assert rep.status_code == 201
+        result = rep.get_json()
+        assert result["name"] == "TestGroupNoDesc"
+        assert result["description"] == ""
 
-    result = rep.get_json()
-    assert result["name"] == "TestGroupNoDesc"
-    assert result["description"] == ""
+    # Test creating group with empty description
+    data = {"type": "okta_group", "name": "TestGroupEmptyDesc", "description": ""}
+    rep = client.post(groups_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed with empty description
+        assert rep.status_code == 201
+        result = rep.get_json()
+        assert result["name"] == "TestGroupEmptyDesc"
+        assert result["description"] == ""
 
-    # Test creating groups with descriptions should also succeed
+    # Test creating groups with descriptions should always succeed
     data = {"type": "role_group", "name": "Role-TestGroupWithDesc", "description": "This has a description"}
     rep = client.post(groups_url, json=data)
     assert rep.status_code == 201
@@ -861,13 +887,17 @@ def test_create_groups_with_and_without_description(
     assert result["description"] == "This has a description"
 
 
+@pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_group_update_preserves_description(
+    app: Flask,
     client: FlaskClient,
     db: SQLAlchemy,
     mocker: MockerFixture,
     okta_group: OktaGroup,
 ) -> None:
-    """Test that group descriptions can be updated"""
+    """Test that group updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
+    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+
     # Set up the group with a description
     okta_group.description = "Original description"
     db.session.add(okta_group)
@@ -877,6 +907,28 @@ def test_partial_group_update_preserves_description(
 
     group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
 
+    # Test updating with empty description
+    data = {"type": "okta_group", "name": "UpdatedWithEmpty", "description": ""}
+    rep = client.put(group_url, json=data)
+    if require_descriptions:
+        # Should fail - empty description fails length validation
+        assert rep.status_code == 400
+        response_data = rep.get_json()
+        assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
+    else:
+        # Should succeed
+        assert rep.status_code == 200
+        result = rep.get_json()
+        assert result["name"] == "UpdatedWithEmpty"
+        assert result["description"] == ""
+
+    # Reset the group description back to "Original description" for the partial update test
+    if not require_descriptions:
+        # Need to reset since empty description succeeded above
+        data = {"type": "okta_group", "name": "UpdatedWithEmpty", "description": "Original description"}
+        rep = client.put(group_url, json=data)
+        assert rep.status_code == 200
+
     # Test partial update without description should preserve existing description
     data = {"type": "okta_group", "name": "UpdatedName"}
     rep = client.put(group_url, json=data)
@@ -884,3 +936,11 @@ def test_partial_group_update_preserves_description(
     result = rep.get_json()
     assert result["name"] == "UpdatedName"
     assert result["description"] == "Original description"
+
+    # Test updating with valid description should succeed
+    data = {"type": "okta_group", "name": "UpdatedName2", "description": "New description"}
+    rep = client.put(group_url, json=data)
+    assert rep.status_code == 200
+    result = rep.get_json()
+    assert result["name"] == "UpdatedName2"
+    assert result["description"] == "New description"
