@@ -40,7 +40,7 @@ export default defineConfig(({mode}) => {
     define: {
       ACCESS_CONFIG: accessConfig,
       APP_NAME: JSON.stringify(env.APP_NAME || 'Access'),
-      REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS === 'True',
+      REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true',
     },
     server: {
       port: 3000,
