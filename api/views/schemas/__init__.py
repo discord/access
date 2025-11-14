@@ -5,6 +5,9 @@ from api.views.schemas.access_requests import (
 from api.views.schemas.audit_logs import AuditLogSchema, EventType
 from api.views.schemas.core_schemas import (
     AccessRequestSchema,
+    AppGroupLifecyclePluginConfigPropertySchema,
+    AppGroupLifecyclePluginMetadataSchema,
+    AppGroupLifecyclePluginStatusPropertySchema,
     AppGroupSchema,
     AppSchema,
     AppTagMapSchema,
@@ -47,6 +50,9 @@ from api.views.schemas.role_requests import CreateRoleRequestSchema, ResolveRole
 __all__ = [
     "AccessRequestPaginationSchema",
     "AccessRequestSchema",
+    "AppGroupLifecyclePluginConfigPropertySchema",
+    "AppGroupLifecyclePluginMetadataSchema",
+    "AppGroupLifecyclePluginStatusPropertySchema",
     "AppGroupSchema",
     "AppPaginationSchema",
     "AppSchema",

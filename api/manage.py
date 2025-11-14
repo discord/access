@@ -1,3 +1,5 @@
+from typing import List
+
 import click
 from flask.cli import with_appcontext
 
@@ -123,8 +125,8 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
 )
 @with_appcontext
 def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
-    from sentry_sdk import start_transaction
     from flask import current_app
+    from sentry_sdk import start_transaction
 
     from api.syncer import (
         expire_access_requests,
@@ -206,3 +208,39 @@ def notify(owner: bool, role_owner: bool) -> None:
         expiring_access_notifications_role_owner()
     else:
         expiring_access_notifications_user()
+
+
+@click.command("sync-app-group-memberships")
+@with_appcontext
+def sync_app_group_memberships() -> None:
+    """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
+    from api.extensions import db
+    from api.models import App
+    from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
+
+    click.echo("Starting app group lifecycle plugin sync")
+
+    # Find all apps with a plugin configured
+    apps: List[App] = (
+        App.query.filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).all()
+    )
+
+    if len(apps) == 0:
+        click.echo("No apps with app group lifecycle plugins configured")
+        return
+
+    click.echo(f"Found {len(apps)} app(s) with plugins configured")
+
+    hook = get_app_group_lifecycle_hook()
+
+    for app in apps:
+        click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
+        try:
+            hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
+            db.session.commit()
+            click.echo(f"  ✓ Synced app '{app.name}'")
+        except Exception as e:
+            db.session.rollback()
+            click.echo(f"  ✗ Failed to sync app '{app.name}': {e}", err=True)
+
+    click.echo("Completed app group lifecycle plugin sync")

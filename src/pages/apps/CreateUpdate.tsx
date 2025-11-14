@@ -29,6 +29,7 @@ import {
 import {App, AppTagMap, OktaUser, Tag} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
+import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 
 interface AppButtonProps {
   setOpen(open: boolean): any;
@@ -69,6 +70,11 @@ function AppDialog(props: AppDialogProps) {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+
+  const [selectedAppGroupLifecyclePluginId, setSelectedAppGroupLifecyclePluginId] = React.useState<string | null>(
+    (props.app as any)?.app_group_lifecycle_plugin || null,
+  );
+  const isAllowedToConfigureAppGroupLifecyclePlugin = isAccessAdmin(props.currentUser);
 
   const complete = (
     completedApp: App | undefined,
@@ -113,6 +119,10 @@ function AppDialog(props: AppDialogProps) {
       app.tags_to_remove = defaultTags.filter((x) => !selectedTags.includes(x)).map((tag: Tag) => tag.id);
     } else {
       app.tags_to_add = selectedTags.map((tag: Tag) => tag.id);
+    }
+
+    if (isAllowedToConfigureAppGroupLifecyclePlugin) {
+      (app as any).app_group_lifecycle_plugin = selectedAppGroupLifecyclePluginId || null;
     }
 
     if (props.app == null) {
@@ -207,6 +217,18 @@ function AppDialog(props: AppDialogProps) {
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
             />
           </FormControl>
+          {isAllowedToConfigureAppGroupLifecyclePlugin && (
+            <AppGroupLifecyclePluginConfigurationForm
+              entityType="app"
+              selectedPluginId={selectedAppGroupLifecyclePluginId}
+              currentConfig={
+                selectedAppGroupLifecyclePluginId && (props.app as any)?.plugin_data
+                  ? (props.app as any).plugin_data[selectedAppGroupLifecyclePluginId]?.configuration || {}
+                  : {}
+              }
+              onPluginChange={setSelectedAppGroupLifecyclePluginId}
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>

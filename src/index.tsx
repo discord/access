@@ -21,6 +21,15 @@ const queryClient = new QueryClient({
   },
 });
 
+// Cache plugin metadata indefinitely since it doesn't change while the app is running
+queryClient.setQueryDefaults(['api', 'plugins'], {
+  staleTime: Infinity,
+  cacheTime: Infinity,
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+});
+
 if (['production', 'staging'].includes(import.meta.env.MODE)) {
   // Use a placeholder DSN as we'll be using the tunnel to proxy all Sentry React errors
   Sentry.init({
