@@ -178,7 +178,6 @@ export default function AuditGroup() {
   };
 
   const handleOwnerOrMember = (event: React.MouseEvent<HTMLElement>, newValue: boolean | null) => {
-    console.log(newValue);
     if (newValue == null) {
       setSearchParams((params) => {
         params.delete('owner');
