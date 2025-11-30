@@ -21,6 +21,7 @@ from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
 from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -57,6 +58,7 @@ class CreateAccessRequest:
 
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> Optional[AccessRequest]:
         # Don't allow creating a request for an unmanaged group
@@ -75,6 +77,17 @@ class CreateAccessRequest:
 
         db.session.add(access_request)
         db.session.commit()
+
+        # Record metrics for access request creation
+        group_type = "app_group" if isinstance(self.requested_group, AppGroup) else "role_group"
+        self.metrics_hook.record_counter(
+            metric_name="access.request.created",
+            value=1.0,
+            tags={
+                "group_type": group_type,
+                "request_ownership": str(self.request_ownership).lower(),
+            },
+        )
 
         # Fetch the users to notify
         approvers = get_group_managers(self.requested_group.id)

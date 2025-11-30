@@ -22,6 +22,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -121,6 +122,7 @@ class ModifyRoleGroups:
         self.notify = notify
 
         self.notification_hook = get_notification_hook()
+        self.metrics_hook = get_metrics_reporter_hook()
 
     def execute(self) -> RoleGroup:
         # Run asychronously to parallelize Okta API requests
@@ -286,6 +288,17 @@ class ModifyRoleGroups:
                 synchronize_session="fetch",
             )
 
+        # Calculate total active role mappings using a query instead of accessing the relationship
+        # to avoid SQLAlchemy InvalidRequestError issues
+        total_active_role_mappings = (
+            db.session.query(RoleGroupMap)
+            .filter(
+                RoleGroupMap.role_group_id == self.role.id,
+                RoleGroupMap.ended_at.is_(None),
+            )
+            .count()
+        )
+
         # Commit all changes so far
         db.session.commit()
 
@@ -337,6 +350,25 @@ class ModifyRoleGroups:
 
             # Commit changes so far so we can reference the ids of the new role group maps in the OktaUserGroupMembers
             db.session.commit()
+
+            # Record metrics for role group mapping additions
+            for group in self.groups_to_add:
+                self.metrics_hook.record_counter(
+                    metric_name="role.group_mapping.added",
+                    value=1.0,
+                    tags={
+                        "is_owner_mapping": "false",
+                    },
+                )
+
+            for owner_group in self.owner_groups_to_add:
+                self.metrics_hook.record_counter(
+                    metric_name="role.group_mapping.added",
+                    value=1.0,
+                    tags={
+                        "is_owner_mapping": "true",
+                    },
+                )
 
             # Group members of a role should be added as members to all newly added groups
             # and owner groups associated with that role
@@ -495,6 +527,18 @@ class ModifyRoleGroups:
 
         # Commit all changes
         db.session.commit()
+
+        # Record gauge metrics for role statistics after final commit
+        self.metrics_hook.record_gauge(
+            metric_name="roles.total_active",
+            value=1,  # This role is active
+            tags={},
+        )
+
+        # Use the captured count for the histogram
+        self.metrics_hook.record_histogram(
+            metric_name="role.membership_count", value=total_active_role_mappings, tags={}
+        )
 
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)
