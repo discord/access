@@ -242,13 +242,23 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }, false);
 
   const updateUntil = (memberships: RoleGroupMap[]) => {
+    // Only calculate time limit for memberships selected for renewal (yes)
+    const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
+
+    if (renewalMemberships.length === 0) {
+      // No renewals selected, use default options
+      setTimeLimit(null);
+      setLabels(UNTIL_OPTIONS);
+      return;
+    }
+
     const groups = Array.from(
-      memberships.reduce((all, curr) => {
+      renewalMemberships.reduce((all, curr) => {
         return all.add(curr.group!);
       }, new Set<OktaGroup | AppGroup>()),
     );
 
-    const owner_member = memberships.reduce((all, curr) => {
+    const owner_member = renewalMemberships.reduce((all, curr) => {
       return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
@@ -264,6 +274,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
 
     setTimeLimit(time);
+
     if (!(time == null)) {
       const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
         .filter((key) => Number(key) <= time!)
@@ -275,8 +286,15 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
           {} as Record<string, string>,
         );
 
-      setUntil(Object.keys(filteredUntil).at(-1)!);
+      // Only adjust the user's selection if it exceeds the new time limit
+      const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
 
+      if (currentUntilValue === null || currentUntilValue > time!) {
+        // User's selection exceeds limit (or is indefinite), set to highest valid option
+        setUntil(Object.keys(filteredUntil).at(-1)!);
+      }
+
+      // Otherwise, keep the user's current selection
       setLabels(
         Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
           id: id,
@@ -289,17 +307,24 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   };
 
   const updateRequiredReason = (memberships: RoleGroupMap[]) => {
+    // Only calculate required reason for memberships selected for renewal (yes)
+    const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
+
+    if (renewalMemberships.length === 0) {
+      setRequiredReason(false);
+      return;
+    }
+
     const groups = Array.from(
-      memberships.reduce((all, curr) => {
+      renewalMemberships.reduce((all, curr) => {
         return all.add(curr.group!);
       }, new Set<OktaGroup | AppGroup>()),
     );
 
-    const owner_member = memberships.reduce((all, curr) => {
+    const owner_member = renewalMemberships.reduce((all, curr) => {
       return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
-    let req: boolean = false;
     if (owner_member.size == 2) {
       setRequiredReason(requiredReasonGroups(groups, true) || requiredReasonGroups(groups, false));
     } else if (owner_member.has(true)) {
@@ -309,12 +334,10 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
-  // Update time limits and required reason when selections change
   React.useEffect(() => {
-    const allSelected = [...selectedYes, ...selectedNo];
-    updateUntil(allSelected);
-    updateRequiredReason(allSelected);
-  }, [selectedYes, selectedNo]);
+    updateUntil([...selectedYes, ...selectedNo]);
+    updateRequiredReason([...selectedYes, ...selectedNo]);
+  }, [selectedYes, selectedNo, toggleStates]);
 
   const complete = (
     completedUsersChange: RoleMember | undefined,
