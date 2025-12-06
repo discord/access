@@ -1,8 +1,6 @@
 import logging
 from typing import Optional
 
-from sqlalchemy.orm import selectin_polymorphic
-
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -15,6 +13,7 @@ from api.models import (
     RoleGroupMap,
 )
 from api.operations.reject_access_request import RejectAccessRequest
+from sqlalchemy.orm import selectin_polymorphic
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +93,7 @@ class UnmanageGroup:
         )
         for obsolete_access_request in obsolete_access_requests:
             logger.info(
-                f"Rejecting obsolete access request {obsolete_access_request.id} "
-                f"for unmanaged group {self.group.id}"
+                f"Rejecting obsolete access request {obsolete_access_request.id} for unmanaged group {self.group.id}"
             )
             if not dry_run:
                 RejectAccessRequest(

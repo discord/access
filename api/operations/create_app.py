@@ -1,10 +1,8 @@
 import random
 import string
+from datetime import datetime, timezone
 from typing import Optional, TypedDict
-
-from flask import current_app, has_request_context, request
-from sqlalchemy import func
-from sqlalchemy.orm import with_polymorphic
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
@@ -13,7 +11,12 @@ from api.operations.create_group import CreateGroup, GroupDict
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
+from api.plugins import get_audit_events_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy import func
+from sqlalchemy.orm import with_polymorphic
 
 
 class AppDict(TypedDict):
@@ -97,9 +100,11 @@ class CreateApp:
                 {
                     "event_type": EventType.app_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "app": self.app,
@@ -242,7 +247,40 @@ class CreateApp:
                     )
             db.session.commit()
 
-        return db.session.get(App, app_id)
+        # Emit audit event to plugins (after DB commit)
+        try:
+            created_app = db.session.get(App, app_id)
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="app_create",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.current_user_id or "system",
+                actor_email=email,
+                target_type="app",
+                target_id=app_id,
+                target_name=self.app.name,
+                action="created",
+                reason="",
+                payload={
+                    "app_id": app_id,
+                    "app_name": self.app.name,
+                    "app_description": self.app.description,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
+
+        return created_app
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
     def __generate_id(self) -> str:

@@ -1,13 +1,16 @@
+from datetime import datetime, timezone
 from typing import Optional, TypedDict, TypeVar
-
-from flask import current_app, has_request_context, request
-from sqlalchemy import func
-from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.plugins import get_audit_events_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 T = TypeVar("T", bound=OktaGroup)
 
@@ -111,14 +114,49 @@ class CreateGroup:
                 {
                     "event_type": EventType.group_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "group": group,
                 }
             )
         )
+
+        # Emit audit event to plugins (after DB commit)
+        try:
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="group_create",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.current_user_id or "system",
+                actor_email=email,
+                target_type="group",
+                target_id=self.group.id,
+                target_name=self.group.name,
+                action="created",
+                reason="",
+                payload={
+                    "group_id": self.group.id,
+                    "group_name": self.group.name,
+                    "group_type": type(self.group).__name__,
+                    "is_managed": self.group.is_managed,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         return self.group
