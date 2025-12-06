@@ -3,6 +3,13 @@ from api.views.resources.app import AppList, AppResource
 from api.views.resources.audit import GroupRoleAuditResource, UserGroupAuditResource
 from api.views.resources.bug import SentryProxyResource
 from api.views.resources.group import GroupAuditResource, GroupList, GroupMemberResource, GroupResource
+from api.views.resources.plugin import (
+    AppGroupLifecyclePluginAppConfigProperties,
+    AppGroupLifecyclePluginAppStatusProperties,
+    AppGroupLifecyclePluginGroupConfigProperties,
+    AppGroupLifecyclePluginGroupStatusProperties,
+    AppGroupLifecyclePluginList,
+)
 from api.views.resources.role import RoleAuditResource, RoleList, RoleMemberResource, RoleResource
 from api.views.resources.role_request import RoleRequestList, RoleRequestResource
 from api.views.resources.tag import TagList, TagResource
@@ -12,6 +19,11 @@ from api.views.resources.webhook import OktaWebhookResource
 __all__ = [
     "AccessRequestList",
     "AccessRequestResource",
+    "AppGroupLifecyclePluginAppConfigProperties",
+    "AppGroupLifecyclePluginAppStatusProperties",
+    "AppGroupLifecyclePluginGroupConfigProperties",
+    "AppGroupLifecyclePluginGroupStatusProperties",
+    "AppGroupLifecyclePluginList",
     "AppList",
     "AppResource",
     "GroupAuditResource",

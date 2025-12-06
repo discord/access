@@ -10,7 +10,7 @@ OKTA_DOMAIN = os.getenv("OKTA_DOMAIN")
 OKTA_API_TOKEN = os.getenv("OKTA_API_TOKEN")
 # The Group Owners API is only available to Okta plans with IGA enabled
 # Disable by default, but allow opt-in to sync group owners to Okta if desired
-OKTA_USE_GROUP_OWNERS_API = os.getenv("OKTA_USE_GROUP_OWNERS_API", "False") == "True"
+OKTA_USE_GROUP_OWNERS_API = os.getenv("OKTA_USE_GROUP_OWNERS_API", "false").lower() == "true"
 CURRENT_OKTA_USER_EMAIL = os.getenv("CURRENT_OKTA_USER_EMAIL", "wumpus@discord.com")
 
 # Optional env var to set a custom Okta Group Profile attribute for Access management inclusion/exclusion
@@ -18,7 +18,7 @@ OKTA_GROUP_PROFILE_CUSTOM_ATTR = os.getenv("OKTA_GROUP_PROFILE_CUSTOM_ATTR")
 
 SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URI")
 SQLALCHEMY_TRACK_MODIFICATIONS = False
-SQLALCHEMY_ECHO = ENV == "development"  # or ENV == "test"
+SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", str(ENV == "development")).lower() == "true"
 
 # Attributes to display in the user page
 USER_DISPLAY_CUSTOM_ATTRIBUTES = os.getenv("USER_DISPLAY_CUSTOM_ATTRIBUTES", "Title,Manager")
@@ -79,7 +79,7 @@ CLOUDSQL_CONNECTION_NAME = os.getenv("CLOUDSQL_CONNECTION_NAME", "")
 DATABASE_USER = os.getenv("DATABASE_USER", "root")
 DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD", "")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "access")
-DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "False") == "True"
+DATABASE_USES_PUBLIC_IP = os.getenv("DATABASE_USES_PUBLIC_IP", "false").lower() == "true"
 
 FLASK_SENTRY_DSN = os.getenv("FLASK_SENTRY_DSN")
 REACT_SENTRY_DSN = os.getenv("REACT_SENTRY_DSN")
