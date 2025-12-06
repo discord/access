@@ -1,14 +1,10 @@
 from typing import Optional, Tuple
 
-from sqlalchemy.orm import (
-    selectin_polymorphic,
-    selectinload,
-)
-
 from api.authorization import AuthorizationHelpers
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import coalesce_constraints
+from sqlalchemy.orm import selectin_polymorphic, selectinload
 
 
 class CheckForSelfAdd:

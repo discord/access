@@ -1,8 +1,7 @@
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import (
@@ -18,8 +17,12 @@ from api.models import (
     RoleGroupMap,
 )
 from api.operations.reject_access_request import RejectAccessRequest
+from api.plugins import get_audit_events_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 
 class DeleteGroup:
@@ -65,9 +68,11 @@ class DeleteGroup:
                 {
                     "event_type": EventType.group_delete,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "group": self.group,
@@ -233,6 +238,44 @@ class DeleteGroup:
             synchronize_session="fetch",
         )
         db.session.commit()
+
+        # Emit audit event to plugins (after DB commit)
+        try:
+            email = None
+            if self.current_user_id:
+                actor_user = db.session.get(OktaUser, self.current_user_id)
+                email = actor_user.email if actor_user else None
+
+            context = has_request_context()
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="group_delete",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.current_user_id or "system",
+                actor_email=email,
+                target_type="group",
+                target_id=self.group.id,
+                target_name=self.group.name,
+                action="deleted",
+                reason="",
+                payload={
+                    "group_id": self.group.id,
+                    "group_name": self.group.name,
+                    "group_type": type(self.group).__name__,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         if len(okta_tasks) > 0:
             await asyncio.wait(okta_tasks)

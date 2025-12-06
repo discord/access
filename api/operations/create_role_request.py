@@ -1,10 +1,8 @@
 import random
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import (
@@ -23,8 +21,11 @@ from api.models.okta_group import get_group_managers
 from api.models.tag import coalesce_constraints
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins import get_audit_events_hook, get_conditional_access_hook, get_notification_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 
 class CreateRoleRequest:
@@ -172,9 +173,11 @@ class CreateRoleRequest:
                 {
                     "event_type": EventType.role_request_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.requester.id,
                     "current_user_email": self.requester.email,
                     "group": group,
@@ -184,6 +187,43 @@ class CreateRoleRequest:
                 }
             )
         )
+
+        # Emit audit event to plugins (after DB commit)
+        try:
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="role_request_create",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.requester.id,
+                actor_email=self.requester.email,
+                target_type="role_request",
+                target_id=str(role_request.id),
+                target_name=f"Role request for {group.name}" if group else "Unknown group",
+                action="created",
+                reason=self.request_reason,
+                payload={
+                    "role_request_id": str(role_request.id),
+                    "requester_user_id": self.requester.id,
+                    "requester_email": self.requester.email,
+                    "requester_role_id": self.requester_role.id,
+                    "requested_group_id": self.requested_group.id,
+                    "requested_group_name": group.name if group else None,
+                    "request_ownership": self.request_ownership,
+                    "request_ending_at": self.request_ending_at.isoformat() if self.request_ending_at else None,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         conditional_access_responses = self.conditional_access_hook.role_request_created(
             role_request=role_request,

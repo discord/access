@@ -1,9 +1,7 @@
 import asyncio
 from datetime import UTC, datetime
 from typing import Dict, Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import selectinload
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import (
@@ -21,9 +19,12 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.plugins import get_notification_hook
+from api.plugins import get_audit_events_hook, get_notification_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import selectinload
 
 
 class ModifyRoleGroups:
@@ -171,9 +172,11 @@ class ModifyRoleGroups:
                 {
                     "event_type": EventType.role_group_modify,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "role": self.role,
@@ -498,6 +501,151 @@ class ModifyRoleGroups:
 
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)
+
+        # Emit audit events to plugins (after DB commit) - 2 event types
+        try:
+            audit_hook = get_audit_events_hook()
+
+            # Get actor email for audit envelope
+            actor_email = None
+            if self.current_user_id:
+                actor_user = db.session.get(OktaUser, self.current_user_id)
+                actor_email = actor_user.email if actor_user else None
+
+            # Event 1: role_group_assigned
+            for group in self.groups_to_add:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="role_group_assigned",
+                    timestamp=datetime.now(UTC),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="role_assignment",
+                    target_id=self.role.id,
+                    target_name=self.role.name,
+                    action="role_assigned",
+                    reason=self.created_reason,
+                    payload={
+                        "role_group_id": self.role.id,
+                        "role_group_name": self.role.name,
+                        "assigned_group_id": group.id,
+                        "assigned_group_name": group.name,
+                        "ended_at": self.groups_added_ended_at.isoformat() if self.groups_added_ended_at else None,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Also emit for owner groups added
+            for group in self.owner_groups_to_add:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="role_group_assigned",
+                    timestamp=datetime.now(UTC),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="role_assignment",
+                    target_id=self.role.id,
+                    target_name=self.role.name,
+                    action="role_assigned_owner",
+                    reason=self.created_reason,
+                    payload={
+                        "role_group_id": self.role.id,
+                        "role_group_name": self.role.name,
+                        "assigned_group_id": group.id,
+                        "assigned_group_name": group.name,
+                        "is_owner": True,
+                        "ended_at": self.groups_added_ended_at.isoformat() if self.groups_added_ended_at else None,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Event 2: role_group_unassigned
+            for group in self.groups_to_remove:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="role_group_unassigned",
+                    timestamp=datetime.now(UTC),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="role_assignment",
+                    target_id=self.role.id,
+                    target_name=self.role.name,
+                    action="role_unassigned",
+                    reason=self.created_reason,
+                    payload={
+                        "role_group_id": self.role.id,
+                        "role_group_name": self.role.name,
+                        "unassigned_group_id": group.id,
+                        "unassigned_group_name": group.name,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Also emit for owner groups removed
+            for group in self.owner_groups_to_remove:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="role_group_unassigned",
+                    timestamp=datetime.now(UTC),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="role_assignment",
+                    target_id=self.role.id,
+                    target_name=self.role.name,
+                    action="role_unassigned_owner",
+                    reason=self.created_reason,
+                    payload={
+                        "role_group_id": self.role.id,
+                        "role_group_name": self.role.name,
+                        "unassigned_group_id": group.id,
+                        "unassigned_group_name": group.name,
+                        "is_owner": True,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         return self.role
 
