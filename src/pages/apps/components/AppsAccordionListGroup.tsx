@@ -76,7 +76,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Ending memberships={member_list} />
+                      <Ending memberships={[member]} />
                     </TableCell>
                   </TableRow>
                 ))
