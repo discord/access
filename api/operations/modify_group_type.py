@@ -1,9 +1,5 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
-from sqlalchemy import delete, insert
-from sqlalchemy.orm import joinedload, selectin_polymorphic
-
 from api.extensions import db
 from api.models import (
     AppGroup,
@@ -19,6 +15,9 @@ from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy import delete, insert
+from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 
 class ModifyGroupType:
@@ -218,11 +217,13 @@ class ModifyGroupType:
                     {
                         "event_type": EventType.group_modify_type,
                         "user_agent": request.headers.get("User-Agent") if context else None,
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        )
-                        if context
-                        else None,
+                        "ip": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
                         "current_user_id": self.current_user_id,
                         "current_user_email": email,
                         "group": self.group,
