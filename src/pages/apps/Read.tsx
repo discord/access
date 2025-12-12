@@ -3,6 +3,7 @@ import {useParams} from 'react-router-dom';
 
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
+import Paper from '@mui/material/Paper';
 
 import {useGetAppById} from '../../api/apiComponents';
 import {App, AppGroup} from '../../api/apiSchemas';
@@ -12,6 +13,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 import ChangeTitle from '../../tab-title';
+import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
 
 export default function ReadApp() {
   const currentUser = useCurrentUser();
@@ -67,6 +69,24 @@ export default function ReadApp() {
       <Container maxWidth="lg" sx={{my: 4}}>
         <Grid container spacing={3}>
           <AppsHeader app={app} currentUser={currentUser} />
+          {(app as any)?.app_group_lifecycle_plugin && (
+            <Grid item xs={12}>
+              <AppGroupLifecyclePluginData
+                entityType="app"
+                pluginId={(app as any).app_group_lifecycle_plugin}
+                currentConfig={
+                  (app as any)?.plugin_data
+                    ? (app as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.configuration || {}
+                    : {}
+                }
+                currentStatus={
+                  (app as any)?.plugin_data
+                    ? (app as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.status || {}
+                    : {}
+                }
+              />
+            </Grid>
+          )}
           {app.active_owner_app_groups && (
             <AppsAccordionListGroup
               app_group={app.active_owner_app_groups}

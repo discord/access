@@ -104,6 +104,8 @@ export type App = {
    * @format date-time
    */
   updated_at?: string;
+  app_group_lifecycle_plugin?: string | null;
+  plugin_data?: Record<string, any>;
 };
 
 export type AppGroup = OktaGroup & {
@@ -129,6 +131,7 @@ export type AppGroup = OktaGroup & {
   description?: string;
   tags_to_add?: string[];
   tags_to_remove?: string[];
+  plugin_data?: Record<string, any>;
 };
 
 export type AppPagination = {
@@ -611,4 +614,33 @@ export type UserPagination = {
   prev?: string;
   results?: OktaUser[];
   total?: number;
+};
+
+export type AppGroupLifecyclePluginMetadata = {
+  id: string;
+  display_name: string;
+  description: string;
+};
+
+export type AppGroupLifecyclePluginConfigProperty = {
+  display_name: string;
+  help_text?: string;
+  type: 'text' | 'number' | 'boolean';
+  default_value?: any;
+  required?: boolean;
+  validation?: Record<string, any>;
+};
+
+export type AppGroupLifecyclePluginStatusProperty = {
+  display_name: string;
+  help_text?: string;
+  type: 'text' | 'number' | 'date' | 'boolean';
+};
+
+export type AppGroupLifecyclePluginConfigProperties = {
+  [propertyId: string]: AppGroupLifecyclePluginConfigProperty;
+};
+
+export type AppGroupLifecyclePluginStatusProperties = {
+  [propertyId: string]: AppGroupLifecyclePluginStatusProperty;
 };
