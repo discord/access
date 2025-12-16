@@ -26,9 +26,8 @@ import {
   useGetAppGroupLifecyclePluginGroupConfigProperties,
   useGetAppGroupLifecyclePluginAppStatusProperties,
   useGetAppGroupLifecyclePluginGroupStatusProperties,
-  PluginConfigProperties,
-  PluginStatusProperties,
 } from '../api/apiComponents';
+import {AppGroupLifecyclePluginConfigProperties, AppGroupLifecyclePluginStatusProperties} from '../api/apiSchemas';
 
 type PluginData = {
   [propertyId: string]: any;
@@ -62,7 +61,7 @@ function PluginDataPropertiesTable({
   data,
 }: {
   type: 'Configuration' | 'Status';
-  properties: PluginConfigProperties | PluginStatusProperties;
+  properties: AppGroupLifecyclePluginConfigProperties | AppGroupLifecyclePluginStatusProperties;
   data: PluginData;
 }) {
   return (

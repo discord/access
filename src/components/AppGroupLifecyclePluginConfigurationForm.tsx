@@ -20,8 +20,8 @@ import {
   useGetAppGroupLifecyclePlugins,
   useGetAppGroupLifecyclePluginAppConfigProperties,
   useGetAppGroupLifecyclePluginGroupConfigProperties,
-  PluginConfigProperty,
 } from '../api/apiComponents';
+import {AppGroupLifecyclePluginConfigProperty} from '../api/apiSchemas';
 
 type PluginConfiguration = {
   [propertyId: string]: any;
@@ -52,7 +52,15 @@ interface AppGroupLifecyclePluginConfigurationFormProps {
 /**
  * Renders a single configuration field based on its schema
  */
-function ConfigField({property, value, fieldName}: {property: PluginConfigProperty; value: any; fieldName: string}) {
+function ConfigField({
+  property,
+  value,
+  fieldName,
+}: {
+  property: AppGroupLifecyclePluginConfigProperty;
+  value: any;
+  fieldName: string;
+}) {
   const {register, control} = useFormContext();
 
   switch (property.type) {
