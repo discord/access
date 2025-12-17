@@ -37,7 +37,7 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
 class DummyPlugin:
@@ -850,3 +850,548 @@ class TestPluginDirectFunctions:
         assert "member_count" in props
         assert props["member_count"].type == "number"
         assert props["member_count"].display_name == "Member Count"
+
+
+class TestPluginMembershipHooks:
+    """Tests for plugin lifecycle hooks when members are added/removed."""
+
+    def test_direct_member_removed_loses_all_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a member is removed and loses all access to the group."""
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_MemberRemoved",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_123"}}},
+        )
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Add the user to the group (this will trigger members_added hook)
+        from api.operations import ModifyGroupUsers
+
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Remove the user from the group (user has no other access paths)
+        ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called because user lost all access
+        assert len(test_plugin.members_removed_calls) == 1
+        assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
+
+    def test_direct_member_removed_but_has_redundant_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when trying to remove direct access but user only has role-based access."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RedundantMember",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup2",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_124"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleForRedundancy", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Associate the app group with a role
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to the role (gives them access to the group via role)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Try to remove direct membership (but user only has role-based access, no direct access to remove)
+        # This should not trigger the hook because user still has role-based access
+        ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called because user still has access via role
+        assert len(test_plugin.members_removed_calls) == 0
+
+    def test_direct_member_added_gains_first_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a member is added for the first time."""
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_MemberAdded",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup3",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_125"}}},
+        )
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # Add the user to the group for the first time
+        from api.operations import ModifyGroupUsers
+
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called because user gained first access
+        assert len(test_plugin.members_added_calls) == 1
+        assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
+
+    def test_direct_member_added_but_already_has_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when a member is added directly but already has access via a role."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_MemberAlreadyHasAccess",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup4",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_126"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleForExisting", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # Associate the app group with a role
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to the role (gives them access to the group)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding via role
+        test_plugin.members_added_calls.clear()
+
+        # Add the user directly to the group (they already have access via role)
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called because user already had access via role
+        assert len(test_plugin.members_added_calls) == 0
+
+    def test_role_member_removed_loses_all_access_to_associated_group(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a role member is removed and loses all access to role-associated groups."""
+        from api.models import RoleGroup, RoleGroupMap
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleRemoved",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}RoleGroup",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_127"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRole", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Associate the app group with the role as a member group
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to the role (which gives them access to the associated group)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Remove the user from the role (user loses access to associated group)
+        ModifyGroupUsers(group=role_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called for the associated group because user lost all access
+        assert len(test_plugin.members_removed_calls) == 1
+        assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
+
+    def test_role_member_removed_but_has_redundant_access_via_another_role(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when a role member is removed but still has access via another role."""
+        from api.models import RoleGroup, RoleGroupMap
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleRedundant",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}RoleGroup2",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_128"}}},
+        )
+        role_group_1 = RoleGroupFactory.build(name="TestRole1", is_managed=True)
+        role_group_2 = RoleGroupFactory.build(name="TestRole2", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group_1)
+        db.session.add(role_group_2)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Associate the app group with both roles as member groups
+        ModifyRoleGroups(role_group=role_group_1, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        ModifyRoleGroups(role_group=role_group_2, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to both roles (gives them redundant access to the associated group)
+        ModifyGroupUsers(group=role_group_1, members_to_add=[user.id], sync_to_okta=False).execute()
+        ModifyGroupUsers(group=role_group_2, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Remove the user from one role (user still has access via the other role)
+        ModifyGroupUsers(group=role_group_1, members_to_remove=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called because user still has access via role_group_2
+        assert len(test_plugin.members_removed_calls) == 0
+
+    def test_role_member_added_gains_first_access_to_associated_group(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a role member is added and gains first access to role-associated groups."""
+        from api.models import RoleGroup, RoleGroupMap
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleAdded",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}RoleGroup3",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_129"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRole3", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # Associate the app group with the role as a member group
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to the role (gives them first access to the associated group)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called for the associated group because user gained first access
+        assert len(test_plugin.members_added_calls) == 1
+        assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
+
+    def test_role_member_added_but_already_has_access_to_associated_group(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when a role member is added but already has access to role-associated groups."""
+        from api.models import RoleGroup, RoleGroupMap
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleAlreadyHasAccess",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}RoleGroup4",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_130"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRole4", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # First, give the user direct access to the group
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from first add
+        test_plugin.members_added_calls.clear()
+
+        # Now associate the app group with a role and add the user to the role
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called for the associated group because user already had access
+        assert len(test_plugin.members_added_calls) == 0
+
+    def test_role_removed_from_group_user_loses_all_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a role is removed from a group and user loses all access."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleRemoved",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup_RoleRemoved",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_role_removed"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleToRemove", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Associate the app group with the role
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add the user to the role (gives them access to the group via role)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Remove the group from the role (user loses all access to the group)
+        ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called because user lost all access
+        assert len(test_plugin.members_removed_calls) == 1
+        assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
+
+    def test_role_removed_from_group_user_has_redundant_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when a role is removed from a group but user has direct access."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleRemovedRedundant",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup_RoleRemovedRedundant",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_role_removed_redundant"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleToRemoveRedundant", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        # Give the user direct access to the group
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Also give them role-based access
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Remove the group from the role (user still has direct access to the group)
+        ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called because user still has direct access
+        assert len(test_plugin.members_removed_calls) == 0
+
+    def test_role_added_to_group_user_gains_first_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is called when a role is added to a group and user gains first access."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleAdded",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup_RoleAdded",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_role_added"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleToAdd", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # Add the user to the role first (before associating the group with the role)
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding user to role
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Now associate the app group with the role (user gains first access to the group)
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should be called because user gained first access
+        assert len(test_plugin.members_added_calls) == 1
+        assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
+
+    def test_role_added_to_group_user_already_has_access(
+        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test hook is NOT called when a role is added to a group but user already has direct access."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        # Setup: Create an app group with the plugin enabled
+        test_app = AppFactory.build(
+            name="TestApp_RoleAddedRedundant",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup_RoleAddedRedundant",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_role_added_redundant"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleToAddRedundant", is_managed=True)
+        user = OktaUserFactory.build()
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.add(role_group)
+        db.session.add(user)
+        db.session.commit()
+
+        # Mock Okta calls
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+
+        # Give the user direct access to the group first
+        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Add the user to the role
+        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        # Clear the hook calls from adding
+        test_plugin.members_added_calls.clear()
+        test_plugin.members_removed_calls.clear()
+
+        # Now associate the app group with the role (user already has direct access)
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Assert: Hook should NOT be called because user already had access
+        assert len(test_plugin.members_added_calls) == 0
