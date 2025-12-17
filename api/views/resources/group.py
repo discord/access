@@ -1,3 +1,5 @@
+import copy
+
 from flask import abort, current_app, g, redirect, request, url_for
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -183,6 +185,8 @@ class GroupResource(MethodResource):
                 group=group, group_changes=group_changes, current_user_id=g.current_user_id
             ).execute()
 
+        # Store old plugin data for audit logging (must be deep copy to preserve original values)
+        old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
         old_plugin_data = group.plugin_data
 
         # Update additional fields like name, description, etc.
@@ -229,6 +233,24 @@ class GroupResource(MethodResource):
                         "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
                         "group": group,
                         "old_group_name": old_group_name,
+                    }
+                )
+            )
+
+        # Audit logging for plugin configuration changes (app groups only)
+        if old_plugin_data_for_audit != group.plugin_data:
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.group_modify_plugin,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "group": group,
+                        "old_plugin_data": old_plugin_data_for_audit,
                     }
                 )
             )

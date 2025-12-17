@@ -1,3 +1,5 @@
+import copy
+
 from flask import abort, current_app, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -143,6 +145,9 @@ class AppResource(MethodResource):
                 abort(400, "Only tags can be modified for the Access application")
 
         old_app_name = app.name
+        old_app_group_lifecycle_plugin = app.app_group_lifecycle_plugin
+        # Store old plugin data for audit logging (must be deep copy to preserve original values)
+        old_plugin_data_for_audit = copy.deepcopy(app.plugin_data) if app.plugin_data else {}
         old_plugin_data = app.plugin_data
 
         app = schema.load(request.json, instance=app, partial=True)
@@ -189,7 +194,7 @@ class AppResource(MethodResource):
 
         app = App.query.options(DEFAULT_LOAD_OPTIONS).filter(App.deleted_at.is_(None)).filter(App.id == app.id).first()
 
-        # Audit logging gnly log if app name changed
+        # Audit logging only log if app name changed
         if old_app_name.lower() != app.name.lower():
             current_app.logger.info(
                 AuditLogSchema().dumps(
@@ -203,6 +208,28 @@ class AppResource(MethodResource):
                         "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
                         "app": app,
                         "old_app_name": old_app_name,
+                    }
+                )
+            )
+
+        # Audit logging for plugin assignment and configuration changes
+        if (
+            old_app_group_lifecycle_plugin != app.app_group_lifecycle_plugin
+            or old_plugin_data_for_audit != app.plugin_data
+        ):
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.app_modify_plugin,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "app": app,
+                        "old_app_group_lifecycle_plugin": old_app_group_lifecycle_plugin,
+                        "old_plugin_data": old_plugin_data_for_audit,
                     }
                 )
             )

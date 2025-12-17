@@ -18,7 +18,7 @@ from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
-from api.models import AppGroup, OktaUser
+from api.models import AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
@@ -329,7 +329,6 @@ class TestPluginConfigAuthorization:
     ) -> None:
         """Test that app owners (non-Access admins) cannot configure plugins on apps."""
         # Create app owner user
-        from api.models import OktaUserGroupMember
 
         app_owner = OktaUserFactory.build()
         test_app = AppFactory.build(name="TestApp2", description="Test App 2")
@@ -367,7 +366,6 @@ class TestPluginConfigAuthorization:
     ) -> None:
         """Test that app owners cannot modify existing plugin configuration."""
         # Create app owner
-        from api.models import OktaUserGroupMember
 
         app_owner = OktaUserFactory.build()
         test_app = AppFactory.build(
@@ -449,7 +447,6 @@ class TestPluginConfigAuthorization:
     ) -> None:
         """Test that app owners can configure plugins on their app's groups."""
         # Create app owner
-        from api.models import OktaUserGroupMember
 
         app_owner = OktaUserFactory.build()
         test_app = AppFactory.build(
@@ -499,7 +496,6 @@ class TestPluginConfigAuthorization:
     ) -> None:
         """Test that group owners (non-app owners) cannot configure plugins on groups."""
         # Create group owner (but not app owner)
-        from api.models import OktaUserGroupMember
 
         group_owner = OktaUserFactory.build()
         test_app = AppFactory.build(
@@ -1028,7 +1024,6 @@ class TestPluginMembershipHooks:
         self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is removed and loses all access to role-associated groups."""
-        from api.models import RoleGroup, RoleGroupMap
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
         # Setup: Create an app group with the plugin enabled
@@ -1077,7 +1072,6 @@ class TestPluginMembershipHooks:
         self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is removed but still has access via another role."""
-        from api.models import RoleGroup, RoleGroupMap
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
         # Setup: Create an app group with the plugin enabled
@@ -1129,7 +1123,6 @@ class TestPluginMembershipHooks:
         self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is added and gains first access to role-associated groups."""
-        from api.models import RoleGroup, RoleGroupMap
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
         # Setup: Create an app group with the plugin enabled
@@ -1170,7 +1163,6 @@ class TestPluginMembershipHooks:
         self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is added but already has access to role-associated groups."""
-        from api.models import RoleGroup, RoleGroupMap
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
         # Setup: Create an app group with the plugin enabled
@@ -1395,3 +1387,284 @@ class TestPluginMembershipHooks:
 
         # Assert: Hook should NOT be called because user already had access
         assert len(test_plugin.members_added_calls) == 0
+
+
+class TestPluginAuditLogging:
+    """Tests for plugin configuration audit logging."""
+
+    def test_audit_log_plugin_assignment_at_app_level(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+    ) -> None:
+        """Test that assigning a plugin to an app creates an audit log entry."""
+        import json
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(name="TestApp", description="Test App")
+        db.session.add(test_app)
+        db.session.commit()
+
+        # Assign plugin to the app
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "app_group_lifecycle_plugin": DummyPlugin.ID,
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check audit log
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        assert len(audit_logs) > 0
+
+        # Find the plugin modification log
+        plugin_logs = [log for log in audit_logs if EventType.app_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 1
+
+        log_data = json.loads(plugin_logs[0].message)
+        assert log_data["event_type"] == EventType.app_modify_plugin.value
+        assert log_data["app"]["id"] == test_app.id
+        assert log_data["old_app_group_lifecycle_plugin"] is None
+        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+
+    def test_audit_log_plugin_configuration_change_at_app_level(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+    ) -> None:
+        """Test that changing app-level plugin configuration creates an audit log entry."""
+        import json
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(
+            name="TestApp2",
+            description="Test App 2",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True, "category": "original"}}},
+        )
+        db.session.add(test_app)
+        db.session.commit()
+
+        caplog.clear()
+
+        # Update plugin configuration
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": False, "category": "updated"}}},
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check audit log
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        assert len(audit_logs) > 0
+
+        # Find the plugin modification log
+        plugin_logs = [log for log in audit_logs if EventType.app_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 1
+
+        log_data = json.loads(plugin_logs[0].message)
+        assert log_data["event_type"] == EventType.app_modify_plugin.value
+        assert log_data["app"]["id"] == test_app.id
+        assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
+        assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["category"] == "original"
+        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+
+    def test_audit_log_plugin_removal_at_app_level(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+    ) -> None:
+        """Test that removing a plugin from an app creates an audit log entry."""
+        import json
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(
+            name="TestApp3",
+            description="Test App 3",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        db.session.add(test_app)
+        db.session.commit()
+
+        caplog.clear()
+
+        # Remove plugin from the app
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {"name": test_app.name, "app_group_lifecycle_plugin": None}
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check audit log
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        assert len(audit_logs) > 0
+
+        # Find the plugin modification log
+        plugin_logs = [log for log in audit_logs if EventType.app_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 1
+
+        log_data = json.loads(plugin_logs[0].message)
+        assert log_data["event_type"] == EventType.app_modify_plugin.value
+        assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
+        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+
+    def test_audit_log_plugin_configuration_change_at_group_level(
+        self,
+        client: FlaskClient,
+        db: SQLAlchemy,
+        app: Flask,
+        test_plugin: DummyPlugin,
+        caplog: Any,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test that changing group-level plugin configuration creates an audit log entry."""
+        import json
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(
+            name="TestApp4",
+            description="Test App 4",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_owner=False,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup",
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True, "custom_tag": "original"}}},
+        )
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+
+        caplog.clear()
+
+        # Mock Okta update_group call
+        mocker.patch.object(okta, "update_group")
+
+        # Update group plugin configuration
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "name": test_group.name,
+            "type": test_group.type,
+            "app_id": test_group.app_id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external-456"}}},
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check audit log
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        assert len(audit_logs) > 0
+
+        # Find the plugin modification log
+        plugin_logs = [log for log in audit_logs if EventType.group_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 1
+
+        log_data = json.loads(plugin_logs[0].message)
+        assert log_data["event_type"] == EventType.group_modify_plugin.value
+        assert log_data["group"]["id"] == test_group.id
+        assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["custom_tag"] == "original"
+        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+
+    def test_no_audit_log_when_plugin_unchanged_at_app_level(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+    ) -> None:
+        """Test that no audit log is created when plugin configuration is unchanged."""
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(
+            name="TestApp5",
+            description="Test App 5",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+        )
+        db.session.add(test_app)
+        db.session.commit()
+
+        caplog.clear()
+
+        # Update app without changing plugin
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {"name": test_app.name, "description": "Updated description"}
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check that no plugin audit log was created
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        plugin_logs = [log for log in audit_logs if EventType.app_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 0
+
+    def test_no_audit_log_when_plugin_unchanged_at_group_level(
+        self,
+        client: FlaskClient,
+        db: SQLAlchemy,
+        app: Flask,
+        test_plugin: DummyPlugin,
+        caplog: Any,
+        mocker: MockerFixture,
+    ) -> None:
+        """Test that no audit log is created when group plugin configuration is unchanged."""
+        import logging
+
+        from api.views.schemas import EventType
+
+        caplog.set_level(logging.INFO)
+
+        test_app = AppFactory.build(
+            name="TestApp6",
+            description="Test App 6",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_owner=False,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}TestGroup2",
+        )
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+
+        caplog.clear()
+
+        # Mock Okta update_group call
+        mocker.patch.object(okta, "update_group")
+
+        # Update group without changing plugin
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "name": test_group.name,
+            "type": test_group.type,
+            "app_id": test_group.app_id,
+            "description": "Updated description",
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        # Check that no plugin audit log was created
+        audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
+        plugin_logs = [log for log in audit_logs if EventType.group_modify_plugin.value in log.message]
+        assert len(plugin_logs) == 0
