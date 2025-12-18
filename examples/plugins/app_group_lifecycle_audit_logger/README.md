@@ -58,7 +58,7 @@ pip install -e examples/plugins/app_group_lifecycle_audit_logger
 
 ## Usage
 
-After installation, the plugin will be automatically discovered and registered. You can configure it through the Access UI, or the API as shown below.
+After installation, the plugin will be automatically discovered and registered. You can configure it through the Access web UI, or the API as described below.
 
 ### 1. List Available Plugins
 
