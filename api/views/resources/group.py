@@ -1,3 +1,5 @@
+import copy
+
 from flask import abort, current_app, g, redirect, request, url_for
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -22,6 +24,7 @@ from api.operations import (
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
+from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.services import okta
 from api.views.schemas import (
     AuditLogSchema,
@@ -117,6 +120,17 @@ class GroupResource(MethodResource):
                 "Groups not managed by Access cannot be modified",
             )
 
+        # Enforce stricter authorization for plugin configuration changes to prevent
+        # privilege escalation in the managed apps.
+        if group_changes.plugin_data != group.plugin_data and not (
+            AuthorizationHelpers.is_access_admin()
+            or (type(group) is AppGroup and AuthorizationHelpers.is_app_owner_group_owner(app_group=group))
+        ):
+            abort(
+                403,
+                "Only Access owners and app owners are allowed to configure plugins at the group level",
+            )
+
         json_data = request.get_json()
         if "tags_to_remove" in json_data:
             if len(json_data["tags_to_remove"]) > 0 and not AuthorizationHelpers.is_access_admin():
@@ -171,8 +185,22 @@ class GroupResource(MethodResource):
                 group=group, group_changes=group_changes, current_user_id=g.current_user_id
             ).execute()
 
+        # Store old plugin data for audit logging (must be deep copy to preserve original values)
+        old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
+        old_plugin_data = group.plugin_data
+
         # Update additional fields like name, description, etc.
         group = schema.load(request.json, instance=group, partial=True)
+
+        if old_plugin_data and group.plugin_data != old_plugin_data:
+            # Apply partial updates to the plugin data
+            for key in old_plugin_data:
+                if key not in group.plugin_data:
+                    group.plugin_data[key] = old_plugin_data[key]
+
+            if type(group) is AppGroup:
+                merge_app_lifecycle_plugin_data(group, old_plugin_data)
+
         okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 
@@ -191,7 +219,7 @@ class GroupResource(MethodResource):
             .first()
         )
 
-        # Audit logging gnly log if group name changed
+        # Audit logging, only if group name changed
         if old_group_name.lower() != group.name.lower():
             current_app.logger.info(
                 AuditLogSchema().dumps(
@@ -205,6 +233,24 @@ class GroupResource(MethodResource):
                         "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
                         "group": group,
                         "old_group_name": old_group_name,
+                    }
+                )
+            )
+
+        # Audit logging for plugin configuration changes (app groups only)
+        if old_plugin_data_for_audit != group.plugin_data:
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.group_modify_plugin,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "group": group,
+                        "old_plugin_data": old_plugin_data_for_audit,
                     }
                 )
             )

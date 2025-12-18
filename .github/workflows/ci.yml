@@ -43,35 +43,51 @@ jobs:
         run: tox -e test
       - name: Test with tox with postgresql
         run: tox -e test-with-postgresql
-      - name: Test installing notifications plugin
+      - name: Test installing the notifications plugin
         run: |
           # Install the notifications plugin from examples/plugins/notifications
           if [ -d "examples/plugins/notifications" ]; then
             python -m pip install ./examples/plugins/notifications
           else
-            echo "Notifications plugin directory not found, skipping installation"
+            echo "Notifications plugin directory not found; skipping installation"
           fi
-      - name: Test installing slack notifications plugin
+      - name: Test installing the Slack notifications plugin
         run: |
-          # Install the slack notifications plugin from examples/plugins/notifications
-          if [ -d "examples/plugins/notifications/notifications_slack" ]; then
-            python -m pip install ./examples/plugins/notifications/notifications_slack
+          # Install the Slack notifications plugin from examples/plugins/notifications_slack
+          if [ -d "examples/plugins/notifications_slack" ]; then
+            python -m pip install ./examples/plugins/notifications_slack
           else
-            echo "Slack notifications plugin directory not found, skipping installation"
+            echo "Slack notifications plugin directory not found; skipping installation"
           fi
-      - name: Test installing conditional access plugin
+      - name: Test installing the conditional access plugin
         run: |
-          # Install the slack notifications plugin from examples/plugins/notifications
+          # Install the conditional access plugin from examples/plugins/conditional_access
           if [ -d "examples/plugins/conditional_access" ]; then
             python -m pip install ./examples/plugins/conditional_access
           else
-            echo "Conditional access plugin directory not found, skipping installation"
+            echo "Conditional access plugin directory not found; skipping installation"
           fi
-      - name: Test installing health check plugin
+      - name: Test installing the health check plugin
         run: |
-          # Install the slack notifications plugin from examples/plugins/notifications
+          # Install the health check plugin from examples/plugins/health_check_plugin
           if [ -d "examples/plugins/health_check_plugin" ]; then
             python -m pip install ./examples/plugins/health_check_plugin
           else
-            echo "Health check plugin directory not found, skipping installation"
+            echo "Health check plugin directory not found; skipping installation"
+          fi
+      - name: Test installing the Datadog metrics reporter plugin
+        run: |
+          # Install the Datadog metrics reporter plugin from examples/plugins/datadog_metrics_reporter
+          if [ -d "examples/plugins/datadog_metrics_reporter" ]; then
+            python -m pip install ./examples/plugins/datadog_metrics_reporter
+          else
+            echo "Datadog metrics reporter plugin directory not found; skipping installation"
+          fi
+      - name: Test installing the app group lifecycle audit logger plugin
+        run: |
+          # Install the app group lifecycle audit logger plugin from examples/plugins/app_group_lifecycle_audit_logger
+          if [ -d "examples/plugins/app_group_lifecycle_audit_logger" ]; then
+            python -m pip install ./examples/plugins/app_group_lifecycle_audit_logger
+          else
+            echo "App group lifecycle audit logger plugin directory not found; skipping installation"
           fi

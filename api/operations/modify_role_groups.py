@@ -22,6 +22,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -242,16 +243,39 @@ class ModifyRoleGroups:
                 .all()
             )
 
-            if self.sync_to_okta:
-                for group_id in groups_to_remove_ids:
-                    removed_members_with_other_access_ids = [
-                        m.user_id
-                        for m in removed_role_group_users_with_other_access
-                        if group_id == m.group_id and not m.is_owner
-                    ]
-                    okta_members_to_remove_ids = set(role_members_to_remove_ids) - set(
-                        removed_members_with_other_access_ids
-                    )
+            for group_id in groups_to_remove_ids:
+                removed_members_with_other_access_ids = [
+                    m.user_id
+                    for m in removed_role_group_users_with_other_access
+                    if group_id == m.group_id and not m.is_owner
+                ]
+                okta_members_to_remove_ids = set(role_members_to_remove_ids) - set(
+                    removed_members_with_other_access_ids
+                )
+
+                # Invoke app group lifecycle plugin hooks for removed members
+                if len(okta_members_to_remove_ids) > 0:
+                    group = db.session.get(OktaGroup, group_id)
+                    plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+                    if plugin_id is not None:
+                        members_losing_access = (
+                            OktaUser.query.filter(OktaUser.id.in_(okta_members_to_remove_ids))
+                            .filter(OktaUser.deleted_at.is_(None))
+                            .all()
+                        )
+                        try:
+                            hook = get_app_group_lifecycle_hook()
+                            hook.group_members_removed(
+                                session=db.session, group=group, members=members_losing_access, plugin_id=plugin_id
+                            )
+                            db.session.commit()
+                        except Exception:
+                            current_app.logger.exception(
+                                f"Failed to invoke group_members_removed hook for group {group.id} with plugin '{plugin_id}'"
+                            )
+                            db.session.rollback()
+
+                if self.sync_to_okta:
                     for member_id in okta_members_to_remove_ids:
                         # Remove user from okta group members
                         async_tasks.append(asyncio.create_task(okta.async_remove_user_from_group(group_id, member_id)))
@@ -354,6 +378,45 @@ class ModifyRoleGroups:
             group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_memberships_added.values():
                 group_memberships_added[role_associated_group_map.group_id] = role_associated_membership_added = {}
+
+                # Check which members being added currently have NO active memberships (to track first-time access)
+                members_to_add_ids = [m.user_id for m in active_role_memberships]
+                existing_members_with_access = (
+                    OktaUserGroupMember.query.with_entities(OktaUserGroupMember.user_id)
+                    .filter(
+                        db.or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > db.func.now())
+                    )
+                    .filter(OktaUserGroupMember.group_id == role_associated_group_map.group_id)
+                    .filter(OktaUserGroupMember.user_id.in_(members_to_add_ids))
+                    .filter(OktaUserGroupMember.is_owner.is_(False))
+                    .group_by(OktaUserGroupMember.user_id)
+                    .all()
+                )
+                existing_member_ids = {m.user_id for m in existing_members_with_access}
+                members_gaining_access_ids = set(members_to_add_ids) - existing_member_ids
+
+                # Invoke app group lifecycle plugin hooks for added members
+                if len(members_gaining_access_ids) > 0:
+                    group = role_associated_group_map.active_group
+                    plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+                    if plugin_id is not None:
+                        members_gaining_access = (
+                            OktaUser.query.filter(OktaUser.id.in_(members_gaining_access_ids))
+                            .filter(OktaUser.deleted_at.is_(None))
+                            .all()
+                        )
+                        try:
+                            hook = get_app_group_lifecycle_hook()
+                            hook.group_members_added(
+                                session=db.session, group=group, members=members_gaining_access, plugin_id=plugin_id
+                            )
+                            db.session.commit()
+                        except Exception:
+                            current_app.logger.exception(
+                                f"Failed to invoke group_members_added hook for group {group.id} with plugin '{plugin_id}'"
+                            )
+                            db.session.rollback()
+
                 for member in active_role_memberships:
                     # Add user to okta group members
                     if self.sync_to_okta:

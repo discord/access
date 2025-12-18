@@ -58,6 +58,7 @@ import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
+import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
@@ -293,6 +294,24 @@ export default function ReadGroup() {
               </Stack>
             </Paper>
           </Grid>
+          {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
+            <Grid item xs={12}>
+              <AppGroupLifecyclePluginData
+                entityType="group"
+                pluginId={(app as any).app_group_lifecycle_plugin}
+                currentConfig={
+                  (group as any)?.plugin_data
+                    ? (group as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.configuration || {}
+                    : {}
+                }
+                currentStatus={
+                  (group as any)?.plugin_data
+                    ? (group as any).plugin_data[(app as any).app_group_lifecycle_plugin]?.status || {}
+                    : {}
+                }
+              />
+            </Grid>
+          )}
           {group.type == 'role_group' ? (
             <>
               <Grid item xs={6}>

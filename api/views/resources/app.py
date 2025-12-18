@@ -1,3 +1,5 @@
+import copy
+
 from flask import abort, current_app, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
@@ -11,6 +13,7 @@ from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, 
 from api.models.app_group import app_owners_group_description
 from api.operations import CreateApp, DeleteApp, ModifyAppTags
 from api.pagination import paginate
+from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.services import okta
 from api.views.schemas import (
     AppPaginationSchema,
@@ -94,6 +97,17 @@ class AppResource(MethodResource):
         )
         app_changes = schema.load(request.json, partial=True)
 
+        # Enforce stricter authorization for plugin configuration changes to prevent
+        # privilege escalation in the managed apps.
+        if (
+            app_changes.app_group_lifecycle_plugin != app.app_group_lifecycle_plugin
+            or app_changes.plugin_data != app.plugin_data
+        ) and not AuthorizationHelpers.is_access_admin():
+            abort(
+                403,
+                "Only Access owners are allowed to configure plugins at the app level",
+            )
+
         if app_changes.name.lower() != app.name.lower():
             existing_app = (
                 App.query.filter(func.lower(App.name) == func.lower(app_changes.name))
@@ -131,7 +145,20 @@ class AppResource(MethodResource):
                 abort(400, "Only tags can be modified for the Access application")
 
         old_app_name = app.name
+        old_app_group_lifecycle_plugin = app.app_group_lifecycle_plugin
+        # Store old plugin data for audit logging (must be deep copy to preserve original values)
+        old_plugin_data_for_audit = copy.deepcopy(app.plugin_data) if app.plugin_data else {}
+        old_plugin_data = app.plugin_data
+
         app = schema.load(request.json, instance=app, partial=True)
+
+        if old_plugin_data and app.plugin_data != old_plugin_data:
+            # Apply partial updates to the plugin data
+            for key in old_plugin_data:
+                if key not in app.plugin_data:
+                    app.plugin_data[key] = old_plugin_data[key]
+
+            merge_app_lifecycle_plugin_data(app, old_plugin_data)
 
         # Update all app group names when updating app name
         if app.name != old_app_name:
@@ -167,7 +194,7 @@ class AppResource(MethodResource):
 
         app = App.query.options(DEFAULT_LOAD_OPTIONS).filter(App.deleted_at.is_(None)).filter(App.id == app.id).first()
 
-        # Audit logging gnly log if app name changed
+        # Audit logging only log if app name changed
         if old_app_name.lower() != app.name.lower():
             current_app.logger.info(
                 AuditLogSchema().dumps(
@@ -181,6 +208,28 @@ class AppResource(MethodResource):
                         "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
                         "app": app,
                         "old_app_name": old_app_name,
+                    }
+                )
+            )
+
+        # Audit logging for plugin assignment and configuration changes
+        if (
+            old_app_group_lifecycle_plugin != app.app_group_lifecycle_plugin
+            or old_plugin_data_for_audit != app.plugin_data
+        ):
+            current_app.logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.app_modify_plugin,
+                        "user_agent": request.headers.get("User-Agent"),
+                        "ip": request.headers.get(
+                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                        ),
+                        "current_user_id": g.current_user_id,
+                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "app": app,
+                        "old_app_group_lifecycle_plugin": old_app_group_lifecycle_plugin,
+                        "old_plugin_data": old_plugin_data_for_audit,
                     }
                 )
             )

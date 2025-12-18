@@ -32,6 +32,7 @@ import {
 import {PolymorphicGroup, AppGroup, App, OktaUser, Tag, OktaGroupTagMap} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
+import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -97,6 +98,16 @@ function GroupDialog(props: GroupDialogProps) {
   const [appName, setAppName] = React.useState(initialAppName);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+
+  const appGroupLifecyclePluginId = React.useMemo(() => {
+    if (groupType !== 'app_group') return null;
+    const app = props.app ?? (props.group as AppGroup)?.app;
+    return (app as any)?.app_group_lifecycle_plugin || null;
+  }, [groupType, props.app, props.group]);
+
+  const isAllowedToConfigureAppGroupLifecyclePlugin =
+    isAccessAdmin(props.currentUser) ||
+    isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? (props.group as AppGroup)?.app?.id ?? '');
 
   const complete = (
     completedGroup: PolymorphicGroup | undefined,
@@ -322,6 +333,17 @@ function GroupDialog(props: GroupDialogProps) {
               renderInput={(params) => <TextField {...params} label="Tags" placeholder="Tags" />}
             />
           </FormControl>
+          {appGroupLifecyclePluginId && isAllowedToConfigureAppGroupLifecyclePlugin && (
+            <AppGroupLifecyclePluginConfigurationForm
+              entityType="group"
+              selectedPluginId={appGroupLifecyclePluginId}
+              currentConfig={
+                appGroupLifecyclePluginId && (props.group as any)?.plugin_data
+                  ? (props.group as any).plugin_data[appGroupLifecyclePluginId]?.configuration || {}
+                  : {}
+              }
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
