@@ -48,7 +48,7 @@ class AuditLogSchema(Schema):
     current_user_id = fields.Str()
     current_user_email = fields.Str()
 
-    group = fields.Nested(PolymorphicGroupSchema, only=("id", "name", "type", "app.id", "app.name"))
+    group = fields.Nested(PolymorphicGroupSchema, only=("id", "name", "type", "app.id", "app.name", "plugin_data"))
     old_group_name = fields.Str()
     old_group_type = fields.Str()
     group_owners = fields.List(fields.Nested(OktaUserSchema, only=("id", "email")))
@@ -102,7 +102,7 @@ class AuditLogSchema(Schema):
     )
     requester = fields.Nested(OktaUserSchema, only=("id", "email"))
 
-    app = fields.Nested(AppSchema, only=("id", "name", "app_group_lifecycle_plugin"))
+    app = fields.Nested(AppSchema, only=("id", "name", "app_group_lifecycle_plugin", "plugin_data"))
     old_app_name = fields.Str()
     owner_id = fields.Str()
     old_app_group_lifecycle_plugin = fields.Str()
