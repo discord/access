@@ -17,7 +17,7 @@ pg8000==1.31.5
 
 # API and Models
 Flask-RESTful==0.3.10
-marshmallow==3.23.1
+marshmallow==3.26.2
 marshmallow-sqlalchemy==1.1.0
 flask-marshmallow==1.2.1
 flask-apispec==0.11.4
