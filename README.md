@@ -85,6 +85,10 @@ npm start
 
 Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
 
+#### Makefile
+
+For convenience, this project includes a `Makefile` that helps orchestrate setup and development workflow steps. You can use `make help` to see all available commands.
+
 #### Generating Typescript React Query API Client
 
 We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified the generated Swagger schema in [api/swagger.json](api/swagger.json), which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands:
