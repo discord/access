@@ -101,7 +101,7 @@ class AppResource(MethodResource):
         # privilege escalation in the managed apps.
         if (
             app_changes.app_group_lifecycle_plugin != app.app_group_lifecycle_plugin
-            or app_changes.plugin_data != app.plugin_data
+            or (app_changes.plugin_data or {}) != app.plugin_data
         ) and not AuthorizationHelpers.is_access_admin():
             abort(
                 403,
