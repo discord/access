@@ -122,7 +122,7 @@ class GroupResource(MethodResource):
 
         # Enforce stricter authorization for plugin configuration changes to prevent
         # privilege escalation in the managed apps.
-        if group_changes.plugin_data != group.plugin_data and not (
+        if (group_changes.plugin_data or {}) != group.plugin_data and not (
             AuthorizationHelpers.is_access_admin()
             or (type(group) is AppGroup and AuthorizationHelpers.is_app_owner_group_owner(app_group=group))
         ):
