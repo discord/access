@@ -2,7 +2,7 @@
 
 # ACCESS
 
-Meet Access, a centralized portal for employees to transparently discover, request, and manage their access for all internal systems needed to do their jobs. If you're interested in the project, come chat with us!
+Meet Access, a centralized portal that allows employees to transparently discover, request, and manage access for all internal systems needed to do their jobs. If you're interested in the project, feel free to chat with us!
 
 <p align="center"><a href="https://discord.gg/access-enjoyers"><img src="https://discordapp.com/api/guilds/1232815453907189922/widget.png?style=banner2" alt="Join our Discord!"></a></p>
 
@@ -12,7 +12,7 @@ The access service exists to help answer the following questions for each person
 
 - All Users
   - What do I have access to?
-  - What does a teammate have access to that I don’t?
+  - What access does a teammate have that I don’t have?
   - What groups and roles are available?
   - Can I get access?
 - Team Leads
@@ -98,7 +98,7 @@ npx openapi-codegen gen api
 
 ## Tests
 
-We use tox to run our tests, which should be installed into the python venv from
+We use tox to run our tests. It should be installed into the Python venv from
 our `requirements.txt`.
 
 Invoke the tests using `tox -e test`.
@@ -246,7 +246,7 @@ The `.env.production` file is where you configure the application.
 
 If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE`. `SECRET_KEY` and `OIDC_CLIENT_SECRETS` do not need to be set and can be removed from your env file.
 
-Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
+Otherwise, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
 
 ### Access application configuration
 
