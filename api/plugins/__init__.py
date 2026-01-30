@@ -1,5 +1,6 @@
 import pluggy
 
+from api.plugins.audit_events import get_audit_events_hook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
@@ -27,6 +28,7 @@ from api.plugins.notifications import get_notification_hook
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
 conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
+audit_events_hook_impl = pluggy.HookimplMarker("access_audit_events")
 
 __all__ = [
     # App Group Lifecycle Plugin
@@ -57,4 +59,7 @@ __all__ = [
     # Notifications Plugin
     "get_notification_hook",
     "notification_hook_impl",
+    # Audit Events Plugin
+    "get_audit_events_hook",
+    "audit_events_hook_impl",
 ]
