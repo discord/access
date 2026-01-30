@@ -33,7 +33,7 @@ class AuditEventEnvelope:
 
     Attributes:
         id: Unique event identifier (UUID v4) for deduplication across retries
-        event_type: Access event type (e.g., 'access_request.created', 'group.member_added')
+        event_type: Access event type (e.g., 'access_create', 'group_member_added')
         timestamp: When the audited action occurred (timezone-aware UTC datetime)
         actor_id: WHO - User ID of the person performing the action
         actor_email: WHO - Email of the actor for human traceability

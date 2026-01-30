@@ -13,7 +13,7 @@ def sample_envelope() -> AuditEventEnvelope:
     """Create a sample audit event envelope for testing."""
     return AuditEventEnvelope(
         id=uuid4(),
-        event_type="access_request.created",
+        event_type="access_create",
         timestamp=datetime.now(timezone.utc),
         actor_id="user-123",
         actor_email="user@example.com",
@@ -32,7 +32,7 @@ class TestAuditEventEnvelope:
 
     def test_envelope_creation(self, sample_envelope: AuditEventEnvelope) -> None:
         """Test AuditEventEnvelope can be instantiated with all required fields."""
-        assert sample_envelope.event_type == "access_request.created"
+        assert sample_envelope.event_type == "access_create"
         assert sample_envelope.actor_id == "user-123"
         assert sample_envelope.actor_email == "user@example.com"
         assert sample_envelope.target_type == "access_request"
