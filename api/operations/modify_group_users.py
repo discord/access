@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from uuid import uuid4
 
@@ -582,8 +582,8 @@ class ModifyGroupUsers:
                             associated_users_ended_at = role_associated_group_map.ended_at
                         else:
                             associated_users_ended_at = min(
-                                self.members_added_ended_at.replace(tzinfo=UTC),
-                                role_associated_group_map.ended_at.replace(tzinfo=UTC),
+                                self.members_added_ended_at.replace(tzinfo=timezone.utc),
+                                role_associated_group_map.ended_at.replace(tzinfo=timezone.utc),
                             )
 
                         access_to_add = OktaUserGroupMember(
@@ -703,7 +703,7 @@ class ModifyGroupUsers:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="group_member_added",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="group_membership",
@@ -736,7 +736,7 @@ class ModifyGroupUsers:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="group_member_removed",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="group_membership",
@@ -768,7 +768,7 @@ class ModifyGroupUsers:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="group_owner_added",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="group_ownership",
@@ -801,7 +801,7 @@ class ModifyGroupUsers:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="group_owner_removed",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="group_ownership",

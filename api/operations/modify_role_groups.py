@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from uuid import uuid4
 
@@ -437,7 +437,7 @@ class ModifyRoleGroups:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
                         associated_users_ended_at = min(
-                            member.ended_at.replace(tzinfo=UTC), role_associated_group_map.ended_at.replace(tzinfo=UTC)
+                            member.ended_at.replace(tzinfo=timezone.utc), role_associated_group_map.ended_at.replace(tzinfo=timezone.utc)
                         )
 
                     membership_to_add = OktaUserGroupMember(
@@ -473,7 +473,7 @@ class ModifyRoleGroups:
                         associated_users_ended_at = role_associated_group_map.ended_at
                     else:
                         associated_users_ended_at = min(
-                            member.ended_at.replace(tzinfo=UTC), role_associated_group_map.ended_at.replace(tzinfo=UTC)
+                            member.ended_at.replace(tzinfo=timezone.utc), role_associated_group_map.ended_at.replace(tzinfo=timezone.utc)
                         )
                     ownership_to_add = OktaUserGroupMember(
                         user_id=member.user_id,
@@ -580,7 +580,7 @@ class ModifyRoleGroups:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="role_group_assigned",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="role_assignment",
@@ -613,7 +613,7 @@ class ModifyRoleGroups:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="role_group_assigned",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="role_assignment",
@@ -647,7 +647,7 @@ class ModifyRoleGroups:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="role_group_unassigned",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="role_assignment",
@@ -679,7 +679,7 @@ class ModifyRoleGroups:
                 envelope = AuditEventEnvelope(
                     id=uuid4(),
                     event_type="role_group_unassigned",
-                    timestamp=datetime.now(UTC),
+                    timestamp=datetime.now(timezone.utc),
                     actor_id=self.current_user_id or "system",
                     actor_email=actor_email,
                     target_type="role_assignment",
