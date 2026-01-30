@@ -22,6 +22,10 @@ from api.models import (
     RoleRequest,
     Tag,
 )
+from api.plugins.app_group_lifecycle import (
+    validate_app_group_lifecycle_plugin_app_config,
+    validate_app_group_lifecycle_plugin_group_config,
+)
 
 access_config = get_access_config()
 
@@ -898,6 +902,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
     description = context_aware_description_field()
 
     externally_managed_data = fields.Dict()
+    plugin_data = fields.Dict()
 
     @validates_schema
     def validate_app_group(self, data: Dict[str, Any], **kwargs: Any) -> None:
@@ -913,8 +918,38 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
                 )
             )
 
+    @validates_schema
+    def validate_plugin_data(self, data: Dict[str, Any], **kwargs: Any) -> None:
+        # Only validate plugin_data if it's present in the data
+        plugin_data = data.get("plugin_data")
+        if plugin_data is None:
+            return
+
+        # Check if plugin_data contains data for individual plugins
+        if not isinstance(plugin_data, dict):
+            raise ValidationError(
+                "Plugin data must be a dictionary, mapping plugin IDs to plugin-specific data", field_name="plugin_data"
+            )
+
+        # Get the app to check if it has a plugin configured
+        app = None
+        if "app_id" in data:
+            app = App.query.filter(App.id == data["app_id"]).filter(App.deleted_at.is_(None)).first()
+
+        # Validate the app group lifecycle plugin configuration, if present
+        if app and app.app_group_lifecycle_plugin is not None:
+            error_message = (
+                f"Configuration validation for app group lifecycle plugin '{app.app_group_lifecycle_plugin}' failed"
+            )
+            try:
+                errors = validate_app_group_lifecycle_plugin_group_config(plugin_data, app.app_group_lifecycle_plugin)
+            except ValueError as e:
+                raise ValidationError(f"{error_message}: {e}", field_name="plugin_data") from e
+            if errors:
+                raise ValidationError(f"{error_message}: {errors}", field_name="plugin_data")
+
     app_id = auto_field(required=True, validate=validate.Length(equal=20))
-    app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at")))
+    app = fields.Nested(lambda: AppSchema(only=("id", "name", "deleted_at", "app_group_lifecycle_plugin")))
 
     tags_to_add = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
     tags_to_remove = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
@@ -1126,6 +1161,7 @@ class AppGroupSchema(SQLAlchemyAutoSchema):
             "description",
             "is_managed",
             "externally_managed_data",
+            "plugin_data",
             "is_owner",
             "app",
             "app_id",
@@ -1202,6 +1238,58 @@ class AppSchema(SQLAlchemyAutoSchema):
     )
     description = context_aware_description_field()
 
+    app_group_lifecycle_plugin = auto_field(validate=validate.Length(max=255), allow_none=True)
+    plugin_data = fields.Dict()
+
+    @validates_schema
+    def validate_app_group_lifecycle_plugin(self, data: Dict[str, Any], **kwargs: Any) -> None:
+        # Only validate if app_group_lifecycle_plugin is present and not None
+        plugin_id = data.get("app_group_lifecycle_plugin")
+        if plugin_id is None:
+            return
+
+        # Basic validation: ensure it's a non-empty string
+        if not isinstance(plugin_id, str) or not plugin_id.strip():
+            raise ValidationError(
+                "App group lifecycle plugin ID must be a non-empty string", field_name="app_group_lifecycle_plugin"
+            )
+
+        # Validate that plugin_id corresponds to a registered app group lifecycle plugin
+        from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
+
+        registered_plugins = [plugin.id for plugin in get_app_group_lifecycle_plugins()]
+        if plugin_id not in registered_plugins:
+            raise ValidationError(
+                f"Invalid app group lifecycle plugin ID: '{plugin_id}' is not a registered plugin. Available plugins: {', '.join(registered_plugins)}",
+                field_name="app_group_lifecycle_plugin",
+            )
+
+    @validates_schema
+    def validate_plugin_data(self, data: Dict[str, Any], **kwargs: Any) -> None:
+        # Only validate plugin_data if it's present in the data
+        plugin_data = data.get("plugin_data")
+        if plugin_data is None:
+            return
+
+        # Check if plugin_data is a dictionary
+        if not isinstance(plugin_data, dict):
+            raise ValidationError(
+                "Plugin data must be a dictionary, mapping plugin IDs to plugin-specific data", field_name="plugin_data"
+            )
+
+        # Validate app group lifecycle plugin configuration, if present
+        app_group_lifecycle_plugin = data.get("app_group_lifecycle_plugin")
+        if app_group_lifecycle_plugin is not None:
+            error_message = (
+                f"Configuration validation for app group lifecycle plugin '{app_group_lifecycle_plugin}' failed"
+            )
+            try:
+                errors = validate_app_group_lifecycle_plugin_app_config(plugin_data, app_group_lifecycle_plugin)
+            except ValueError as e:
+                raise ValidationError(f"{error_message}: {e}", field_name="plugin_data") from e
+            if errors:
+                raise ValidationError(f"{error_message}: {errors}", field_name="plugin_data")
+
     initial_owner_id = fields.String(validate=validate.Length(min=1, max=255), load_only=True)
     initial_owner_role_ids = fields.List(fields.String(validate=validate.Length(equal=20)), load_only=True)
     initial_additional_app_groups = fields.Nested(lambda: InitialAppGroupSchema, many=True, load_only=True)
@@ -1249,6 +1337,8 @@ class AppSchema(SQLAlchemyAutoSchema):
             "deleted_at",
             "name",
             "description",
+            "app_group_lifecycle_plugin",
+            "plugin_data",
             "initial_owner_id",
             "initial_owner_role_ids",
             "initial_additional_app_groups",
@@ -1726,3 +1816,25 @@ class AppTagMapSchema(SQLAlchemyAutoSchema):
             "group_tag_mapping",
             "active_group_tag_mappings",
         )
+
+
+# Plugin-related schemas
+class AppGroupLifecyclePluginMetadataSchema(Schema):
+    id = fields.String(required=True)
+    display_name = fields.String(required=True)
+    description = fields.String(required=False, allow_none=True)
+
+
+class AppGroupLifecyclePluginConfigPropertySchema(Schema):
+    display_name = fields.String(required=True)
+    help_text = fields.String(required=False, allow_none=True)
+    type = fields.String(required=True, validate=validate.OneOf(["text", "number", "boolean"]))
+    default_value = fields.Raw(required=False, allow_none=True)
+    required = fields.Boolean(required=False, load_default=False)
+    validation = fields.Dict(required=False, allow_none=True)
+
+
+class AppGroupLifecyclePluginStatusPropertySchema(Schema):
+    display_name = fields.String(required=True)
+    help_text = fields.String(required=False, allow_none=True)
+    type = fields.String(required=True, validate=validate.OneOf(["text", "number", "date", "boolean"]))

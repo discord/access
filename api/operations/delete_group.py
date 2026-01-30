@@ -19,6 +19,7 @@ from api.models import (
 from api.operations.reject_access_request import RejectAccessRequest
 from api.plugins import get_audit_events_hook
 from api.plugins.audit_events import AuditEventEnvelope
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
 from flask import current_app, has_request_context, request
@@ -238,6 +239,19 @@ class DeleteGroup:
             synchronize_session="fetch",
         )
         db.session.commit()
+
+        # Invoke app group lifecycle plugin hook, if configured
+        plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+        if plugin_id is not None:
+            try:
+                hook = get_app_group_lifecycle_hook()
+                hook.group_deleted(session=db.session, group=self.group, plugin_id=plugin_id)
+                db.session.commit()
+            except Exception:
+                current_app.logger.exception(
+                    f"Failed to invoke group_deleted hook for group {self.group.id} with plugin '{plugin_id}'"
+                )
+                db.session.rollback()
 
         # Emit audit event to plugins (after DB commit)
         try:

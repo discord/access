@@ -1223,6 +1223,188 @@ export const useGetUserById = <TData = Schemas.OktaUser>(
   });
 };
 
+/**
+ * Plugin API types and hooks
+ */
+
+export type PluginsError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: string;
+}>;
+
+export type GetPluginsVariables = ApiContext['fetcherOptions'];
+
+export type GetPluginInfoPathParams = {
+  pluginId: string;
+};
+
+export type GetPluginInfoVariables = {
+  pathParams: GetPluginInfoPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchGetAppGroupLifecyclePlugins = (variables: GetPluginsVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.AppGroupLifecyclePluginMetadata[], PluginsError, undefined, {}, {}, {}>({
+    url: '/api/plugins/app-group-lifecycle',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAppGroupLifecyclePlugins = <TData = Schemas.AppGroupLifecyclePluginMetadata[]>(
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppGroupLifecyclePluginMetadata[], PluginsError, TData>,
+    'queryKey' | 'queryFn'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppGroupLifecyclePluginMetadata[], PluginsError, TData>({
+    queryKey: queryKeyFn({
+      path: '/api/plugins/app-group-lifecycle',
+      operationId: 'getAppGroupLifecyclePlugins',
+      variables: {},
+    }),
+    queryFn: ({signal}) => fetchGetAppGroupLifecyclePlugins({...fetcherOptions}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const fetchGetAppGroupLifecyclePluginAppConfigProperties = (
+  variables: GetPluginInfoVariables,
+  signal?: AbortSignal,
+) =>
+  apiFetch<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, undefined, {}, {}, GetPluginInfoPathParams>({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAppGroupLifecyclePluginAppConfigProperties = <
+  TData = Schemas.AppGroupLifecyclePluginConfigProperties,
+>(
+  variables: GetPluginInfoVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, TData>,
+    'queryKey' | 'queryFn'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, TData>({
+    queryKey: queryKeyFn({
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props',
+      operationId: 'getAppGroupLifecyclePluginAppConfigProperties',
+      variables,
+    }),
+    queryFn: ({signal}) =>
+      fetchGetAppGroupLifecyclePluginAppConfigProperties({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const fetchGetAppGroupLifecyclePluginGroupConfigProperties = (
+  variables: GetPluginInfoVariables,
+  signal?: AbortSignal,
+) =>
+  apiFetch<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, undefined, {}, {}, GetPluginInfoPathParams>({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAppGroupLifecyclePluginGroupConfigProperties = <
+  TData = Schemas.AppGroupLifecyclePluginConfigProperties,
+>(
+  variables: GetPluginInfoVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, TData>,
+    'queryKey' | 'queryFn'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppGroupLifecyclePluginConfigProperties, PluginsError, TData>({
+    queryKey: queryKeyFn({
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props',
+      operationId: 'getAppGroupLifecyclePluginGroupConfigProperties',
+      variables,
+    }),
+    queryFn: ({signal}) =>
+      fetchGetAppGroupLifecyclePluginGroupConfigProperties({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const fetchGetAppGroupLifecyclePluginAppStatusProperties = (
+  variables: GetPluginInfoVariables,
+  signal?: AbortSignal,
+) =>
+  apiFetch<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, undefined, {}, {}, GetPluginInfoPathParams>({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAppGroupLifecyclePluginAppStatusProperties = <
+  TData = Schemas.AppGroupLifecyclePluginStatusProperties,
+>(
+  variables: GetPluginInfoVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, TData>,
+    'queryKey' | 'queryFn'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, TData>({
+    queryKey: queryKeyFn({
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props',
+      operationId: 'getAppGroupLifecyclePluginAppStatusProperties',
+      variables,
+    }),
+    queryFn: ({signal}) =>
+      fetchGetAppGroupLifecyclePluginAppStatusProperties({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const fetchGetAppGroupLifecyclePluginGroupStatusProperties = (
+  variables: GetPluginInfoVariables,
+  signal?: AbortSignal,
+) =>
+  apiFetch<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, undefined, {}, {}, GetPluginInfoPathParams>({
+    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetAppGroupLifecyclePluginGroupStatusProperties = <
+  TData = Schemas.AppGroupLifecyclePluginStatusProperties,
+>(
+  variables: GetPluginInfoVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, TData>,
+    'queryKey' | 'queryFn'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppGroupLifecyclePluginStatusProperties, PluginsError, TData>({
+    queryKey: queryKeyFn({
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props',
+      operationId: 'getAppGroupLifecyclePluginGroupStatusProperties',
+      variables,
+    }),
+    queryFn: ({signal}) =>
+      fetchGetAppGroupLifecyclePluginGroupStatusProperties({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type QueryOperation =
   | {
       path: '/api/apps';
@@ -1313,4 +1495,29 @@ export type QueryOperation =
       path: '/api/users/{userId}';
       operationId: 'getUserById';
       variables: GetUserByIdVariables;
+    }
+  | {
+      path: '/api/plugins/app-group-lifecycle';
+      operationId: 'getAppGroupLifecyclePlugins';
+      variables: GetPluginsVariables;
+    }
+  | {
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props';
+      operationId: 'getAppGroupLifecyclePluginAppConfigProperties';
+      variables: GetPluginInfoVariables;
+    }
+  | {
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props';
+      operationId: 'getAppGroupLifecyclePluginGroupConfigProperties';
+      variables: GetPluginInfoVariables;
+    }
+  | {
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props';
+      operationId: 'getAppGroupLifecyclePluginAppStatusProperties';
+      variables: GetPluginInfoVariables;
+    }
+  | {
+      path: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props';
+      operationId: 'getAppGroupLifecyclePluginGroupStatusProperties';
+      variables: GetPluginInfoVariables;
     };
