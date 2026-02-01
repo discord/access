@@ -1,5 +1,6 @@
 import React from 'react';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
+import {Theme} from '@mui/material/styles';
 
 import Box from '@mui/material/Box';
 import Chip from '@mui/material/Chip';
@@ -662,6 +663,106 @@ export default function ReadGroup() {
               </Table>
             </TableContainer>
           </Grid>
+          {group.type !== 'role_group' && (group.active_role_member_mappings?.length || group.active_role_owner_mappings?.length) ? (
+            <Grid item xs={12}>
+              <TableContainer component={Paper}>
+                <Table sx={{minWidth: 650}} size="small" aria-label="roles with access">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell colSpan={3}>
+                        <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
+                          <Typography variant="h6" color="text.accent">
+                            Roles with Access
+                          </Typography>
+                          <Typography variant="body1" color="text.secondary">
+                            Roles that grant access to this group
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'flex-end',
+                          }}>
+                          <Divider sx={{mx: 2}} orientation="vertical" flexItem />
+                          Total: {(group.active_role_member_mappings?.length || 0) + (group.active_role_owner_mappings?.length || 0)}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Role Name</TableCell>
+                      <TableCell>Access Type</TableCell>
+                      <TableCell>Ending</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(group.active_role_owner_mappings ?? []).map((roleMapping: RoleGroupMap) => (
+                      <TableRow key={'role-owner-' + roleMapping.active_role_group?.id}>
+                        <TableCell>
+                          <Link
+                            to={`/groups/${roleMapping.active_role_group?.name}`}
+                            sx={{
+                              textDecoration: 'none',
+                              color: 'inherit',
+                              '&:hover': {
+                                color: (theme: Theme) => theme.palette.primary.main,
+                              },
+                            }}
+                            component={RouterLink}>
+                            {roleMapping.active_role_group?.name}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label="Owner"
+                            color="primary"
+                            variant="filled"
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Ending memberships={[roleMapping]} />
+                        </TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    ))}
+                    {(group.active_role_member_mappings ?? []).map((roleMapping: RoleGroupMap) => (
+                      <TableRow key={'role-member-' + roleMapping.active_role_group?.id}>
+                        <TableCell>
+                          <Link
+                            to={`/groups/${roleMapping.active_role_group?.name}`}
+                            sx={{
+                              textDecoration: 'none',
+                              color: 'inherit',
+                              '&:hover': {
+                                color: (theme: Theme) => theme.palette.primary.main,
+                              },
+                            }}
+                            component={RouterLink}>
+                            {roleMapping.active_role_group?.name}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label="Member"
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Ending memberships={[roleMapping]} />
+                        </TableCell>
+                        <TableCell></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Grid>
+          ) : null}
           <Grid item xs={12}>
             <TableContainer component={Paper}>
               <Table sx={{minWidth: 650}} size="small" aria-label="group members">
