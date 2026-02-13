@@ -69,7 +69,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_app_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """
         Return the schema for app configuration plugin data, a mapping of property IDs to descriptors.
@@ -80,7 +80,7 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None = None) -> dict[str, str] | None:
+    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         """
         Validate app plugin config before saving.
 
@@ -95,7 +95,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_group_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """
         Return the schema for app group configuration plugin data, a mapping of property IDs to descriptors.
@@ -107,7 +107,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None = None
+        self, config: dict[str, Any], plugin_id: str | None
     ) -> dict[str, str] | None:
         """
         Validate app group plugin config before saving.
@@ -125,7 +125,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_app_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """
         Return the schema for app-level status plugin data, a mapping of property IDs to descriptors.
@@ -137,7 +137,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_group_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """
         Return the schema for group-level status plugin data, a mapping of property IDs to descriptors.
@@ -150,7 +150,7 @@ class AppGroupLifecyclePluginSpec:
     # Group lifecycle hooks
 
     @hookspec
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group creation.
 
@@ -162,7 +162,7 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group deletion.
 
@@ -177,7 +177,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def group_members_added(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None = None
+        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         """
         Handle member addition.
@@ -192,7 +192,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def group_members_removed(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None = None
+        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         """
         Handle member removal.
@@ -206,7 +206,7 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None = None) -> None:
+    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
         """
         Bulk sync all group memberships for an app. This is invoked periodically by a CLI command `flask sync-app-group-memberships`.
 

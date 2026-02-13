@@ -49,7 +49,7 @@ class AuditLoggerPlugin:
 
     @hookimpl
     def get_plugin_app_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """Return app-level configuration schema."""
         # Only respond if this plugin is being queried
@@ -77,7 +77,7 @@ class AuditLoggerPlugin:
         }
 
     @hookimpl
-    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None = None) -> dict[str, str] | None:
+    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         """Validate app-level configuration."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return None
@@ -101,7 +101,7 @@ class AuditLoggerPlugin:
 
     @hookimpl
     def get_plugin_group_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """Return group-level configuration schema."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -126,7 +126,7 @@ class AuditLoggerPlugin:
 
     @hookimpl
     def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None = None
+        self, config: dict[str, Any], plugin_id: str | None
     ) -> dict[str, str] | None:
         """Validate group-level configuration."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -150,7 +150,7 @@ class AuditLoggerPlugin:
 
     @hookimpl
     def get_plugin_app_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """Return app-level status schema."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -171,7 +171,7 @@ class AuditLoggerPlugin:
 
     @hookimpl
     def get_plugin_group_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """Return group-level status schema."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -193,7 +193,7 @@ class AuditLoggerPlugin:
     # Lifecycle hooks
 
     @hookimpl
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group creation."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -207,7 +207,7 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group deletion."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -226,7 +226,7 @@ class AuditLoggerPlugin:
         session: Session,
         group: AppGroup,
         members: list[OktaUser],
-        plugin_id: str | None = None,
+        plugin_id: str | None,
     ) -> None:
         """Handle member addition."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -247,7 +247,7 @@ class AuditLoggerPlugin:
         session: Session,
         group: AppGroup,
         members: list[OktaUser],
-        plugin_id: str | None = None,
+        plugin_id: str | None,
     ) -> None:
         """Handle member removal."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -263,7 +263,7 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None = None) -> None:
+    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
         """Perform periodic sync of all group memberships."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
