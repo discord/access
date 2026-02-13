@@ -6,6 +6,7 @@ from marshmallow import Schema, fields, pre_dump
 from api.views.schemas.core_schemas import (
     AccessRequestSchema,
     AppSchema,
+    GroupRequestSchema,
     OktaUserGroupMemberSchema,
     OktaUserSchema,
     PolymorphicGroupSchema,
@@ -32,6 +33,9 @@ class EventType(Enum):
     group_modify_type = "GROUP_MODIFY_TYPE"
     group_modify_tags = "GROUP_MODIFY_TAG"
     group_modify_users = "GROUP_MODIFY_USER"
+    group_request_approve = "GROUP_REQUEST_APPROVE"
+    group_request_create = "GROUP_REQUEST_CREATE"
+    group_request_reject = "GROUP_REQUEST_REJECT"
     role_group_modify = "ROLE_GROUP_MODIFY"
     role_request_approve = "ROLE_REQUEST_APPROVE"
     role_request_create = "ROLE_REQUEST_CREATE"
@@ -98,6 +102,17 @@ class AuditLogSchema(Schema):
             "request_ownership",
             "resolution_reason",
             "approval_ending_at",
+        ),
+    )
+    group_request = fields.Nested(
+        GroupRequestSchema,
+        only=(
+            "id",
+            "requested_group_name",
+            "requested_group_type",
+            "requested_app_id",
+            "request_reason",
+            "resolution_reason",
         ),
     )
     requester = fields.Nested(OktaUserSchema, only=("id", "email"))

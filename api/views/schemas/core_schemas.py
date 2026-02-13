@@ -1592,6 +1592,68 @@ class RoleRequestSchema(SQLAlchemyAutoSchema):
         )
 
 
+class GroupRequestSchema(SQLAlchemyAutoSchema):
+    requester = fields.Nested(lambda: OktaUserSchema)
+    active_requester = fields.Nested(lambda: OktaUserSchema)
+    resolver = fields.Nested(lambda: OktaUserSchema)
+    active_resolver = fields.Nested(lambda: OktaUserSchema)
+    approved_group = fields.Nested(lambda: OktaGroup)
+
+    class Meta:
+        model = GroupRequest
+        sqla_session = db.session
+        load_instance = True
+        include_relationships = True
+        fields = (
+            "id",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "status",
+            "requester",
+            "active_requester",
+            "requested_group_name",
+            "requested_group_description",
+            "requested_group_type",
+            "requested_app_id",
+            "requested_group_tags",
+            "request_reason",
+            "resolver",
+            "active_resolver",
+            "resolved_group_name",
+            "resolved_group_description",
+            "resolved_group_type",
+            "resolved_app_id",
+            "resolved_group_tags",
+            "resolution_reason",
+            "approved_group",
+        )
+        dump_only = (
+            "id",
+            "created_at",
+            "updated_at",
+            "resolved_at",
+            "status",
+            "requester",
+            "active_requester",
+            "requested_group_name",
+            "requested_group_description",
+            "requested_group_type",
+            "requested_app_id",
+            "requested_group_tags",
+            "request_reason",
+            "resolver",
+            "active_resolver",
+            "resolved_group_name",
+            "resolved_group_description",
+            "resolved_group_type",
+            "resolved_app_id",
+            "resolved_group_tags",
+            "resolution_reason",
+            "approved_group",
+        )
+
+
 class TagSchema(SQLAlchemyAutoSchema):
     name = auto_field(
         required=True,
