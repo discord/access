@@ -61,7 +61,7 @@ class DummyPlugin:
 
     @hookimpl
     def get_plugin_app_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
@@ -83,7 +83,7 @@ class DummyPlugin:
         }
 
     @hookimpl
-    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None = None) -> dict[str, str] | None:
+    def validate_plugin_app_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
 
@@ -100,7 +100,7 @@ class DummyPlugin:
 
     @hookimpl
     def get_plugin_group_config_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
@@ -115,9 +115,7 @@ class DummyPlugin:
         }
 
     @hookimpl
-    def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None = None
-    ) -> dict[str, str] | None:
+    def validate_plugin_group_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
 
@@ -131,7 +129,7 @@ class DummyPlugin:
 
     @hookimpl
     def get_plugin_app_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
@@ -146,7 +144,7 @@ class DummyPlugin:
 
     @hookimpl
     def get_plugin_group_status_properties(
-        self, plugin_id: str | None = None
+        self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
@@ -160,21 +158,21 @@ class DummyPlugin:
         }
 
     @hookimpl
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
         # Track that this hook was called
         self.group_created_calls.append(group.id)
 
     @hookimpl
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None = None) -> None:
+    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
         self.group_deleted_calls.append(group.id)
 
     @hookimpl
     def group_members_added(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None = None
+        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
@@ -182,7 +180,7 @@ class DummyPlugin:
 
     @hookimpl
     def group_members_removed(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None = None
+        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
