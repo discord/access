@@ -115,9 +115,7 @@ class DummyPlugin:
         }
 
     @hookimpl
-    def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None
-    ) -> dict[str, str] | None:
+    def validate_plugin_group_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         if plugin_id is not None and plugin_id != self.ID:
             return None
 

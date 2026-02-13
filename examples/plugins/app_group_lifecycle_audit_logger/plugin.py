@@ -125,9 +125,7 @@ class AuditLoggerPlugin:
         }
 
     @hookimpl
-    def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None
-    ) -> dict[str, str] | None:
+    def validate_plugin_group_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         """Validate group-level configuration."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return None

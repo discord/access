@@ -106,9 +106,7 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def validate_plugin_group_config(
-        self, config: dict[str, Any], plugin_id: str | None
-    ) -> dict[str, str] | None:
+    def validate_plugin_group_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
         """
         Validate app group plugin config before saving.
 
