@@ -1617,6 +1617,7 @@ class GroupRequestSchema(SQLAlchemyAutoSchema):
             "requested_group_type",
             "requested_app_id",
             "requested_group_tags",
+            "requested_ownership_ending_at",
             "request_reason",
             "resolver",
             "active_resolver",
@@ -1625,6 +1626,7 @@ class GroupRequestSchema(SQLAlchemyAutoSchema):
             "resolved_group_type",
             "resolved_app_id",
             "resolved_group_tags",
+            "resolved_ownership_ending_at",
             "resolution_reason",
             "approved_group",
         )
@@ -1641,6 +1643,7 @@ class GroupRequestSchema(SQLAlchemyAutoSchema):
             "requested_group_type",
             "requested_app_id",
             "requested_group_tags",
+            "requested_ownership_ending_at",
             "request_reason",
             "resolver",
             "active_resolver",
@@ -1649,6 +1652,7 @@ class GroupRequestSchema(SQLAlchemyAutoSchema):
             "resolved_group_type",
             "resolved_app_id",
             "resolved_group_tags",
+            "resolved_ownership_ending_at",
             "resolution_reason",
             "approved_group",
         )

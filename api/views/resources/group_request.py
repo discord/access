@@ -61,6 +61,7 @@ class GroupRequestResource(MethodResource):
                 "requested_group_type",
                 "requested_app_id",
                 "requested_group_tags",
+                "requested_ownership_ending_at",
                 "request_reason",
                 "resolver.id",
                 "resolver.email",
@@ -72,6 +73,7 @@ class GroupRequestResource(MethodResource):
                 "resolved_group_type",
                 "resolved_app_id",
                 "resolved_group_tags",
+                "resolved_ownership_ending_at",
                 "resolution_reason",
                 "approved_group_id",
             )
@@ -111,16 +113,32 @@ class GroupRequestResource(MethodResource):
         if group_request.status != AccessRequestStatus.PENDING or group_request.resolved_at is not None:
             abort(400, "Group request is not pending")
 
+        # Update resolved fields if provided
+        if "resolved_group_name" in group_request_args:
+            group_request.resolved_group_name = group_request_args["resolved_group_name"]
+        if "resolved_group_description" in group_request_args:
+            group_request.resolved_group_description = group_request_args["resolved_group_description"]
+        if "resolved_group_type" in group_request_args:
+            group_request.resolved_group_type = group_request_args["resolved_group_type"]
+        if "resolved_app_id" in group_request_args:
+            group_request.resolved_app_id = group_request_args["resolved_app_id"]
+        if "resolved_group_tags" in group_request_args:
+            group_request.resolved_group_tags = group_request_args["resolved_group_tags"]
+        if "resolved_ownership_ending_at" in group_request_args:
+            group_request.resolved_ownership_ending_at = group_request_args["resolved_ownership_ending_at"]
+
+        db.session.commit()
+
         if group_request_args["approved"]:
             ApproveGroupRequest(
                 group_request=group_request,
                 approver_user=g.current_user_id,
-                approval_reason=group_request_args.get("reason"),
+                approval_reason=group_request_args.get("resolution_reason", ""),
             ).execute()
         else:
             RejectGroupRequest(
                 group_request=group_request,
-                rejection_reason=group_request_args.get("reason"),
+                rejection_reason=group_request_args.get("resolution_reason", ""),
                 notify_requester=group_request.requester_user_id != g.current_user_id,
                 current_user_id=g.current_user_id,
             ).execute()
@@ -144,6 +162,7 @@ class GroupRequestResource(MethodResource):
                 "requested_group_type",
                 "requested_app_id",
                 "requested_group_tags",
+                "requested_ownership_ending_at",
                 "request_reason",
                 "resolver.id",
                 "resolver.email",
@@ -155,6 +174,7 @@ class GroupRequestResource(MethodResource):
                 "resolved_group_type",
                 "resolved_app_id",
                 "resolved_group_tags",
+                "resolved_ownership_ending_at",
                 "resolution_reason",
             )
         ).dump(group_request)
@@ -317,35 +337,35 @@ class GroupRequestList(MethodResource):
             abort(403, "Current user is not allowed to perform this action")
 
         # Validate app exists if creating an app group
-        if group_request_args.get("group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
-            if "app_id" not in group_request_args or group_request_args["app_id"] is None:
+        if group_request_args.get("requested_group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
+            if "requested_app_id" not in group_request_args or group_request_args["requested_app_id"] is None:
                 abort(400, "app_id is required for app group requests")
             
             app = (
                 App.query.filter(App.deleted_at.is_(None))
-                .filter(App.id == group_request_args["app_id"])
+                .filter(App.id == group_request_args["requested_app_id"])
                 .first()
             )
             if app is None:
                 abort(404, "App not found")
         
         # Validate tags exist
-        if "tags" in group_request_args and group_request_args["tags"]:
-            tags = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(group_request_args["tags"])).all()
-            if len(tags) != len(group_request_args["tags"]):
+        if "requested_group_tags" in group_request_args and group_request_args["requested_group_tags"]:
+            tags = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(group_request_args["requested_group_tags"])).all()
+            if len(tags) != len(group_request_args["requested_group_tags"]):
                 abort(400, "One or more tags not found")
 
         # Close any existing pending group requests with the same name (and app if app group)
         existing_group_requests_query = (
-            GroupRequest.query.filter(GroupRequest.requested_group_name == group_request_args["group_name"])
+            GroupRequest.query.filter(GroupRequest.requested_group_name == group_request_args["requested_group_name"])
             .filter(GroupRequest.status == AccessRequestStatus.PENDING)
             .filter(GroupRequest.resolved_at.is_(None))
         )
         
         # For app groups, also match on app_id to ensure we're only closing true duplicates
-        if group_request_args.get("group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
+        if group_request_args.get("requested_group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
             existing_group_requests_query = existing_group_requests_query.filter(
-                GroupRequest.requested_app_id == group_request_args.get("app_id")
+                GroupRequest.requested_app_id == group_request_args.get("requested_app_id")
             )
         
         existing_group_requests = existing_group_requests_query.all()
@@ -360,12 +380,13 @@ class GroupRequestList(MethodResource):
 
         group_request = CreateGroupRequest(
             requester_user=g.current_user_id,
-            requested_group_name=group_request_args["group_name"],
-            requested_group_description=group_request_args.get("group_description", ""),
-            requested_group_type=group_request_args["group_type"],
-            requested_app_id=group_request_args.get("app_id"),
-            requested_group_tags=group_request_args.get("tags", []),
-            request_reason=group_request_args.get("reason", ""),
+            requested_group_name=group_request_args["requested_group_name"],
+            requested_group_description=group_request_args.get("requested_group_description", ""),
+            requested_group_type=group_request_args["requested_group_type"],
+            requested_app_id=group_request_args.get("requested_app_id"),
+            requested_group_tags=group_request_args.get("requested_group_tags", []),
+            requested_ownership_ending_at=group_request_args.get("requested_ownership_ending_at"),
+            request_reason=group_request_args.get("request_reason", ""),
         ).execute()
 
         if group_request is None:
@@ -391,6 +412,7 @@ class GroupRequestList(MethodResource):
                     "requested_group_type",
                     "requested_app_id",
                     "requested_group_tags",
+                    "requested_ownership_ending_at",
                     "request_reason",
                 ),
             ).dump(group_request),

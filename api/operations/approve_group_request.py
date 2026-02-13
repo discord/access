@@ -2,10 +2,11 @@ from datetime import datetime
 from typing import Optional
 
 from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
-from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, GroupRequest
+from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, GroupRequest, Tag
+from api.models.tag import coalesce_ended_at
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_group_tags import ModifyGroupTags
@@ -106,16 +107,41 @@ class ApproveGroupRequest:
             current_user_id=self.approver_id,
         ).execute()
 
+        # Check tags on created group for ownership length constraints including app tags
+        created_group_with_tags = (
+            db.session.query(OktaGroup)
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+            )
+            .filter(OktaGroup.id == created_group.id)
+            .filter(OktaGroup.deleted_at.is_(None))
+            .first()
+        )
+
+        tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
+
+        coalesced_ownership_ending_at = coalesce_ended_at(
+            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
+            tags=tags,
+            initial_ended_at=self.group_request.resolved_ownership_ending_at,
+            group_is_managed=True,
+        )
+
+        # Update the group request with the coalesced value to ensure consistency
+        self.group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
+
         # Add the requester as an owner of the newly created group
         ModifyGroupUsers(
-            group=created_group,
+            group=created_group_with_tags,
             owners_to_add=[self.group_request.requester_user_id],
+            users_added_ended_at=coalesced_ownership_ending_at,
             current_user_id=self.approver_id,
             created_reason=self.group_request.request_reason,
             notify=self.notify,
         ).execute()
 
-        # Update the group request with approval details
+
         self.group_request.status = AccessRequestStatus.APPROVED
         self.group_request.resolved_at = db.func.now()
         self.group_request.resolver_user_id = self.approver_id

@@ -111,7 +111,9 @@ class AuditLogSchema(Schema):
             "requested_group_name",
             "requested_group_type",
             "requested_app_id",
+            "requested_ownership_ending_at",
             "request_reason",
+            "resolved_ownership_ending_at",
             "resolution_reason",
         ),
     )

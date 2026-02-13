@@ -930,7 +930,7 @@ class GroupRequest(db.Model):
     requested_group_description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
     requested_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
     requested_app_id: Mapped[Optional[str]] = mapped_column(db.Unicode(20), db.ForeignKey("app.id"))
-    requested_ownership_len = # TODO
+    requested_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
     # Tag ids
     requested_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(
@@ -950,7 +950,7 @@ class GroupRequest(db.Model):
     resolved_group_description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
     resolved_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
     resolved_app_id: Mapped[Optional[str]] = mapped_column(db.Unicode(20), db.ForeignKey("app.id"))
-    approved_ownership_len = # TODO
+    resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
     # Tag ids
     resolved_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(

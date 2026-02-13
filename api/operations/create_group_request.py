@@ -19,6 +19,7 @@ from api.models import (
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
+from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.plugins import get_conditional_access_hook, get_notification_hook
@@ -35,6 +36,7 @@ class CreateGroupRequest:
         requested_group_type: str,
         requested_app_id: Optional[str] = None,
         requested_group_tags: List[str] = None,
+        requested_ownership_ending_at: Optional[datetime] = None,
         request_reason: str = "",
     ):
         self.id = self.__generate_id()
@@ -49,6 +51,7 @@ class CreateGroupRequest:
         self.requested_group_type = requested_group_type
         self.requested_app_id = requested_app_id
         self.requested_group_tags = requested_group_tags if requested_group_tags is not None else []
+        self.requested_ownership_ending_at = requested_ownership_ending_at
         self.request_reason = request_reason
 
         self.conditional_access_hook = get_conditional_access_hook()
@@ -73,11 +76,21 @@ class CreateGroupRequest:
             if app is None:
                 return None
 
-        # Validate tags exist
+        # Validate tags exist and load them
+        tags = []
         if self.requested_group_tags:
             tags = db.session.query(Tag).filter(Tag.id.in_(self.requested_group_tags)).filter(Tag.deleted_at.is_(None)).all()
             if len(tags) != len(self.requested_group_tags):
                 return None
+
+        # Apply tag ownership time constraints to requested_ownership_ending_at
+        # Ensures that if tags have ownership time limits, they are enforced
+        coalesced_ownership_ending_at = coalesce_ended_at(
+            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
+            tags=tags,
+            initial_ended_at=self.requested_ownership_ending_at,
+            group_is_managed=True,  # Assume managed since group created through Access and not via Okta group rule
+        )
 
         group_request = GroupRequest(
             id=self.id,
@@ -88,13 +101,15 @@ class CreateGroupRequest:
             requested_group_type=self.requested_group_type,
             requested_app_id=self.requested_app_id,
             requested_group_tags=self.requested_group_tags,
+            requested_ownership_ending_at=coalesced_ownership_ending_at,
             request_reason=self.request_reason,
-            # Initialize resolved fields with requested values
-            resolved_group_name=self.requested_group_name,
-            resolved_group_description=self.requested_group_description,
-            resolved_group_type=self.requested_group_type,
-            resolved_app_id=self.requested_app_id,
-            resolved_group_tags=self.requested_group_tags,
+            # Initialize resolved fields with requested values TODO maybe not?
+            # resolved_group_name=self.requested_group_name,
+            # resolved_group_description=self.requested_group_description,
+            # resolved_group_type=self.requested_group_type,
+            # resolved_app_id=self.requested_app_id,
+            # resolved_group_tags=self.requested_group_tags,
+            # resolved_ownership_ending_at=coalesced_ownership_ending_at,
         )
 
         db.session.add(group_request)
@@ -119,7 +134,7 @@ class CreateGroupRequest:
         context = has_request_context()
 
         current_app.logger.info(
-            AuditLogSchema(exclude=["request.resolution_reason", "request.resolved_group_name", "request.resolved_group_description", "request.resolved_group_type", "request.resolved_app_id", "request.resolved_group_tags"]).dumps(
+            AuditLogSchema(exclude=["group_request.resolution_reason", "group_request.resolved_group_name", "group_request.resolved_group_description", "group_request.resolved_group_type", "group_request.resolved_app_id", "group_request.resolved_group_tags", "group_request.resolved_ownership_ending_at"]).dumps(
                 {
                     "event_type": EventType.group_request_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
@@ -130,7 +145,6 @@ class CreateGroupRequest:
                     "current_user_email": self.requester.email,
                     "group_request": group_request,
                     "requester": self.requester,
-                    "approvers": approvers,
                 }
             )
         )
