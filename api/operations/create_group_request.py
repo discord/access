@@ -63,35 +63,38 @@ class CreateGroupRequest:
             return None
 
         # Validate that app_id is only provided for AppGroup type
-        if self.requested_app_id is not None and self.requested_group_type != AppGroup.__mapper_args__["polymorphic_identity"]:
+        if self.requested_app_id is not None and self.requested_group_type != "app_group":
             return None
-
+    
         # Validate that app_id is provided if type is AppGroup
-        if self.requested_group_type == AppGroup.__mapper_args__["polymorphic_identity"] and self.requested_app_id is None:
+        if self.requested_group_type == "app_group" and self.requested_app_id is None:
             return None
-
-        # Validate app exists if app_id provided
+    
+        # Validate app exists if app_id provided and desired group name prefix is correct
+        app = None
         if self.requested_app_id is not None:
             app = db.session.query(App).filter(App.id == self.requested_app_id).filter(App.deleted_at.is_(None)).first()
             if app is None:
                 return None
-
+            if not self.requested_group_name.startswith(f"App-{app.name}-"):
+                return None
+    
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
             tags = db.session.query(Tag).filter(Tag.id.in_(self.requested_group_tags)).filter(Tag.deleted_at.is_(None)).all()
             if len(tags) != len(self.requested_group_tags):
                 return None
-
+    
         # Apply tag ownership time constraints to requested_ownership_ending_at
         # Ensures that if tags have ownership time limits, they are enforced
         coalesced_ownership_ending_at = coalesce_ended_at(
             constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
             tags=tags,
             initial_ended_at=self.requested_ownership_ending_at,
-            group_is_managed=True,  # Assume managed since group created through Access and not via Okta group rule
+            group_is_managed=True,
         )
-
+    
         group_request = GroupRequest(
             id=self.id,
             status=AccessRequestStatus.PENDING,
@@ -103,18 +106,27 @@ class CreateGroupRequest:
             requested_group_tags=self.requested_group_tags,
             requested_ownership_ending_at=coalesced_ownership_ending_at,
             request_reason=self.request_reason,
-            # Initialize resolved fields with requested values TODO maybe not?
-            # resolved_group_name=self.requested_group_name,
-            # resolved_group_description=self.requested_group_description,
-            # resolved_group_type=self.requested_group_type,
-            # resolved_app_id=self.requested_app_id,
-            # resolved_group_tags=self.requested_group_tags,
-            # resolved_ownership_ending_at=coalesced_ownership_ending_at,
         )
-
+    
         db.session.add(group_request)
         db.session.commit()
-
+    
+        # If the requested group is an app group and the requester is the app owner, approve the request
+        if self.requested_group_type == "app_group" and app is not None:
+            # Get app owners by checking active owner app groups
+            app_owner_user_ids = set()
+            for owner_group in app.active_owner_app_groups:
+                for membership in owner_group.active_user_memberships_and_ownerships:
+                    app_owner_user_ids.add(membership.user_id)
+            
+            if self.requester.id in app_owner_user_ids:
+                ApproveGroupRequest(
+                    group_request=group_request,
+                    approval_reason="Requester owns parent app and can create app groups",
+                    notify=False,
+                ).execute()
+                return group_request
+    
         # Fetch the users to notify
         # If app group, notify app managers; otherwise notify access owners
         if self.requested_app_id is not None:
@@ -122,17 +134,16 @@ class CreateGroupRequest:
         else:
             # TODO maybe change this to just platsec for RoleGroups, want to be able to enforce RBAC?
             approvers = get_access_owners()
-
+    
         # Filter out the requester from approvers if they're the only one
         if len(approvers) == 1 and approvers[0].id == self.requester.id:
             if self.requested_app_id is not None:
                 # Fall back to access owners if requester is the only app manager
                 approvers = get_access_owners()
-            # If still only the requester, keep them as the approver
-
+    
         # Audit logging
         context = has_request_context()
-
+    
         current_app.logger.info(
             AuditLogSchema(exclude=["group_request.resolution_reason", "group_request.resolved_group_name", "group_request.resolved_group_description", "group_request.resolved_group_type", "group_request.resolved_app_id", "group_request.resolved_group_tags", "group_request.resolved_ownership_ending_at"]).dumps(
                 {
@@ -148,13 +159,13 @@ class CreateGroupRequest:
                 }
             )
         )
-
+    
         # Check conditional access hook
         conditional_access_responses = self.conditional_access_hook.group_request_created(
             group_request=group_request,
             requester=self.requester,
         )
-
+    
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
@@ -169,18 +180,14 @@ class CreateGroupRequest:
                         rejection_reason=response.reason,
                         notify=False,
                     ).execute()
-
+    
                 return group_request
-
+    
         # Send notification to approvers
         self.notification_hook.access_group_request_created(
             group_request=group_request,
             requester=self.requester,
             approvers=approvers,
         )
-
+    
         return group_request
-
-    # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
-    def __generate_id(self) -> str:
-        return "".join(random.choices(string.ascii_letters, k=20))

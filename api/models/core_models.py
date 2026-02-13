@@ -946,9 +946,9 @@ class GroupRequest(db.Model):
     # Since resolver can edit all fields before group is created, have 'resolved' version
     resolver_user_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
-    resolved_group_name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
+    resolved_group_name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False, , default="")
     resolved_group_description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
-    resolved_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
+    resolved_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False, default="")
     resolved_app_id: Mapped[Optional[str]] = mapped_column(db.Unicode(20), db.ForeignKey("app.id"))
     resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
     # Tag ids

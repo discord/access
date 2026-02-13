@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta, timezone
 
 from api.extensions import db
 from api.models import (
@@ -8,6 +9,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     OktaGroupTagMap,
+    Tag,
 )
 from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
 from tests.factories import (
@@ -28,7 +30,7 @@ def test_create_group_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Test Group",
         requested_group_description="Test Description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need this group",
     ).execute()
 
@@ -53,14 +55,14 @@ def test_create_app_group_request(db_session):
         requester_user=okta_user.id,
         requested_group_name=f"App-{app.name}-Admins",
         requested_group_description="Admin group for TestApp",
-        requested_group_type=AppGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="app_group",
         requested_app_id=app.id,
         request_reason="Need admin access",
     ).execute()
 
     assert group_request is not None
     assert group_request.requested_app_id == app.id
-    assert group_request.requested_group_type == AppGroup.__mapper_args__["polymorphic_identity"]
+    assert group_request.requested_group_type == "app_group"
 
 
 def test_create_role_group_request(db_session):
@@ -73,12 +75,12 @@ def test_create_role_group_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Role-Engineering",
         requested_group_description="Engineering role",
-        requested_group_type=RoleGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="role_group",
         request_reason="Need engineering role",
     ).execute()
 
     assert group_request is not None
-    assert group_request.requested_group_type == RoleGroup.__mapper_args__["polymorphic_identity"]
+    assert group_request.requested_group_type == "role_group"
 
 
 def test_create_group_request_with_tags(db_session):
@@ -94,13 +96,112 @@ def test_create_group_request_with_tags(db_session):
         requester_user=okta_user.id,
         requested_group_name="Tagged Group",
         requested_group_description="Group with tags",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         requested_group_tags=[tag.id],
         request_reason="Need tagged group",
     ).execute()
 
     assert group_request is not None
     assert tag.id in group_request.requested_group_tags
+
+
+def test_create_group_request_with_ownership_ending_at(db_session):
+    """Test creating a group request with a specified ownership ending time"""
+    okta_user = OktaUserFactory.build()
+    db_session.add(okta_user)
+    db_session.commit()
+
+    # Request ownership for 60 days
+    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+
+    group_request = CreateGroupRequest(
+        requester_user=okta_user.id,
+        requested_group_name="Time Limited Group",
+        requested_group_description="Group with time limit",
+        requested_group_type="okta_group",
+        requested_ownership_ending_at=requested_ending_at,
+        request_reason="Need temporary group",
+    ).execute()
+
+    assert group_request is not None
+    assert group_request.requested_ownership_ending_at is not None
+    # Should be close to the requested time (within a second)
+    assert abs((group_request.requested_ownership_ending_at - requested_ending_at).total_seconds()) < 1
+
+
+def test_create_group_request_tag_limits_ownership_time(db_session):
+    """Test that tag ownership time constraints limit the requested ownership ending time"""
+    okta_user = OktaUserFactory.build()
+    db_session.add(okta_user)
+
+    # Create a tag that limits ownership to 90 days (7776000 seconds)
+    tag = TagFactory.build(
+        enabled=True,
+        constraints={
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 7776000  # 90 days in seconds
+        }
+    )
+    db_session.add(tag)
+    db_session.commit()
+
+    # Request ownership with no ending time (should be limited to 90 days by tag)
+    group_request = CreateGroupRequest(
+        requester_user=okta_user.id,
+        requested_group_name="Tag Limited Group",
+        requested_group_description="Group with tag time limit",
+        requested_group_type="okta_group",
+        requested_group_tags=[tag.id],
+        requested_ownership_ending_at=None,
+        request_reason="Need group with tag constraint",
+    ).execute()
+
+    assert group_request is not None
+    assert group_request.requested_ownership_ending_at is not None
+    
+    # Should be set to approximately 90 days from now
+    expected_ending = datetime.now(timezone.utc) + timedelta(days=90)
+    time_diff = abs((group_request.requested_ownership_ending_at - expected_ending).total_seconds())
+    assert time_diff < 5  # Within 5 seconds of expected
+
+
+def test_create_group_request_tag_reduces_requested_ownership_time(db_session):
+    """Test that tag ownership time constraints reduce a longer requested time"""
+    okta_user = OktaUserFactory.build()
+    db_session.add(okta_user)
+
+    # Create a tag that limits ownership to 30 days (2592000 seconds)
+    tag = TagFactory.build(
+        enabled=True,
+        constraints={
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # 30 days in seconds
+        }
+    )
+    db_session.add(tag)
+    db_session.commit()
+
+    # Request ownership for 90 days (should be reduced to 30 days by tag)
+    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=90)
+
+    group_request = CreateGroupRequest(
+        requester_user=okta_user.id,
+        requested_group_name="Tag Reduced Group",
+        requested_group_description="Group with reduced time",
+        requested_group_type="okta_group",
+        requested_group_tags=[tag.id],
+        requested_ownership_ending_at=requested_ending_at,
+        request_reason="Need group with reduced constraint",
+    ).execute()
+
+    assert group_request is not None
+    assert group_request.requested_ownership_ending_at is not None
+    
+    # Should be set to approximately 30 days from now (not 90)
+    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    time_diff = abs((group_request.requested_ownership_ending_at - expected_ending).total_seconds())
+    assert time_diff < 5  # Within 5 seconds of expected
+    
+    # Should be less than the originally requested time
+    assert group_request.requested_ownership_ending_at < requested_ending_at
 
 
 def test_approve_group_request_creates_group(db_session):
@@ -115,7 +216,7 @@ def test_approve_group_request_creates_group(db_session):
         requester_user=okta_user.id,
         requested_group_name="New Group",
         requested_group_description="New group description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need this group",
     ).execute()
 
@@ -151,7 +252,7 @@ def test_approve_group_request_sets_requester_as_owner(db_session):
         requester_user=okta_user.id,
         requested_group_name="Owned Group",
         requested_group_description="Group with owner",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need ownership",
     ).execute()
 
@@ -175,6 +276,114 @@ def test_approve_group_request_sets_requester_as_owner(db_session):
     assert ownerships[0].created_reason == group_request.request_reason
 
 
+def test_approve_group_request_sets_owner_with_ending_time(db_session):
+    """Test that approving a group request with ownership ending time sets the owner with the correct ending time"""
+    okta_user = OktaUserFactory.build()
+    approver_user = OktaUserFactory.build()
+    db_session.add(okta_user)
+    db_session.add(approver_user)
+    db_session.commit()
+
+    # Request ownership for 60 days
+    requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
+
+    group_request = CreateGroupRequest(
+        requester_user=okta_user.id,
+        requested_group_name="Time Limited Ownership Group",
+        requested_group_description="Group with time-limited ownership",
+        requested_group_type="okta_group",
+        requested_ownership_ending_at=requested_ending_at,
+        request_reason="Need temporary ownership",
+    ).execute()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=approver_user.id,
+        approval_reason="Approved",
+    ).execute()
+
+    db_session.refresh(group_request)
+    created_group = db_session.get(OktaGroup, group_request.approved_group_id)
+
+    # Check that the requester is an owner with the correct ending time
+    ownerships = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        .filter(OktaUserGroupMember.user_id == okta_user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .all()
+    )
+    assert len(ownerships) == 1
+    assert ownerships[0].ended_at is not None
+    
+    # Should be close to the requested time (within a few seconds)
+    time_diff = abs((ownerships[0].ended_at - requested_ending_at).total_seconds())
+    assert time_diff < 5
+
+
+def test_approve_group_request_tag_limits_owner_ending_time(db_session):
+    """Test that tag ownership constraints reduce the resolved ownership ending time during approval"""
+    okta_user = OktaUserFactory.build()
+    approver_user = OktaUserFactory.build()
+    db_session.add(okta_user)
+    db_session.add(approver_user)
+
+    # Create a tag that limits ownership to 30 days (2592000 seconds)
+    tag = TagFactory.build(
+        enabled=True,
+        constraints={
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # 30 days in seconds
+        }
+    )
+    db_session.add(tag)
+    db_session.commit()
+
+    # Request group with this tag, no ending time specified
+    group_request = CreateGroupRequest(
+        requester_user=okta_user.id,
+        requested_group_name="Tag Constrained Group",
+        requested_group_description="Group with tag constraint",
+        requested_group_type="okta_group",
+        requested_group_tags=[tag.id],
+        requested_ownership_ending_at=None,
+        request_reason="Need group",
+    ).execute()
+
+    # Approver sets resolved ownership ending time to 90 days (should be reduced to 30 by tag)
+    requested_90_days = datetime.now(timezone.utc) + timedelta(days=90)
+    group_request.resolved_ownership_ending_at = requested_90_days
+    db_session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=approver_user.id,
+        approval_reason="Approved with time limit",
+    ).execute()
+
+    db_session.refresh(group_request)
+    created_group = db_session.get(OktaGroup, group_request.approved_group_id)
+
+    # Check that the requester is an owner
+    ownerships = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        .filter(OktaUserGroupMember.user_id == okta_user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .all()
+    )
+    assert len(ownerships) == 1
+    assert ownerships[0].ended_at is not None
+    
+    # Should be approximately 30 days from now (not 90)
+    expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
+    time_diff = abs((ownerships[0].ended_at - expected_ending).total_seconds())
+    assert time_diff < 5  # Within 5 seconds of expected
+    
+    # Should be less than what the approver requested
+    assert ownerships[0].ended_at < requested_90_days
+    
+    # Check that resolved_ownership_ending_at was updated to the coalesced value
+    assert group_request.resolved_ownership_ending_at < requested_90_days
+
+
 # TODO: Test that tags are applied to created group
 def test_approve_group_request_applies_tags(db_session):
     """Test that approving a group request applies the requested tags"""
@@ -191,7 +400,7 @@ def test_approve_group_request_applies_tags(db_session):
         requester_user=okta_user.id,
         requested_group_name="Tagged Group",
         requested_group_description="Group with tags",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         requested_group_tags=[tag.id],
         request_reason="Need tagged group",
     ).execute()
@@ -237,7 +446,7 @@ def test_approve_group_request_sets_name(db_session):
         requester_user=okta_user.id,
         requested_group_name="Specific Name",
         requested_group_description="Description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need this name",
     ).execute()
 
@@ -269,7 +478,7 @@ def test_approve_group_request_sets_type(db_session):
         requester_user=okta_user.id,
         requested_group_name="Regular Group",
         requested_group_description="Description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -288,7 +497,7 @@ def test_approve_group_request_sets_type(db_session):
         requester_user=okta_user.id,
         requested_group_name=f"App-{app.name}-Users",
         requested_group_description="App group",
-        requested_group_type=AppGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="app_group",
         requested_app_id=app.id,
         request_reason="Need app group",
     ).execute()
@@ -309,7 +518,7 @@ def test_approve_group_request_sets_type(db_session):
         requester_user=okta_user.id,
         requested_group_name="Role-Marketing",
         requested_group_description="Role group",
-        requested_group_type=RoleGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="role_group",
         request_reason="Need role group",
     ).execute()
 
@@ -337,7 +546,7 @@ def test_approve_group_request_sets_description(db_session):
         requester_user=okta_user.id,
         requested_group_name="Named Group",
         requested_group_description="Specific description text",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need description",
     ).execute()
 
@@ -387,7 +596,7 @@ def test_app_owner_can_approve_request(db_session):
         requester_user=okta_user.id,
         requested_group_name=f"App-{app.name}-NewGroup",
         requested_group_description="New app group",
-        requested_group_type=AppGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="app_group",
         requested_app_id=app.id,
         request_reason="Need app group",
     ).execute()
@@ -439,7 +648,7 @@ def test_app_owner_can_reject_request(db_session):
         requester_user=okta_user.id,
         requested_group_name=f"App-{app.name}-AnotherGroup",
         requested_group_description="Another app group",
-        requested_group_type=AppGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="app_group",
         requested_app_id=app.id,
         request_reason="Need app group",
     ).execute()
@@ -501,7 +710,7 @@ def test_wrong_app_owner_cannot_approve_request(db_session):
         requester_user=okta_user.id,
         requested_group_name=f"App-{other_app.name}-NewGroup",
         requested_group_description="Group for other app",
-        requested_group_type=AppGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="app_group",
         requested_app_id=other_app.id,
         request_reason="Need group for other app",
     ).execute()
@@ -536,7 +745,7 @@ def test_admin_can_approve_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Admin Approved Group",
         requested_group_description="Group approved by admin",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -564,7 +773,7 @@ def test_admin_can_reject_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Admin Rejected Group",
         requested_group_description="Group rejected by admin",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -591,7 +800,7 @@ def test_user_can_reject_own_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Self Rejected Group",
         requested_group_description="Group I don't want anymore",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Changed my mind",
     ).execute()
 
@@ -617,7 +826,7 @@ def test_user_cannot_approve_own_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Self Approval Attempt",
         requested_group_description="Trying to approve myself",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Want to self-approve",
     ).execute()
 
@@ -652,7 +861,7 @@ def test_approver_can_modify_group_details(db_session):
         requester_user=okta_user.id,
         requested_group_name="Original Name",
         requested_group_description="Original description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         requested_group_tags=[tag.id],
         request_reason="Need group",
     ).execute()
@@ -704,7 +913,7 @@ def test_reject_group_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Rejected Group",
         requested_group_description="This will be rejected",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -735,7 +944,7 @@ def test_cannot_approve_already_resolved_request(db_session):
         requester_user=okta_user.id,
         requested_group_name="Already Resolved",
         requested_group_description="Description",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -775,7 +984,7 @@ def test_cannot_approve_deleted_requester(db_session):
         requester_user=okta_user.id,
         requested_group_name="Deleted Requester Group",
         requested_group_description="Requester will be deleted",
-        requested_group_type=OktaGroup.__mapper_args__["polymorphic_identity"],
+        requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
 
@@ -794,3 +1003,70 @@ def test_cannot_approve_deleted_requester(db_session):
     # Should still be pending
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
+
+
+def test_app_owner_auto_approves_own_app_group_request(db_session):
+    """Test that when an app owner creates an app group request, it is automatically approved,
+    the group is created, and the requester is set as the group owner"""
+    app_owner_user = OktaUserFactory.build()
+    db_session.add(app_owner_user)
+
+    app = AppFactory.build()
+    db_session.add(app)
+    db_session.commit()
+
+    # Create owner group for the app
+    owner_group = AppGroupFactory.build(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app.id,
+        is_owner=True,
+    )
+    db_session.add(owner_group)
+    db_session.commit()
+
+    # Make app_owner_user an owner of the app via its owner group
+    db_session.add(
+        OktaUserGroupMember(
+            user_id=app_owner_user.id,
+            group_id=owner_group.id,
+            is_owner=False,
+        )
+    )
+    db_session.commit()
+
+    # App owner creates a group request for their own app
+    group_request = CreateGroupRequest(
+        requester_user=app_owner_user.id,
+        requested_group_name=f"App-{app.name}-NewTeam",
+        requested_group_description="New team group for the app",
+        requested_group_type="app_group",
+        requested_app_id=app.id,
+        request_reason="Need team group for app",
+    ).execute()
+
+    db_session.refresh(group_request)
+
+    # Verify the request was automatically approved
+    assert group_request is not None
+    assert group_request.status == AccessRequestStatus.APPROVED
+    assert group_request.resolved_at is not None
+    assert group_request.approved_group_id is not None
+    assert group_request.resolution_reason == "Requester owns parent app and can create app groups"
+
+    # Verify the group was created
+    created_group = db_session.get(OktaGroup, group_request.approved_group_id)
+    assert created_group is not None
+    assert type(created_group) is AppGroup
+    assert created_group.name == f"App-{app.name}-NewTeam"
+    assert created_group.description == "New team group for the app"
+    assert created_group.app_id == app.id
+
+    # Verify the requester (app owner) is set as the group owner
+    ownerships = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        .filter(OktaUserGroupMember.user_id == app_owner_user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .all()
+    )
+    assert len(ownerships) == 1
+    assert ownerships[0].created_reason == group_request.request_reason

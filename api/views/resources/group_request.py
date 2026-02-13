@@ -241,7 +241,7 @@ class GroupRequestList(MethodResource):
                         query = query.filter(
                             db.and_(
                                 GroupRequest.requested_app_id.in_(owned_app_ids),
-                                GroupRequest.requested_group_type == AppGroup.__mapper_args__["polymorphic_identity"]
+                                GroupRequest.requested_group_type == "app_group"
                             )
                         )
                     else:
@@ -337,7 +337,7 @@ class GroupRequestList(MethodResource):
             abort(403, "Current user is not allowed to perform this action")
 
         # Validate app exists if creating an app group
-        if group_request_args.get("requested_group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
+        if group_request_args.get("requested_group_type") == "app_group":
             if "requested_app_id" not in group_request_args or group_request_args["requested_app_id"] is None:
                 abort(400, "app_id is required for app group requests")
             
@@ -362,8 +362,7 @@ class GroupRequestList(MethodResource):
             .filter(GroupRequest.resolved_at.is_(None))
         )
         
-        # For app groups, also match on app_id to ensure we're only closing true duplicates
-        if group_request_args.get("requested_group_type") == AppGroup.__mapper_args__["polymorphic_identity"]:
+        if group_request_args.get("requested_group_type") == "app_group":
             existing_group_requests_query = existing_group_requests_query.filter(
                 GroupRequest.requested_app_id == group_request_args.get("requested_app_id")
             )

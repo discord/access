@@ -84,12 +84,12 @@ class ApproveGroupRequest:
         )
 
         # Create the group based on resolved fields
-        if self.group_request.resolved_group_type == RoleGroup.__mapper_args__["polymorphic_identity"]:
+        if self.group_request.resolved_group_type == "role_group":
             new_group = RoleGroup(
                 name=self.group_request.resolved_group_name,
                 description=self.group_request.resolved_group_description,
             )
-        elif self.group_request.resolved_group_type == AppGroup.__mapper_args__["polymorphic_identity"]:
+        elif self.group_request.resolved_group_type == "app_group":
             new_group = AppGroup(
                 name=self.group_request.resolved_group_name,
                 description=self.group_request.resolved_group_description,
@@ -107,7 +107,7 @@ class ApproveGroupRequest:
             current_user_id=self.approver_id,
         ).execute()
 
-        # Check tags on created group for ownership length constraints including app tags
+        # Check tags on created group for ownership length constraints including propagated app tags
         created_group_with_tags = (
             db.session.query(OktaGroup)
             .options(
@@ -137,10 +137,9 @@ class ApproveGroupRequest:
             owners_to_add=[self.group_request.requester_user_id],
             users_added_ended_at=coalesced_ownership_ending_at,
             current_user_id=self.approver_id,
-            created_reason=self.group_request.request_reason,
+            created_reason=f'Group request approved: {self.group_request.request_reason}',
             notify=self.notify,
         ).execute()
-
 
         self.group_request.status = AccessRequestStatus.APPROVED
         self.group_request.resolved_at = db.func.now()
