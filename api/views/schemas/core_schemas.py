@@ -13,6 +13,7 @@ from api.models import (
     App,
     AppGroup,
     AppTagMap,
+    GroupRequest,
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,

@@ -29,11 +29,8 @@ class RejectGroupRequest:
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
-            self.rejecter_id = getattr(
-                OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
-                "id",
-                None,
-            )
+            user = OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
+            self.rejecter_id = user.id if user else None
         else:
             self.rejecter_id = current_user_id.id
 

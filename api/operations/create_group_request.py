@@ -58,31 +58,50 @@ class CreateGroupRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[GroupRequest]:
+        # TODO for debugging remove
+        print(f"DEBUG: Creating group request: {self.requested_group_name}, type: {self.requested_group_type}")
+
+        # TODO for debugging remove
+        print(f"DEBUG: Validation failed at line 65")
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
             return None
 
+        # TODO for debugging remove
+        print(f"DEBUG: Validation failed at line 71")
         # Validate that app_id is only provided for AppGroup type
         if self.requested_app_id is not None and self.requested_group_type != "app_group":
             return None
     
+        # TODO for debugging remove
+        print(f"DEBUG: Validation failed at line 77")
         # Validate that app_id is provided if type is AppGroup
         if self.requested_group_type == "app_group" and self.requested_app_id is None:
             return None
     
         # Validate app exists if app_id provided and desired group name prefix is correct
         app = None
+        # TODO for debugging remove
+        print(f"DEBUG: Validation failed at line 85")
         if self.requested_app_id is not None:
-            app = db.session.query(App).filter(App.id == self.requested_app_id).filter(App.deleted_at.is_(None)).first()
+            app = db.session.query(App).options(
+                selectinload(App.active_owner_app_groups).selectinload(AppGroup.active_user_memberships_and_ownerships)
+            ).filter(App.id == self.requested_app_id).filter(App.deleted_at.is_(None)).first()
+            
             if app is None:
                 return None
             if not self.requested_group_name.startswith(f"App-{app.name}-"):
                 return None
     
+        # TODO for debugging remove
+        print(f"DEBUG: Validation failed at line 94")
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
             tags = db.session.query(Tag).filter(Tag.id.in_(self.requested_group_tags)).filter(Tag.deleted_at.is_(None)).all()
+            print(f"DEBUG: Requested {len(self.requested_group_tags)} tags, found {len(tags)} tags")
+            print(f"DEBUG: Requested tag IDs: {self.requested_group_tags}")
+            print(f"DEBUG: Found tag IDs: {[t.id for t in tags]}")
             if len(tags) != len(self.requested_group_tags):
                 return None
     
@@ -191,3 +210,7 @@ class CreateGroupRequest:
         )
     
         return group_request
+    
+    def __generate_id(self) -> str:
+        """Generate a random 20 character ID like Okta IDs"""
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=20))

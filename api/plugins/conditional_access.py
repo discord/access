@@ -6,7 +6,7 @@ from typing import Any, Generator, List, Optional
 
 import pluggy
 
-from api.models import AccessRequest, GroupRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
+from api.models import AccessRequest, App, GroupRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
@@ -39,7 +39,7 @@ class ConditionalAccessPluginSpec:
 
     @hookspec
     def group_request_created(
-        self, group_request: GroupRequest, app: Optional[App] = None, requester: OktaUser
+        self, group_request: GroupRequest, requester: OktaUser, app: Optional[App] = None,
     ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the group request."""
 
@@ -78,7 +78,7 @@ def role_request_created(
 
 @hookimpl(wrapper=True)
 def group_request_created(
-    group_request: GroupRequest, app: Optional[App] = None, requester: OktaUser
+    group_request: GroupRequest, requester: OktaUser, app: Optional[App] = None
 ) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
     try:
         # Trigger exception if it exists
