@@ -438,6 +438,72 @@ class OktaService:
 
         return asyncio.run(_list_owners_for_group(groupId))
 
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/createGroupPushMapping
+    def create_group_push_mapping(self, appId: str, sourceGroupId: str, targetGroupName: str) -> dict[str, Any]:
+        if appId is None or appId == "":
+            logger.warning(f"cannot create group push mapping with appId of {appId}")
+            raise ValueError("appId is required")
+        if sourceGroupId is None or sourceGroupId == "":
+            logger.warning(f"cannot create group push mapping with sourceGroupId of {sourceGroupId}")
+            raise ValueError("sourceGroupId is required")
+        if targetGroupName is None or targetGroupName == "":
+            logger.warning(f"cannot create group push mapping with targetGroupName of {targetGroupName}")
+            raise ValueError("targetGroupName is required")
+
+        async def _async_create_group_push_mapping(
+            appId: str, sourceGroupId: str, targetGroupName: str
+        ) -> dict[str, Any]:
+            async with self._get_sessioned_okta_request_executor() as request_executor:
+                request, error = await request_executor.create_request(
+                    method="POST",
+                    url="/api/v1/apps/{appId}/group-push/mappings".format(appId=appId),
+                    body={"sourceGroupId": sourceGroupId, "targetGroupName": targetGroupName, "status": "ACTIVE"},
+                    headers={},
+                    oauth=False,
+                )
+
+                if error is not None:
+                    raise Exception(error)
+
+                response, error = await OktaService._retry(request_executor.execute, request)
+
+            if error is not None:
+                raise Exception(error)
+
+            assert response is not None
+            return response.get_body()
+
+        return asyncio.run(_async_create_group_push_mapping(appId, sourceGroupId, targetGroupName))
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/deleteGroupPushMapping
+    def delete_group_push_mapping(self, appId: str, mappingId: str, deleteTargetGroup: bool = False) -> None:
+        if appId is None or appId == "":
+            logger.warning(f"cannot delete group push mapping with appId of {appId}")
+            raise ValueError("appId is required")
+        if mappingId is None or mappingId == "":
+            logger.warning(f"cannot delete group push mapping with mappingId of {mappingId}")
+            raise ValueError("mappingId is required")
+
+        async def _async_delete_group_push_mapping(appId: str, mappingId: str, deleteTargetGroup: bool = False) -> None:
+            async with self._get_sessioned_okta_request_executor() as request_executor:
+                request, error = await request_executor.create_request(
+                    method="DELETE",
+                    url=f"/api/v1/apps/{appId}/group-push/mappings/{mappingId}?deleteTargetGroup={str(deleteTargetGroup).lower()}",
+                    body={},
+                    headers={},
+                    oauth=False,
+                )
+
+                if error is not None:
+                    raise Exception(error)
+
+                _, error = await OktaService._retry(request_executor.execute, request)
+
+            if error is not None:
+                raise Exception(error)
+
+        asyncio.run(_async_delete_group_push_mapping(appId, mappingId, deleteTargetGroup))
+
 
 class SessionedOktaRequestExecutor:
     """
