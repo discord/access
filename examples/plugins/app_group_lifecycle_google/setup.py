@@ -18,7 +18,6 @@ setup(
         "SQLAlchemy",
         "google-api-python-client>=2.0.0",
         "google-auth>=2.0.0",
-        "requests>=2.28.0",
     ],
     # Register the plugin with the app group lifecycle plugin system
     entry_points={

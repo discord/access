@@ -60,19 +60,21 @@ def mock_env(monkeypatch):
 
 
 @pytest.fixture
-def mock_google_client(mocker: MockerFixture):
+def mock_google_groups_api_client(mocker: MockerFixture):
     """Mock Google Admin SDK API client."""
     mock_credentials = Mock()
     mock_default = mocker.patch('plugin.default', return_value=(mock_credentials, None))
 
-    mock_client = MagicMock()
-    mock_build = mocker.patch('plugin.build', return_value=mock_client)
+    mock_discovery_api_client = MagicMock()
+    mock_build = mocker.patch('plugin.build', return_value=mock_discovery_api_client)
+    mock_groups_api_client = MagicMock()
+    mock_discovery_api_client.groups.return_value = mock_groups_api_client
 
-    return mock_client
+    return mock_groups_api_client
 
 
 @pytest.fixture
-def plugin_instance(mock_env, mock_google_client):
+def plugin_instance(mock_env, mock_google_groups_api_client):
     """Create a plugin instance with mocked dependencies."""
     return GoogleGroupManagerPlugin()
 
@@ -186,10 +188,10 @@ class TestHelperMethods:
 class TestGoogleAPIIntegration:
     """Test Google API integration with mocking."""
 
-    def test_create_google_group_success(self, plugin_instance, mock_app_group, mock_google_client, mocker: MockerFixture):
+    def test_create_google_group_success(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
         """Test successful Google Group creation."""
         # Mock API response
-        mock_google_client.groups().insert().execute.return_value = {
+        mock_google_groups_api_client.insert().execute.return_value = {
             'id': 'google-group-123',
             'email': 'test-prefix-engineering@test-company.com',
             'name': 'TestApp - Engineering',
@@ -207,13 +209,14 @@ class TestGoogleAPIIntegration:
         result = plugin_instance._create_google_group(mock_app_group)
 
         # Verify
-        assert result == 'TestApp - Engineering'
-        assert mock_google_client.groups().insert.called
+        assert result == 'google-group-123'
+        assert mock_google_groups_api_client.insert.called
         assert mock_set_status.call_count == 2  # Called for 'name' and 'email'
 
-    def test_create_google_group_missing_name(self, plugin_instance, mock_app_group, mock_google_client, mocker: MockerFixture):
+    def test_create_google_group_missing_name(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
         """Test error when Google API response missing 'name' field."""
-        mock_google_client.groups().insert().execute.return_value = {
+        mock_google_groups_api_client.insert().execute.return_value = {
+            'id': 'google-group-123',
             'email': 'test@test-company.com',
             # 'name' is missing
         }
@@ -225,9 +228,10 @@ class TestGoogleAPIIntegration:
         with pytest.raises(ValueError, match="Expected to get a Google group name"):
             plugin_instance._create_google_group(mock_app_group)
 
-    def test_create_google_group_missing_email(self, plugin_instance, mock_app_group, mock_google_client, mocker: MockerFixture):
+    def test_create_google_group_missing_email(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
         """Test error when Google API response missing 'email' field."""
-        mock_google_client.groups().insert().execute.return_value = {
+        mock_google_groups_api_client.insert().execute.return_value = {
+            'id': 'google-group-123',
             'name': 'Test Group',
             # 'email' is missing
         }
@@ -239,7 +243,7 @@ class TestGoogleAPIIntegration:
         with pytest.raises(ValueError, match="Expected to get a Google group email"):
             plugin_instance._create_google_group(mock_app_group)
 
-    def test_create_google_group_api_error(self, plugin_instance, mock_app_group, mock_google_client, mocker: MockerFixture):
+    def test_create_google_group_api_error(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
         """Test handling of Google API errors."""
         # Create a real exception to raise
         error = Exception("Google API error: Permission denied")
@@ -247,8 +251,7 @@ class TestGoogleAPIIntegration:
         # Mock API to raise error - need to properly configure the mock chain
         mock_execute = Mock(side_effect=error)
         mock_insert = Mock(return_value=Mock(execute=mock_execute))
-        mock_groups = Mock(return_value=Mock(insert=mock_insert))
-        mock_google_client.groups = mock_groups
+        mock_google_groups_api_client.insert = mock_insert
 
         # Mock helper methods
         mocker.patch.object(plugin_instance, '_generate_group_email', return_value='test@test-company.com')
@@ -267,7 +270,13 @@ class TestOktaIntegration:
 
     def test_create_okta_push_mapping_success(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test successful Okta group push mapping creation."""
-        # Mock okta service
+        # Mock okta service list_groups to find the target group
+        mock_okta_group = Mock()
+        mock_okta_group.group.id = 'okta-target-group-id'
+        mock_okta_list = mocker.patch('plugin.okta.list_groups')
+        mock_okta_list.return_value = [mock_okta_group]
+
+        # Mock okta service create_group_push_mapping
         mock_okta_create = mocker.patch('plugin.okta.create_group_push_mapping')
         mock_okta_create.return_value = {
             'id': 'okta-mapping-123',
@@ -279,9 +288,10 @@ class TestOktaIntegration:
         mock_set_status = mocker.patch('plugin.set_status_value')
 
         # Execute
-        plugin_instance._create_okta_group_push_mapping(mock_app_group, 'TestApp - Engineering')
+        plugin_instance._create_okta_group_push_mapping(mock_app_group, 'google-group-123')
 
         # Verify
+        assert mock_okta_list.called
         assert mock_okta_create.called
         mock_set_status.assert_called_once_with(
             mock_app_group,
@@ -292,6 +302,13 @@ class TestOktaIntegration:
 
     def test_create_okta_push_mapping_missing_id(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test error when Okta response missing mapping ID."""
+        # Mock okta service list_groups to find the target group
+        mock_okta_group = Mock()
+        mock_okta_group.group.id = 'okta-target-group-id'
+        mock_okta_list = mocker.patch('plugin.okta.list_groups')
+        mock_okta_list.return_value = [mock_okta_group]
+
+        # Mock okta service create_group_push_mapping with missing ID
         mock_okta_create = mocker.patch('plugin.okta.create_group_push_mapping')
         mock_okta_create.return_value = {
             'sourceGroupId': 'test-group-id',
@@ -299,15 +316,22 @@ class TestOktaIntegration:
         }
 
         with pytest.raises(Exception, match="Expected to get a mapping ID"):
-            plugin_instance._create_okta_group_push_mapping(mock_app_group, 'Test Group')
+            plugin_instance._create_okta_group_push_mapping(mock_app_group, 'google-group-123')
 
     def test_create_okta_push_mapping_api_error(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test handling of Okta API errors."""
+        # Mock okta service list_groups to find the target group
+        mock_okta_group = Mock()
+        mock_okta_group.group.id = 'okta-target-group-id'
+        mock_okta_list = mocker.patch('plugin.okta.list_groups')
+        mock_okta_list.return_value = [mock_okta_group]
+
+        # Mock okta service create_group_push_mapping to raise error
         mock_okta_create = mocker.patch('plugin.okta.create_group_push_mapping')
         mock_okta_create.side_effect = Exception("Okta API error")
 
         with pytest.raises(Exception) as exc_info:
-            plugin_instance._create_okta_group_push_mapping(mock_app_group, 'Test Group')
+            plugin_instance._create_okta_group_push_mapping(mock_app_group, 'google-group-123')
 
         # Verify note was added
         assert len(exc_info.value.__notes__) > 0
@@ -323,7 +347,7 @@ class TestOktaIntegration:
         mock_okta_delete = mocker.patch('plugin.okta.delete_group_push_mapping')
 
         # Execute
-        plugin_instance._delete_okta_group_push_mapping_and_google_group(mock_app_group)
+        plugin_instance._delete_okta_group_push_mapping(mock_app_group)
 
         # Verify
         mock_okta_delete.assert_called_once_with(
@@ -339,7 +363,7 @@ class TestOktaIntegration:
         mock_okta_delete = mocker.patch('plugin.okta.delete_group_push_mapping')
 
         # Execute
-        plugin_instance._delete_okta_group_push_mapping_and_google_group(mock_app_group)
+        plugin_instance._delete_okta_group_push_mapping(mock_app_group)
 
         # Verify
         assert not mock_okta_delete.called
@@ -353,11 +377,56 @@ class TestOktaIntegration:
         mock_okta_delete.side_effect = Exception("Okta API error")
 
         with pytest.raises(Exception) as exc_info:
-            plugin_instance._delete_okta_group_push_mapping_and_google_group(mock_app_group)
+            plugin_instance._delete_okta_group_push_mapping(mock_app_group)
 
         # Verify note was added
         assert len(exc_info.value.__notes__) > 0
         assert "Failed to delete Okta push mapping" in exc_info.value.__notes__[0]
+
+    def test_delete_google_group_success(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
+        """Test successful Google Group deletion."""
+        # Mock get_status_value to return valid email
+        mocker.patch('plugin.get_status_value', return_value='test-prefix-engineering@test-company.com')
+
+        # Mock Google API delete
+        mock_delete = MagicMock()
+        mock_google_groups_api_client.delete.return_value = mock_delete
+
+        # Execute
+        plugin_instance._delete_google_group(mock_app_group)
+
+        # Verify
+        mock_google_groups_api_client.delete.assert_called_once_with(groupKey='test-prefix-engineering@test-company.com')
+        mock_delete.execute.assert_called_once()
+
+    def test_delete_google_group_no_email(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture, caplog):
+        """Test early return when no email status present."""
+        # Mock get_status_value to return None
+        mocker.patch('plugin.get_status_value', return_value=None)
+
+        # Execute
+        plugin_instance._delete_google_group(mock_app_group)
+
+        # Verify no API call was made
+        mock_google_groups_api_client.delete.assert_not_called()
+        assert "No Google group email found" in caplog.text
+
+    def test_delete_google_group_api_error(self, plugin_instance, mock_app_group, mock_google_groups_api_client, mocker: MockerFixture):
+        """Test handling of Google API errors during deletion."""
+        # Mock get_status_value to return valid email
+        mocker.patch('plugin.get_status_value', return_value='test-prefix-engineering@test-company.com')
+
+        # Mock API to raise error
+        mock_delete = MagicMock()
+        mock_delete.execute.side_effect = Exception("Google API error")
+        mock_google_groups_api_client.delete.return_value = mock_delete
+
+        with pytest.raises(Exception) as exc_info:
+            plugin_instance._delete_google_group(mock_app_group)
+
+        # Verify note was added
+        assert len(exc_info.value.__notes__) > 0
+        assert "Failed to delete Google group" in exc_info.value.__notes__[0]
 
 
 class TestConfigurationValidation:
@@ -422,7 +491,7 @@ class TestLifecycleHooks:
         mock_create_google = mocker.patch.object(
             plugin_instance,
             '_create_google_group',
-            return_value='TestApp - Engineering'
+            return_value='google-group-123'
         )
         mock_create_okta = mocker.patch.object(
             plugin_instance,
@@ -438,7 +507,7 @@ class TestLifecycleHooks:
         # Verify orchestration
         mock_is_enabled.assert_called_once_with(mock_app_group)
         mock_create_google.assert_called_once_with(mock_app_group)
-        mock_create_okta.assert_called_once_with(mock_app_group, 'TestApp - Engineering')
+        mock_create_okta.assert_called_once_with(mock_app_group, 'google-group-123')
         assert mock_session.add.call_count == 2  # Called twice to persist status updates
         assert mock_session.commit.call_count == 2  # Called twice after each add
 
@@ -510,7 +579,7 @@ class TestLifecycleHooks:
         mock_create_google = mocker.patch.object(
             plugin_instance,
             '_create_google_group',
-            return_value='TestApp - Engineering'
+            return_value='google-group-123'
         )
         mock_create_okta = mocker.patch.object(
             plugin_instance,
@@ -530,17 +599,15 @@ class TestLifecycleHooks:
         mock_create_google.assert_called_once_with(mock_app_group)
         assert mock_session.add.call_count == 1  # Called once after Google Group creation
         assert mock_session.commit.call_count == 1  # Called once after Google Group creation
-        mock_create_okta.assert_called_once_with(mock_app_group, 'TestApp - Engineering')
+        mock_create_okta.assert_called_once_with(mock_app_group, 'google-group-123')
 
     def test_group_deleted_success_flow(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test successful group deletion workflow orchestration."""
         # Mock helper methods
         mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled', return_value=True)
         mock_get_status = mocker.patch('plugin.get_status_value', return_value='test@test-company.com')
-        mock_delete = mocker.patch.object(
-            plugin_instance,
-            '_delete_okta_group_push_mapping_and_google_group'
-        )
+        mock_delete_okta = mocker.patch.object(plugin_instance, '_delete_okta_group_push_mapping')
+        mock_delete_google = mocker.patch.object(plugin_instance, '_delete_google_group')
 
         # Mock session
         mock_session = Mock()
@@ -551,17 +618,16 @@ class TestLifecycleHooks:
         # Verify orchestration
         mock_is_enabled.assert_called_once_with(mock_app_group)
         mock_get_status.assert_called_once_with(mock_app_group, "email", PLUGIN_ID)
-        mock_delete.assert_called_once_with(mock_app_group)
+        mock_delete_okta.assert_called_once_with(mock_app_group)
+        mock_delete_google.assert_called_once_with(mock_app_group)
 
     def test_group_deleted_plugin_disabled(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test that disabled plugin skips all operations."""
         # Mock helper methods
         mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled', return_value=False)
         mock_get_status = mocker.patch('plugin.get_status_value')
-        mock_delete = mocker.patch.object(
-            plugin_instance,
-            '_delete_okta_group_push_mapping_and_google_group'
-        )
+        mock_delete_okta = mocker.patch.object(plugin_instance, '_delete_okta_group_push_mapping')
+        mock_delete_google = mocker.patch.object(plugin_instance, '_delete_google_group')
 
         # Mock session
         mock_session = Mock()
@@ -572,16 +638,15 @@ class TestLifecycleHooks:
         # Verify early return - no operations performed
         mock_is_enabled.assert_called_once_with(mock_app_group)
         mock_get_status.assert_not_called()
-        mock_delete.assert_not_called()
+        mock_delete_okta.assert_not_called()
+        mock_delete_google.assert_not_called()
 
     def test_group_deleted_wrong_plugin_id(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test that wrong plugin_id causes early return."""
         # Mock helper methods
         mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled')
-        mock_delete = mocker.patch.object(
-            plugin_instance,
-            '_delete_okta_group_push_mapping_and_google_group'
-        )
+        mock_delete_okta = mocker.patch.object(plugin_instance, '_delete_okta_group_push_mapping')
+        mock_delete_google = mocker.patch.object(plugin_instance, '_delete_google_group')
 
         # Mock session
         mock_session = Mock()
@@ -591,17 +656,16 @@ class TestLifecycleHooks:
 
         # Verify early return - no operations performed
         mock_is_enabled.assert_not_called()
-        mock_delete.assert_not_called()
+        mock_delete_okta.assert_not_called()
+        mock_delete_google.assert_not_called()
 
     def test_group_deleted_no_email_status(self, plugin_instance, mock_app_group, mocker: MockerFixture):
         """Test early return when no email status (group not managed by plugin)."""
         # Mock helper methods
         mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled', return_value=True)
         mock_get_status = mocker.patch('plugin.get_status_value', return_value=None)
-        mock_delete = mocker.patch.object(
-            plugin_instance,
-            '_delete_okta_group_push_mapping_and_google_group'
-        )
+        mock_delete_okta = mocker.patch.object(plugin_instance, '_delete_okta_group_push_mapping')
+        mock_delete_google = mocker.patch.object(plugin_instance, '_delete_google_group')
 
         # Mock session
         mock_session = Mock()
@@ -612,27 +676,55 @@ class TestLifecycleHooks:
         # Verify orchestration
         mock_is_enabled.assert_called_once_with(mock_app_group)
         mock_get_status.assert_called_once_with(mock_app_group, "email", PLUGIN_ID)
-        mock_delete.assert_not_called()  # Should not be called when no email status
+        mock_delete_okta.assert_not_called()  # Should not be called when no email status
+        mock_delete_google.assert_not_called()  # Should not be called when no email status
 
-    def test_group_deleted_deletion_raises_exception(self, plugin_instance, mock_app_group, mocker: MockerFixture):
-        """Test that exception during deletion propagates."""
+    def test_group_deleted_okta_deletion_raises_exception(self, plugin_instance, mock_app_group, mocker: MockerFixture):
+        """Test that exception during Okta deletion does not prevent Google group deletion."""
         # Mock helper methods
         mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled', return_value=True)
         mock_get_status = mocker.patch('plugin.get_status_value', return_value='test@test-company.com')
-        mock_delete = mocker.patch.object(
+        mock_delete_okta = mocker.patch.object(
             plugin_instance,
-            '_delete_okta_group_push_mapping_and_google_group',
-            side_effect=Exception("Deletion failed")
+            '_delete_okta_group_push_mapping',
+            side_effect=Exception("Okta deletion failed")
+        )
+        mock_delete_google = mocker.patch.object(plugin_instance, '_delete_google_group')
+
+        # Mock session
+        mock_session = Mock()
+
+        # Execute and verify exception propagates
+        with pytest.raises(Exception, match="Okta deletion failed"):
+            plugin_instance.group_deleted(mock_session, mock_app_group, plugin_id=None)
+
+        # Verify Okta deletion was attempted but Google deletion was not reached
+        mock_is_enabled.assert_called_once_with(mock_app_group)
+        mock_get_status.assert_called_once_with(mock_app_group, "email", PLUGIN_ID)
+        mock_delete_okta.assert_called_once_with(mock_app_group)
+        mock_delete_google.assert_not_called()  # Not called because Okta deletion failed first
+
+    def test_group_deleted_google_deletion_raises_exception(self, plugin_instance, mock_app_group, mocker: MockerFixture):
+        """Test that exception during Google group deletion propagates after Okta deletion succeeds."""
+        # Mock helper methods
+        mock_is_enabled = mocker.patch.object(plugin_instance, '_is_enabled', return_value=True)
+        mock_get_status = mocker.patch('plugin.get_status_value', return_value='test@test-company.com')
+        mock_delete_okta = mocker.patch.object(plugin_instance, '_delete_okta_group_push_mapping')
+        mock_delete_google = mocker.patch.object(
+            plugin_instance,
+            '_delete_google_group',
+            side_effect=Exception("Google deletion failed")
         )
 
         # Mock session
         mock_session = Mock()
 
         # Execute and verify exception propagates
-        with pytest.raises(Exception, match="Deletion failed"):
+        with pytest.raises(Exception, match="Google deletion failed"):
             plugin_instance.group_deleted(mock_session, mock_app_group, plugin_id=None)
 
-        # Verify orchestration reached deletion attempt
+        # Verify both deletions were attempted
         mock_is_enabled.assert_called_once_with(mock_app_group)
         mock_get_status.assert_called_once_with(mock_app_group, "email", PLUGIN_ID)
-        mock_delete.assert_called_once_with(mock_app_group)
+        mock_delete_okta.assert_called_once_with(mock_app_group)
+        mock_delete_google.assert_called_once_with(mock_app_group)

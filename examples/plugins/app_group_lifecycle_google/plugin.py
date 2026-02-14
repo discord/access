@@ -64,7 +64,7 @@ class GoogleGroupManagerPlugin:
 
         # Initialize Google Admin SDK Directory API client
         google_credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
-        self._google_group_api_client = build('admin', 'directory_v1', credentials=google_credentials)
+        self._google_group_api_client = build('admin', 'directory_v1', credentials=google_credentials).groups()
 
     @hookimpl
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -87,7 +87,7 @@ class GoogleGroupManagerPlugin:
 
         return {
             "enabled": AppGroupLifecyclePluginConfigProperty(
-                display_name="Enable?",
+                display_name="Enabled?",
                 help_text="Enable or disable automatic Google group creation and management",
                 type="boolean",
                 default_value=True,
@@ -207,14 +207,14 @@ class GoogleGroupManagerPlugin:
             return
 
         # Create the Google group (this will also set the name and email status)
-        google_group_name = self._create_google_group(group)
+        google_group_id = self._create_google_group(group)
 
         # Add group to session to persist status updates
         session.add(group)
         session.commit()
 
         # Create Okta group push mapping (this will also set the push_mapping_id status)
-        self._create_okta_group_push_mapping(group, google_group_name)
+        self._create_okta_group_push_mapping(group, google_group_id)
 
         # Add group to session to persist status updates
         session.add(group)
@@ -240,7 +240,9 @@ class GoogleGroupManagerPlugin:
 
         logger.info(f"Deleting Okta push mapping and target Google group (email: {group_email}) for Access group {group.name}")
 
-        self._delete_okta_group_push_mapping_and_google_group(group)
+        self._delete_okta_group_push_mapping(group)
+
+        self._delete_google_group(group)
 
     # Helper methods
 
@@ -284,7 +286,11 @@ class GoogleGroupManagerPlugin:
                 'description': f'Managed by the Access group {group.name}. {group.description}',
             }
 
-            result = self._google_group_api_client.groups().insert(body=group_properties).execute()
+            result = self._google_group_api_client.insert(body=group_properties).execute()
+
+            created_google_group_id = result.get('id')
+            if not created_google_group_id:
+                raise ValueError(f"Expected to get a Google group ID from the Google group creation result, but got {result}")
 
             created_google_group_name = result.get('name')
             if not created_google_group_name:
@@ -300,20 +306,27 @@ class GoogleGroupManagerPlugin:
 
             logger.info(f"Successfully created Google group: {created_google_group_email} ({created_google_group_name})")
 
-            return created_google_group_name
+            return created_google_group_id
 
         except Exception as e:
             e.add_note(f"Failed to create Google group {group_email} for Access group {group.name}")
             raise
 
-    def _create_okta_group_push_mapping(self, group: AppGroup, google_group_name: str) -> None:
+    def _create_okta_group_push_mapping(self, group: AppGroup, google_group_id: str) -> None:
         """Create an Okta group push mapping for the group."""
         try:
-            # Create the group push mapping using OktaService
+            # Find the Okta ID of the target Google group
+            search_query = f'type eq "APP_GROUP" and profile.googleExternalId eq "{google_group_id}"'
+            matching_groups = okta.list_groups(query_params={"search": search_query})
+            if len(matching_groups) != 1:
+                raise ValueError(f"Expected to find exactly one Okta app group with Google group ID {google_group_id}, but found {len(matching_groups)}")
+            target_group_id = str(matching_groups[0].group.id)
+
+            # Create the group push mapping
             result = okta.create_group_push_mapping(
                 appId=self._google_okta_app_id,
                 sourceGroupId=group.id,
-                targetGroupName=google_group_name,
+                targetGroupId=target_group_id,
             )
 
             # Store the mapping ID in status for later deletion
@@ -329,27 +342,46 @@ class GoogleGroupManagerPlugin:
             e.add_note(f"Failed to create Okta group push mapping for {group.name}")
             raise
 
-    def _delete_okta_group_push_mapping_and_google_group(self, group: AppGroup) -> None:
+    def _delete_okta_group_push_mapping(self, group: AppGroup) -> None:
         """Delete the Okta group push mapping for the group."""
         try:
             # Get the mapping ID from status
             mapping_id: str | None = get_status_value(group, "push_mapping_id", PLUGIN_ID)
 
             if not mapping_id:
-                logger.warning(f"No push mapping ID found for {group.name}; cannot delete group push mapping and Google group")
+                logger.warning(f"No push mapping ID found for {group.name}; cannot delete group push mapping")
                 return
 
-            # Delete the group push mapping and the target Google group
+            # Delete the group push mapping
             okta.delete_group_push_mapping(
                 appId=self._google_okta_app_id,
                 mappingId=mapping_id,
                 deleteTargetGroup=True,
             )
 
-            logger.info(f"Successfully deleted Okta push mapping and target Google group for {group.name} (mapping ID: {mapping_id})")
+            logger.info(f"Successfully deleted Okta push mapping for {group.name} (mapping ID: {mapping_id})")
 
         except Exception as e:
-            e.add_note(f"Failed to delete Okta push mapping and target Google group for {group.name}")
+            e.add_note(f"Failed to delete Okta push mapping for {group.name}")
+            raise
+
+    def _delete_google_group(self, group: AppGroup) -> None:
+        """Delete a Google group using the Admin SDK Directory API."""
+        try:
+            # Get the Google group email from status
+            group_email: str | None = get_status_value(group, "email", PLUGIN_ID)
+
+            if not group_email:
+                logger.warning(f"No Google group email found for {group.name}; cannot delete Google group")
+                return
+
+            # Delete the Google group
+            self._google_group_api_client.delete(groupKey=group_email).execute()
+
+            logger.info(f"Successfully deleted Google group: {group_email}")
+
+        except Exception as e:
+            e.add_note(f"Failed to delete Google group for {group.name}")
             raise
 
 
