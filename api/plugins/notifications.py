@@ -5,7 +5,7 @@ from typing import Generator, Optional
 
 import pluggy
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import AccessRequest, GroupRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -110,6 +110,25 @@ class NotificationPluginSpec:
         notify_requester: bool,
     ) -> None:
         """Notify the requester that their role request has been processed."""
+
+    @hookspec
+    def access_group_request_created(
+        self,
+        group_request: GroupRequest,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+    ) -> None:
+        """Notify the approvers of the group request."""
+
+    @hookspec
+    def access_group_request_completed(
+        self,
+        group_request: GroupRequest,
+        requester: OktaUser,
+        approvers: list[OktaUser],
+        notify_requester: bool,
+    ) -> None:
+        """Notify the requester that their group request has been processed."""
 
 
 @hookimpl(wrapper=True)
@@ -225,6 +244,37 @@ def access_role_request_completed(
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute role request completed notification callback")
+
+
+@hookimpl(wrapper=True)
+def access_group_request_created(
+    group_request: GroupRequest,
+    requester: OktaUser,
+    approvers: list[OktaUser],
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute group request created notification callback")
+
+
+@hookimpl(wrapper=True)
+def access_group_request_completed(
+    group_request: GroupRequest,
+    requester: OktaUser,
+    approvers: list[OktaUser],
+    notify_requester: bool,
+) -> Generator[None, None, None]:
+    try:
+        return (yield)
+    except Exception:
+        # Log and do not raise since notification failures should not
+        # break the flow. Users can still manually ping approvers
+        # to process their request from the UI
+        logger.exception("Failed to execute group request completed notification callback")
 
 
 def get_notification_hook() -> pluggy.HookRelay:
