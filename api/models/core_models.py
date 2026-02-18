@@ -922,7 +922,7 @@ class GroupRequest(db.Model):
         default=AccessRequestStatus.PENDING,
     )
 
-    # For now, the requester will be set as the owner of the group, may expand in the future to allow the 
+    # For now, the requester will be set as the owner of the group, may expand in the future to allow the
     # requester to set other users or roles as proposed owners
     requester_user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties

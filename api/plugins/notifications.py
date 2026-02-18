@@ -5,7 +5,16 @@ from typing import Generator, Optional
 
 import pluggy
 
-from api.models import AccessRequest, GroupRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import (
+    AccessRequest,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    RoleRequest,
+)
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)

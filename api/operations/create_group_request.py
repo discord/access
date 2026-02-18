@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
 from api.models import (
@@ -12,11 +11,8 @@ from api.models import (
     App,
     AppGroup,
     GroupRequest,
-    OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
-    RoleGroup,
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
@@ -62,35 +58,44 @@ class CreateGroupRequest:
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
             return None
-    
+
         # Validate that app_id is only provided for AppGroup type
         if self.requested_app_id is not None and self.requested_group_type != "app_group":
             return None
-    
+
         # Validate that app_id is provided if type is AppGroup
         if self.requested_group_type == "app_group" and self.requested_app_id is None:
             return None
-    
+
         # Validate app exists if app_id provided and desired group name prefix is correct
         app = None
         if self.requested_app_id is not None:
-            app = db.session.query(App).filter(
-                App.id == self.requested_app_id,
-                App.deleted_at.is_(None),
-            ).first()
-    
+            app = (
+                db.session.query(App)
+                .filter(
+                    App.id == self.requested_app_id,
+                    App.deleted_at.is_(None),
+                )
+                .first()
+            )
+
             if app is None:
                 return None
             if not self.requested_group_name.startswith(f"App-{app.name}-"):
                 return None
-    
+
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
-            tags = db.session.query(Tag).filter(Tag.id.in_(self.requested_group_tags)).filter(Tag.deleted_at.is_(None)).all()
+            tags = (
+                db.session.query(Tag)
+                .filter(Tag.id.in_(self.requested_group_tags))
+                .filter(Tag.deleted_at.is_(None))
+                .all()
+            )
             if len(tags) != len(self.requested_group_tags):
                 return None
-    
+
         # Apply tag ownership time constraints to requested_ownership_ending_at
         # Ensures that if tags have ownership time limits, they are enforced
         coalesced_ownership_ending_at = coalesce_ended_at(
@@ -99,7 +104,7 @@ class CreateGroupRequest:
             initial_ended_at=self.requested_ownership_ending_at,
             group_is_managed=True,
         )
-    
+
         group_request = GroupRequest(
             id=self.id,
             status=AccessRequestStatus.PENDING,
@@ -112,44 +117,40 @@ class CreateGroupRequest:
             requested_ownership_ending_at=coalesced_ownership_ending_at,
             request_reason=self.request_reason,
         )
-    
+
         db.session.add(group_request)
         db.session.commit()
-    
 
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None:
             # Get app owners by checking active owner app groups
             # Use a direct query to avoid lazy loading issues with raise_on_sql
             now = datetime.now(timezone.utc)
-            
+
             app_owner_user_ids = {
                 user_id
                 for (user_id,) in db.session.query(OktaUserGroupMember.user_id)
                 .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
                 .filter(
                     AppGroup.app_id == app.id,
-                    AppGroup.is_owner == True,
+                    AppGroup.is_owner,
                     AppGroup.deleted_at.is_(None),
-                    db.or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > now
-                    ),
+                    db.or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > now),
                 )
                 .distinct()
                 .all()
             }
-            
+
             if self.requester.id in app_owner_user_ids:
                 ApproveGroupRequest(
                     group_request=group_request,
                     approver_user=self.requester,
                     approval_reason="Requester owns parent app and can create app groups",
                     notify=False,
-                    bypass_self_approval=True
+                    bypass_self_approval=True,
                 ).execute()
                 return group_request
-    
+
         # Fetch the users to notify
         # If app group, notify app managers; otherwise notify access owners
         if self.requested_app_id is not None:
@@ -157,18 +158,28 @@ class CreateGroupRequest:
         else:
             # TODO maybe change this to just platsec for RoleGroups, want to be able to enforce RBAC?
             approvers = get_access_owners()
-    
+
         # Filter out the requester from approvers if they're the only one
         if len(approvers) == 1 and approvers[0].id == self.requester.id:
             if self.requested_app_id is not None:
                 # Fall back to access owners if requester is the only app manager
                 approvers = get_access_owners()
-    
+
         # Audit logging
         context = has_request_context()
-    
+
         current_app.logger.info(
-            AuditLogSchema(exclude=["group_request.resolution_reason", "group_request.resolved_group_name", "group_request.resolved_group_description", "group_request.resolved_group_type", "group_request.resolved_app_id", "group_request.resolved_group_tags", "group_request.resolved_ownership_ending_at"]).dumps(
+            AuditLogSchema(
+                exclude=[
+                    "group_request.resolution_reason",
+                    "group_request.resolved_group_name",
+                    "group_request.resolved_group_description",
+                    "group_request.resolved_group_type",
+                    "group_request.resolved_app_id",
+                    "group_request.resolved_group_tags",
+                    "group_request.resolved_ownership_ending_at",
+                ]
+            ).dumps(
                 {
                     "event_type": EventType.group_request_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
@@ -182,13 +193,13 @@ class CreateGroupRequest:
                 }
             )
         )
-    
+
         # Check conditional access hook
         conditional_access_responses = self.conditional_access_hook.group_request_created(
             group_request=group_request,
             requester=self.requester,
         )
-    
+
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
@@ -203,18 +214,18 @@ class CreateGroupRequest:
                         rejection_reason=response.reason,
                         notify=False,
                     ).execute()
-    
+
                 return group_request
-    
+
         # Send notification to approvers
         self.notification_hook.access_group_request_created(
             group_request=group_request,
             requester=self.requester,
             approvers=approvers,
         )
-    
+
         return group_request
-    
+
     def __generate_id(self) -> str:
         """Generate a random 20 character ID like Okta IDs"""
-        return ''.join(random.choices(string.ascii_letters + string.digits, k=20))
+        return "".join(random.choices(string.ascii_letters + string.digits, k=20))

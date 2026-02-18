@@ -1,4 +1,3 @@
-import pytest
 from datetime import datetime, timedelta, timezone
 from typing import cast, Protocol
 
@@ -11,7 +10,6 @@ from pytest_mock import MockerFixture
 
 from api.models import (
     AccessRequestStatus,
-    App,
     AppGroup,
     AppTagMap,
     OktaGroup,
@@ -178,7 +176,7 @@ def test_create_group_request_tag_limits_ownership_time(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 7776000  # in seconds
-        }
+        },
     )
 
     db.session.add(user)
@@ -198,13 +196,13 @@ def test_create_group_request_tag_limits_ownership_time(
 
     assert group_request is not None
     assert group_request.requested_ownership_ending_at is not None
-    
+
     # Refresh to get proper timezone info
     db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
         stored_time = stored_time.replace(tzinfo=timezone.utc)
-    
+
     # Should be set to approximately 90 days from now
     expected_ending = datetime.now(timezone.utc) + timedelta(days=90)
     time_diff = abs((stored_time - expected_ending).total_seconds())
@@ -222,7 +220,7 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # in seconds
-        }
+        },
     )
 
     db.session.add(user)
@@ -244,18 +242,17 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
 
     assert group_request is not None
     assert group_request.requested_ownership_ending_at is not None
-    
+
     # Refresh to get proper timezone info
     db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
         stored_time = stored_time.replace(tzinfo=timezone.utc)
-    
+
     # Should be set to approximately 30 days from now (not 90)
     expected_ending = datetime.now(timezone.utc) + timedelta(days=30)
     time_diff = abs((stored_time - expected_ending).total_seconds())
     assert time_diff < 5  # Within 5 seconds of expected
-
 
 
 def test_approve_group_request_creates_group(
@@ -309,7 +306,7 @@ def test_approve_group_request_creates_group(
         .all()
     )
     assert len(ownerships) == 1
-    assert ownerships[0].created_reason == f'Group request approved: {group_request.request_reason}'
+    assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
 
 
 def test_approve_group_request_sets_owner_with_ending_time(
@@ -396,7 +393,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # in seconds
-        }
+        },
     )
     db.session.add(tag)
     db.session.commit()
@@ -830,7 +827,7 @@ def test_wrong_app_owner_cannot_approve_request(
     db.session.commit()
 
     # App owner of 'app' should NOT be able to approve request for 'other_app'
-    result = ApproveGroupRequest(
+    ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Should not be allowed",
@@ -1183,7 +1180,7 @@ def test_app_owner_auto_approves_own_app_group_request(
 
     # Verify the request was automatically approved
     assert group_request is not None
-    
+
     db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolved_at is not None
@@ -1206,8 +1203,7 @@ def test_app_owner_auto_approves_own_app_group_request(
         .all()
     )
     assert len(ownerships) == 1
-    assert ownerships[0].created_reason == f'Group request approved: {group_request.request_reason}'
-
+    assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
 
 
 def test_app_owner_auto_approves_own_app_group_request_tagged(
@@ -1219,12 +1215,7 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 ) -> None:
     app_owner = OktaUserFactory.create()
     app_obj = AppFactory.create()
-    tag = TagFactory.create(
-        enabled=True,
-        constraints={
-            Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True
-        }
-    )
+    tag = TagFactory.create(enabled=True, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True})
 
     db.session.add(app_owner)
     db.session.add(app_obj)
@@ -1276,7 +1267,7 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 
     # Verify the request was automatically approved
     assert group_request is not None
-    
+
     db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolved_at is not None
@@ -1301,18 +1292,21 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
     assert len(ownerships) == 0
 
     # Verify the tag was applied to the created group
-    tag_mappings = {tag_map.tag_id for tag_map in (
-        OktaGroupTagMap.query.filter(OktaGroupTagMap.group_id == created_group.id)
-        .filter(OktaGroupTagMap.tag_id == tag.id)
-        .filter(
-            db.or_(
-                OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > db.func.now(),
+    tag_mappings = {
+        tag_map.tag_id
+        for tag_map in (
+            OktaGroupTagMap.query.filter(OktaGroupTagMap.group_id == created_group.id)
+            .filter(OktaGroupTagMap.tag_id == tag.id)
+            .filter(
+                db.or_(
+                    OktaGroupTagMap.ended_at.is_(None),
+                    OktaGroupTagMap.ended_at > db.func.now(),
+                )
             )
+            .all()
         )
-        .all()
-    )}
-    
+    }
+
     assert len(tag_mappings) == 1
 
 

@@ -1,17 +1,25 @@
-from datetime import datetime
 from typing import Optional
 
 from flask import current_app, has_request_context, request
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
-from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, Tag
+from api.models import (
+    AccessRequestStatus,
+    AppGroup,
+    GroupRequest,
+    OktaGroup,
+    OktaGroupTagMap,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    Tag,
+)
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.operations.modify_group_tags import ModifyGroupTags
 from api.plugins import get_notification_hook
 from api.views.schemas import AuditLogSchema, EventType
 
@@ -27,9 +35,7 @@ class ApproveGroupRequest:
         bypass_self_approval: bool = False,
     ):
         self.group_request = (
-            GroupRequest.query.options(
-                joinedload(GroupRequest.active_requester)
-            )
+            GroupRequest.query.options(joinedload(GroupRequest.active_requester))
             .filter(GroupRequest.id == (group_request if isinstance(group_request, str) else group_request.id))
             .first()
         )
@@ -69,21 +75,31 @@ class ApproveGroupRequest:
             return self.group_request
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
-        resolved_name = (self.group_request.resolved_group_name
-                         if self.group_request.resolved_group_name
-                         else self.group_request.requested_group_name)
-        resolved_description = (self.group_request.resolved_group_description
-                                 if self.group_request.resolved_group_description
-                                 else self.group_request.requested_group_description)
-        resolved_type = (self.group_request.resolved_group_type
-                         if self.group_request.resolved_group_type
-                         else self.group_request.requested_group_type)
-        resolved_app_id = (self.group_request.resolved_app_id
-                           if self.group_request.resolved_app_id
-                           else self.group_request.requested_app_id)
-        resolved_tags = (self.group_request.resolved_group_tags
-                         if self.group_request.resolved_group_tags
-                         else self.group_request.requested_group_tags)
+        resolved_name = (
+            self.group_request.resolved_group_name
+            if self.group_request.resolved_group_name
+            else self.group_request.requested_group_name
+        )
+        resolved_description = (
+            self.group_request.resolved_group_description
+            if self.group_request.resolved_group_description
+            else self.group_request.requested_group_description
+        )
+        resolved_type = (
+            self.group_request.resolved_group_type
+            if self.group_request.resolved_group_type
+            else self.group_request.requested_group_type
+        )
+        resolved_app_id = (
+            self.group_request.resolved_app_id
+            if self.group_request.resolved_app_id
+            else self.group_request.requested_app_id
+        )
+        resolved_tags = (
+            self.group_request.resolved_group_tags
+            if self.group_request.resolved_group_tags
+            else self.group_request.requested_group_tags
+        )
 
         # authorization
         access_owner_ids = {u.id for u in get_access_owners()}
@@ -92,15 +108,18 @@ class ApproveGroupRequest:
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
             if not is_admin:
-                is_app_owner = db.session.query(OktaUserGroupMember).join(
-                    AppGroup, OktaUserGroupMember.group_id == AppGroup.id
-                ).filter(
-                    AppGroup.app_id == resolved_app_id,
-                    AppGroup.is_owner.is_(True),
-                    AppGroup.deleted_at.is_(None),
-                    OktaUserGroupMember.user_id == self.approver_id,
-                    OktaUserGroupMember.ended_at.is_(None),
-                ).first()
+                is_app_owner = (
+                    db.session.query(OktaUserGroupMember)
+                    .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
+                    .filter(
+                        AppGroup.app_id == resolved_app_id,
+                        AppGroup.is_owner.is_(True),
+                        AppGroup.deleted_at.is_(None),
+                        OktaUserGroupMember.user_id == self.approver_id,
+                        OktaUserGroupMember.ended_at.is_(None),
+                    )
+                    .first()
+                )
 
                 if not is_app_owner:
                     return self.group_request
@@ -189,7 +208,9 @@ class ApproveGroupRequest:
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
         if self.bypass_self_approval:
-            can_add_owner, _ = CheckForSelfAdd(group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]).execute_for_group()
+            can_add_owner, _ = CheckForSelfAdd(
+                group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]
+            ).execute_for_group()
 
         if can_add_owner:
             ModifyGroupUsers(
@@ -197,7 +218,7 @@ class ApproveGroupRequest:
                 owners_to_add=[self.group_request.requester_user_id],
                 users_added_ended_at=coalesced_ownership_ending_at,
                 current_user_id=self.approver_id,
-                created_reason=f'Group request approved: {self.group_request.request_reason}',
+                created_reason=f"Group request approved: {self.group_request.request_reason}",
                 notify=self.notify,
             ).execute()
 

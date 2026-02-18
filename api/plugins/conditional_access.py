@@ -39,7 +39,10 @@ class ConditionalAccessPluginSpec:
 
     @hookspec
     def group_request_created(
-        self, group_request: GroupRequest, requester: OktaUser, app: Optional[App] = None,
+        self,
+        group_request: GroupRequest,
+        requester: OktaUser,
+        app: Optional[App] = None,
     ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the group request."""
 

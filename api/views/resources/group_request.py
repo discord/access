@@ -2,7 +2,7 @@ from flask import abort, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
 from sqlalchemy import String, cast
-from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy.orm import aliased, joinedload
 
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationHelpers
@@ -10,11 +10,7 @@ from api.extensions import db
 from api.models import (
     AccessRequestStatus,
     App,
-    AppGroup,
-    OktaGroup,
     OktaUser,
-    OktaUserGroupMember,
-    RoleGroup,
     GroupRequest,
     Tag,
 )
@@ -143,7 +139,9 @@ class GroupRequestResource(MethodResource):
                 current_user_id=g.current_user_id,
             ).execute()
 
-        group_request = GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request.id).first()
+        group_request = (
+            GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request.id).first()
+        )
         return GroupRequestSchema(
             only=(
                 "id",
@@ -235,19 +233,19 @@ class GroupRequestList(MethodResource):
                         app_managers = get_app_managers(app.id)
                         if assignee_user_id in [manager.id for manager in app_managers]:
                             owned_app_ids.append(app.id)
-                    
+
                     # Filter to only show app group requests for owned apps
                     if len(owned_app_ids) > 0:
                         query = query.filter(
                             db.and_(
                                 GroupRequest.requested_app_id.in_(owned_app_ids),
-                                GroupRequest.requested_group_type == "app_group"
+                                GroupRequest.requested_group_type == "app_group",
                             )
                         )
                     else:
                         # User owns no apps, show nothing
                         query = query.filter(False)
-                
+
                 # remove own requests regardless of whether admin
                 query = query.filter(GroupRequest.requester_user_id != assignee_user_id)
             else:
@@ -331,16 +329,17 @@ class GroupRequestList(MethodResource):
         group_request_args = CreateGroupRequestSchema().load(request.get_json())
 
         # Ensure requester not deleted
-        if OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(
-            OktaUser.id == g.current_user_id
-        ).first() is None:
+        if (
+            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == g.current_user_id).first()
+            is None
+        ):
             abort(403, "Current user is not allowed to perform this action")
 
         # Validate app exists if creating an app group
         if group_request_args.get("requested_group_type") == "app_group":
             if "requested_app_id" not in group_request_args or group_request_args["requested_app_id"] is None:
                 abort(400, "app_id is required for app group requests")
-            
+
             app = (
                 App.query.filter(App.deleted_at.is_(None))
                 .filter(App.id == group_request_args["requested_app_id"])
@@ -348,10 +347,14 @@ class GroupRequestList(MethodResource):
             )
             if app is None:
                 abort(404, "App not found")
-        
+
         # Validate tags exist
         if "requested_group_tags" in group_request_args and group_request_args["requested_group_tags"]:
-            tags = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(group_request_args["requested_group_tags"])).all()
+            tags = (
+                Tag.query.filter(Tag.deleted_at.is_(None))
+                .filter(Tag.id.in_(group_request_args["requested_group_tags"]))
+                .all()
+            )
             if len(tags) != len(group_request_args["requested_group_tags"]):
                 abort(400, "One or more tags not found")
 
@@ -361,14 +364,14 @@ class GroupRequestList(MethodResource):
             .filter(GroupRequest.status == AccessRequestStatus.PENDING)
             .filter(GroupRequest.resolved_at.is_(None))
         )
-        
+
         if group_request_args.get("requested_group_type") == "app_group":
             existing_group_requests_query = existing_group_requests_query.filter(
                 GroupRequest.requested_app_id == group_request_args.get("requested_app_id")
             )
-        
+
         existing_group_requests = existing_group_requests_query.all()
-        
+
         for existing_group_request in existing_group_requests:
             RejectGroupRequest(
                 group_request=existing_group_request,
@@ -391,7 +394,9 @@ class GroupRequestList(MethodResource):
         if group_request is None:
             abort(400, "Failed to create group request")
 
-        group_request = GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request.id).first()
+        group_request = (
+            GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request.id).first()
+        )
         return (
             GroupRequestSchema(
                 only=(

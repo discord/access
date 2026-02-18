@@ -12,16 +12,16 @@ def get_all_possible_request_approvers(access_request: AccessRequest | RoleReque
     # that were notified of the request.
     group_owners = []
 
-    if type(access_request) != GroupRequest:
+    if type(access_request) is not GroupRequest:
         group_owners = get_group_managers(access_request.requested_group_id)
 
     access_app_owners = get_access_owners()
 
     app_managers = []
 
-    if type(access_request) != GroupRequest and type(access_request.requested_group) is AppGroup:
+    if type(access_request) is not GroupRequest and type(access_request.requested_group) is AppGroup:
         app_managers = get_app_managers(access_request.requested_group.app_id)
-    elif type(access_request) == GroupRequest and access_request.requested_group_type == "app_group":
+    elif type(access_request) is GroupRequest and access_request.requested_group_type == "app_group":
         app_managers = get_app_managers(access_request.requested_app_id)
 
     return set(group_owners + access_app_owners + app_managers)
