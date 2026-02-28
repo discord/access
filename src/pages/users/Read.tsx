@@ -469,7 +469,7 @@ export default function ReadUser() {
             {hasRoles && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
-                  Access Roles
+                  Roles
                 </Typography>
                 <SideBySideTables
                   ownerships={ownerPartitions.roles}
@@ -483,7 +483,7 @@ export default function ReadUser() {
             {hasAppGroups && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
-                  App Groups
+                  Apps
                 </Typography>
                 {allAppEntries.map((appEntry) => (
                   <Box key={appEntry.appId} sx={{mb: 3}}>
@@ -515,7 +515,7 @@ export default function ReadUser() {
             {hasStandardGroups && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
-                  Standard Groups
+                  Groups
                 </Typography>
                 <SideBySideTables
                   ownerships={ownerPartitions.standardGroups}
