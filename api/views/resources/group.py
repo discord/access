@@ -24,7 +24,11 @@ from api.operations import (
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
-from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
+from api.plugins.app_group_lifecycle import (
+    get_app_group_lifecycle_hook,
+    get_app_group_lifecycle_plugin_to_invoke,
+    merge_app_lifecycle_plugin_data,
+)
 from api.services import okta
 from api.views.schemas import (
     AuditLogSchema,
@@ -113,6 +117,7 @@ class GroupResource(MethodResource):
         schema = PolymorphicGroupSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
         group_changes = schema.load(request.json, partial=True)
         old_group_name = group.name
+        old_group_description = group.description or ""
 
         if not group.is_managed:
             abort(
@@ -210,6 +215,27 @@ class GroupResource(MethodResource):
             tags_to_remove=json_data.get("tags_to_remove", []),
             current_user_id=g.current_user_id,
         ).execute()
+
+        # Invoke group_updated hook if name or description changed (before re-fetch so
+        # the subsequent eager load picks up any status values the hook sets)
+        if old_group_name != group.name or old_group_description != (group.description or ""):
+            plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+            if plugin_id is not None:
+                try:
+                    hook = get_app_group_lifecycle_hook()
+                    hook.group_updated(
+                        session=db.session,
+                        group=group,
+                        old_name=old_group_name,
+                        old_description=old_group_description,
+                        plugin_id=plugin_id,
+                    )
+                    db.session.commit()
+                except Exception:
+                    current_app.logger.exception(
+                        f"Failed to invoke group_updated hook for group {group.id} with plugin '{plugin_id}'"
+                    )
+                    db.session.rollback()
 
         group = (
             db.session.query(OktaGroup)
