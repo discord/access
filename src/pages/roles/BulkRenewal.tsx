@@ -37,7 +37,7 @@ import {usePutRoleMembersById, PutRoleMembersByIdError, PutRoleMembersByIdVariab
 import {RoleMember, RoleGroupMap, OktaGroup, AppGroup} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 interface Data {
   id: number;
@@ -516,7 +516,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                   name="reason"
                   multiline
                   rows={1}
-                  required={requiredReason}
+                  required={requireReasons || requiredReason}
                   validation={{maxLength: 1024}}
                   parseError={(error) => {
                     if (error?.message != '') {
