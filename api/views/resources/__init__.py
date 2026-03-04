@@ -3,6 +3,7 @@ from api.views.resources.app import AppList, AppResource
 from api.views.resources.audit import GroupRoleAuditResource, UserGroupAuditResource
 from api.views.resources.bug import SentryProxyResource
 from api.views.resources.group import GroupAuditResource, GroupList, GroupMemberResource, GroupResource
+from api.views.resources.group_request import GroupRequestList, GroupRequestResource
 from api.views.resources.plugin import (
     AppGroupLifecyclePluginAppConfigProperties,
     AppGroupLifecyclePluginAppStatusProperties,
@@ -30,6 +31,8 @@ __all__ = [
     "GroupList",
     "GroupMemberResource",
     "GroupResource",
+    "GroupRequestList",
+    "GroupRequestResource",
     "GroupRoleAuditResource",
     "OktaWebhookResource",
     "RoleAuditResource",

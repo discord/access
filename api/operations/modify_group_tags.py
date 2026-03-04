@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.operations import ModifyGroupsTimeLimit
+from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.views.schemas import AuditLogSchema, EventType
 
 

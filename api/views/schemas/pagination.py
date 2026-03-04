@@ -6,6 +6,7 @@ from api.models import AccessRequestStatus
 from api.views.schemas.core_schemas import (
     AccessRequestSchema,
     AppSchema,
+    GroupRequestSchema,
     OktaUserGroupMemberSchema,
     OktaUserSchema,
     PolymorphicGroupSchema,
@@ -82,6 +83,14 @@ class SearchRoleRequestPaginationRequestSchema(SearchPaginationRequestSchema):
     resolver_user_id = fields.String(load_only=True)
 
 
+class SearchGroupRequestPaginationRequestSchema(SearchPaginationRequestSchema):
+    status = fields.Enum(AccessRequestStatus, load_only=True)
+    requester_user_id = fields.String(load_only=True)
+    requested_group_name = fields.String(load_only=True)
+    assignee_user_id = fields.String(load_only=True)
+    resolver_user_id = fields.String(load_only=True)
+
+
 class PaginationResponseSchema(Schema):
     total = fields.Int(dump_only=True)
     pages = fields.Int(dump_only=True)
@@ -95,6 +104,10 @@ class AccessRequestPaginationSchema(PaginationResponseSchema):
 
 class RoleRequestPaginationSchema(PaginationResponseSchema):
     results = fields.Nested(lambda: RoleRequestSchema(many=True), dump_only=True)
+
+
+class GroupRequestPaginationSchema(PaginationResponseSchema):
+    results = fields.Nested(lambda: GroupRequestSchema(many=True), dump_only=True)
 
 
 class AppPaginationSchema(PaginationResponseSchema):
