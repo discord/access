@@ -205,6 +205,22 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
+    def group_updated(
+        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    ) -> None:
+        """Handle group update."""
+        if plugin_id is not None and plugin_id != PLUGIN_ID:
+            return
+
+        if not self._is_enabled(group):
+            return
+
+        self._log(f"Group updated: {group.name} (app: {group.app.name})", group=group)
+
+        # Update status
+        self._increment_event_count(session, group)
+
+    @hookimpl
     def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group deletion."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:

@@ -160,6 +160,22 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
+    def group_updated(
+        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    ) -> None:
+        """
+        Handle group update (name or description change).
+
+        Args:
+            session: The Access database session.
+            group: The app group after the update.
+            old_name: The group's name before the update.
+            old_description: The group's description before the update.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
+
+    @hookspec
     def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group deletion.
