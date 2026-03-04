@@ -37,7 +37,7 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
 class DummyPlugin:
@@ -1136,6 +1136,102 @@ class TestPluginGroupDeletedOnTypeChange:
         assert response.status_code == 200
 
         assert len(test_plugin.group_deleted_calls) == 0
+
+
+class TestPluginGroupCreatedOnTypeChange:
+    """Tests for the group_created hook fired when a Group or Role is converted to an AppGroup."""
+
+    def test_okta_group_to_app_group_fires_group_created(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test that converting an OktaGroup to an AppGroup fires the group_created hook."""
+        test_app = AppFactory.build(
+            name="TestAppCreate1",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = OktaGroupFactory.build(name="PlainGroup-ToAppGroup")
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+
+        group_id = test_group.id
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=group_id)
+        data = {
+            "type": "app_group",
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Created",
+            "description": "Now an app group",
+            "app_id": test_app.id,
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+        assert response.get_json()["type"] == "app_group"
+
+        assert len(test_plugin.group_created_calls) == 1
+        assert test_plugin.group_created_calls[0] == group_id
+
+    def test_role_group_to_app_group_fires_group_created(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test that converting a RoleGroup to an AppGroup fires the group_created hook."""
+        test_app = AppFactory.build(
+            name="TestAppCreate2",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = RoleGroupFactory.build(name="Role-ToAppGroup")
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+
+        group_id = test_group.id
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=group_id)
+        data = {
+            "type": "app_group",
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}FromRole",
+            "description": "Role became app group",
+            "app_id": test_app.id,
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+        assert response.get_json()["type"] == "app_group"
+
+        assert len(test_plugin.group_created_calls) == 1
+        assert test_plugin.group_created_calls[0] == group_id
+
+    def test_no_hook_without_lifecycle_plugin(
+        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Test that group_created hook does not fire when the app has no lifecycle plugin."""
+        test_app = AppFactory.build(
+            name="TestAppCreate3",
+            # No app_group_lifecycle_plugin
+        )
+        test_group = OktaGroupFactory.build(name="PlainGroup-NoPlugin")
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}NoPlugin",
+            "description": "No plugin configured",
+            "app_id": test_app.id,
+        }
+
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+
+        assert len(test_plugin.group_created_calls) == 0
 
 
 class TestPluginMembershipHooks:
