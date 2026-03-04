@@ -1598,7 +1598,7 @@ class GroupRequestSchema(SQLAlchemyAutoSchema):
     active_requester = fields.Nested(lambda: OktaUserSchema)
     resolver = fields.Nested(lambda: OktaUserSchema)
     active_resolver = fields.Nested(lambda: OktaUserSchema)
-    approved_group = fields.Nested(lambda: OktaGroup)
+    approved_group = fields.Nested(lambda: PolymorphicGroupSchema)
 
     class Meta:
         model = GroupRequest

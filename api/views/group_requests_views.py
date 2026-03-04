@@ -14,7 +14,8 @@ api.add_resource(
     "/<string:group_request_id>",
     endpoint="group_request_by_id",
 )
-api.add_resource(GroupRequestList, "", endpoint="group_requests")
+# api.add_resource(GroupRequestList, "", endpoint="group_requests")
+api.add_resource(GroupRequestList, "", "/", endpoint="group_requests")
 
 
 def register_docs() -> None:

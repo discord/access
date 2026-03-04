@@ -14,7 +14,7 @@ from api.models import (
     GroupRequest,
     Tag,
 )
-from api.models.app import get_app_managers
+from api.models.app_group import get_app_managers
 from api.operations import (
     ApproveGroupRequest,
     CreateGroupRequest,
@@ -39,6 +39,7 @@ DEFAULT_LOAD_OPTIONS = (
 class GroupRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(GroupRequestSchema)
     def get(self, group_request_id: str) -> ResponseReturnValue:
+        # TODO add in approved_group_id if request is already approved?
         schema = GroupRequestSchema(
             only=(
                 "id",
@@ -71,7 +72,6 @@ class GroupRequestResource(MethodResource):
                 "resolved_group_tags",
                 "resolved_ownership_ending_at",
                 "resolution_reason",
-                "approved_group_id",
             )
         )
         group_request = (
