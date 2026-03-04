@@ -1,14 +1,16 @@
+from datetime import datetime, timezone
 from typing import Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy import nullsfirst
-from sqlalchemy.orm import joinedload, selectin_polymorphic
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
 from api.models.access_request import get_all_possible_request_approvers
-from api.plugins import get_notification_hook
+from api.plugins import get_audit_events_hook, get_notification_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy import nullsfirst
+from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 
 class RejectRoleRequest:
@@ -75,9 +77,11 @@ class RejectRoleRequest:
                 {
                     "event_type": EventType.role_request_reject,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.rejecter_id,
                     "current_user_email": email,
                     "group": group,
@@ -86,6 +90,43 @@ class RejectRoleRequest:
                 }
             )
         )
+
+        # Emit audit event to plugins (after DB commit)
+        try:
+            requester = db.session.get(OktaUser, self.role_request.requester_user_id)
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="role_request_reject",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.rejecter_id or "system",
+                actor_email=email,
+                target_type="role_request",
+                target_id=str(self.role_request.id),
+                target_name=f"Role request for {group.name}" if group else "Unknown group",
+                action="rejected",
+                reason=self.rejection_reason,
+                payload={
+                    "role_request_id": str(self.role_request.id),
+                    "requester_user_id": self.role_request.requester_user_id,
+                    "requester_email": requester.email if requester else None,
+                    "requester_role_id": self.role_request.requester_role_id,
+                    "requested_group_id": self.role_request.requested_group_id,
+                    "requested_group_name": group.name if group else None,
+                    "request_ownership": self.role_request.request_ownership,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         if self.notify:
             requester = db.session.get(OktaUser, self.role_request.requester_user_id)

@@ -1,14 +1,11 @@
 import asyncio
 from typing import Optional
 
-from sqlalchemy.orm import (
-    joinedload,
-)
-
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser, OktaUserGroupMember
-from api.operations import RejectAccessRequest
+from api.operations.reject_access_request import RejectAccessRequest
 from api.services import okta
+from sqlalchemy.orm import joinedload
 
 
 class DeleteUser:

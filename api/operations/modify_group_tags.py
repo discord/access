@@ -1,12 +1,15 @@
+from datetime import datetime, timezone
 from typing import Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.operations import ModifyGroupsTimeLimit
+from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
+from api.plugins import get_audit_events_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 
 class ModifyGroupTags:
@@ -112,11 +115,13 @@ class ModifyGroupTags:
                     {
                         "event_type": EventType.group_modify_tags,
                         "user_agent": request.headers.get("User-Agent") if context else None,
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        )
-                        if context
-                        else None,
+                        "ip": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
                         "current_user_id": self.current_user_id,
                         "current_user_email": email,
                         "group": group,
@@ -125,5 +130,41 @@ class ModifyGroupTags:
                     }
                 )
             )
+
+        # Emit audit event to plugins (after DB commit)
+        if len(self.tags_to_add) > 0 or len(self.tags_to_remove) > 0:
+            try:
+                audit_hook = get_audit_events_hook()
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="tag_update",
+                    timestamp=datetime.now(timezone.utc),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=email,
+                    target_type="group",
+                    target_id=self.group.id,
+                    target_name=self.group.name,
+                    action="tags_modified",
+                    reason="",
+                    payload={
+                        "group_id": self.group.id,
+                        "group_name": self.group.name,
+                        "tags_added": [t.name for t in self.tags_to_add],
+                        "tags_removed": [t.name for t in self.tags_to_remove],
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+            except Exception as e:
+                current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         return self.group

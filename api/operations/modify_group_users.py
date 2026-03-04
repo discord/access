@@ -1,9 +1,7 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from uuid import uuid4
 
 from api.extensions import db
 from api.models import (
@@ -21,10 +19,13 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.plugins import get_notification_hook
+from api.plugins import get_audit_events_hook, get_notification_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 
 class ModifyGroupUsers:
@@ -173,9 +174,11 @@ class ModifyGroupUsers:
                 {
                     "event_type": EventType.group_modify_users,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "group": self.group,
@@ -579,8 +582,8 @@ class ModifyGroupUsers:
                             associated_users_ended_at = role_associated_group_map.ended_at
                         else:
                             associated_users_ended_at = min(
-                                self.members_added_ended_at.replace(tzinfo=UTC),
-                                role_associated_group_map.ended_at.replace(tzinfo=UTC),
+                                self.members_added_ended_at.replace(tzinfo=timezone.utc),
+                                role_associated_group_map.ended_at.replace(tzinfo=timezone.utc),
                             )
 
                         access_to_add = OktaUserGroupMember(
@@ -683,6 +686,150 @@ class ModifyGroupUsers:
 
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)
+
+        # Emit audit events to plugins (after DB commit) - 4 event types
+        try:
+            audit_hook = get_audit_events_hook()
+            context = has_request_context()
+
+            # Get actor email for audit envelope
+            actor_email = None
+            if self.current_user_id:
+                actor_user = db.session.get(OktaUser, self.current_user_id)
+                actor_email = actor_user.email if actor_user else None
+
+            # Event 1: group_member_added
+            for member in self.members_to_add:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="group_member_added",
+                    timestamp=datetime.now(timezone.utc),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="group_membership",
+                    target_id=self.group.id,
+                    target_name=self.group.name,
+                    action="member_added",
+                    reason=self.created_reason,
+                    payload={
+                        "group_id": self.group.id,
+                        "group_name": self.group.name,
+                        "user_id": member.id,
+                        "user_email": member.email,
+                        "ended_at": self.members_added_ended_at.isoformat() if self.members_added_ended_at else None,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Event 2: group_member_removed
+            for member in self.members_to_remove:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="group_member_removed",
+                    timestamp=datetime.now(timezone.utc),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="group_membership",
+                    target_id=self.group.id,
+                    target_name=self.group.name,
+                    action="member_removed",
+                    reason=self.created_reason,
+                    payload={
+                        "group_id": self.group.id,
+                        "group_name": self.group.name,
+                        "user_id": member.id,
+                        "user_email": member.email,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Event 3: group_owner_added
+            for owner in self.owners_to_add:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="group_owner_added",
+                    timestamp=datetime.now(timezone.utc),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="group_ownership",
+                    target_id=self.group.id,
+                    target_name=self.group.name,
+                    action="owner_added",
+                    reason=self.created_reason,
+                    payload={
+                        "group_id": self.group.id,
+                        "group_name": self.group.name,
+                        "user_id": owner.id,
+                        "user_email": owner.email,
+                        "ended_at": self.owners_added_ended_at.isoformat() if self.owners_added_ended_at else None,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+            # Event 4: group_owner_removed
+            for owner in self.owners_to_remove:
+                envelope = AuditEventEnvelope(
+                    id=uuid4(),
+                    event_type="group_owner_removed",
+                    timestamp=datetime.now(timezone.utc),
+                    actor_id=self.current_user_id or "system",
+                    actor_email=actor_email,
+                    target_type="group_ownership",
+                    target_id=self.group.id,
+                    target_name=self.group.name,
+                    action="owner_removed",
+                    reason=self.created_reason,
+                    payload={
+                        "group_id": self.group.id,
+                        "group_name": self.group.name,
+                        "user_id": owner.id,
+                        "user_email": owner.email,
+                    },
+                    metadata={
+                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "ip_address": (
+                            request.headers.get(
+                                "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
+                            )
+                            if context
+                            else None
+                        ),
+                    },
+                )
+                audit_hook.audit_event_logged(envelope=envelope)
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         return self.group
 
