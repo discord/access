@@ -11,7 +11,6 @@ from typing import Optional
 
 from flask import Flask, Response, request
 from flask.typing import ResponseReturnValue
-from flask_cors import CORS
 from flask_talisman import Talisman
 from marshmallow import ValidationError
 from werkzeug.exceptions import HTTPException
@@ -157,21 +156,6 @@ def create_app(testing: Optional[bool] = False) -> Flask:
             response.headers["Expires"] = "0"
             response.headers["Content-Type"] = "application/json; charset=utf-8"
         return response
-
-    ##########################################
-    # CORS
-    ##########################################
-
-    if app.config["ENV"] == "development":
-        # Only necessary in development because the React
-        # frontend is served from a different port
-        CORS(
-            app,
-            resources={r"/api/*": {"origins": app.config["CLIENT_ORIGIN_URL"]}},
-            allow_headers=["Authorization", "Content-Type", "baggage", "sentry-trace"],
-            methods=["GET", "POST", "PUT", "DELETE"],
-            max_age=86400,
-        )
 
     ##########################################
     # Configure CloudSQL Database Connection

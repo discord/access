@@ -45,8 +45,10 @@ OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.oktapreview.com"
 OKTA_API_TOKEN=<YOUR_SANDBOX_API_TOKEN>
 DATABASE_URI="sqlite:///access.db"
 CLIENT_ORIGIN_URL=http://localhost:3000
-VITE_API_SERVER_URL=http://localhost:6060
+VITE_API_SERVER_URL=
 ```
+
+> **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the Flask backend on port 6060.
 
 Next, run the following commands to set up your python virtual environment. Access can run on Python 3.11 and above:
 
@@ -231,7 +233,7 @@ The `.env.production` file is where you configure the application.
 - `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
 - `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`.
-- `CLIENT_ORIGIN_URL`: Specifies the origin URL which is used by CORS.
+- `CLIENT_ORIGIN_URL`: Specifies the origin URL used by plugins (e.g. for building notification URLs).
 - `VITE_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
