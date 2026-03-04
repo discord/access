@@ -222,20 +222,6 @@ class ModifyGroupType:
                 .first()
             )
 
-            # Invoke group_created hook if converted to an AppGroup (e.g. to create Github Teams)
-            if type(self.group_changes) is AppGroup:
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
-                if plugin_id is not None:
-                    try:
-                        hook = get_app_group_lifecycle_hook()
-                        hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
-                        db.session.commit()
-                    except Exception:
-                        current_app.logger.exception(
-                            f"Failed to invoke group_created hook for group {self.group.id} with plugin '{plugin_id}'"
-                        )
-                        db.session.rollback()
-
         # Audit logging if type changed
         if self.group.type != old_group_type:
             email = None
