@@ -30,14 +30,14 @@ import Typography from '@mui/material/Typography';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import {useGetUserById, usePutGroupMembersById} from '../../api/apiComponents';
-import {OktaUser, OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../../api/apiSchemas';
+import {AppGroup, OktaUser, OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../../api/apiSchemas';
 import UserAvatar from './UserAvatar';
 import NotFound from '../NotFound';
 import Ending from '../../components/Ending';
 import Loading from '../../components/Loading';
 import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveGroups';
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
-import {groupBy, displayUserName, displayGroupType} from '../../helpers';
+import {groupBy, displayUserName} from '../../helpers';
 import {canManageGroup, isGroupOwner} from '../../authorization';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MembershipChip from '../../components/MembershipChip';
@@ -49,6 +49,58 @@ function sortUserGroups(
   let aName = aGroups[0].active_group?.name ?? '';
   let bName = bGroups[0].active_group?.name ?? '';
   return aName.localeCompare(bName);
+}
+
+interface PartitionedGroups {
+  roles: Record<string, OktaUserGroupMember[]>;
+  appGroups: Record<string, OktaUserGroupMember[]>;
+  standardGroups: Record<string, OktaUserGroupMember[]>;
+}
+
+function partitionByType(members: OktaUserGroupMember[] | undefined): PartitionedGroups {
+  const roles: OktaUserGroupMember[] = [];
+  const appGroups: OktaUserGroupMember[] = [];
+  const standardGroups: OktaUserGroupMember[] = [];
+
+  for (const m of members ?? []) {
+    const type = m.active_group?.type;
+    if (type === 'role_group') {
+      roles.push(m);
+    } else if (type === 'app_group') {
+      appGroups.push(m);
+    } else {
+      standardGroups.push(m);
+    }
+  }
+
+  return {
+    roles: groupBy(roles, (m) => m.active_group?.id),
+    appGroups: groupBy(appGroups, (m) => m.active_group?.id),
+    standardGroups: groupBy(standardGroups, (m) => m.active_group?.id),
+  };
+}
+
+interface AppSubGroup {
+  appId: string;
+  appName: string;
+  groups: Record<string, OktaUserGroupMember[]>;
+}
+
+function groupByApp(appGroupsById: Record<string, OktaUserGroupMember[]>): AppSubGroup[] {
+  const byApp: Record<string, AppSubGroup> = {};
+
+  for (const [groupId, members] of Object.entries(appGroupsById)) {
+    const appGroup = members[0].active_group as AppGroup;
+    const appId = appGroup?.app?.id ?? '';
+    const appName = appGroup?.app?.name ?? '';
+
+    if (!byApp[appId]) {
+      byApp[appId] = {appId, appName, groups: {}};
+    }
+    byApp[appId].groups[groupId] = members;
+  }
+
+  return Object.values(byApp).sort((a, b) => a.appName.localeCompare(b.appName));
 }
 
 interface ProfileToCardProps {
@@ -120,15 +172,23 @@ function ReportingToCard({user}: ReportingToCardProps) {
   );
 }
 
-interface OwnerTableProps {
+interface GroupTableProps {
+  title: string;
+  groups: Record<string, OktaUserGroupMember[]>;
   user: OktaUser;
-  ownerships: Record<string, OktaUserGroupMember[]>;
+  owner: boolean;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
 
-function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemoveDirectAccess}: OwnerTableProps) {
-  const currentUser = useCurrentUser();
+function GroupTable({
+  title,
+  groups,
+  user,
+  owner,
+  onClickRemoveGroupFromRole,
+  onClickRemoveDirectAccess,
+}: GroupTableProps) {
   const navigate = useNavigate();
 
   const putGroupUsers = usePutGroupMembersById({
@@ -138,7 +198,9 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
   const removeUserFromGroup = React.useCallback(
     (groupId: string) => {
       putGroupUsers.mutate({
-        body: {owners_to_remove: [user.id], members_to_add: [], members_to_remove: [], owners_to_add: []},
+        body: owner
+          ? {owners_to_remove: [user.id], members_to_add: [], members_to_remove: [], owners_to_add: []}
+          : {members_to_remove: [user.id], members_to_add: [], owners_to_remove: [], owners_to_add: []},
         pathParams: {groupId},
       });
     },
@@ -147,162 +209,30 @@ function OwnerTable({user, ownerships, onClickRemoveGroupFromRole, onClickRemove
 
   return (
     <TableContainer component={Paper}>
-      <Table sx={{minWidth: 650}} size="small" aria-label="owner of groups">
+      <Table size="small" aria-label={title.toLowerCase()}>
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
               <Typography variant="h6" color="text.accent">
-                Owner of Group or Roles
+                {title}
               </Typography>
-            </TableCell>
-            <TableCell>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'right',
-                }}>
-                <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                Total Groups: {Object.keys(ownerships).length}
-              </Box>
             </TableCell>
           </TableRow>
           <TableRow>
             <TableCell>Name</TableCell>
-            <TableCell>Type</TableCell>
             <TableCell>Ending</TableCell>
             <TableCell>Direct or via Roles</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
-          {Object.keys(ownerships).length > 0 ? (
-            Object.entries(ownerships)
+          {Object.keys(groups).length > 0 ? (
+            Object.entries(groups)
               .sort(sortUserGroups)
-              .map(([groupId, groups]: [string, Array<OktaUserGroupMember>]) => (
+              .map(([groupId, groupMembers]: [string, Array<OktaUserGroupMember>]) => (
                 <TableRow key={groupId}>
                   <TableCell>
                     <Link
-                      to={`/groups/${groups[0].active_group?.name}`}
-                      sx={{
-                        textDecoration: 'none',
-                        color: 'inherit ',
-                        '&:hover': {
-                          color: (theme) => theme.palette.primary.main,
-                        },
-                      }}
-                      component={RouterLink}>
-                      {groups[0].active_group?.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{displayGroupType(groups[0].active_group)}</TableCell>
-                  <TableCell>
-                    <Ending memberships={groups} />
-                  </TableCell>
-                  <TableCell>
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{
-                        flexWrap: 'wrap',
-                        rowGap: '.5rem',
-                      }}>
-                      {groups.map((group) =>
-                        group.active_group ? (
-                          <MembershipChip
-                            key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
-                            okta_user_group_member={group}
-                            group={group.active_group}
-                            removeRoleGroup={(roleGroup) => {
-                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, true);
-                            }}
-                            removeDirectAccessAsUser={() => {
-                              onClickRemoveDirectAccess(user.id, group.active_group!, true);
-                            }}
-                            removeDirectAccessAsGroupManager={() => {
-                              removeUserFromGroup(group.active_group!.id ?? '');
-                            }}
-                          />
-                        ) : null,
-                      )}
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              ))
-          ) : (
-            <EmptyListEntry cellProps={{colSpan: 4}} />
-          )}
-        </TableBody>
-        <TableFooter>
-          <TableRow />
-        </TableFooter>
-      </Table>
-    </TableContainer>
-  );
-}
-
-interface MemberTableProps {
-  user: OktaUser;
-  memberships: Record<string, OktaUserGroupMember[]>;
-  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
-  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
-}
-
-function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemoveDirectAccess}: MemberTableProps) {
-  const currentUser = useCurrentUser();
-  const navigate = useNavigate();
-
-  const putGroupUsers = usePutGroupMembersById({
-    onSuccess: () => navigate(0),
-  });
-
-  const removeUserFromGroup = React.useCallback(
-    (groupId: string) => {
-      putGroupUsers.mutate({
-        body: {members_to_remove: [user.id], members_to_add: [], owners_to_remove: [], owners_to_add: []},
-        pathParams: {groupId},
-      });
-    },
-    [putGroupUsers],
-  );
-
-  return (
-    <TableContainer component={Paper}>
-      <Table sx={{minWidth: 650}} size="small" aria-label="member of groups">
-        <TableHead>
-          <TableRow>
-            <TableCell colSpan={3}>
-              <Typography variant="h6" color="text.accent">
-                Member of Groups or Roles
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'right',
-                }}>
-                <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                Total Groups: {Object.keys(memberships).length}
-              </Box>
-            </TableCell>
-          </TableRow>
-          <TableRow>
-            <TableCell>Name</TableCell>
-            <TableCell>Type</TableCell>
-            <TableCell>Ending</TableCell>
-            <TableCell>Direct or via Roles</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {Object.keys(memberships).length > 0 ? (
-            Object.entries(memberships)
-              .sort(sortUserGroups)
-              .map(([groupId, groups]: [string, Array<OktaUserGroupMember>]) => (
-                <TableRow key={groupId}>
-                  <TableCell>
-                    <Link
-                      to={`/groups/${groups[0].active_group?.name}`}
+                      to={`/groups/${groupMembers[0].active_group?.name}`}
                       sx={{
                         textDecoration: 'none',
                         color: 'inherit',
@@ -311,12 +241,11 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                         },
                       }}
                       component={RouterLink}>
-                      {groups[0].active_group?.name}
+                      {groupMembers[0].active_group?.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{displayGroupType(groups[0].active_group)}</TableCell>
                   <TableCell>
-                    <Ending memberships={groups} />
+                    <Ending memberships={groupMembers} />
                   </TableCell>
                   <TableCell>
                     <Stack
@@ -326,17 +255,17 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                         flexWrap: 'wrap',
                         rowGap: '.5rem',
                       }}>
-                      {groups.map((group) =>
+                      {groupMembers.map((group) =>
                         group.active_group ? (
                           <MembershipChip
                             key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
                             okta_user_group_member={group}
                             group={group.active_group}
                             removeRoleGroup={(roleGroup) => {
-                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, false);
+                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, owner);
                             }}
                             removeDirectAccessAsUser={() => {
-                              onClickRemoveDirectAccess(user.id, group.active_group!, false);
+                              onClickRemoveDirectAccess(user.id, group.active_group!, owner);
                             }}
                             removeDirectAccessAsGroupManager={() => {
                               removeUserFromGroup(group.active_group!.id ?? '');
@@ -349,13 +278,7 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
                 </TableRow>
               ))
           ) : (
-            <TableRow>
-              <TableCell>
-                <Typography variant="body2" color="text.secondary">
-                  None
-                </Typography>
-              </TableCell>
-            </TableRow>
+            <EmptyListEntry cellProps={{colSpan: 3}} />
           )}
         </TableBody>
         <TableFooter>
@@ -363,6 +286,47 @@ function MemberTable({user, memberships, onClickRemoveGroupFromRole, onClickRemo
         </TableFooter>
       </Table>
     </TableContainer>
+  );
+}
+
+interface SideBySideTablesProps {
+  ownerships: Record<string, OktaUserGroupMember[]>;
+  memberships: Record<string, OktaUserGroupMember[]>;
+  user: OktaUser;
+  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
+  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
+}
+
+function SideBySideTables({
+  ownerships,
+  memberships,
+  user,
+  onClickRemoveGroupFromRole,
+  onClickRemoveDirectAccess,
+}: SideBySideTablesProps) {
+  return (
+    <Grid container spacing={2}>
+      <Grid item xs={12} md={6}>
+        <GroupTable
+          title="Ownerships"
+          groups={ownerships}
+          user={user}
+          owner={true}
+          onClickRemoveGroupFromRole={onClickRemoveGroupFromRole}
+          onClickRemoveDirectAccess={onClickRemoveDirectAccess}
+        />
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <GroupTable
+          title="Memberships"
+          groups={memberships}
+          user={user}
+          owner={false}
+          onClickRemoveGroupFromRole={onClickRemoveGroupFromRole}
+          onClickRemoveDirectAccess={onClickRemoveDirectAccess}
+        />
+      </Grid>
+    </Grid>
   );
 }
 
@@ -393,8 +357,37 @@ export default function ReadUser() {
 
   const user = data ?? ({} as OktaUser);
 
-  const ownerships = groupBy(user.active_group_ownerships, (m) => m.active_group?.id);
-  const memberships = groupBy(user.active_group_memberships, (m) => m.active_group?.id);
+  const ownerPartitions = partitionByType(user.active_group_ownerships);
+  const memberPartitions = partitionByType(user.active_group_memberships);
+  const ownerAppsByApp = groupByApp(ownerPartitions.appGroups);
+  const memberAppsByApp = groupByApp(memberPartitions.appGroups);
+
+  const appMap = new Map<
+    string,
+    {
+      appId: string;
+      appName: string;
+      ownerships: Record<string, OktaUserGroupMember[]>;
+      memberships: Record<string, OktaUserGroupMember[]>;
+    }
+  >();
+  for (const entry of ownerAppsByApp) {
+    appMap.set(entry.appId, {appId: entry.appId, appName: entry.appName, ownerships: entry.groups, memberships: {}});
+  }
+  for (const entry of memberAppsByApp) {
+    const existing = appMap.get(entry.appId);
+    if (existing) {
+      existing.memberships = entry.groups;
+    } else {
+      appMap.set(entry.appId, {appId: entry.appId, appName: entry.appName, ownerships: {}, memberships: entry.groups});
+    }
+  }
+  const allAppEntries = Array.from(appMap.values()).sort((a, b) => a.appName.localeCompare(b.appName));
+
+  const hasRoles = Object.keys(ownerPartitions.roles).length > 0 || Object.keys(memberPartitions.roles).length > 0;
+  const hasAppGroups = allAppEntries.length > 0;
+  const hasStandardGroups =
+    Object.keys(ownerPartitions.standardGroups).length > 0 || Object.keys(memberPartitions.standardGroups).length > 0;
 
   const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({
@@ -473,22 +466,66 @@ export default function ReadUser() {
             </Grid>
           </Grid>
           <Grid item container xs={12} lg={9} rowSpacing={3} order={{xs: 3, lg: 2}}>
-            <Grid item xs={12}>
-              <OwnerTable
-                user={user}
-                ownerships={ownerships}
-                onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
-                onClickRemoveDirectAccess={removeOwnDirectAccess}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <MemberTable
-                user={user}
-                memberships={memberships}
-                onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
-                onClickRemoveDirectAccess={removeOwnDirectAccess}
-              />
-            </Grid>
+            {hasRoles && (
+              <Grid item xs={12}>
+                <Typography variant="h5" sx={{mb: 2}}>
+                  Roles
+                </Typography>
+                <SideBySideTables
+                  ownerships={ownerPartitions.roles}
+                  memberships={memberPartitions.roles}
+                  user={user}
+                  onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
+                  onClickRemoveDirectAccess={removeOwnDirectAccess}
+                />
+              </Grid>
+            )}
+            {hasAppGroups && (
+              <Grid item xs={12}>
+                <Typography variant="h5" sx={{mb: 2}}>
+                  Apps
+                </Typography>
+                {allAppEntries.map((appEntry) => (
+                  <Box key={appEntry.appId} sx={{mb: 3}}>
+                    <Typography variant="h6" sx={{mb: 1}}>
+                      <Link
+                        to={`/apps/${appEntry.appName}`}
+                        sx={{
+                          textDecoration: 'none',
+                          color: 'inherit',
+                          '&:hover': {
+                            color: (theme) => theme.palette.primary.main,
+                          },
+                        }}
+                        component={RouterLink}>
+                        {appEntry.appName}
+                      </Link>
+                    </Typography>
+                    <SideBySideTables
+                      ownerships={appEntry.ownerships}
+                      memberships={appEntry.memberships}
+                      user={user}
+                      onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
+                      onClickRemoveDirectAccess={removeOwnDirectAccess}
+                    />
+                  </Box>
+                ))}
+              </Grid>
+            )}
+            {hasStandardGroups && (
+              <Grid item xs={12}>
+                <Typography variant="h5" sx={{mb: 2}}>
+                  Groups
+                </Typography>
+                <SideBySideTables
+                  ownerships={ownerPartitions.standardGroups}
+                  memberships={memberPartitions.standardGroups}
+                  user={user}
+                  onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
+                  onClickRemoveDirectAccess={removeOwnDirectAccess}
+                />
+              </Grid>
+            )}
           </Grid>
         </Grid>
       </Container>
