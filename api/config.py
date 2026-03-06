@@ -92,3 +92,6 @@ APP_NAME = os.getenv("APP_NAME", "Access")
 
 # Require descriptions for apps, groups, and tags
 REQUIRE_DESCRIPTIONS = os.getenv("REQUIRE_DESCRIPTIONS", "false").lower() == "true"
+
+# Require reasons globally for create/resolve request flows
+REQUIRE_REASONS = os.getenv("REQUIRE_REASONS", "false").lower() == "true"

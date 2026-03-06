@@ -36,9 +36,14 @@ def app(request: pytest.FixtureRequest) -> Flask:
     app = create_app(testing=True)
 
     # Check if parametrization is being used (indirect parametrization)
-    require_descriptions = getattr(request, "param", False)
-    # Set the config on the Flask app (schemas read from current_app.config at validation time)
-    app.config["REQUIRE_DESCRIPTIONS"] = require_descriptions
+    param = getattr(request, "param", False)
+
+    if isinstance(param, dict):
+        app.config.update(param)
+        if "REQUIRE_DESCRIPTIONS" not in param:
+            app.config["REQUIRE_DESCRIPTIONS"] = False
+    else:
+        app.config["REQUIRE_DESCRIPTIONS"] = param
 
     return app
 

@@ -76,7 +76,7 @@ import {
 import NotFound from '../NotFound';
 import ChangeTitle from '../../tab-title';
 import Loading from '../../components/Loading';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import AccessHistory from '../../components/AccessHistory';
 
@@ -700,6 +700,7 @@ export default function ReadRequest() {
                                   name="reason"
                                   multiline
                                   rows={4}
+                                  required={requireReasons || reason}
                                   validation={{maxLength: 1024}}
                                   parseError={(error) => {
                                     if (error?.message != '') {
