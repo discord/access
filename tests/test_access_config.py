@@ -17,6 +17,7 @@ from api.access_config import (
     _merge_override_config,
     NAME_VALIDATION_PATTERN,
     NAME_VALIDATION_ERROR,
+    DEFAULT_GROUP_QUERY_PARAMS,
     OKTA_GROUP_NAME_PREFIX,
     ROLE_GROUP_NAME_PREFIX,
     APP_GROUP_NAME_PREFIX,
@@ -30,6 +31,7 @@ from api.access_config import (
 DEFAULT_CONFIG_VALUES = {
     NAME_VALIDATION_PATTERN: "name_pattern",
     NAME_VALIDATION_ERROR: "name_error",
+    DEFAULT_GROUP_QUERY_PARAMS: {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'},
     OKTA_GROUP_NAME_PREFIX: "",
     ROLE_GROUP_NAME_PREFIX: "Role-",
     APP_GROUP_NAME_PREFIX: "App-",
@@ -64,6 +66,7 @@ def test_load_config_default(mock_load_default_config: None) -> None:
     assert isinstance(config, AccessConfig)
     assert config.name_pattern == "name_pattern"
     assert config.name_validation_error == "name_error"
+    assert config.default_group_query_params == {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
     assert config.okta_group_name_prefix == ""
     assert config.role_group_name_prefix == "Role-"
     assert config.app_group_name_prefix == "App-"

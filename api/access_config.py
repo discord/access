@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 BACKEND = "BACKEND"
 NAME_VALIDATION_PATTERN = "NAME_VALIDATION_PATTERN"
 NAME_VALIDATION_ERROR = "NAME_VALIDATION_ERROR"
+DEFAULT_GROUP_QUERY_PARAMS = "DEFAULT_GROUP_QUERY_PARAMS"
 OKTA_GROUP_NAME_PREFIX = "OKTA_GROUP_NAME_PREFIX"
 ROLE_GROUP_NAME_PREFIX = "ROLE_GROUP_NAME_PREFIX"
 APP_GROUP_NAME_PREFIX = "APP_GROUP_NAME_PREFIX"
@@ -36,6 +37,7 @@ class AccessConfig:
         self,
         name_pattern: str,
         name_validation_error: str,
+        default_group_query_params: dict[str, str],
         okta_group_name_prefix: str,
         role_group_name_prefix: str,
         app_group_name_prefix: str,
@@ -44,6 +46,7 @@ class AccessConfig:
     ):
         self.name_pattern = name_pattern
         self.name_validation_error = name_validation_error
+        self.default_group_query_params = default_group_query_params
         self.okta_group_name_prefix = okta_group_name_prefix
         self.role_group_name_prefix = role_group_name_prefix
         self.app_group_name_prefix = app_group_name_prefix
@@ -95,6 +98,9 @@ def _load_access_config() -> AccessConfig:
 
     name_pattern = _get_config_value(config, NAME_VALIDATION_PATTERN)
     name_validation_error = _get_config_value(config, NAME_VALIDATION_ERROR)
+    default_group_query_params = config.get(
+        DEFAULT_GROUP_QUERY_PARAMS, {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    )
     okta_group_name_prefix = _get_config_value(config, OKTA_GROUP_NAME_PREFIX)
     role_group_name_prefix = _get_config_value(config, ROLE_GROUP_NAME_PREFIX)
     app_group_name_prefix = _get_config_value(config, APP_GROUP_NAME_PREFIX)
@@ -104,6 +110,7 @@ def _load_access_config() -> AccessConfig:
     return AccessConfig(
         name_pattern=name_pattern,
         name_validation_error=name_validation_error,
+        default_group_query_params=default_group_query_params,
         okta_group_name_prefix=okta_group_name_prefix,
         role_group_name_prefix=role_group_name_prefix,
         app_group_name_prefix=app_group_name_prefix,

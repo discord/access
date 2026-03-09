@@ -14,6 +14,7 @@ from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from okta.request_executor import RequestExecutor as OktaRequestExecutor
 
+from api.access_config import get_access_config
 from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 from api.models import OktaGroup, OktaUser
 
@@ -259,9 +260,10 @@ class OktaService:
 
         return asyncio.run(_get_group(groupId))
 
-    DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    def list_groups(self, *, query_params: dict[str, str] | None = None) -> list[Group]:
+        if query_params is None:
+            query_params = get_access_config().default_group_query_params
 
-    def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
         async def _list_groups(query_params: dict[str, str]) -> list[Group]:
             async with self._get_sessioned_okta_request_executor() as _:
                 groups, resp, error = await OktaService._retry(self.okta_client.list_groups, query_params=query_params)
