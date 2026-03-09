@@ -301,7 +301,7 @@ class OktaGroupSchema(SQLAlchemyAutoSchema):
         validate=validate.And(
             validate.Length(min=1, max=255),
             validate.Regexp(
-                f"^{access_config.name_pattern}$",
+                f"^{OktaGroup.OKTA_GROUP_NAME_PREFIX}{access_config.name_pattern}$",
                 error=f"Group {access_config.name_validation_error} Regex to match: /{{regex}}/",
             ),
         ),

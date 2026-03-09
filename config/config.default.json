@@ -11,10 +11,19 @@
     },
     "DEFAULT_ACCESS_TIME": "1209600",
     "NAME_VALIDATION_PATTERN": "^[A-Z][A-Za-z0-9\\-]*$",
-    "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens."
+    "NAME_VALIDATION_ERROR": "Name must start capitalized and contain only alphanumeric characters or hyphens.",
+    "OKTA_GROUP_NAME_PREFIX": "",
+    "ROLE_GROUP_NAME_PREFIX": "Role-",
+    "APP_GROUP_NAME_PREFIX": "App-",
+    "APP_NAME_GROUP_NAME_SEPARATOR": "-"
   },
   "BACKEND": {
     "NAME_VALIDATION_PATTERN": "[A-Z][A-Za-z0-9-]*",
-    "NAME_VALIDATION_ERROR": "name must start capitalized and contain only alphanumeric characters or hyphens."
+    "NAME_VALIDATION_ERROR": "name must start capitalized and contain only alphanumeric characters or hyphens.",
+    "OKTA_GROUP_NAME_PREFIX": "",
+    "ROLE_GROUP_NAME_PREFIX": "Role-",
+    "APP_GROUP_NAME_PREFIX": "App-",
+    "APP_NAME_GROUP_NAME_SEPARATOR": "-",
+    "APP_OWNERS_GROUP_NAME_SUFFIX": "Owners"
   }
 }
