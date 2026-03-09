@@ -350,7 +350,7 @@ def access_role_request_created(
     """
     type_of_access = "ownership of" if role_request.request_ownership else "membership to"
 
-    role_request_url = get_base_url() + f"/requests/{role_request.id}"
+    role_request_url = get_base_url() + f"/role-requests/{role_request.id}"
 
     approver_message = (
         f":pray: {requester.email} has requested that {role.name} is granted {type_of_access} {group.name}.\n\n"
