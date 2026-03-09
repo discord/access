@@ -42,8 +42,11 @@ def app(request: pytest.FixtureRequest) -> Flask:
         app.config.update(param)
         if "REQUIRE_DESCRIPTIONS" not in param:
             app.config["REQUIRE_DESCRIPTIONS"] = False
+        if "REQUIRE_REASONS" not in param:
+            app.config["REQUIRE_REASONS"] = False
     else:
         app.config["REQUIRE_DESCRIPTIONS"] = param
+        app.config["REQUIRE_REASONS"] = False
 
     return app
 
