@@ -18,6 +18,7 @@ from api.models import (
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.views.schemas import AuditLogSchema, EventType
 
 
@@ -67,6 +68,21 @@ class ModifyGroupType:
                 # which cannot have its type changed
                 if self.group.is_owner:
                     raise ValueError("Owner app groups cannot have their type modified")
+
+                # Invoke group_deleted hook before the AppGroup row is removed so the
+                # plugin can still access group.app and status values (e.g. to delete
+                # the linked GitHub team).
+                plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+                if plugin_id is not None:
+                    try:
+                        hook = get_app_group_lifecycle_hook()
+                        hook.group_deleted(session=db.session, group=self.group, plugin_id=plugin_id)
+                        db.session.commit()
+                    except Exception:
+                        current_app.logger.exception(
+                            f"Failed to invoke group_deleted hook for group {self.group.id} with plugin '{plugin_id}'"
+                        )
+                        db.session.rollback()
 
                 # Remove app tag map for this group that is no longer attached to an app
                 OktaGroupTagMap.query.filter(
