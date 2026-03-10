@@ -1,27 +1,20 @@
 import random
 import string
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
-
-from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from uuid import uuid4
 
 from api.extensions import db
-from api.models import (
-    AccessRequest,
-    AccessRequestStatus,
-    AppGroup,
-    OktaGroup,
-    OktaGroupTagMap,
-    OktaUser,
-    RoleGroup,
-)
+from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins import get_audit_events_hook, get_conditional_access_hook, get_notification_hook
+from api.plugins.audit_events import AuditEventEnvelope
 from api.views.schemas import AuditLogSchema, EventType
+from flask import current_app, has_request_context, request
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 
 class CreateAccessRequest:
@@ -114,9 +107,11 @@ class CreateAccessRequest:
                 {
                     "event_type": EventType.access_create,
                     "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "ip": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
                     "current_user_id": self.requester.id,
                     "current_user_email": self.requester.email,
                     "group": group,
@@ -126,6 +121,42 @@ class CreateAccessRequest:
                 }
             )
         )
+
+        # Emit audit event to plugins (after DB commit)
+        try:
+            audit_hook = get_audit_events_hook()
+            envelope = AuditEventEnvelope(
+                id=uuid4(),
+                event_type="access_create",
+                timestamp=datetime.now(timezone.utc),
+                actor_id=self.requester.id,
+                actor_email=self.requester.email,
+                target_type="access_request",
+                target_id=str(access_request.id),
+                target_name=f"Access request for {group.name}" if group else "Unknown group",
+                action="created",
+                reason=self.request_reason,
+                payload={
+                    "access_request_id": str(access_request.id),
+                    "requester_user_id": self.requester.id,
+                    "requester_email": self.requester.email,
+                    "requested_group_id": self.requested_group.id,
+                    "requested_group_name": group.name if group else None,
+                    "request_ownership": self.request_ownership,
+                    "request_ending_at": self.request_ending_at.isoformat() if self.request_ending_at else None,
+                },
+                metadata={
+                    "user_agent": request.headers.get("User-Agent") if context else None,
+                    "ip_address": (
+                        request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
+                        if context
+                        else None
+                    ),
+                },
+            )
+            audit_hook.audit_event_logged(envelope=envelope)
+        except Exception as e:
+            current_app.logger.error(f"Failed to emit audit event: {e}", exc_info=True)
 
         conditional_access_responses = self.conditional_access_hook.access_request_created(
             access_request=access_request,
