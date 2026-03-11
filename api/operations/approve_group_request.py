@@ -40,8 +40,8 @@ class ApproveGroupRequest:
             .first()
         )
 
+        self.approver_id: str | None = None
         if approver_user is None:
-            self.approver_id = None
             self.approver_email = None
         elif isinstance(approver_user, str):
             approver = db.session.get(OktaUser, approver_user)
@@ -167,7 +167,7 @@ class ApproveGroupRequest:
                 description=resolved_description,
             )
 
-        created_group = CreateGroup(
+        created_group: AppGroup | OktaGroup | RoleGroup = CreateGroup(
             group=new_group,
             tags=resolved_tags,
             current_user_id=self.approver_id,
@@ -207,9 +207,13 @@ class ApproveGroupRequest:
         # Add the requester as an owner of the newly created group
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
-        if self.bypass_self_approval:
+        if self.bypass_self_approval and self.approver_id is not None:
+            # var and assert added due to mypy throwing errors
+            approver_id = self.approver_id
+            assert approver_id is not None
+
             can_add_owner, _ = CheckForSelfAdd(
-                group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]
+                group=created_group_with_tags, current_user=approver_id, owners_to_add=[approver_id]
             ).execute_for_group()
 
         if can_add_owner:

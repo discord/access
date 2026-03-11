@@ -31,7 +31,7 @@ class CreateGroupRequest:
         requested_group_description: str = "",
         requested_group_type: str,
         requested_app_id: Optional[str] = None,
-        requested_group_tags: List[str] = None,
+        requested_group_tags: Optional[List[str]] = None,
         requested_ownership_ending_at: Optional[datetime] = None,
         request_reason: str = "",
     ):

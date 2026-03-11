@@ -40,9 +40,6 @@ class RejectGroupRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> GroupRequest:
-        if self.group_request is None:
-            return None
-
         # Already resolved
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
             return self.group_request

@@ -282,6 +282,8 @@ def test_approve_group_request_creates_group(
         request_reason="Need this group",
     ).execute()
 
+    assert group_request is not None
+
     ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
@@ -340,6 +342,8 @@ def test_approve_group_request_sets_owner_with_ending_time(
         request_reason="Need temporary ownership",
     ).execute()
 
+    assert group_request is not None
+
     ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
@@ -347,6 +351,7 @@ def test_approve_group_request_sets_owner_with_ending_time(
     ).execute()
 
     db.session.refresh(group_request)
+    assert group_request.approved_group_id is not None
     created_group = db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that the requester is an owner with the correct ending time
@@ -409,7 +414,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
         request_reason="Need group",
     ).execute()
 
-    assert group_request is not None, "CreateGroupRequest should return a GroupRequest object"
+    assert group_request is not None
 
     # Approver sets resolved ownership ending time to 90 days (should be reduced to 30 by tag)
     requested_90_days = datetime.now(timezone.utc) + timedelta(days=90)
@@ -423,6 +428,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
     ).execute()
 
     db.session.refresh(group_request)
+    assert group_request.approved_group_id is not None
     created_group = db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that requester is an owner
@@ -486,6 +492,8 @@ def test_approve_group_request_applies_tags(
         request_reason="Need tagged group",
     ).execute()
 
+    assert group_request is not None
+
     # Set resolved tags (approver could modify these)
     group_request.resolved_group_tags = [tag.id]
     db.session.commit()
@@ -497,6 +505,7 @@ def test_approve_group_request_applies_tags(
     ).execute()
 
     db.session.refresh(group_request)
+    assert group_request.approved_group_id is not None
     created_group = db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that the tag was applied
@@ -541,6 +550,8 @@ def test_approve_group_request_sets_name(
         request_reason="Need this name",
     ).execute()
 
+    assert group_request is not None
+
     ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
@@ -548,6 +559,7 @@ def test_approve_group_request_sets_name(
     ).execute()
 
     db.session.refresh(group_request)
+    assert group_request.approved_group_id is not None
     created_group = db.session.get(OktaGroup, group_request.approved_group_id)
     assert created_group.name == "Specific Name"
     assert created_group.description == "Specific description text"
@@ -583,6 +595,8 @@ def test_approve_group_request_sets_type(
         request_reason="Need group",
     ).execute()
 
+    assert group_request_okta is not None
+
     ApproveGroupRequest(
         group_request=group_request_okta,
         approver_user=admin,
@@ -592,6 +606,7 @@ def test_approve_group_request_sets_type(
     db.session.refresh(group_request_okta)
     assert group_request_okta.status == AccessRequestStatus.APPROVED
     assert group_request_okta.resolver_user_id == admin.id
+    assert group_request_okta.approved_group_id is not None
 
     created_okta_group = db.session.get(OktaGroup, group_request_okta.approved_group_id)
     assert type(created_okta_group) is OktaGroup
@@ -606,6 +621,8 @@ def test_approve_group_request_sets_type(
         request_reason="Need app group",
     ).execute()
 
+    assert group_request_app is not None
+
     ApproveGroupRequest(
         group_request=group_request_app,
         approver_user=admin,
@@ -615,6 +632,7 @@ def test_approve_group_request_sets_type(
     db.session.refresh(group_request_app)
     assert group_request_app.status == AccessRequestStatus.APPROVED
     assert group_request_app.resolver_user_id == admin.id
+    assert group_request_app.approved_group_id is not None
 
     created_app_group = db.session.get(OktaGroup, group_request_app.approved_group_id)
     assert type(created_app_group) is AppGroup
@@ -629,6 +647,8 @@ def test_approve_group_request_sets_type(
         request_reason="Need role group",
     ).execute()
 
+    assert group_request_role is not None
+
     ApproveGroupRequest(
         group_request=group_request_role,
         approver_user=admin,
@@ -638,6 +658,7 @@ def test_approve_group_request_sets_type(
     db.session.refresh(group_request_role)
     assert group_request_role.status == AccessRequestStatus.APPROVED
     assert group_request_role.resolver_user_id == admin.id
+    assert group_request_role.approved_group_id is not None
 
     created_role_group = db.session.get(OktaGroup, group_request_role.approved_group_id)
     assert type(created_role_group) is RoleGroup
@@ -694,6 +715,8 @@ def test_app_owner_can_approve_request(
         request_reason="Need app group",
     ).execute()
 
+    assert group_request is not None
+
     # App owner should be able to approve
     ApproveGroupRequest(
         group_request=group_request,
@@ -748,6 +771,8 @@ def test_app_owner_can_reject_request(
         requested_app_id=app_obj.id,
         request_reason="Need app group",
     ).execute()
+
+    assert group_request is not None
 
     # App owner should be able to reject
     RejectGroupRequest(
@@ -822,6 +847,8 @@ def test_wrong_app_owner_cannot_approve_request(
         request_reason="Need group for other app",
     ).execute()
 
+    assert group_request is not None
+
     # Set resolved_app_id
     group_request.resolved_app_id = other_app.id
     db.session.commit()
@@ -859,6 +886,8 @@ def test_admin_can_reject_request(
         request_reason="Need group",
     ).execute()
 
+    assert group_request is not None
+
     RejectGroupRequest(
         group_request=group_request,
         rejection_reason="Rejected by admin",
@@ -891,6 +920,8 @@ def test_any_user_cannot_reject_request(
         request_reason="Need group",
     ).execute()
 
+    assert group_request is not None
+
     RejectGroupRequest(
         group_request=group_request,
         rejection_reason="Rejected by other_user",
@@ -920,6 +951,8 @@ def test_user_can_reject_own_request(
         request_reason="Changed my mind",
     ).execute()
 
+    assert group_request is not None
+
     RejectGroupRequest(
         group_request=group_request,
         rejection_reason="I changed my mind",
@@ -948,6 +981,8 @@ def test_user_cannot_approve_own_request(
         requested_group_type="okta_group",
         request_reason="Want to self-approve",
     ).execute()
+
+    assert group_request is not None
 
     # Attempt to self-approve should fail
     ApproveGroupRequest(
@@ -994,6 +1029,8 @@ def test_approver_can_modify_group_details(
         request_reason="Need group",
     ).execute()
 
+    assert group_request is not None
+
     # Approver modifies the request before approval
     group_request.resolved_group_name = "Modified Name"
     group_request.resolved_group_description = "Modified description"
@@ -1007,6 +1044,7 @@ def test_approver_can_modify_group_details(
     ).execute()
 
     db.session.refresh(group_request)
+    assert group_request.approved_group_id is not None
     created_group = db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Verify the modified values were used
@@ -1056,6 +1094,8 @@ def test_cannot_approve_already_resolved_request(
         requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
+
+    assert group_request is not None
 
     # First approval
     ApproveGroupRequest(
@@ -1109,7 +1149,7 @@ def test_cannot_approve_deleted_requester(
         request_reason="Need group",
     ).execute()
 
-    assert group_request is not None, "CreateGroupRequest should return a GroupRequest object"
+    assert group_request is not None
 
     # Delete the requester
     user.deleted_at = db.func.now()
@@ -1337,6 +1377,8 @@ def test_random_user_cannot_approve_group_request(
         requested_group_type="okta_group",
         request_reason="Need group",
     ).execute()
+
+    assert group_request is not None
 
     ApproveGroupRequest(
         group_request=group_request,
