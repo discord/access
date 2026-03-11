@@ -74,7 +74,6 @@ group_request_schema = GroupRequestSchema(
 class GroupRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(GroupRequestSchema)
     def get(self, group_request_id: str) -> ResponseReturnValue:
-        # TODO add in approved_group_id if request is already approved?
         group_request = (
             GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request_id).first_or_404()
         )
