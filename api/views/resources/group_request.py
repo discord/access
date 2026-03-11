@@ -35,49 +35,50 @@ DEFAULT_LOAD_OPTIONS = (
     joinedload(GroupRequest.resolver),
 )
 
+group_request_schema = GroupRequestSchema(
+    only=(
+        "id",
+        "created_at",
+        "updated_at",
+        "resolved_at",
+        "status",
+        "requester.id",
+        "requester.email",
+        "requester.first_name",
+        "requester.last_name",
+        "requester.display_name",
+        "requester.deleted_at",
+        "requested_group_name",
+        "requested_group_description",
+        "requested_group_type",
+        "requested_app_id",
+        "requested_group_tags",
+        "requested_ownership_ending_at",
+        "request_reason",
+        "resolver.id",
+        "resolver.email",
+        "resolver.first_name",
+        "resolver.last_name",
+        "resolver.display_name",
+        "resolved_group_name",
+        "resolved_group_description",
+        "resolved_group_type",
+        "resolved_app_id",
+        "resolved_group_tags",
+        "resolved_ownership_ending_at",
+        "resolution_reason",
+    )
+)
+
 
 class GroupRequestResource(MethodResource):
     @FlaskApiSpecDecorators.response_schema(GroupRequestSchema)
     def get(self, group_request_id: str) -> ResponseReturnValue:
         # TODO add in approved_group_id if request is already approved?
-        schema = GroupRequestSchema(
-            only=(
-                "id",
-                "created_at",
-                "updated_at",
-                "resolved_at",
-                "status",
-                "requester.id",
-                "requester.email",
-                "requester.first_name",
-                "requester.last_name",
-                "requester.display_name",
-                "requester.deleted_at",
-                "requested_group_name",
-                "requested_group_description",
-                "requested_group_type",
-                "requested_app_id",
-                "requested_group_tags",
-                "requested_ownership_ending_at",
-                "request_reason",
-                "resolver.id",
-                "resolver.email",
-                "resolver.first_name",
-                "resolver.last_name",
-                "resolver.display_name",
-                "resolved_group_name",
-                "resolved_group_description",
-                "resolved_group_type",
-                "resolved_app_id",
-                "resolved_group_tags",
-                "resolved_ownership_ending_at",
-                "resolution_reason",
-            )
-        )
         group_request = (
             GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request_id).first_or_404()
         )
-        return schema.dump(group_request)
+        return group_request_schema.dump(group_request)
 
     @FlaskApiSpecDecorators.request_schema(ResolveGroupRequestSchema)
     @FlaskApiSpecDecorators.response_schema(GroupRequestSchema)
@@ -142,40 +143,7 @@ class GroupRequestResource(MethodResource):
         group_request = (
             GroupRequest.query.options(DEFAULT_LOAD_OPTIONS).filter(GroupRequest.id == group_request.id).first()
         )
-        return GroupRequestSchema(
-            only=(
-                "id",
-                "created_at",
-                "updated_at",
-                "resolved_at",
-                "status",
-                "requester.id",
-                "requester.email",
-                "requester.first_name",
-                "requester.last_name",
-                "requester.display_name",
-                "requester.deleted_at",
-                "requested_group_name",
-                "requested_group_description",
-                "requested_group_type",
-                "requested_app_id",
-                "requested_group_tags",
-                "requested_ownership_ending_at",
-                "request_reason",
-                "resolver.id",
-                "resolver.email",
-                "resolver.first_name",
-                "resolver.last_name",
-                "resolver.display_name",
-                "resolved_group_name",
-                "resolved_group_description",
-                "resolved_group_type",
-                "resolved_app_id",
-                "resolved_group_tags",
-                "resolved_ownership_ending_at",
-                "resolution_reason",
-            )
-        ).dump(group_request)
+        return group_request_schema.dump(group_request)
 
 
 class GroupRequestList(MethodResource):
@@ -358,9 +326,10 @@ class GroupRequestList(MethodResource):
             if len(tags) != len(group_request_args["requested_group_tags"]):
                 abort(400, "One or more tags not found")
 
-        # Close any existing pending group requests with the same name (and app if app group)
+        # Close any existing pending group requests by the same user with the same name (and app if app group)
         existing_group_requests_query = (
             GroupRequest.query.filter(GroupRequest.requested_group_name == group_request_args["requested_group_name"])
+            .filter(GroupRequest.requester_user_id == g.current_user_id)
             .filter(GroupRequest.status == AccessRequestStatus.PENDING)
             .filter(GroupRequest.resolved_at.is_(None))
         )

@@ -63,6 +63,13 @@ class CreateGroupRequest:
         if self.requested_app_id is not None and self.requested_group_type != "app_group":
             return None
 
+        # Validate that "Role-" prefix is used for all role groups and prefix is not used for other group types
+        if self.requested_group_type == "role_group" and not self.requested_group_name.startswith("Role-"):
+            return None
+        
+        if self.requested_group_type != "role_group" and self.requested_group_name.startswith("Role-"):
+            return None
+        
         # Validate that app_id is provided if type is AppGroup
         if self.requested_group_type == "app_group" and self.requested_app_id is None:
             return None
@@ -124,22 +131,9 @@ class CreateGroupRequest:
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None:
             # Get app owners by checking active owner app groups
-            # Use a direct query to avoid lazy loading issues with raise_on_sql
             now = datetime.now(timezone.utc)
 
-            app_owner_user_ids = {
-                user_id
-                for (user_id,) in db.session.query(OktaUserGroupMember.user_id)
-                .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                .filter(
-                    AppGroup.app_id == app.id,
-                    AppGroup.is_owner,
-                    AppGroup.deleted_at.is_(None),
-                    db.or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > now),
-                )
-                .distinct()
-                .all()
-            }
+            app_owner_user_ids = {u.id for u in get_app_managers(app.id)}
 
             if self.requester.id in app_owner_user_ids:
                 ApproveGroupRequest(
@@ -156,14 +150,7 @@ class CreateGroupRequest:
         if self.requested_app_id is not None:
             approvers = get_app_managers(self.requested_app_id)
         else:
-            # TODO maybe change this to just platsec for RoleGroups, want to be able to enforce RBAC?
             approvers = get_access_owners()
-
-        # Filter out the requester from approvers if they're the only one
-        if len(approvers) == 1 and approvers[0].id == self.requester.id:
-            if self.requested_app_id is not None:
-                # Fall back to access owners if requester is the only app manager
-                approvers = get_access_owners()
 
         # Audit logging
         context = has_request_context()
