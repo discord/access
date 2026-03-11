@@ -1163,7 +1163,7 @@ def test_app_owner_auto_approves_own_app_group_request(
         OktaUserGroupMember(
             user_id=app_owner.id,
             group_id=owner_group.id,
-            is_owner=False,
+            is_owner=True,
         )
     )
     db.session.commit()
@@ -1248,7 +1248,7 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
         OktaUserGroupMember(
             user_id=app_owner.id,
             group_id=owner_group.id,
-            is_owner=False,
+            is_owner=True,
         )
     )
     db.session.commit()
