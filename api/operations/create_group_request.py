@@ -1,6 +1,6 @@
 import random
 import string
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List, Optional
 
 from flask import current_app, has_request_context, request
@@ -12,7 +12,6 @@ from api.models import (
     AppGroup,
     GroupRequest,
     OktaUser,
-    OktaUserGroupMember,
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
@@ -66,10 +65,10 @@ class CreateGroupRequest:
         # Validate that "Role-" prefix is used for all role groups and prefix is not used for other group types
         if self.requested_group_type == "role_group" and not self.requested_group_name.startswith("Role-"):
             return None
-        
+
         if self.requested_group_type != "role_group" and self.requested_group_name.startswith("Role-"):
             return None
-        
+
         # Validate that app_id is provided if type is AppGroup
         if self.requested_group_type == "app_group" and self.requested_app_id is None:
             return None
@@ -131,8 +130,6 @@ class CreateGroupRequest:
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None:
             # Get app owners by checking active owner app groups
-            now = datetime.now(timezone.utc)
-
             app_owner_user_ids = {u.id for u in get_app_managers(app.id)}
 
             if self.requester.id in app_owner_user_ids:
