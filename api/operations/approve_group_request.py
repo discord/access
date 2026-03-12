@@ -208,12 +208,8 @@ class ApproveGroupRequest:
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
         if self.bypass_self_approval and self.approver_id is not None:
-            # var and assert added due to mypy throwing errors
-            approver_id = self.approver_id
-            assert approver_id is not None
-
             can_add_owner, _ = CheckForSelfAdd(
-                group=created_group_with_tags, current_user=approver_id, owners_to_add=[approver_id]
+                group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]
             ).execute_for_group()
 
         if can_add_owner:

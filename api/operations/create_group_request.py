@@ -12,6 +12,7 @@ from api.models import (
     AppGroup,
     GroupRequest,
     OktaUser,
+    RoleGroup,
     Tag,
 )
 from api.models.app_group import get_access_owners, get_app_managers
@@ -62,11 +63,15 @@ class CreateGroupRequest:
         if self.requested_app_id is not None and self.requested_group_type != "app_group":
             return None
 
-        # Validate that "Role-" prefix is used for all role groups and prefix is not used for other group types
-        if self.requested_group_type == "role_group" and not self.requested_group_name.startswith("Role-"):
+        # Validate that role prefix is used for all role groups and prefix is not used for other group types
+        if self.requested_group_type == "role_group" and not self.requested_group_name.startswith(
+            RoleGroup.ROLE_GROUP_NAME_PREFIX
+        ):
             return None
 
-        if self.requested_group_type != "role_group" and self.requested_group_name.startswith("Role-"):
+        if self.requested_group_type != "role_group" and self.requested_group_name.startswith(
+            RoleGroup.ROLE_GROUP_NAME_PREFIX
+        ):
             return None
 
         # Validate that app_id is provided if type is AppGroup
