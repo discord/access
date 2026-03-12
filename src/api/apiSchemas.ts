@@ -202,6 +202,36 @@ export type CreateRoleRequest = {
   reason?: string;
 };
 
+export type CreateGroupRequest = {
+  /**
+   * @maxLength 255
+   * @minLength 1
+   */
+  requested_group_name: string;
+  /**
+   * @maxLength 1024
+   */
+  requested_group_description?: string;
+  /**
+   * @maxLength 50
+   */
+  requested_group_type: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  requested_app_id?: string;
+  /**
+   * @format date-time
+   */
+  requested_ownership_ending_at?: string;
+  requested_group_tags?: string[];
+  /**
+   * @maxLength 1024
+   */
+  request_reason?: string;
+};
+
 export type DeleteMessage = {
   deleted?: boolean;
 };
@@ -391,6 +421,36 @@ export type ResolveRoleRequest = {
   reason?: string;
 };
 
+export type ResolveGroupRequest = {
+  approved: boolean;
+  /**
+   * @maxLength 255
+   */
+  resolved_group_name?: string;
+  /**
+   * @maxLength 1024
+   */
+  resolved_group_description?: string;
+  /**
+   * @maxLength 50
+   */
+  resolved_group_type?: string;
+  /**
+   * @maxLength 20
+   * @minLength 20
+   */
+  resolved_app_id?: string;
+  /**
+   * @format date-time
+   */
+  resolved_ownership_ending_at?: string;
+  resolved_group_tags?: string[];
+  /**
+   * @maxLength 1024
+   */
+  resolution_reason?: string;
+};
+
 export type GroupRoleAuditPagination = {
   /**
    * @format url
@@ -541,6 +601,92 @@ export type RoleRequestPagination = {
    */
   prev?: string;
   results?: RoleRequest[];
+  total?: number;
+};
+
+export type GroupRequest = {
+  /**
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * @maxLength 20
+   */
+  id: string;
+  /**
+   * @format date-time
+   */
+  updated_at?: string;
+  /**
+   * @format date-time
+   */
+  resolved_at?: string | null;
+  /**
+   * @maxLength 8
+   */
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requester?: OktaUser;
+  active_requester?: OktaUser;
+  /**
+   * @maxLength 255
+   */
+  requested_group_name?: string;
+  /**
+   * @maxLength 1024
+   */
+  requested_group_description?: string;
+  /**
+   * @maxLength 50
+   */
+  requested_group_type?: string;
+  requested_app_id?: string | null;
+  /**
+   * @format date-time
+   */
+  requested_ownership_ending_at?: string | null;
+  requested_group_tags?: string[];
+  /**
+   * @maxLength 1024
+   */
+  request_reason?: string;
+  resolver?: OktaUser;
+  active_resolver?: OktaUser;
+  /**
+   * @maxLength 255
+   */
+  resolved_group_name?: string;
+  /**
+   * @maxLength 1024
+   */
+  resolved_group_description?: string;
+  /**
+   * @maxLength 50
+   */
+  resolved_group_type?: string;
+  resolved_app_id?: string | null;
+  /**
+   * @format date-time
+   */
+  resolved_ownership_ending_at?: string | null;
+  resolved_group_tags?: string[];
+  /**
+   * @maxLength 1024
+   */
+  resolution_reason?: string;
+  approved_group?: PolymorphicGroup;
+};
+
+export type GroupRequestPagination = {
+  /**
+   * @format url
+   */
+  next?: string;
+  pages?: number;
+  /**
+   * @format url
+   */
+  prev?: string;
+  results?: GroupRequest[];
   total?: number;
 };
 
