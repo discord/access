@@ -76,9 +76,10 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
   label: label,
 }));
 
-const APP_GROUP_PREFIX = 'App-';
-const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const ROLE_GROUP_PREFIX = 'Role-';
+const OKTA_GROUP_PREFIX = accessConfig.OKTA_GROUP_NAME_PREFIX;
+const APP_GROUP_PREFIX = accessConfig.APP_GROUP_NAME_PREFIX;
+const APP_NAME_APP_GROUP_SEPARATOR = accessConfig.APP_NAME_GROUP_NAME_SEPARATOR;
+const ROLE_GROUP_PREFIX = accessConfig.ROLE_GROUP_NAME_PREFIX;
 
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
@@ -167,6 +168,7 @@ function GroupDialog(props: GroupDialogProps) {
 
     switch (group.type) {
       case 'okta_group':
+        group.name = OKTA_GROUP_PREFIX + group.name;
         break;
       case 'role_group':
         group.name = ROLE_GROUP_PREFIX + group.name;
@@ -255,12 +257,14 @@ function GroupDialog(props: GroupDialogProps) {
                 flexDirection: 'row',
                 alignItems: 'center',
               }}>
-              {groupType == 'app_group' || groupType == 'role_group' ? (
+              {groupType == 'app_group' || groupType == 'role_group' || (groupType == 'okta_group' && OKTA_GROUP_PREFIX !== '') ? (
                 <Box sx={{mx: 1}}>
                   <Typography noWrap={true} variant="h6">
                     {groupType == 'role_group'
                       ? ROLE_GROUP_PREFIX
-                      : APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR}
+                      : groupType == 'app_group'
+                        ? APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR
+                        : OKTA_GROUP_PREFIX}
                   </Typography>
                 </Box>
               ) : null}
