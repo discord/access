@@ -844,6 +844,166 @@ export const useResolveRoleRequestById = (
   );
 };
 
+export type GetGroupRequestsQueryParams = {
+  page?: number;
+  per_page?: number;
+  q?: string;
+  status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requester_user_id?: string;
+  assignee_user_id?: string;
+  resolver_user_id?: string;
+};
+
+export type GetGroupRequestsError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.GroupRequestPagination;
+}>;
+
+export type GetGroupRequestsVariables = {
+  queryParams?: GetGroupRequestsQueryParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchGetGroupRequests = (variables: GetGroupRequestsVariables, signal?: AbortSignal) =>
+  apiFetch<undefined, GetGroupRequestsError, undefined, {}, GetGroupRequestsQueryParams, {}>({
+    url: '/api/group-requests',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetGroupRequests = <TData = Schemas.GroupRequestPagination>(
+  variables: GetGroupRequestsVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<undefined, GetGroupRequestsError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<undefined, GetGroupRequestsError, TData>({
+    queryKey: queryKeyFn({path: '/api/group-requests', operationId: 'getGroupRequests', variables}),
+    queryFn: ({signal}) => fetchGetGroupRequests({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type CreateGroupRequestError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.GroupRequest;
+}>;
+
+export type CreateGroupRequestVariables = {
+  body: Schemas.CreateGroupRequest;
+} & ApiContext['fetcherOptions'];
+
+export const fetchCreateGroupRequest = (variables: CreateGroupRequestVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.GroupRequest, CreateGroupRequestError, Schemas.CreateGroupRequest, {}, {}, {}>({
+    url: '/api/group-requests',
+    method: 'post',
+    ...variables,
+    signal,
+  });
+
+export const useCreateGroupRequest = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<Schemas.GroupRequest, CreateGroupRequestError, CreateGroupRequestVariables>,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<Schemas.GroupRequest, CreateGroupRequestError, CreateGroupRequestVariables>(
+    (variables: CreateGroupRequestVariables) => fetchCreateGroupRequest({...fetcherOptions, ...variables}),
+    options,
+  );
+};
+
+export type GetGroupRequestByIdPathParams = {
+  groupRequestId: string;
+};
+
+export type GetGroupRequestByIdError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.GroupRequest;
+}>;
+
+export type GetGroupRequestByIdVariables = {
+  pathParams: GetGroupRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchGetGroupRequestById = (variables: GetGroupRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<undefined, GetGroupRequestByIdError, undefined, {}, {}, GetGroupRequestByIdPathParams>({
+    url: '/api/group-requests/{groupRequestId}',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export const useGetGroupRequestById = <TData = Schemas.GroupRequest>(
+  variables: GetGroupRequestByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<undefined, GetGroupRequestByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {fetcherOptions, queryOptions, queryKeyFn} = useApiContext(options);
+  return reactQuery.useQuery<undefined, GetGroupRequestByIdError, TData>({
+    queryKey: queryKeyFn({path: '/api/group-requests/{groupRequestId}', operationId: 'getGroupRequestById', variables}),
+    queryFn: ({signal}) => fetchGetGroupRequestById({...fetcherOptions, ...variables}, signal),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export type ResolveGroupRequestByIdPathParams = {
+  groupRequestId: string;
+};
+
+export type ResolveGroupRequestByIdError = Fetcher.ErrorWrapper<{
+  status: ClientErrorStatus | ServerErrorStatus;
+  payload: Schemas.GroupRequest;
+}>;
+
+export type ResolveGroupRequestByIdVariables = {
+  body: Schemas.ResolveGroupRequest;
+  pathParams: ResolveGroupRequestByIdPathParams;
+} & ApiContext['fetcherOptions'];
+
+export const fetchResolveGroupRequestById = (variables: ResolveGroupRequestByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.ResolveGroupRequest,
+    ResolveGroupRequestByIdError,
+    Schemas.ResolveGroupRequest,
+    {},
+    {},
+    ResolveGroupRequestByIdPathParams
+  >({
+    url: '/api/group-requests/{groupRequestId}',
+    method: 'put',
+    ...variables,
+    signal,
+  });
+
+export const useResolveGroupRequestById = (
+  options?: Omit<
+    reactQuery.UseMutationOptions<
+      Schemas.ResolveGroupRequest,
+      ResolveGroupRequestByIdError,
+      ResolveGroupRequestByIdVariables
+    >,
+    'mutationFn'
+  >,
+) => {
+  const {fetcherOptions} = useApiContext();
+  return reactQuery.useMutation<
+    Schemas.ResolveGroupRequest,
+    ResolveGroupRequestByIdError,
+    ResolveGroupRequestByIdVariables
+  >(
+    (variables: ResolveGroupRequestByIdVariables) => fetchResolveGroupRequestById({...fetcherOptions, ...variables}),
+    options,
+  );
+};
+
 export type GetRolesQueryParams = {
   page?: number;
   per_page?: number;
@@ -1460,6 +1620,16 @@ export type QueryOperation =
       path: '/api/role-requests/{roleRequestId}';
       operationId: 'getRoleRequestById';
       variables: GetRoleRequestByIdVariables;
+    }
+  | {
+      path: '/api/group-requests';
+      operationId: 'getGroupRequests';
+      variables: GetGroupRequestsVariables;
+    }
+  | {
+      path: '/api/group-requests/{groupRequestId}';
+      operationId: 'getGroupRequestById';
+      variables: GetGroupRequestByIdVariables;
     }
   | {
       path: '/api/roles';
