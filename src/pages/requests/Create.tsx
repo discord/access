@@ -43,7 +43,7 @@ import {
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 import {minTagTime, minTagTimeGroups} from '../../helpers';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -442,6 +442,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="reason"
             multiline
             rows={4}
+            required={requireReasons}
             validation={{maxLength: 1024}}
             parseError={(error) => {
               if (error?.message != '') {

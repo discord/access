@@ -3,11 +3,13 @@ from typing import Any, Dict, Optional
 
 from marshmallow import Schema, ValidationError, fields, post_load, validate
 
+from api.views.schemas.core_schemas import context_aware_reason_field
+
 
 class CreateAccessRequestSchema(Schema):
     group_id = fields.String(validate=validate.Length(equal=20), required=True, load_only=True)
     group_owner = fields.Boolean(load_default=False, load_only=True)
-    reason = fields.String(validate=validate.Length(max=1024), load_only=True)
+    reason = context_aware_reason_field(load_only=True)
 
     @staticmethod
     def must_be_in_the_future(data: Optional[datetime]) -> None:
@@ -30,7 +32,7 @@ class CreateAccessRequestSchema(Schema):
 
 class ResolveAccessRequestSchema(Schema):
     approved = fields.Boolean(required=True, load_only=True)
-    reason = fields.String(load_only=True, validate=validate.Length(max=1024))
+    reason = context_aware_reason_field(load_only=True)
 
     @staticmethod
     def must_be_in_the_future(data: Optional[datetime]) -> None:

@@ -34,7 +34,7 @@ import {displayUserName, minTagTimeGroups, requiredReasonGroups} from '../../hel
 import {usePutGroupMembersById, PutGroupMembersByIdError, PutGroupMembersByIdVariables} from '../../api/apiComponents';
 import {GroupMember, OktaUserGroupMember, PolymorphicGroup, RoleGroupMap, RoleGroup} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 interface Data {
   id: number;
@@ -479,7 +479,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                   name="reason"
                   multiline
                   rows={1}
-                  required={requiredReason}
+                  required={requireReasons || requiredReason}
                   validation={{maxLength: 1024}}
                   parseError={(error) => {
                     if (error?.message != '') {

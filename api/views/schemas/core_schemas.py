@@ -77,6 +77,49 @@ def context_aware_description_field() -> fields.Field:
     return ContextAwareDescriptionField(allow_none=True, load_default="", dump_default="")
 
 
+def context_aware_reason_field(**kwargs: Any) -> fields.Field:
+    """
+    Returns a context-aware reason field that reads REQUIRE_REASONS
+    from Flask app config at validation time instead of module import time.
+    """
+
+    class ContextAwareReasonField(fields.String):
+        def deserialize(
+            self, value: Any, attr: Optional[str] = None, data: Optional[Mapping[str, Any]] = None, **kwargs: Any
+        ) -> Any:
+            # Read config at deserialization time (when processing request data)
+            require_reasons = current_app.config.get("REQUIRE_REASONS", False)
+
+            # Check if field was provided in the input data
+            field_was_provided = data is not None and attr is not None and attr in data
+
+            # If field wasn't provided and reasons are required, raise error
+            if not field_was_provided and require_reasons:
+                raise ValidationError("Reason is required.")
+
+            # If field wasn't provided and reasons are not required, return empty string
+            if not field_was_provided:
+                return ""
+
+            # Field was provided, validate it
+            if isinstance(value, str) and value.strip() == "" and require_reasons:
+                raise ValidationError("Reason must be between 1 and 1024 characters")
+
+            # Use parent deserialization for type conversion
+            if value is None or value == "":
+                return "" if not require_reasons else self.fail("required")
+
+            result = super().deserialize(value, attr, data, **kwargs)
+
+            # Validate length
+            if result and len(result) > 1024:
+                raise ValidationError("Reason must be 1024 characters or less")
+
+            return result
+
+    return ContextAwareReasonField(allow_none=True, load_default="", dump_default="", **kwargs)
+
+
 # See https://stackoverflow.com/a/58646612
 class OktaUserGroupMemberSchema(SQLAlchemyAutoSchema):
     group = fields.Nested(lambda: PolymorphicGroupSchema)
