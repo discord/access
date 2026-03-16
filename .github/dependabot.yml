@@ -20,18 +20,46 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "@rollup/rollup-*"
     groups:
+      mui:
+        patterns:
+          - "@mui/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      react-core:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      testing:
+        patterns:
+          - "@testing-library/*"
+          - "vitest"
+          - "@vitest/*"
+          - "jsdom"
+      build-tools:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+          - "prettier"
+          - "husky"
+          - "lint-staged"
       npm-major:
         patterns:
           - "*"
         update-types:
-        - "major"
+          - "major"
       npm-minor:
         patterns:
           - "*"
         update-types:
-        - "minor"
-        - "patch"
+          - "minor"
+          - "patch"
   - package-ecosystem: "github-actions"
     # Workflow files stored in the
     # default location of `.github/workflows`
