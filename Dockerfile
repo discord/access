@@ -3,7 +3,7 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:22-alpine AS build-step
+FROM node:25-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
 COPY index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
