@@ -34,7 +34,12 @@ import {
   FormContainer,
   SelectElement,
   TextFieldElement,
+  useFormContext,
 } from 'react-hook-form-mui';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
+import {Controller} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -52,7 +57,7 @@ import {
 import {App, GroupRequest, ResolveGroupRequest, Tag} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
-import {displayUserName} from '../../helpers';
+import {displayUserName, minTagTime} from '../../helpers';
 
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
@@ -72,12 +77,87 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
 
 const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
+const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
+);
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
+
+interface OwnershipEndingFieldProps {
+  ownershipTimeLimit: number | null;
+  ownershipUntil: string | null;
+  setOwnershipUntil: (v: string | null) => void;
+}
+
+function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipUntil}: OwnershipEndingFieldProps) {
+  const {control, setValue} = useFormContext();
+
+  const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    if (ownershipTimeLimit == null) {
+      return [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+    }
+    const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
+    return [filtered, lastId];
+  }, [ownershipTimeLimit]);
+
+  React.useEffect(() => {
+    if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
+    const seconds = parseInt(ownershipUntil, 10);
+    if (!isNaN(seconds) && ownershipTimeLimit != null && seconds > ownershipTimeLimit) {
+      setOwnershipUntil(defaultUntilId ?? null);
+      setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
+    }
+  }, [ownershipTimeLimit, ownershipUntil, defaultUntilId, setValue, setOwnershipUntil]);
+
+  return (
+    <FormControl margin="normal" fullWidth>
+      <InputLabel id="ownership-ending-at-label">Ownership Ending At</InputLabel>
+      <Controller
+        name="resolved_ownership_ending_at"
+        control={control}
+        render={({field}) => (
+          <Select
+            {...field}
+            labelId="ownership-ending-at-label"
+            label="Ownership Ending At"
+            onChange={(e) => {
+              field.onChange(e);
+              setOwnershipUntil(e.target.value as string);
+            }}>
+            {availableUntilOptions.map(({id, label}) => (
+              <MenuItem key={id} value={id}>
+                {label}
+              </MenuItem>
+            ))}
+          </Select>
+        )}
+      />
+    </FormControl>
+  );
+}
+
+function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
+  const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
+    .filter((key) => Number(key) <= timeLimit)
+    .reduce(
+      (obj, key) => {
+        obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
+        return obj;
+      },
+      {} as Record<string, string>,
+    );
+
+  const filteredLabels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+    id,
+    label,
+  }));
+
+  return [Object.keys(filteredUntil).at(-1)!, filteredLabels];
+}
 
 interface ResolveRequestForm {
   resolved_group_name: string;
@@ -106,6 +186,8 @@ export default function ReadGroupRequest() {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
 
+  const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
+
   const {data, isError, isLoading} = useGetGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
   });
@@ -118,7 +200,6 @@ export default function ReadGroupRequest() {
   const requestedAppId = groupRequest.requested_app_id ?? null;
   const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
 
-  // Seed groupType and ownershipUntil from loaded data (only once)
   const [typesSeeded, setTypesSeeded] = React.useState(false);
   React.useEffect(() => {
     if (!typesSeeded && data?.requested_group_type) {
@@ -132,7 +213,6 @@ export default function ReadGroupRequest() {
     }
   }, [data, typesSeeded]);
 
-  // Fetch the requested app by ID to pre-populate the app field and prefix display
   const {data: requestedAppData} = useGetAppById(
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
@@ -145,8 +225,6 @@ export default function ReadGroupRequest() {
     }
   }, [requestedAppData, appSeeded]);
 
-  // Determine if the current user owns the requested app using the already-fetched
-  // requestedAppData (individual app GET returns full ownership membership details).
   const isAppOwner = React.useMemo<boolean>(() => {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppData) {
       return false;
@@ -156,8 +234,6 @@ export default function ReadGroupRequest() {
     );
   }, [admin, ownRequest, requestedGroupType, requestedAppData, currentUser.id]);
 
-  // Fetch all apps owned by the current user for the app autocomplete restriction.
-  // We do a broad fetch and filter client-side using the same ownership check.
   const {data: ownedAppsData} = useGetApps({queryParams: {page: 0, per_page: 100, q: ''}}, {enabled: isAppOwner});
 
   const ownedAppIds = React.useMemo<Set<string>>(() => {
@@ -170,7 +246,6 @@ export default function ReadGroupRequest() {
         ids.add(app.id);
       }
     }
-    // Always include the requested app since we confirmed ownership via requestedAppData
     if (isAppOwner && requestedAppId) {
       ids.add(requestedAppId);
     }
@@ -180,28 +255,23 @@ export default function ReadGroupRequest() {
   const canApprove = (admin || isAppOwner) && !ownRequest;
   const canResolve = canApprove || ownRequest;
 
-  // App search for the resolver's autocomplete.
-  // For non-admin app owners, only show apps they own; for admins use server-side search.
   const {data: appSearchData} = useGetApps({
     queryParams: {page: 0, per_page: 10, q: appSearchInput},
   });
 
   const appSearchOptions = React.useMemo<App[]>(() => {
     const results = appSearchData?.results ?? [];
-    // Non-admin app owners may only reassign to other apps they own
     if (isAppOwner) {
       return results.filter((app) => app.id != null && ownedAppIds.has(app.id));
     }
     return results;
   }, [appSearchData, isAppOwner, ownedAppIds]);
 
-  // Tag search for the resolver's autocomplete
   const {data: tagSearchData} = useGetTags({
     queryParams: {page: 0, per_page: 10, q: tagSearchInput},
   });
   const tagSearchOptions = tagSearchData?.results ?? [];
 
-  // Seed selectedTags from the request's tag name strings
   const {data: allTagsForSeeding} = useGetTags(
     {queryParams: {page: 0, per_page: 100, q: ''}},
     {enabled: requestedTagNames.length > 0},
@@ -214,6 +284,24 @@ export default function ReadGroupRequest() {
       setTagsSeeded(true);
     }
   }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
+
+  const requestedTags = React.useMemo<Tag[]>(() => {
+    if (!allTagsForSeeding?.results) return [];
+    return allTagsForSeeding.results.filter((t) => requestedTagNames.includes(t.id));
+  }, [allTagsForSeeding, requestedTagNames]);
+
+  const resolvedTagIds: string[] =
+    Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
+      ? groupRequest.resolved_group_tags
+      : [];
+  const {data: allTagsForResolved} = useGetTags(
+    {queryParams: {page: 0, per_page: 100, q: ''}},
+    {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
+  );
+  const resolvedTags = React.useMemo<Tag[]>(() => {
+    if (!allTagsForResolved?.results) return [];
+    return allTagsForResolved.results.filter((t) => resolvedTagIds.includes(t.id));
+  }, [allTagsForResolved, resolvedTagIds]);
 
   const complete = (
     completedRequest: ResolveGroupRequest | undefined,
@@ -233,6 +321,82 @@ export default function ReadGroupRequest() {
     onSettled: complete,
   });
 
+  const approvedDetails = React.useMemo(() => {
+    if (groupRequest.status !== 'APPROVED') return [];
+
+    const safeRequestedTagNames = Array.isArray(requestedTagNames) ? requestedTagNames : [];
+    const safeResolvedTagIds = Array.isArray(resolvedTagIds) ? resolvedTagIds : [];
+    const requestedTagsSet = new Set(safeRequestedTagNames);
+    const resolvedTagsSet = new Set(safeResolvedTagIds);
+
+    const tagsChanged =
+      resolvedTagIds.length > 0 &&
+      (resolvedTagsSet.size !== requestedTagsSet.size ||
+        safeResolvedTagIds.some((id) => !requestedTagsSet.has(id)) ||
+        safeRequestedTagNames.some((id) => !resolvedTagsSet.has(id)));
+
+    type ApprovedField =
+      | {kind: 'text'; label: string; value: string; changed: boolean; from?: string}
+      | {kind: 'tags'; label: string; resolvedTags: Tag[]; changed: boolean; requestedTagNames: string[]};
+
+    const fields: ApprovedField[] = [
+      {
+        kind: 'text',
+        label: 'Name',
+        value: (groupRequest.resolved_group_name || groupRequest.requested_group_name) ?? '—',
+        changed:
+          !!groupRequest.resolved_group_name && groupRequest.resolved_group_name !== groupRequest.requested_group_name,
+        from: groupRequest.requested_group_name ?? '—',
+      },
+      {
+        kind: 'text',
+        label: 'Type',
+        value:
+          GROUP_TYPE_ID_TO_LABELS[groupRequest.resolved_group_type || requestedGroupType] ??
+          groupRequest.resolved_group_type ??
+          requestedGroupType,
+        changed:
+          !!groupRequest.resolved_group_type && groupRequest.resolved_group_type !== groupRequest.requested_group_type,
+        from: GROUP_TYPE_ID_TO_LABELS[requestedGroupType] ?? requestedGroupType,
+      },
+      {
+        kind: 'text',
+        label: 'Description',
+        value: (groupRequest.resolved_group_description || groupRequest.requested_group_description) ?? '—',
+        changed:
+          !!groupRequest.resolved_group_description &&
+          groupRequest.resolved_group_description !== groupRequest.requested_group_description,
+        from: groupRequest.requested_group_description ?? '—',
+      },
+      {
+        kind: 'text',
+        label: 'Ownership Ending',
+        value: groupRequest.resolved_ownership_ending_at
+          ? dayjs(groupRequest.resolved_ownership_ending_at).startOf('second').fromNow()
+          : groupRequest.requested_ownership_ending_at
+            ? dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()
+            : 'Indefinite',
+        changed:
+          groupRequest.resolved_ownership_ending_at != null &&
+          groupRequest.resolved_ownership_ending_at !== '' &&
+          groupRequest.resolved_ownership_ending_at !== groupRequest.requested_ownership_ending_at &&
+          !(!groupRequest.resolved_ownership_ending_at && !groupRequest.requested_ownership_ending_at),
+        from: groupRequest.requested_ownership_ending_at
+          ? dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()
+          : 'Indefinite',
+      },
+      {
+        kind: 'tags',
+        label: 'Tags',
+        resolvedTags: resolvedTagIds.length > 0 ? resolvedTags : requestedTags,
+        changed: tagsChanged,
+        requestedTagNames,
+      },
+    ];
+
+    return fields;
+  }, [groupRequest, resolvedTags, resolvedTagIds, requestedTagNames, requestedGroupType, requestedTags]);
+
   if (isError) {
     return <NotFound />;
   }
@@ -241,7 +405,6 @@ export default function ReadGroupRequest() {
     return <Loading />;
   }
 
-  // Strip auto-applied prefix from stored name so the input shows just the bare suffix
   const strippedRequestedName = (() => {
     const raw = groupRequest.requested_group_name ?? '';
     if (requestedGroupType === 'role_group' && raw.startsWith(ROLE_GROUP_PREFIX)) {
@@ -504,13 +667,13 @@ export default function ReadGroupRequest() {
                           </Typography>
                         </Grid>
                       )}
-                      {selectedTags.length > 0 && (
+                      {requestedTagNames.length > 0 && (
                         <Grid item xs={12}>
                           <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
                             <Typography variant="body2">
                               <b>Tags:</b>
                             </Typography>
-                            {selectedTags.map((tag) => (
+                            {requestedTags.map((tag) => (
                               <Chip key={tag.id} label={tag.name} size="small" />
                             ))}
                           </Stack>
@@ -668,16 +831,22 @@ export default function ReadGroupRequest() {
                                     }}
                                   />
                                 </FormControl>
-                                <Grid container spacing={2} alignItems="center">
+                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="center">
+                                  {ownershipTimeLimit != null && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
+                                        {'Ownership is limited to ' +
+                                          Math.floor(ownershipTimeLimit / 86400) +
+                                          ' days by a tag constraint.'}
+                                      </Typography>
+                                    </Grid>
+                                  )}
                                   <Grid item xs={6}>
-                                    <FormControl margin="normal" fullWidth>
-                                      <SelectElement
-                                        label="Ownership Ending At"
-                                        name="resolved_ownership_ending_at"
-                                        options={UNTIL_OPTIONS}
-                                        onChange={(value) => setOwnershipUntil(value)}
-                                      />
-                                    </FormControl>
+                                    <OwnershipEndingField
+                                      ownershipTimeLimit={ownershipTimeLimit}
+                                      ownershipUntil={ownershipUntil}
+                                      setOwnershipUntil={setOwnershipUntil}
+                                    />
                                   </Grid>
                                   <Grid item xs={6}>
                                     <FormControl margin="normal" fullWidth>
@@ -708,6 +877,9 @@ export default function ReadGroupRequest() {
                                           label="Custom End Date"
                                           name="resolved_ownership_ending_at_custom"
                                           shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
+                                          maxDate={
+                                            ownershipTimeLimit ? dayjs().add(ownershipTimeLimit, 'second') : undefined
+                                          }
                                         />
                                       </FormControl>
                                     </Grid>
@@ -801,10 +973,71 @@ export default function ReadGroupRequest() {
                           ' rejected the request.'
                         )}
                       </Typography>
-                      <Typography variant="body2" sx={{pt: 1}}>
+                      <Typography variant="body2" sx={{py: 1}}>
                         <b>Reason:</b>{' '}
                         {groupRequest.resolution_reason ? groupRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {groupRequest.status === 'APPROVED' && approvedDetails.length > 0 && (
+                        <Box sx={{mt: 1}}>
+                          <Typography variant="body1" sx={{mb: 0.5}}>
+                            <b>Approved Details:</b>
+                          </Typography>
+                          <Grid container spacing={0.5} sx={{pl: 2}}>
+                            {approvedDetails.map((field) => {
+                              if (field.kind === 'tags') {
+                                if (field.resolvedTags.length === 0 && field.requestedTagNames.length === 0) {
+                                  return null;
+                                }
+                                return (
+                                  <Grid item xs={12} key="tags">
+                                    <Stack direction="row" spacing={1} flexWrap="wrap" alignItems="center">
+                                      <Typography variant="body2">
+                                        <b>Tags:</b>
+                                      </Typography>
+                                      {field.changed && (
+                                        <>
+                                          {requestedTags.map((tag) => (
+                                            <Chip
+                                              key={tag.id}
+                                              label={tag.name}
+                                              size="small"
+                                              sx={{textDecoration: 'line-through', opacity: 0.6}}
+                                            />
+                                          ))}
+                                          <Typography variant="body2">{'→'}</Typography>
+                                        </>
+                                      )}
+                                      {field.resolvedTags.length > 0 ? (
+                                        field.resolvedTags.map((tag) => (
+                                          <Chip key={tag.id} label={tag.name} size="small" />
+                                        ))
+                                      ) : (
+                                        <Typography variant="body2">None</Typography>
+                                      )}
+                                    </Stack>
+                                  </Grid>
+                                );
+                              }
+                              return (
+                                <Grid item xs={12} key={field.label}>
+                                  <Typography variant="body2">
+                                    <b>{field.label}:</b>{' '}
+                                    {field.changed ? (
+                                      <>
+                                        <span style={{textDecoration: 'line-through'}}>{field.from}</span>
+                                        {' → '}
+                                        {field.value}
+                                      </>
+                                    ) : (
+                                      field.value
+                                    )}
+                                  </Typography>
+                                </Grid>
+                              );
+                            })}
+                          </Grid>
+                        </Box>
+                      )}
                     </Paper>
                   )}
                 </TimelineContent>

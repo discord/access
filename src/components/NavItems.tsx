@@ -104,7 +104,7 @@ export default function NavItems(props: NavItemsProps) {
         displayIcon={<RoleRequestIcon />}
         open={openRoleRequests}
         onClick={() => setOpenRoleRequests(!openRoleRequests)}
-        sx={{pb: 1}}
+        sx={{pt: 1}}
       />
       <Collapse component="li" in={props.open && openRoleRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
@@ -129,7 +129,7 @@ export default function NavItems(props: NavItemsProps) {
         displayIcon={<GroupRequestIcon />}
         open={openGroupRequests}
         onClick={() => setOpenGroupRequests(!openGroupRequests)}
-        sx={{pb: 1}}
+        sx={{py: 1}}
       />
       <Collapse component="li" in={props.open && openGroupRequests} timeout="auto" unmountOnExit>
         <List disablePadding>

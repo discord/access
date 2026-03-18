@@ -155,6 +155,7 @@ class TagList(MethodResource):
                     "id",
                     "name",
                     "description",
+                    "enabled",
                     "constraints",
                     "created_at",
                     "updated_at",
@@ -180,3 +181,4 @@ class TagList(MethodResource):
         tag = Tag.query.options(DEFAULT_LOAD_OPTIONS).filter(Tag.id == tag.id).filter(Tag.deleted_at.is_(None)).first()
 
         return schema.dump(tag), 201
+        

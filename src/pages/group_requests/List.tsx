@@ -182,7 +182,7 @@ export default function ListGroupRequests() {
                   <Grid container alignItems="center">
                     <Grid item>
                       <Box>
-                        {displayName} + ' requesting creation of' + {group_name}
+                        {displayName} is requesting the creation of {group_name}
                       </Box>
                       <Typography variant="body2" color="text.secondary">
                         {status} {status == 'PENDING' || resolver == '' ? '' : 'by ' + resolver}

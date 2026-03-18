@@ -36,7 +36,7 @@ import {
 } from '../../api/apiComponents';
 import {App, AppGroup, OktaUser, PolymorphicGroup, GroupRequest, Tag} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -82,7 +82,7 @@ interface CreateRequestButtonProps {
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Tooltip title="Request that a new group be created.">
+    <Tooltip title="Request that a new group or role be created.">
       <span>
         <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<GroupRequestIcon />}>
           Create Request
@@ -101,11 +101,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
   const [groupType, setGroupType] = React.useState<'okta_group' | 'app_group' | 'role_group'>('okta_group');
-  const [appName, setAppName] = React.useState('');
+  const [selectedApp, setSelectedApp] = React.useState<App | null>(null);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>([]);
-  const [ownershipUntil, setOwnershipUntil] = React.useState('1209600');
+  const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -141,7 +141,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
     let groupName = formData.name;
     if (formData.type === 'app_group') {
-      groupName = APP_GROUP_PREFIX + (formData.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
+      groupName = APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
     } else if (formData.type === 'role_group') {
       groupName = ROLE_GROUP_PREFIX + formData.name;
     }
@@ -150,7 +150,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       requested_group_name: groupName,
       requested_group_description: formData.description ?? '',
       requested_group_type: formData.type,
-      requested_app_id: formData.type === 'app_group' ? formData.app?.id : undefined,
+      requested_app_id: formData.type === 'app_group' ? selectedApp?.id : undefined,
       request_reason: formData.reason ?? '',
       requested_group_tags: selectedTags.map((t) => t.id),
     } as Parameters<typeof createRequest.mutate>[0]['body'];
@@ -188,7 +188,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             options={GROUP_TYPE_OPTIONS}
             onChange={(value) => {
               setGroupType(value);
-              setAppName('');
             }}
             required
           />
@@ -204,7 +203,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id === value.id,
                 onInputChange: (_event, newVal) => setAppSearchInput(newVal),
-                onChange: (_event, value) => setAppName(value?.name ?? ''),
+                onChange: (_event, value) => setSelectedApp(value ?? null),
               }}
             />
           </FormControl>
@@ -222,7 +221,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 <Typography noWrap={true} variant="h6">
                   {groupType == 'role_group'
                     ? ROLE_GROUP_PREFIX
-                    : APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR}
+                    : APP_GROUP_PREFIX +
+                      (selectedApp?.name == null ? '<App>' : selectedApp.name) +
+                      APP_NAME_APP_GROUP_SEPARATOR}
                 </Typography>
               </Box>
             ) : null}
@@ -258,7 +259,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               if (error?.type === 'maxLength') return 'Description can be at most 1024 characters';
               return '';
             }}
-            required
+            required={requireDescriptions}
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
