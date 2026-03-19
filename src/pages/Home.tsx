@@ -1,4 +1,5 @@
-import React, {Fragment, ReactNode} from 'react';
+import React, {Fragment, ReactNode, useEffect} from 'react';
+import {useLocation, useNavigate} from 'react-router-dom';
 
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
@@ -7,13 +8,16 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
+import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
 import AdminIcon from '@mui/icons-material/ManageAccounts';
 import AppOwnerIcon from '@mui/icons-material/AppShortcut';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import GeneralIcon from '@mui/icons-material/AllInclusive';
+import LinkIcon from '@mui/icons-material/Link';
 import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
@@ -25,23 +29,27 @@ const sections: Record<string, [string, string, ReactNode]> = {
   general: [`Welcome to ${appName}!`, 'Overview', <GeneralIcon />],
   users: ['Guide for All Users', 'All Users', <UserIcon />],
   'people-lead': ['Guide for Group and Role Owners', 'Group and Role Owners', <PeopleLeadIcon />],
-  'app owner': ['Guide for App Owners', 'App Owners', <AppOwnerIcon />],
+  'app-owner': ['Guide for App Owners', 'App Owners', <AppOwnerIcon />],
   admin: ['Guide for Admins', 'Admins', <AdminIcon />],
   faq: ['FAQ', 'FAQ', <FAQIcon />],
 };
 
 const guide: Record<string, Record<string, string>> = {
   // section shorthand --> [question --> answer]
+  // Use [[section--slug|label]] syntax in answers to create internal links.
+  // Use ((url|label)) syntax in answers to create external links.
   general: {
     [`What is ${appName}?`]: `${appName} is a tool for managing who in your organization has access to different resources. It expands upon the feature set provided by Okta and was created to be transparent and discoverable and to enable employees to view and manage their own access.`,
     'Users, Groups, Roles, Apps': `Users are people in your organization. This may include, but is not limited to, employees and contractors. Users may be a member or owner of a group. \n\nThere are three types of groups in ${appName} with different features, namely 'vanilla' standalone groups, app groups, and roles, all of which map to Okta groups. \n\nRoles may be added as members or owners of app groups and standalone groups. When this happens, all members of the role are added as a member or owner of the group. \n\nApps are resources, such as third-party SaaS applications (eg. GitHub), or first-party services, like an internal administrator dashboard. Any app that is compatible with Okta can be an app within ${appName}. App groups can be tied to specific permissions associated with an app.`,
     'Access Requests': `Users can create access requests to join a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Access Requests' tab displays all access requests in your organization as well as your own requests and requests assigned to you. Access requests may also be created from that page with the Create Request button and dialog.`,
+    'Role Requests': `Role owners can create role requests to ask that their roles are added to a group. Role requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Role Requests' tab displays all role requests in your organization as well as your own requests and requests assigned to you. Role requests may also be created from that page with the Create Request button and dialog.`,
+    'Group Requests': `All users can create group requests to ask that a group is created. Group requests must be approved by an app owner (if it's an app group) or ${appName} administrator. The 'Group Requests' tab displays all group requests in your organization as well as your own requests and requests assigned to you. Group requests may also be created from that page with the Create Request button and dialog.`,
     'Audit Pages':
       "Every user, group, and role has a corresponding audit page, which shows the access history for the entity. It can be viewed by clicking the clock-arrow icon next to the user/role/group name on the entity's page. Roles additionally have a 'Role audit' page that can be viewed by clicking the icon below the clock-arrow icon on a role page (it's similar to a Celtic knot). It displays the role's membership and ownership history.",
     'Tags and Constraints':
       "Tags can be used to label groups and apps (for their app groups) and, optionally, to apply constraints. These constraints include setting an ownership or membership time limit, requiring a reason for access, and disabling owners from adding themselves as members of a group. To view tags, click the 'Tags' button at the top of the 'Groups' or 'Apps' pages.",
     'Auto-approvals and other plugins': `${appName} uses the Python pluggy framework to allow for additional functionality to be added to the system. Some examples of this include adding a notification plugin to send emails, SMS, etc. when access requests are made and resolved and adding a conditional access plugin to automatically approve or deny requests if they match certain conditions. For more information and examples of plugins, see the ${appName} README at https://github.com/discord/access?tab=readme-ov-file#plugins.`,
-    [`Learn more about ${appName}`]: `${appName} is open-sourced under the Apache 2.0 license. View the source code at https://github.com/discord/access and check out our blog post that talks about the development process at dis.gd/access-blog.`,
+    [`Learn more about ${appName}`]: `${appName} is open-sourced under the Apache 2.0 license. View the source code at ((https://github.com/discord/access|https://github.com/discord/access)) and check out our blog post that talks about the development process at ((https://dis.gd/access-blog|dis.gd/access-blog)).`,
   },
   users: {
     'Creating an access request':
@@ -58,6 +66,8 @@ const guide: Record<string, Record<string, string>> = {
       "Under the 'Expiring Groups' tab, select 'My Access' from the dropdown menu. On this page, you can see all of your access that is expiring soon, filter between active and inactive access, and look at your access within a specific timeframe (including in the past).",
     'Viewing tags':
       "A list of existing tags can be viewed by clicking the 'Tags' button at the top of the 'Groups' and 'Apps' pages. To view the details of a tag, click on the row you are interested in to see which groups the tag is applied to and any constraints it enforces.\n\nYou can also navigate to a tag's page by clicking on the tag on the page for an app or group that has the tag applied.",
+    'Creating a group creation request':
+      "Users can request that groups are created. To do so, navigate to the 'Group Requests' tab, then click the 'Create Request' button at the top of the page. From there, you can select the group type and associated app (if applicable), and fill out group details like name, description, and tags. After submitting the request, an admin or app owner (if the request is for an app group) will need to approve or reject the request.\n\nIf the request is approved, you (the requester) will be added as the owner of the new group.\n\nIf you are an app owner and request to create an app group for your app, it will be automatically approved.",
   },
   'people-lead': {
     'Group owners vs. role owners':
@@ -77,7 +87,7 @@ const guide: Record<string, Record<string, string>> = {
     'Blocked roles': `If a group is marked with a tag that has the 'Owner can't renew their own access' constraint enabled, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an ${appName} admin renew the role.`,
     'Group tags': `Group/role owners are able to apply existing tags to groups they own. If these tags are applied, any enabled tag constraints will be applied to the group. Only ${appName} administrators are able to remove tags.`,
   },
-  'app owner': {
+  'app-owner': {
     'What is an app owner?': `App owners are the owners of the App-<App name>-Owners group (members of this group have no implicit permissions for the App in ${appName}, but they may be useful in an upstream application that utilizes the group membership for permissions). App owners implicitly own all of the app's app groups. App owners are therefore able to edit the name and description for an app, add app tags, and manage any app group (see the 'Managing a group' section in the 'Group Owners' user guide).`,
     'What are the responsibilities of app owners?':
       'As an app owner, your main responsibility is to grant folks access to your app. This can be done by directly adding members or, preferably, roles to your app groups. If you want to delegate individuals or roles to be able to manage membership of specific app groups, you can do that by adding them as owners of the specified app group. As with other groups and roles, access can be configured to automatically expire as a means to provide temporary access to specific app groups. For example, if you have an app group only used infrequently that provides elevated permissions in the application, consider only granting access to this group temporarily as needed instead of indefinite standing access.',
@@ -85,6 +95,8 @@ const guide: Record<string, Record<string, string>> = {
       'As an app owner, you own all the groups associated with your app. This means that you can manage their ownership, membership, and tags.\n\nTo create a group associated with your app, navigate to the app\'s page and click the "Create App Group" button. Once you have created the group, you can add members or roles to it from the group\'s page.',
     'Managing tags for your app':
       "As an app owner, you can manage the set of tags applied to your app. These tags and their associated constraints are inherited by all the groups associated with your app. To modify your app's tags, navigate to the app's page and click the edit button (pencil icon).",
+    'Responding to group creation requests':
+      "If your organization has the notification system set up, you will receive a notification when someone requests to create an app group associated with an app that you own. Otherwise, you can see group requests for apps you own under ‘Group Requests' > 'Assigned to Me'.\n\nFrom there, you can click 'View' to see the details of the group request, modify the group details associated with the request, provide a reason for your decision, and then either approve or reject the request.",
   },
   admin: {
     [`About ${appName} administrators`]: `${appName} administrators are the users who are members of the App-${appName} -Owners group. Administrators are able create or edit all groups, roles, and apps and manage the access for any group in the system. Administrators can also create tags, set tag constraints, apply tags to groups or apps, and remove tags.`,
@@ -94,12 +106,14 @@ const guide: Record<string, Record<string, string>> = {
       "On the 'Groups' page, click the 'Create Group' button at the top. This will open a dialog where you can select the group type, which app it is associated with (if it's an app group), and set the group name, description, and tags.\n\nNote that there is a separate flow for app owners to create groups associated with their app, starting from the app's page, for more details see the \"Guide for App Owners\".",
     'Creating tags, managing tag constraints, and removing tags':
       "To create a tag, navigate to the 'Tags' page by clicking the button labeled 'Tags' from the 'Groups' or 'Apps' pages. Then, click the 'Create Tag' button at the top of the page. This opens the tag creation dialog. From here, you can set the tag's name and description and, optionally, apply constraints to the tag.\n\nThe possible constraints at the time of writing are setting an ownership or membership time limit, requiring a reason for ownership or membership access changes, and disallowing group owners adding themselves as owners or members of the group. At the top of the dialog, there is a toggle that allows you to enable or diable the tag. If the tag is disabled, the tag constraints will not be enforced.\n\nAfter creating a tag, you can apply it to apps and groups from the tag's page. If you add the tag to an app, all of the app's app groups (including app groups created in the future) will inherit the tag and any constraints associated with it.\n\nFrom each tag's page, you can additionally remove the tag from apps and groups by clicking the X on that row and edit the tag's details by clicking the pencil icon to the right of the tag's name.\n\nYou can also add or remove tags from each app or group's individual pages from the dialog opened by clicking the pencil icon to the right of the app or group's name.",
+    'Responding to group creation requests':
+      "If your organization has the notification system set up, you will receive a notification when someone requests to create a role, group, or app group for an unowned app. Otherwise, you can see group requests for that you may respond to under ‘Group Requests' > 'Assigned to Me'.\n\nFrom there, you can click 'View' to see the details of the group request, modify the group details, provide a reason for your decision, and then either approve or reject the request.",
   },
   faq: {
     'I need to add a role as a member or owner of a group I do not own':
       "In the menu bar, there is a tab called 'Role Requests.' From there, if you own at least one role, you can click the 'Create Request' button to create a request for your role to be added to a group. If your organization has notifications enabled, a notification will be sent to the group owner(s) about the role request. If you do not own any roles, you will not be able to create a role request and you will need to reach out to the role owner.",
-    'I need to create a new group/role': `If you are an ${appName} admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for group creation. At this moment, there is not a way to request that a group is created through ${appName}, although we are considering adding that as a feature in the future.`,
-    'I need to create a new app': `If you are an ${appName} admin, please see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through ${appName}.`,
+    'I need to create a new group/role': `If you are an ${appName} admin, please click [[admin--creating-a-group|here]] to see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please see the instructions [[users--creating-a-group-creation-request|here]].`,
+    'I need to create a new app': `If you are an ${appName} admin, please click [[admin--creating-an-app|here]] to see step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through ${appName}.`,
     'I want to set my up my group to enforce a constraint (like a maximum membership duration)': `Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an ${appName} admin to create the tag for you.`,
     'I lost access to something! How can I see more information?':
       'Each user has an audit page that can be accessed from their user page by clicking the clock-arrow icon to the right of their name. On this page, you can see your complete ownership and membership history, when each ownership or membership started and ended, who added or removed your access, and the reason you were added to the group if one was provided. You can filter, sort, and search through this information to troubleshoot your lost access.',
@@ -108,42 +122,160 @@ const guide: Record<string, Record<string, string>> = {
   },
 };
 
-interface AccordionMakerProps {
-  which: string;
+// Convert string into a URL-safe hash fragment
+function toSlug(section: string, question: string) {
+  return `${section}--${question
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')}`;
 }
 
-function AccordionMaker(props: AccordionMakerProps) {
-  const [expanded, setExpanded] = React.useState<string | false>(false);
+// Turn [[slug|label]] into internal nav links and ((url|label)) into external hyperlinks
+function AnswerContent({text, onNavigate}: {text: string; onNavigate: (slug: string) => void}) {
+  const parts = text.split(/(\[\[[^\]]+\]\]|\(\([^)]+\)\))/g);
+  return (
+    <div style={{whiteSpace: 'pre-wrap'}}>
+      {parts.map((part, i) => {
+        const internal = part.match(/^\[\[([^|]+)\|([^\]]+)\]\]$/);
+        if (internal) {
+          const [, slug, label] = internal;
+          return (
+            <Box
+              key={i}
+              component="a"
+              href={`#${slug}`}
+              onClick={(e: React.MouseEvent) => {
+                e.preventDefault();
+                onNavigate(slug);
+              }}
+              sx={{color: 'primary.main', textDecoration: 'underline', cursor: 'pointer'}}>
+              {label}
+            </Box>
+          );
+        }
+        const external = part.match(/^\(\(([^|]+)\|([^)]+)\)\)$/);
+        if (external) {
+          const [, url, label] = external;
+          return (
+            <Box
+              key={i}
+              component="a"
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{color: 'primary.main', textDecoration: 'underline', cursor: 'pointer'}}>
+              {label}
+            </Box>
+          );
+        }
+        return <Fragment key={i}>{part}</Fragment>;
+      })}
+    </div>
+  );
+}
 
-  const handleChange = (panel: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
-    setExpanded(newExpanded ? panel : false);
+interface AccordionMakerProps {
+  which: string;
+  expandedSlug: string | null;
+  onSlugChange: (slug: string | null) => void;
+  onInternalLink: (slug: string) => void;
+}
+
+function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: AccordionMakerProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleChange = (slug: string) => (_: React.SyntheticEvent, isExpanded: boolean) => {
+    const next = isExpanded ? slug : null;
+    onSlugChange(next);
+    navigate({hash: next ? `#${slug}` : ''}, {replace: true});
+  };
+
+  const handleCopyLink = (e: React.MouseEvent, slug: string) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}${location.pathname}#${slug}`;
+    navigator.clipboard.writeText(url);
   };
 
   return (
     <>
       <Typography variant="h4" color="text.accent" sx={{margin: '15px 0'}}>
-        {sections[props.which][0]}
+        {sections[which][0]}
       </Typography>
-      {Object.entries(guide[props.which]).map(([key, value]: [string, string]) => (
-        <Accordion key={key} expanded={expanded === key} onChange={handleChange(key)}>
-          <AccordionSummary
-            expandIcon={<ExpandMoreIcon />}
-            aria-controls={'panel-content' + key}
-            id={'panel-header' + key}
-            sx={{fontWeight: 500}}>
-            {key}
-          </AccordionSummary>
-          <AccordionDetails>
-            <div style={{whiteSpace: 'pre-wrap'}}>{value}</div>
-          </AccordionDetails>
-        </Accordion>
-      ))}
+      {Object.entries(guide[which]).map(([question, answer]) => {
+        const slug = toSlug(which, question);
+        const isExpanded = expandedSlug === slug;
+        return (
+          <Accordion key={slug} expanded={isExpanded} onChange={handleChange(slug)}>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              aria-controls={`${slug}-content`}
+              id={`${slug}-header`}
+              sx={{fontWeight: 500}}>
+              <Box sx={{display: 'flex', alignItems: 'center', width: '100%', pr: 1}}>
+                <Box sx={{flexGrow: 1}}>{question}</Box>
+                <Tooltip title="Copy link to this section">
+                  <IconButton
+                    size="small"
+                    onClick={(e) => handleCopyLink(e, slug)}
+                    aria-label="Copy link"
+                    sx={{ml: 1, opacity: 0.5, '&:hover': {opacity: 1}}}>
+                    <LinkIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <AnswerContent text={answer} onNavigate={onInternalLink} />
+            </AccordionDetails>
+          </Accordion>
+        );
+      })}
     </>
   );
 }
 
 export default function Home() {
-  const [whichAccordion, setWhichAccordion] = React.useState('general'); // general, users, people-lead, app owner, admin, faq
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const hashSlug = location.hash.slice(1) || null;
+  const sectionFromHash = hashSlug ? hashSlug.split('--')[0] : null;
+
+  const [whichAccordion, setWhichAccordion] = React.useState(
+    sectionFromHash && sections[sectionFromHash] ? sectionFromHash : 'general',
+  );
+  const [expandedSlug, setExpandedSlug] = React.useState<string | null>(hashSlug);
+
+  useEffect(() => {
+    if (!hashSlug) return;
+    const section = hashSlug.split('--')[0];
+    if (sections[section]) {
+      setWhichAccordion(section);
+      setExpandedSlug(hashSlug);
+      setTimeout(() => {
+        document.getElementById(`${hashSlug}-header`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }, 100);
+    }
+  }, [hashSlug]);
+
+  const handleSectionChange = (key: string) => {
+    setWhichAccordion(key);
+    setExpandedSlug(null);
+    navigate({hash: ''}, {replace: true});
+  };
+
+  const handleInternalLink = (slug: string) => {
+    const section = slug.split('--')[0];
+    if (sections[section]) {
+      setWhichAccordion(section);
+      setExpandedSlug(slug);
+      navigate({hash: `#${slug}`}, {replace: true});
+      setTimeout(() => {
+        document.getElementById(`${slug}-header`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }, 100);
+    }
+  };
 
   return (
     <React.Fragment>
@@ -154,14 +286,7 @@ export default function Home() {
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
-                    <Box
-                      component="img"
-                      src="/logo.png"
-                      alt={`${appName} logo`}
-                      sx={{
-                        width: 250,
-                      }}
-                    />
+                    <Box component="img" src="/logo.png" alt={`${appName} logo`} sx={{width: 250}} />
                   </Grid>
                 </Grid>
               </Grid>
@@ -181,7 +306,7 @@ export default function Home() {
                     size="large"
                     startIcon={icon}
                     sx={{width: '100%', height: '50px'}}
-                    onClick={() => setWhichAccordion(key)}>
+                    onClick={() => handleSectionChange(key)}>
                     {buttonTitle}
                   </Button>
                 </Grid>
@@ -192,7 +317,12 @@ export default function Home() {
             <Divider orientation="vertical" />
           </Grid>
           <Grid item xs={8.8}>
-            <AccordionMaker which={whichAccordion} />
+            <AccordionMaker
+              which={whichAccordion}
+              expandedSlug={expandedSlug}
+              onSlugChange={setExpandedSlug}
+              onInternalLink={handleInternalLink}
+            />
           </Grid>
         </Grid>
       </Paper>
