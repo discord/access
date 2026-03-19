@@ -155,6 +155,7 @@ class TagList(MethodResource):
                     "id",
                     "name",
                     "description",
+                    "enabled",
                     "constraints",
                     "created_at",
                     "updated_at",

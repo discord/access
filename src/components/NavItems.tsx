@@ -24,6 +24,7 @@ import ExpiringOwnedByMe from '@mui/icons-material/AccountTree';
 import ExpiringRolesOwnedByMe from '@mui/icons-material/HowToReg';
 import ExpiringAll from '@mui/icons-material/SwitchAccount';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
+import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 
 interface ListItemLinkProps extends ListItemProps {
   to: string;
@@ -61,6 +62,7 @@ interface NavItemsProps {
 export default function NavItems(props: NavItemsProps) {
   const [openRequests, setOpenRequests] = React.useState(false);
   const [openRoleRequests, setOpenRoleRequests] = React.useState(false);
+  const [openGroupRequests, setOpenGroupRequests] = React.useState(false);
   const [openExpiringGroups, setOpenExpiringGroups] = React.useState(false);
   const [openExpiringRoles, setOpenExpiringRoles] = React.useState(false);
 
@@ -102,7 +104,7 @@ export default function NavItems(props: NavItemsProps) {
         displayIcon={<RoleRequestIcon />}
         open={openRoleRequests}
         onClick={() => setOpenRoleRequests(!openRoleRequests)}
-        sx={{pb: 1}}
+        sx={{pt: 1}}
       />
       <Collapse component="li" in={props.open && openRoleRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
@@ -119,6 +121,31 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
           />
           <ListItemLink to="/role-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+        </List>
+      </Collapse>
+      <ListItemLink
+        to="/group-requests"
+        displayText="Group Requests"
+        displayIcon={<GroupRequestIcon />}
+        open={openGroupRequests}
+        onClick={() => setOpenGroupRequests(!openGroupRequests)}
+        sx={{py: 1}}
+      />
+      <Collapse component="li" in={props.open && openGroupRequests} timeout="auto" unmountOnExit>
+        <List disablePadding>
+          <ListItemLink
+            to="/group-requests?requester_user_id=@me"
+            displayText="From Me"
+            displayIcon={<RequestFromMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink
+            to="/group-requests?assignee_user_id=@me"
+            displayText="Assigned to Me"
+            displayIcon={<RequestToMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/group-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
       <Divider />
