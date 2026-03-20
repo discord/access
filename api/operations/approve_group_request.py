@@ -15,6 +15,7 @@ from api.models import (
     RoleGroup,
     Tag,
 )
+from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
@@ -229,5 +230,16 @@ class ApproveGroupRequest:
         self.group_request.approved_group_id = created_group.id
 
         db.session.commit()
+
+        if self.notify:
+            requester = db.session.get(OktaUser, self.group_request.requester_user_id)
+            approvers = get_all_possible_request_approvers(self.group_request)
+            self.notification_hook.access_group_request_completed(
+                group_request=self.group_request,
+                group=created_group,
+                requester=requester,
+                approvers=approvers,
+                notify_requester=True,
+            )
 
         return self.group_request
