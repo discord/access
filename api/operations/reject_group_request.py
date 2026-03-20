@@ -112,6 +112,7 @@ class RejectGroupRequest:
 
             self.notification_hook.access_group_request_completed(
                 group_request=self.group_request,
+                group=None,
                 requester=requester,
                 approvers=approvers,
                 notify_requester=self.notify_requester,

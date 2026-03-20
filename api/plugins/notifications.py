@@ -133,6 +133,7 @@ class NotificationPluginSpec:
     def access_group_request_completed(
         self,
         group_request: GroupRequest,
+        group: Optional[OktaGroup],
         requester: OktaUser,
         approvers: list[OktaUser],
         notify_requester: bool,
@@ -273,6 +274,7 @@ def access_group_request_created(
 @hookimpl(wrapper=True)
 def access_group_request_completed(
     group_request: GroupRequest,
+    group: Optional[OktaGroup],
     requester: OktaUser,
     approvers: list[OktaUser],
     notify_requester: bool,
