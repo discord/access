@@ -40,7 +40,7 @@ import {PolymorphicGroup, RoleGroup, RoleMember, OktaUser} from '../../api/apiSc
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTime, ownerCantAddSelf, requiredReason} from '../../helpers';
 import {useCurrentUser} from '../../authentication';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -295,7 +295,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               name="reason"
               multiline
               rows={4}
-              required={reason}
+              required={requireReasons || reason}
               validation={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {

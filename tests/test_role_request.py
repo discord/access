@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -1271,3 +1272,54 @@ def test_role_request_approval_via_direct_add(
     assert len(data["owners"]) == 1
     assert len(data["members"]) == 0
     assert data["owners"][0] == user.id
+
+
+@pytest.mark.parametrize("app", [{"REQUIRE_REASONS": True}, {"REQUIRE_REASONS": False}], indirect=True)
+def test_create_role_request_require_reasons(
+    app: Flask, client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+) -> None:
+    require_reasons = app.config.get("REQUIRE_REASONS", False)
+    role_requests_url = url_for("api-role-requests.role_requests")
+
+    db.session.add(user)
+    db.session.add(okta_group)
+    db.session.add(role_group)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=role_group,
+        members_to_add=[],
+        owners_to_add=[user.id],
+        sync_to_okta=False
+    ).execute()
+
+    app.config["CURRENT_OKTA_USER_EMAIL"] = user.email
+
+    if require_reasons:
+        data = {
+            "role_id": role_group.id,
+            "group_id": okta_group.id,
+            "group_owner": False,
+            "reason": "",
+        }
+        rep = client.post(role_requests_url, json=data)
+        assert rep.status_code == 400
+        assert "Reason must be between 1 and 1024 characters" in str(rep.get_json())
+
+        data["reason"] = "   "
+        rep = client.post(role_requests_url, json=data)
+        assert rep.status_code == 400
+        assert "Reason must be between 1 and 1024 characters" in str(rep.get_json())
+
+        data["reason"] = "Valid reason"
+        rep = client.post(role_requests_url, json=data)
+        assert rep.status_code == 201
+    else:
+        data = {
+            "role_id": role_group.id,
+            "group_id": okta_group.id,
+            "group_owner": False,
+            "reason": "",
+        }
+        rep = client.post(role_requests_url, json=data)
+        assert rep.status_code == 201
