@@ -17,19 +17,34 @@ from api.access_config import (
     _merge_override_config,
     NAME_VALIDATION_PATTERN,
     NAME_VALIDATION_ERROR,
+    DEFAULT_GROUP_QUERY_PARAMS,
+    OKTA_GROUP_NAME_PREFIX,
+    ROLE_GROUP_NAME_PREFIX,
+    APP_GROUP_NAME_PREFIX,
+    APP_NAME_GROUP_NAME_SEPARATOR,
+    APP_OWNERS_GROUP_NAME_SUFFIX,
     ConfigValidationError,
     _validate_override_config,
 )
+
+
+DEFAULT_CONFIG_VALUES = {
+    NAME_VALIDATION_PATTERN: "name_pattern",
+    NAME_VALIDATION_ERROR: "name_error",
+    DEFAULT_GROUP_QUERY_PARAMS: {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'},
+    OKTA_GROUP_NAME_PREFIX: "",
+    ROLE_GROUP_NAME_PREFIX: "Role-",
+    APP_GROUP_NAME_PREFIX: "App-",
+    APP_NAME_GROUP_NAME_SEPARATOR: "-",
+    APP_OWNERS_GROUP_NAME_SUFFIX: "Owners",
+}
 
 
 @pytest.fixture
 def mock_load_default_config() -> Generator[Any, Any, Any]:
     with patch(
         "api.access_config._load_default_config",
-        return_value={
-            NAME_VALIDATION_PATTERN: "name_pattern",
-            NAME_VALIDATION_ERROR: "name_error",
-        },
+        return_value=DEFAULT_CONFIG_VALUES.copy(),
     ):
         yield
 
@@ -51,6 +66,12 @@ def test_load_config_default(mock_load_default_config: None) -> None:
     assert isinstance(config, AccessConfig)
     assert config.name_pattern == "name_pattern"
     assert config.name_validation_error == "name_error"
+    assert config.default_group_query_params == {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
+    assert config.okta_group_name_prefix == ""
+    assert config.role_group_name_prefix == "Role-"
+    assert config.app_group_name_prefix == "App-"
+    assert config.app_name_group_name_separator == "-"
+    assert config.app_owners_group_name_suffix == "Owners"
 
 
 def test_load_config_with_override(mock_load_default_config: None, mock_merge_override_config: None) -> None:
@@ -72,6 +93,11 @@ def test_load_default_config() -> None:
                     BACKEND: {
                         NAME_VALIDATION_PATTERN: "name_pattern",
                         NAME_VALIDATION_ERROR: "name_error",
+                        OKTA_GROUP_NAME_PREFIX: "",
+                        ROLE_GROUP_NAME_PREFIX: "Role-",
+                        APP_GROUP_NAME_PREFIX: "App-",
+                        APP_NAME_GROUP_NAME_SEPARATOR: "-",
+                        APP_OWNERS_GROUP_NAME_SUFFIX: "Owners",
                     },
                 },
                 config_file,
@@ -80,6 +106,11 @@ def test_load_default_config() -> None:
         config = _load_default_config(temp_dir)
         assert config[NAME_VALIDATION_PATTERN] == "name_pattern"
         assert config[NAME_VALIDATION_ERROR] == "name_error"
+        assert config[OKTA_GROUP_NAME_PREFIX] == ""
+        assert config[ROLE_GROUP_NAME_PREFIX] == "Role-"
+        assert config[APP_GROUP_NAME_PREFIX] == "App-"
+        assert config[APP_NAME_GROUP_NAME_SEPARATOR] == "-"
+        assert config[APP_OWNERS_GROUP_NAME_SUFFIX] == "Owners"
 
 
 def test_merge_override_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,12 +135,20 @@ def test_merge_override_config(monkeypatch: pytest.MonkeyPatch) -> None:
         config = {
             NAME_VALIDATION_PATTERN: "group_pattern",
             NAME_VALIDATION_ERROR: "name_error",
+            OKTA_GROUP_NAME_PREFIX: "",
+            ROLE_GROUP_NAME_PREFIX: "Role-",
+            APP_GROUP_NAME_PREFIX: "App-",
+            APP_NAME_GROUP_NAME_SEPARATOR: "-",
+            APP_OWNERS_GROUP_NAME_SUFFIX: "Owners",
         }
 
         _merge_override_config(config, temp_dir)
 
         assert config[NAME_VALIDATION_PATTERN] == "override_name_pattern"
         assert config[NAME_VALIDATION_ERROR] == "override_name_error"
+        # prefix keys are preserved when not in override
+        assert config[ROLE_GROUP_NAME_PREFIX] == "Role-"
+        assert config[APP_GROUP_NAME_PREFIX] == "App-"
 
 
 def test_load_default_config_file_not_found() -> None:
@@ -143,6 +182,11 @@ def test_merge_override_config_ignores_frontend_override(
         config = {
             NAME_VALIDATION_PATTERN: "name_pattern",
             NAME_VALIDATION_ERROR: "name_error",
+            OKTA_GROUP_NAME_PREFIX: "",
+            ROLE_GROUP_NAME_PREFIX: "Role-",
+            APP_GROUP_NAME_PREFIX: "App-",
+            APP_NAME_GROUP_NAME_SEPARATOR: "-",
+            APP_OWNERS_GROUP_NAME_SUFFIX: "Owners",
         }
         _merge_override_config(config, temp_dir)
         # no overrides from FRONTEND keys!
@@ -161,10 +205,45 @@ def test_get_config_value_raises_undefined_config_key_error() -> None:
     with pytest.raises(UndefinedConfigKeyError) as exc_info:
         _get_config_value(config, "NON_EXISTENT_KEY")
 
-    assert (
-        str(exc_info.value)
-        == "'NON_EXISTENT_KEY' is not a defined config value in: ['NAME_VALIDATION_ERROR', 'NAME_VALIDATION_PATTERN']"
-    )
+    assert "NON_EXISTENT_KEY" in str(exc_info.value)
+    assert "is not a defined config value" in str(exc_info.value)
+
+
+def test_load_config_with_prefix_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_dir = os.path.join(temp_dir, "config")
+        os.makedirs(config_dir)
+
+        filename = "override_prefixes.json"
+        override_config_path = os.path.join(config_dir, filename)
+        override_config = {
+            BACKEND: {
+                ROLE_GROUP_NAME_PREFIX: "MyRole-",
+                APP_GROUP_NAME_PREFIX: "MyApp-",
+                APP_NAME_GROUP_NAME_SEPARATOR: "_",
+                APP_OWNERS_GROUP_NAME_SUFFIX: "Admin",
+                OKTA_GROUP_NAME_PREFIX: "Grp-",
+            }
+        }
+        with open(override_config_path, "w") as config_file:
+            json.dump(override_config, config_file)
+
+        monkeypatch.setenv("ACCESS_CONFIG_FILE", override_config_path)
+
+        with patch(
+            "api.access_config._load_default_config",
+            return_value=DEFAULT_CONFIG_VALUES.copy(),
+        ):
+            config = _load_access_config()
+
+        assert config.role_group_name_prefix == "MyRole-"
+        assert config.app_group_name_prefix == "MyApp-"
+        assert config.app_name_group_name_separator == "_"
+        assert config.app_owners_group_name_suffix == "Admin"
+        assert config.okta_group_name_prefix == "Grp-"
+        # unrelated keys keep their defaults
+        assert config.name_pattern == DEFAULT_CONFIG_VALUES[NAME_VALIDATION_PATTERN]
+        assert config.name_validation_error == DEFAULT_CONFIG_VALUES[NAME_VALIDATION_ERROR]
 
 
 def test_validate_override_config_raises_error_on_partial_override() -> None:

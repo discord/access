@@ -8,7 +8,10 @@ from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
 from api import config
+from api.access_config import get_access_config
 from api.extensions import db
+
+access_config = get_access_config()
 
 
 class OktaUserGroupMember(db.Model):
@@ -259,6 +262,7 @@ class OktaUser(db.Model):
 
 
 class OktaGroup(db.Model):
+    OKTA_GROUP_NAME_PREFIX = access_config.okta_group_name_prefix
     __tablename__ = "okta_group"
     id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
     type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
@@ -554,7 +558,7 @@ class RoleGroupMap(db.Model):
 
 
 class RoleGroup(OktaGroup):
-    ROLE_GROUP_NAME_PREFIX = "Role-"
+    ROLE_GROUP_NAME_PREFIX = access_config.role_group_name_prefix
 
     __tablename__ = "role_group"
     id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"), primary_key=True)
@@ -602,9 +606,9 @@ class RoleGroup(OktaGroup):
 
 
 class AppGroup(OktaGroup):
-    APP_GROUP_NAME_PREFIX = "App-"
-    APP_NAME_GROUP_NAME_SEPARATOR = "-"
-    APP_OWNERS_GROUP_NAME_SUFFIX = "Owners"
+    APP_GROUP_NAME_PREFIX = access_config.app_group_name_prefix
+    APP_NAME_GROUP_NAME_SEPARATOR = access_config.app_name_group_name_separator
+    APP_OWNERS_GROUP_NAME_SUFFIX = access_config.app_owners_group_name_suffix
 
     __tablename__ = "app_group"
     id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"), primary_key=True)
