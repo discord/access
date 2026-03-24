@@ -340,8 +340,8 @@ def test_complex_role_modifications(
     db.session.add(user)
     db.session.commit()
 
-    # Store IDs before any requests — ModifyGroupType's expunge_all() may
-    # detach these fixture objects, making attribute access fail later.
+    # Store IDs before requests — expunge_all() in ModifyGroupType can
+    # detach fixture objects, causing DetachedInstanceError on access.
     user_id = user.id
     okta_group_id = okta_group.id
     role_group_id = role_group.id

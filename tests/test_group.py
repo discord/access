@@ -147,10 +147,8 @@ def test_put_group(
     db.session.add(tag)
     db.session.commit()
 
-    # Store IDs before any requests — ModifyGroupType's expunge_all() may
-    # detach these fixture objects, making attribute access fail later.
-    # Store IDs before any requests — ModifyGroupType's expunge_all() may
-    # detach these fixture objects, making attribute access fail later.
+    # Store IDs before requests — expunge_all() in ModifyGroupType can
+    # detach fixture objects, causing DetachedInstanceError on access.
     tag_id = tag.id
     app_id = access_app.id
     app_name = access_app.name
