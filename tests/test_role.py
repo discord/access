@@ -340,7 +340,11 @@ def test_complex_role_modifications(
     db.session.add(user)
     db.session.commit()
 
+    # Store IDs before any requests — ModifyGroupType's expunge_all() may
+    # detach these fixture objects, making attribute access fail later.
     user_id = user.id
+    okta_group_id = okta_group.id
+    role_group_id = role_group.id
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
@@ -354,7 +358,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -378,7 +382,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -398,12 +402,12 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -414,7 +418,7 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
 
     # Remove the role group as a member of the okta group
@@ -425,10 +429,10 @@ def test_complex_role_modifications(
     data = {
         "groups_to_add": [],
         "owner_groups_to_add": [],
-        "groups_to_remove": [okta_group.id],
+        "groups_to_remove": [okta_group_id],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -448,12 +452,12 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -464,7 +468,7 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
 
     # Remove the user from the role_group
@@ -478,7 +482,7 @@ def test_complex_role_modifications(
         "members_to_remove": [user_id],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -504,7 +508,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -529,7 +533,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -554,7 +558,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -576,11 +580,11 @@ def test_complex_role_modifications(
     remove_owner_from_group_spy.reset_mock()
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [okta_group.id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -591,9 +595,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Remove the okta group as a owner of the role group
     add_user_to_group_spy.reset_mock()
@@ -605,9 +609,9 @@ def test_complex_role_modifications(
         "groups_to_add": [],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
-        "owner_groups_to_remove": [okta_group.id],
+        "owner_groups_to_remove": [okta_group_id],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -618,7 +622,7 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
 
     # Add the role group back as an owner of the okta group
@@ -628,11 +632,11 @@ def test_complex_role_modifications(
     remove_owner_from_group_spy.reset_mock()
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [okta_group.id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -643,9 +647,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Remove the user from ownership of the role_group
     add_user_to_group_spy.reset_mock()
@@ -658,7 +662,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [user_id],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -683,7 +687,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -709,7 +713,7 @@ def test_complex_role_modifications(
         "members_to_remove": [user_id],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -736,7 +740,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -766,8 +770,7 @@ def test_complex_role_modifications(
         "app_id": access_app.id,
     }
 
-    group_id = role_group.id
-    okta_group_id = okta_group.id
+    group_id = role_group_id
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -827,13 +830,13 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=3),
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -845,9 +848,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Add the user to the role_group for a limited time
     # less than the amount the okta group is a member of the role group
@@ -862,7 +865,7 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=1),
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -899,7 +902,7 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=7),
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -936,12 +939,12 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -960,9 +963,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Add the user back to the role_group for a limited time
     add_user_to_group_spy.reset_mock()
@@ -976,7 +979,7 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=5),
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -1006,13 +1009,13 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=14),
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1031,9 +1034,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Add the role group as a member and owner of the okta group, for a limited time
     # less than the user membership to the role
@@ -1042,13 +1045,13 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=3),
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1075,9 +1078,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Add the user back to the role_group for an unlimited time
     add_user_to_group_spy.reset_mock()
@@ -1090,7 +1093,7 @@ def test_complex_role_modifications(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
@@ -1119,12 +1122,12 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1135,9 +1138,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Remove the user from the okta group
     add_user_to_group_spy.reset_mock()
@@ -1150,7 +1153,7 @@ def test_complex_role_modifications(
         "members_to_remove": [user_id],
         "owners_to_remove": [user_id],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
@@ -1179,8 +1182,6 @@ def test_complex_role_modifications(
         "description": "new description role_group",
     }
 
-    okta_group_id = okta_group.id
-    role_group_id = role_group.id
     group_url = url_for("api-groups.group_by_id", group_id=okta_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -1233,12 +1234,12 @@ def test_complex_role_modifications(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
     rep = client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
@@ -1249,9 +1250,9 @@ def test_complex_role_modifications(
 
     data = rep.get_json()
     assert len(data["groups_in_role"]) == 1
-    assert data["groups_in_role"][0] == okta_group.id
+    assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
-    assert data["groups_owned_by_role"][0] == okta_group.id
+    assert data["groups_owned_by_role"][0] == okta_group_id
 
     # Remove the user from the okta group
     add_user_to_group_spy.reset_mock()
@@ -1264,7 +1265,7 @@ def test_complex_role_modifications(
         "members_to_remove": [user_id],
         "owners_to_remove": [user_id],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0

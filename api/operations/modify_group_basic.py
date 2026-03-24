@@ -36,7 +36,8 @@ class ModifyGroupBasic:
         if self.description is not None:
             self.group.description = self.description or ""
 
-        okta.update_group(self.group.id, self.group.name, self.group.description)
+        if self.group.deleted_at is None:
+            okta.update_group(self.group.id, self.group.name, self.group.description)
         db.session.commit()
 
         # Fire group_updated hook if name or description changed
