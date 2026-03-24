@@ -18,7 +18,7 @@ from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserG
 from api.operations import (
     CreateGroup,
     DeleteGroup,
-    ModifyGroupBasic,
+    ModifyGroupDetails,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
@@ -166,7 +166,7 @@ class GroupResource(MethodResource):
         # This runs before ModifyGroupType so the group_created hook (fired inside
         # ModifyGroupType) sees the final name/description.
         try:
-            ModifyGroupBasic(
+            ModifyGroupDetails(
                 group=group,
                 name=group_changes.name if "name" in json_data else None,
                 description=group_changes.description if "description" in json_data else None,

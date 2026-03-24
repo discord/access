@@ -11,7 +11,7 @@ from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.models.app_group import app_owners_group_description
-from api.operations import CreateApp, DeleteApp, ModifyAppTags, ModifyGroupBasic
+from api.operations import CreateApp, DeleteApp, ModifyAppTags, ModifyGroupDetails
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.views.schemas import (
@@ -171,7 +171,7 @@ class AppResource(MethodResource):
                 else:
                     new_name = f"{new_name_prefix}{app_group.name}"
                 new_description = app_owners_group_description(app.name) if app_group.is_owner else None
-                ModifyGroupBasic(group=app_group, name=new_name, description=new_description).execute()
+                ModifyGroupDetails(group=app_group, name=new_name, description=new_description).execute()
 
         db.session.commit()
 

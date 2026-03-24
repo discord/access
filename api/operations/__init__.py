@@ -14,7 +14,7 @@ from api.operations.delete_user import DeleteUser
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_app_tags import ModifyAppTags
 from api.operations.modify_group_tags import ModifyGroupTags
-from api.operations.modify_group_basic import ModifyGroupBasic
+from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -32,7 +32,7 @@ __all__ = [
     "DeleteApp",
     "CreateGroup",
     "ModifyAppTags",
-    "ModifyGroupBasic",
+    "ModifyGroupDetails",
     "ModifyGroupTags",
     "ModifyGroupType",
     "ModifyGroupUsers",

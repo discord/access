@@ -8,7 +8,7 @@ from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_ap
 from api.services import okta
 
 
-class ModifyGroupBasic:
+class ModifyGroupDetails:
     """Update a group's name and/or description, sync to Okta, and fire lifecycle hooks."""
 
     def __init__(self, *, group: OktaGroup, name: str | None = None, description: str | None = None):
