@@ -56,8 +56,7 @@ class ModifyGroupBasic:
                     db.session.commit()
                 except Exception:
                     current_app.logger.exception(
-                        f"Failed to invoke group_updated hook for group {self.group.id}"
-                        f" with plugin '{plugin_id}'"
+                        f"Failed to invoke group_updated hook for group {self.group.id} with plugin '{plugin_id}'"
                     )
                     db.session.rollback()
 

@@ -166,7 +166,7 @@ class AppResource(MethodResource):
             app_groups = AppGroup.query.filter(AppGroup.app_id == app.id)
             for app_group in app_groups:
                 if app_group.name.startswith(old_name_prefix):
-                    group_name_suffix = app_group.name[len(old_name_prefix):]
+                    group_name_suffix = app_group.name[len(old_name_prefix) :]
                     new_name = f"{new_name_prefix}{group_name_suffix}"
                 else:
                     new_name = f"{new_name_prefix}{app_group.name}"
