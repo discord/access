@@ -18,18 +18,14 @@ from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserG
 from api.operations import (
     CreateGroup,
     DeleteGroup,
+    ModifyGroupBasic,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
-from api.plugins.app_group_lifecycle import (
-    get_app_group_lifecycle_hook,
-    get_app_group_lifecycle_plugin_to_invoke,
-    merge_app_lifecycle_plugin_data,
-)
-from api.services import okta
+from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.views.schemas import (
     AuditLogSchema,
     DeleteMessageSchema,
@@ -116,9 +112,7 @@ class GroupResource(MethodResource):
     def put(self, group: OktaGroup) -> ResponseReturnValue:
         schema = PolymorphicGroupSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
         group_changes = schema.load(request.json, partial=True)
-        old_group_type = type(group)
         old_group_name = group.name
-        old_group_description = group.description or ""
 
         if not group.is_managed:
             abort(
@@ -168,16 +162,17 @@ class GroupResource(MethodResource):
                     "Only tags can be modifed for application owner groups",
                 )
 
-        # Do not allow non-deleted groups with the same name (case-insensitive)
-        if group.name.lower() != group_changes.name.lower():
-            existing_group = (
-                db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .filter(func.lower(OktaGroup.name) == func.lower(group_changes.name))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .first()
-            )
-            if existing_group is not None:
-                abort(400, "Group already exists with the same name")
+        # Update name and description, sync to Okta, and fire group_updated hook.
+        # This runs before ModifyGroupType so the group_created hook (fired inside
+        # ModifyGroupType) sees the final name/description.
+        try:
+            ModifyGroupBasic(
+                group=group,
+                name=group_changes.name if "name" in json_data else None,
+                description=group_changes.description if "description" in json_data else None,
+            ).execute()
+        except ValueError as e:
+            abort(400, str(e))
 
         # Update group type if it's being modified
         if type(group) is not type(group_changes):
@@ -195,7 +190,7 @@ class GroupResource(MethodResource):
         old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
         old_plugin_data = group.plugin_data
 
-        # Update additional fields like name, description, etc.
+        # Update additional fields like plugin_data (name/description already handled above)
         group = schema.load(request.json, instance=group, partial=True)
 
         if old_plugin_data and group.plugin_data != old_plugin_data:
@@ -207,7 +202,6 @@ class GroupResource(MethodResource):
             if type(group) is AppGroup:
                 merge_app_lifecycle_plugin_data(group, old_plugin_data)
 
-        okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 
         ModifyGroupTags(
@@ -216,27 +210,6 @@ class GroupResource(MethodResource):
             tags_to_remove=json_data.get("tags_to_remove", []),
             current_user_id=g.current_user_id,
         ).execute()
-
-        # Invoke group_updated hook if name or description changed (before re-fetch so
-        # the subsequent eager load picks up any status values the hook sets)
-        if old_group_name != group.name or old_group_description != (group.description or ""):
-            plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-            if plugin_id is not None:
-                try:
-                    hook = get_app_group_lifecycle_hook()
-                    hook.group_updated(
-                        session=db.session,
-                        group=group,
-                        old_name=old_group_name,
-                        old_description=old_group_description,
-                        plugin_id=plugin_id,
-                    )
-                    db.session.commit()
-                except Exception:
-                    current_app.logger.exception(
-                        f"Failed to invoke group_updated hook for group {group.id} with plugin '{plugin_id}'"
-                    )
-                    db.session.rollback()
 
         group = (
             db.session.query(OktaGroup)

@@ -11,17 +11,17 @@ from api.services import okta
 class ModifyGroupBasic:
     """Update a group's name and/or description, sync to Okta, and fire lifecycle hooks."""
 
-    def __init__(self, *, group: OktaGroup, name: str, description: str):
+    def __init__(self, *, group: OktaGroup, name: str | None = None, description: str | None = None):
         self.group = group
         self.name = name
-        self.description = description or ""
+        self.description = description
 
     def execute(self) -> OktaGroup:
         old_name = self.group.name
         old_description = self.group.description or ""
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        if old_name.lower() != self.name.lower():
+        if self.name is not None and old_name.lower() != self.name.lower():
             existing_group = (
                 db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
                 .filter(func.lower(OktaGroup.name) == func.lower(self.name))
@@ -31,8 +31,10 @@ class ModifyGroupBasic:
             if existing_group is not None:
                 raise ValueError("Group already exists with the same name")
 
-        self.group.name = self.name
-        self.group.description = self.description
+        if self.name is not None:
+            self.group.name = self.name
+        if self.description is not None:
+            self.group.description = self.description or ""
 
         okta.update_group(self.group.id, self.group.name, self.group.description)
         db.session.commit()
