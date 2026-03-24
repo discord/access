@@ -123,7 +123,7 @@ class CreateGroupRequest:
             requested_group_name=self.requested_group_name,
             requested_group_description=self.requested_group_description,
             requested_group_type=self.requested_group_type,
-            requested_app_id=self.requested_app_id,
+            requested_app=app,
             requested_group_tags=self.requested_group_tags,
             requested_ownership_ending_at=coalesced_ownership_ending_at,
             request_reason=self.request_reason,

@@ -1004,6 +1004,11 @@ class GroupRequest(db.Model):
         lazy="raise_on_sql",
     )
 
+    requested_app: Mapped[Optional["App"]] = db.relationship(
+        "App",
+        foreign_keys=[requested_app_id],
+    )
+
 
 class TagConstraint:
     def __init__(
