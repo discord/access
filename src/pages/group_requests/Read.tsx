@@ -213,7 +213,7 @@ export default function ReadGroupRequest() {
     }
   }, [data, typesSeeded]);
 
-  const {data: requestedAppData} = useGetAppById(
+  const {data: requestedAppData, isLoading: isAppLoading} = useGetAppById(
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
@@ -401,7 +401,7 @@ export default function ReadGroupRequest() {
     return <NotFound />;
   }
 
-  if (isLoading) {
+  if (isLoading || (requestedGroupType === 'app_group' && requestedAppId != null && isAppLoading)) {
     return <Loading />;
   }
 
@@ -486,10 +486,14 @@ export default function ReadGroupRequest() {
 
   const requesterName = displayUserName(groupRequest.requester);
   const requestedGroupName = groupRequest.requested_group_name ?? 'Unknown Group';
+  const titleGroupName =
+    groupRequest.status === 'APPROVED' && groupRequest.resolved_group_name
+      ? groupRequest.resolved_group_name
+      : requestedGroupName;
 
   return (
     <React.Fragment>
-      <ChangeTitle title={`Group Creation Request: ${requesterName} — ${requestedGroupName}`} />
+      <ChangeTitle title={`Group Creation Request: ${requesterName} — ${titleGroupName}`} />
       <Container maxWidth="lg" sx={{mt: 4, mb: 4}}>
         <Grid container spacing={3}>
           <Grid item xs={12} md={5} lg={3}>
