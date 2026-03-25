@@ -112,7 +112,6 @@ class GroupResource(MethodResource):
     def put(self, group: OktaGroup) -> ResponseReturnValue:
         schema = PolymorphicGroupSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
         group_changes = schema.load(request.json, partial=True)
-        old_group_name = group.name
 
         if not group.is_managed:
             abort(
@@ -218,24 +217,6 @@ class GroupResource(MethodResource):
             .filter(OktaGroup.id == group.id)
             .first()
         )
-
-        # Audit logging, only if group name changed
-        if old_group_name.lower() != group.name.lower():
-            current_app.logger.info(
-                AuditLogSchema().dumps(
-                    {
-                        "event_type": EventType.group_modify_name,
-                        "user_agent": request.headers.get("User-Agent"),
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        ),
-                        "current_user_id": g.current_user_id,
-                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
-                        "group": group,
-                        "old_group_name": old_group_name,
-                    }
-                )
-            )
 
         # Audit logging for plugin configuration changes (app groups only)
         if old_plugin_data_for_audit != group.plugin_data:
