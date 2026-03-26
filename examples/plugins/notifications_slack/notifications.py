@@ -10,7 +10,16 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 import pluggy
 from slack_sdk import WebClient
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import (
+    AccessRequest,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    RoleRequest,
+)
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
@@ -350,7 +359,7 @@ def access_role_request_created(
     """
     type_of_access = "ownership of" if role_request.request_ownership else "membership to"
 
-    role_request_url = get_base_url() + f"/requests/{role_request.id}"
+    role_request_url = get_base_url() + f"/role-requests/{role_request.id}"
 
     approver_message = (
         f":pray: {requester.email} has requested that {role.name} is granted {type_of_access} {group.name}.\n\n"
