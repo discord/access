@@ -48,9 +48,10 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
 
-const APP_GROUP_PREFIX = 'App-';
-const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const ROLE_GROUP_PREFIX = 'Role-';
+const OKTA_GROUP_PREFIX = accessConfig.OKTA_GROUP_NAME_PREFIX;
+const APP_GROUP_PREFIX = accessConfig.APP_GROUP_NAME_PREFIX;
+const APP_NAME_APP_GROUP_SEPARATOR = accessConfig.APP_NAME_GROUP_NAME_SEPARATOR;
+const ROLE_GROUP_PREFIX = accessConfig.ROLE_GROUP_NAME_PREFIX;
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
@@ -144,6 +145,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       groupName = APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
     } else if (formData.type === 'role_group') {
       groupName = ROLE_GROUP_PREFIX + formData.name;
+    } else {
+      groupName = OKTA_GROUP_PREFIX + formData.name;
     }
 
     const body = {
@@ -216,11 +219,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               flexDirection: 'row',
               alignItems: 'center',
             }}>
-            {groupType == 'app_group' || groupType == 'role_group' ? (
+            {groupType == 'app_group' || groupType == 'role_group' || (groupType == 'okta_group' && OKTA_GROUP_PREFIX !== '') ? (
               <Box sx={{mx: 1}}>
                 <Typography noWrap={true} variant="h6">
                   {groupType == 'role_group'
                     ? ROLE_GROUP_PREFIX
+                    : groupType == 'okta_group'
+                    ? OKTA_GROUP_PREFIX
                     : APP_GROUP_PREFIX +
                       (selectedApp?.name == null ? '<App>' : selectedApp.name) +
                       APP_NAME_APP_GROUP_SEPARATOR}
