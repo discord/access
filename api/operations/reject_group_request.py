@@ -4,7 +4,7 @@ from flask import current_app, has_request_context, request
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.access_request import get_request_approvers
 from api.models.app_group import get_access_owners
 from api.plugins import get_notification_hook
 from api.views.schemas import AuditLogSchema, EventType
@@ -108,7 +108,7 @@ class RejectGroupRequest:
         if self.notify:
             requester = db.session.get(OktaUser, self.group_request.requester_user_id)
 
-            approvers = get_all_possible_request_approvers(self.group_request)
+            approvers = get_request_approvers(self.group_request)
 
             self.notification_hook.access_group_request_completed(
                 group_request=self.group_request,

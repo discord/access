@@ -29,3 +29,33 @@ def get_all_possible_request_approvers(access_request: AccessRequest | RoleReque
         app_managers = get_app_managers(access_request.requested_app_id)
 
     return set(group_owners + access_app_owners + app_managers)
+
+
+def get_request_approvers(access_request: AccessRequest | RoleRequest | GroupRequest) -> Set[OktaUser]:
+    # This will return the prioritized set of approvers for a request, following the
+    # logic used when creating requests: group owners first, then app owners, then
+    # access owners as a fallback. This avoids spamming possible approvers on
+    # on request notifications.
+    if type(access_request) is GroupRequest:
+        app_id = access_request.resolved_app_id if access_request.resolved_app_id else access_request.requested_app_id
+        if app_id is not None:
+            approvers = get_app_managers(app_id)
+            if len(approvers) == 0:
+                approvers = get_access_owners()
+        else:
+            approvers = get_access_owners()
+        return set(approvers)
+
+    approvers = get_group_managers(access_request.requested_group_id)
+
+    if (
+        (len(approvers) == 0 and type(access_request.requested_group) is AppGroup)
+        or (len(approvers) == 1 and approvers[0].id == access_request.requester_user_id)
+        and type(access_request.requested_group) is AppGroup
+    ):
+        approvers = get_app_managers(access_request.requested_group.app_id)
+
+    if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == access_request.requester_user_id):
+        approvers = get_access_owners()
+
+    return set(approvers)

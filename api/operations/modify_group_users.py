@@ -18,7 +18,7 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.access_request import get_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
@@ -704,7 +704,7 @@ class ModifyGroupUsers:
 
         requester = db.session.get(OktaUser, access_request.requester_user_id)
 
-        approvers = get_all_possible_request_approvers(access_request)
+        approvers = get_request_approvers(access_request)
 
         self.notification_hook.access_request_completed(
             access_request=access_request,

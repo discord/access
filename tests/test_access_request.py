@@ -18,7 +18,7 @@ from api.models import (
     RoleGroup,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.access_request import get_all_possible_request_approvers, get_request_approvers
 from api.operations import (
     ApproveAccessRequest,
     CreateAccessRequest,
@@ -539,6 +539,62 @@ def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, d
     assert users[2] in approvers
 
 
+def test_get_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
+    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    users = OktaUserFactory.build_batch(3)
+    db.session.add_all(users)
+    db.session.commit()
+
+    req = AccessRequest()
+    req.requested_group = AppGroupFactory.create()
+    req.requester_user_id = "other-user-id"
+
+    # Scenario 1: Group has multiple managers → return only group managers, no fallback
+    mocker.patch("api.models.access_request.get_group_managers", return_value=[users[0], users[1]])
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[2]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) == 2
+    assert users[0] in approvers
+    assert users[1] in approvers
+    assert users[2] not in approvers
+    assert access_admin not in approvers
+
+    # Scenario 2: AppGroup with no group managers → fall back to app managers
+    mocker.patch("api.models.access_request.get_group_managers", return_value=[])
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[1], users[2]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) == 2
+    assert users[1] in approvers
+    assert users[2] in approvers
+    assert access_admin not in approvers
+
+    # Scenario 3: Requester is the only group manager (AppGroup) → fall back to app managers
+    req.requester_user_id = users[0].id
+    mocker.patch("api.models.access_request.get_group_managers", return_value=[users[0]])
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[1], users[2]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) == 2
+    assert users[1] in approvers
+    assert users[2] in approvers
+    assert access_admin not in approvers
+
+    # Scenario 4: No managers at all → fall back to access owners
+    mocker.patch("api.models.access_request.get_group_managers", return_value=[])
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) >= 1
+    assert access_admin in approvers
+
+
 def test_resolve_app_access_request_notification(
     app: Flask, db: SQLAlchemy, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
@@ -608,11 +664,13 @@ def test_resolve_app_access_request_notification(
     assert kwargs["access_request"] == access_request
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
+    # Completion notification uses prioritized approvers: app_group has no direct managers,
+    # so it falls back to app managers only — not all possible approvers.
+    assert len(kwargs["approvers"]) == 2
     assert app_owner_user1 in kwargs["approvers"]
     assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert access_admin not in kwargs["approvers"]
+    assert user not in kwargs["approvers"]
 
     # Reset the access request so we can test the reject path
     access_request.status = AccessRequestStatus.PENDING
@@ -630,11 +688,11 @@ def test_resolve_app_access_request_notification(
     assert kwargs["access_request"] == access_request
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
-    assert len(kwargs["approvers"]) == 4
-    assert access_admin in kwargs["approvers"]
+    assert len(kwargs["approvers"]) == 2
     assert app_owner_user1 in kwargs["approvers"]
     assert app_owner_user2 in kwargs["approvers"]
-    assert user in kwargs["approvers"]
+    assert access_admin not in kwargs["approvers"]
+    assert user not in kwargs["approvers"]
 
 
 def test_auto_resolve_create_access_request(
