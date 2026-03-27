@@ -10,6 +10,7 @@ from flask_sqlalchemy import SQLAlchemy
 from okta.models.group import Group
 from pytest_mock import MockerFixture
 
+from api.authorization import AuthorizationHelpers
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -767,13 +768,42 @@ def test_do_not_renew(
     # need the OktaUserGroupMember id to pass in later
     membership_user2 = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user2.id).first()
 
-    # set one user to renew and one do not renew
+    # test non-owner/admin perms
+    mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=False)
+
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
     remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
     data: dict[str, Any] = {
+        "members_to_add": [],
+        "owners_to_add": [],
+        "members_should_expire": [membership_user2.id],
+        "owners_should_expire": [],
+        "members_to_remove": [],
+        "owners_to_remove": [],
+    }
+
+    # should fail
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    rep = client.put(group_url, json=data)
+    assert rep.status_code == 403
+    assert add_user_to_group_spy.call_count == 0
+    assert remove_user_from_group_spy.call_count == 0
+    assert add_owner_to_group_spy.call_count == 0
+    assert remove_owner_from_group_spy.call_count == 0
+
+    # now with group owner/admin perms
+    mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=True)
+
+    # set one user to renew and one do not renew
+    add_user_to_group_spy.reset_mock()
+    remove_user_from_group_spy.reset_mock()
+    add_owner_to_group_spy.reset_mock()
+    remove_owner_from_group_spy.reset_mock()
+
+    data = {
         "members_to_add": [user.id],
         "owners_to_add": [],
         "members_should_expire": [membership_user2.id],
