@@ -346,10 +346,15 @@ class GroupMemberResource(MethodResource):
 
         # Check if the current user can manage this group
         if not AuthorizationHelpers.can_manage_group(group):
-            if len(user_changes["members_to_add"]) > 0 or len(user_changes["owners_to_add"]) > 0:
+            if (
+                len(user_changes["members_to_add"]) > 0
+                or len(user_changes["owners_to_add"]) > 0
+                or len(user_changes["members_should_expire"]) > 0
+                or len(user_changes["owners_should_expire"]) > 0
+            ):
                 abort(
                     403,
-                    "Current user is not allowed to add members to this group",
+                    "Current user is not allowed to modify user access to this group",
                 )
             if len(user_changes["members_to_remove"]) > 0 or len(user_changes["owners_to_remove"]) > 0:
                 for user_id in user_changes["members_to_remove"] + user_changes["owners_to_remove"]:
