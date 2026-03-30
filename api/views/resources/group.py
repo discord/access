@@ -349,8 +349,8 @@ class GroupMemberResource(MethodResource):
             if (
                 len(user_changes["members_to_add"]) > 0
                 or len(user_changes["owners_to_add"]) > 0
-                or len(user_changes["members_should_expire"]) > 0
-                or len(user_changes["owners_should_expire"]) > 0
+                or len(user_changes.get("members_should_expire", [])) > 0
+                or len(user_changes.get("owners_should_expire", [])) > 0
             ):
                 abort(
                     403,
