@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import StrEnum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, ClassVar, Dict, List, Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -554,7 +554,7 @@ class RoleGroupMap(Base):
 
 
 class RoleGroup(OktaGroup):
-    ROLE_GROUP_NAME_PREFIX: str  # set from config at module load, see bottom of file
+    ROLE_GROUP_NAME_PREFIX: ClassVar[str]  # set from config at module load, see bottom of file
 
     __tablename__ = "role_group"
     id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
@@ -602,8 +602,8 @@ class RoleGroup(OktaGroup):
 
 
 class AppGroup(OktaGroup):
-    APP_GROUP_NAME_PREFIX: str  # set from config at module load, see bottom of file
-    APP_NAME_GROUP_NAME_SEPARATOR: str  # set from config at module load, see bottom of file
+    APP_GROUP_NAME_PREFIX: ClassVar[str]  # set from config at module load, see bottom of file
+    APP_NAME_GROUP_NAME_SEPARATOR: ClassVar[str]  # set from config at module load, see bottom of file
     APP_OWNERS_GROUP_NAME_SUFFIX = "Owners"
 
     __tablename__ = "app_group"
