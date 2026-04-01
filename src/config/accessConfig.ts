@@ -6,6 +6,9 @@ export interface AccessConfig {
   IDP_NAME: string;
   IDP_USER_URL_TEMPLATE: string;
   IDP_GROUP_URL_TEMPLATE: string;
+  APP_GROUP_NAME_PREFIX: string;
+  APP_NAME_GROUP_NAME_SEPARATOR: string;
+  ROLE_GROUP_NAME_PREFIX: string;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface

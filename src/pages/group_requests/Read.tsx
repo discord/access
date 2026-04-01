@@ -88,9 +88,9 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
 );
 
-const APP_GROUP_PREFIX = 'App-';
-const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const ROLE_GROUP_PREFIX = 'Role-';
+const APP_GROUP_PREFIX = accessConfig.APP_GROUP_NAME_PREFIX;
+const APP_NAME_APP_GROUP_SEPARATOR = accessConfig.APP_NAME_GROUP_NAME_SEPARATOR;
+const ROLE_GROUP_PREFIX = accessConfig.ROLE_GROUP_NAME_PREFIX;
 
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;

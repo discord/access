@@ -21,6 +21,7 @@ from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
 from api import config
+from api.access_config import get_access_config
 from api.extensions import Base
 
 
@@ -553,7 +554,7 @@ class RoleGroupMap(Base):
 
 
 class RoleGroup(OktaGroup):
-    ROLE_GROUP_NAME_PREFIX = "Role-"
+    ROLE_GROUP_NAME_PREFIX: str  # set from config at module load, see bottom of file
 
     __tablename__ = "role_group"
     id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
@@ -601,8 +602,8 @@ class RoleGroup(OktaGroup):
 
 
 class AppGroup(OktaGroup):
-    APP_GROUP_NAME_PREFIX = "App-"
-    APP_NAME_GROUP_NAME_SEPARATOR = "-"
+    APP_GROUP_NAME_PREFIX: str  # set from config at module load, see bottom of file
+    APP_NAME_GROUP_NAME_SEPARATOR: str  # set from config at module load, see bottom of file
     APP_OWNERS_GROUP_NAME_SUFFIX = "Owners"
 
     __tablename__ = "app_group"
@@ -1242,3 +1243,15 @@ class AppTagMap(Base):
         lazy="raise_on_sql",
         innerjoin=True,
     )
+
+
+# Initialize group name prefix class constants from config so they stay in sync
+# with the frontend (config/config.default.json) and can be overridden via ACCESS_CONFIG_FILE.
+def _init_group_name_prefixes() -> None:
+    cfg = get_access_config()
+    RoleGroup.ROLE_GROUP_NAME_PREFIX = cfg.role_group_name_prefix
+    AppGroup.APP_GROUP_NAME_PREFIX = cfg.app_group_name_prefix
+    AppGroup.APP_NAME_GROUP_NAME_SEPARATOR = cfg.app_name_group_name_separator
+
+
+_init_group_name_prefixes()
