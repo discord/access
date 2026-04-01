@@ -339,6 +339,21 @@ export default function ReadGroupRequest() {
       | {kind: 'text'; label: string; value: string; changed: boolean; from?: string}
       | {kind: 'tags'; label: string; resolvedTags: Tag[]; changed: boolean; requestedTagNames: string[]};
 
+    const resolvedOwnership = groupRequest.resolved_ownership_ending_at || null;
+    const requestedOwnership = groupRequest.requested_ownership_ending_at || null;
+    let ownershipChanged: boolean;
+    if (!resolvedOwnership && !requestedOwnership) {
+      ownershipChanged = false;
+    } else if (!resolvedOwnership || !requestedOwnership) {
+      ownershipChanged = true;
+    } else {
+      const requestedDelta =
+        Math.round(dayjs(requestedOwnership).diff(dayjs(groupRequest.created_at), 'second') / 100) * 100;
+      const resolvedDelta =
+        Math.round(dayjs(resolvedOwnership).diff(dayjs(groupRequest.resolved_at), 'second') / 100) * 100;
+      ownershipChanged = requestedDelta !== resolvedDelta;
+    }
+
     const fields: ApprovedField[] = [
       {
         kind: 'text',
@@ -371,19 +386,13 @@ export default function ReadGroupRequest() {
       {
         kind: 'text',
         label: 'Ownership Ending',
-        value: groupRequest.resolved_ownership_ending_at
-          ? dayjs(groupRequest.resolved_ownership_ending_at).startOf('second').fromNow()
-          : groupRequest.requested_ownership_ending_at
-            ? dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()
+        value: resolvedOwnership
+          ? dayjs(resolvedOwnership).startOf('second').fromNow()
+          : requestedOwnership
+            ? dayjs(requestedOwnership).startOf('second').fromNow()
             : 'Indefinite',
-        changed:
-          groupRequest.resolved_ownership_ending_at != null &&
-          groupRequest.resolved_ownership_ending_at !== '' &&
-          groupRequest.resolved_ownership_ending_at !== groupRequest.requested_ownership_ending_at &&
-          !(!groupRequest.resolved_ownership_ending_at && !groupRequest.requested_ownership_ending_at),
-        from: groupRequest.requested_ownership_ending_at
-          ? dayjs(groupRequest.requested_ownership_ending_at).startOf('second').fromNow()
-          : 'Indefinite',
+        changed: ownershipChanged,
+        from: requestedOwnership ? dayjs(requestedOwnership).startOf('second').fromNow() : 'Indefinite',
       },
       {
         kind: 'tags',

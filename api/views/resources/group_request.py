@@ -99,8 +99,8 @@ class GroupRequestResource(MethodResource):
         # Check if the current user can approve: admins can approve all, app owners can approve for their apps
         elif not AuthorizationHelpers.is_access_admin(g.current_user_id):
             # If this is an app group request, check if current user is an app owner
-            if group_request.resolved_app_id is not None:
-                app_owner_approvers = get_app_managers(group_request.resolved_app_id)
+            if group_request.requested_app_id is not None:
+                app_owner_approvers = get_app_managers(group_request.requested_app_id)
                 if g.current_user_id not in [approver.id for approver in app_owner_approvers]:
                     abort(403, "Current user is not allowed to perform this action")
             else:

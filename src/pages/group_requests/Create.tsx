@@ -235,6 +235,23 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               validation={{
                 maxLength: 255,
                 pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
+                validate: (value: string) => {
+                  if (groupType !== 'app_group' && value.startsWith(APP_GROUP_PREFIX)) {
+                    return (
+                      "Only app groups can start with the '" +
+                      APP_GROUP_PREFIX +
+                      "' prefix. Please update the group type or select a different name."
+                    );
+                  }
+                  if (groupType !== 'role_group' && value.startsWith(ROLE_GROUP_PREFIX)) {
+                    return (
+                      "Only roles can start with the '" +
+                      ROLE_GROUP_PREFIX +
+                      "' prefix. Please update the group type or select a different name."
+                    );
+                  }
+                  return true;
+                },
               }}
               parseError={(error) => {
                 if (error?.message) return error.message;
