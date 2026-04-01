@@ -235,6 +235,17 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               validation={{
                 maxLength: 255,
                 pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
+                validate: (value: string) => {
+                  if (value.startsWith(APP_GROUP_PREFIX)) {
+                    // TODO: fill in error message for names starting with APP_GROUP_PREFIX
+                    return 'Name cannot start with ' + APP_GROUP_PREFIX;
+                  }
+                  if (value.startsWith(ROLE_GROUP_PREFIX)) {
+                    // TODO: fill in error message for names starting with ROLE_GROUP_PREFIX
+                    return 'Name cannot start with ' + ROLE_GROUP_PREFIX;
+                  }
+                  return true;
+                },
               }}
               parseError={(error) => {
                 if (error?.message) return error.message;
