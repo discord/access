@@ -147,22 +147,29 @@ def test_put_group(
     db.session.add(access_app)
     db.session.add(tag)
     db.session.commit()
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
+
+    # Store IDs before requests — expunge_all() in ModifyGroupType can
+    # detach fixture objects, causing DetachedInstanceError on access.
+    tag_id = tag.id
+    app_id = access_app.id
+    app_name = access_app.name
+
+    app_tag_map = AppTagMap(app_id=app_id, tag_id=tag_id)
     db.session.add(app_tag_map)
 
     # test update group
     update_group_spy = mocker.patch.object(okta, "update_group")
 
-    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag.id]}, 1)
+    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1)
     _update_group_type(
         client,
         okta_group,
         update_group_spy,
         "app_group",
         {
-            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Updated",
-            "app_id": access_app.id,
-            "tags_to_remove": [tag.id],
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Updated",
+            "app_id": app_id,
+            "tags_to_remove": [tag_id],
         },
         1,
     )
@@ -173,8 +180,8 @@ def test_put_group(
         "role_group",
         {
             "name": f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Updated",
-            "tags_to_add": [tag.id],
-            "tags_to_remove": [tag.id],
+            "tags_to_add": [tag_id],
+            "tags_to_remove": [tag_id],
         },
     )
     _update_group_type(client, okta_group, update_group_spy, "okta_group")
@@ -185,7 +192,7 @@ def test_put_group(
         "role_group",
         {
             "name": f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Updated",
-            "tags_to_add": [tag.id],
+            "tags_to_add": [tag_id],
             "tags_to_remove": [],
         },
         1,
@@ -196,9 +203,9 @@ def test_put_group(
         update_group_spy,
         "app_group",
         {
-            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Updated",
-            "app_id": access_app.id,
-            "tags_to_add": [tag.id],
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Updated",
+            "app_id": app_id,
+            "tags_to_add": [tag_id],
         },
         2,
     )
@@ -209,7 +216,7 @@ def test_put_group(
         "okta_group",
         {
             "tags_to_add": [],
-            "tags_to_remove": [tag.id],
+            "tags_to_remove": [tag_id],
         },
     )
 
@@ -237,7 +244,7 @@ def test_put_group(
     update_group_spy.reset_mock()
     data.update(
         {
-            "tags_to_add": [tag.id],
+            "tags_to_add": [tag_id],
         }
     )
     group_id = builtin_access_owners_group.id
@@ -256,7 +263,7 @@ def test_put_group(
     update_group_spy.reset_mock()
     data.update(
         {
-            "tags_to_remove": [tag.id],
+            "tags_to_remove": [tag_id],
         }
     )
     group_id = builtin_access_owners_group.id

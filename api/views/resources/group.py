@@ -18,6 +18,7 @@ from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserG
 from api.operations import (
     CreateGroup,
     DeleteGroup,
+    ModifyGroupDetails,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
@@ -25,7 +26,6 @@ from api.operations import (
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
-from api.services import okta
 from api.views.schemas import (
     AuditLogSchema,
     DeleteMessageSchema,
@@ -112,7 +112,6 @@ class GroupResource(MethodResource):
     def put(self, group: OktaGroup) -> ResponseReturnValue:
         schema = PolymorphicGroupSchema(exclude=DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS)
         group_changes = schema.load(request.json, partial=True)
-        old_group_name = group.name
 
         if not group.is_managed:
             abort(
@@ -162,16 +161,17 @@ class GroupResource(MethodResource):
                     "Only tags can be modifed for application owner groups",
                 )
 
-        # Do not allow non-deleted groups with the same name (case-insensitive)
-        if group.name.lower() != group_changes.name.lower():
-            existing_group = (
-                db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .filter(func.lower(OktaGroup.name) == func.lower(group_changes.name))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .first()
-            )
-            if existing_group is not None:
-                abort(400, "Group already exists with the same name")
+        # Update name and description, sync to Okta, and fire group_updated hook.
+        # This runs before ModifyGroupType so the group_created hook (fired inside
+        # ModifyGroupType) sees the final name/description.
+        try:
+            ModifyGroupDetails(
+                group=group,
+                name=group_changes.name if "name" in json_data else None,
+                description=group_changes.description if "description" in json_data else None,
+            ).execute()
+        except ValueError as e:
+            abort(400, str(e))
 
         # Update group type if it's being modified
         if type(group) is not type(group_changes):
@@ -189,7 +189,7 @@ class GroupResource(MethodResource):
         old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
         old_plugin_data = group.plugin_data
 
-        # Update additional fields like name, description, etc.
+        # Update additional fields like plugin_data (name/description already handled above)
         group = schema.load(request.json, instance=group, partial=True)
 
         if old_plugin_data and group.plugin_data != old_plugin_data:
@@ -201,7 +201,6 @@ class GroupResource(MethodResource):
             if type(group) is AppGroup:
                 merge_app_lifecycle_plugin_data(group, old_plugin_data)
 
-        okta.update_group(group.id, group.name, group.description)
         db.session.commit()
 
         ModifyGroupTags(
@@ -218,24 +217,6 @@ class GroupResource(MethodResource):
             .filter(OktaGroup.id == group.id)
             .first()
         )
-
-        # Audit logging, only if group name changed
-        if old_group_name.lower() != group.name.lower():
-            current_app.logger.info(
-                AuditLogSchema().dumps(
-                    {
-                        "event_type": EventType.group_modify_name,
-                        "user_agent": request.headers.get("User-Agent"),
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        ),
-                        "current_user_id": g.current_user_id,
-                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
-                        "group": group,
-                        "old_group_name": old_group_name,
-                    }
-                )
-            )
 
         # Audit logging for plugin configuration changes (app groups only)
         if old_plugin_data_for_audit != group.plugin_data:

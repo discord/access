@@ -11,10 +11,9 @@ from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.models.app_group import app_owners_group_description
-from api.operations import CreateApp, DeleteApp, ModifyAppTags
+from api.operations import CreateApp, DeleteApp, ModifyAppTags, ModifyGroupDetails
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
-from api.services import okta
 from api.views.schemas import (
     AppPaginationSchema,
     AppSchema,
@@ -168,19 +167,11 @@ class AppResource(MethodResource):
             for app_group in app_groups:
                 if app_group.name.startswith(old_name_prefix):
                     group_name_suffix = app_group.name[len(old_name_prefix) :]
-                    app_group.name = "{}{}".format(
-                        new_name_prefix,
-                        group_name_suffix,
-                    )
+                    new_name = f"{new_name_prefix}{group_name_suffix}"
                 else:
-                    app_group.name = "{}{}".format(
-                        new_name_prefix,
-                        app_group.name,
-                    )
-                if app_group.is_owner:
-                    app_group.description = app_owners_group_description(app.name)
-                if app_group.deleted_at is None:
-                    okta.update_group(app_group.id, app_group.name, app_group.description)
+                    new_name = f"{new_name_prefix}{app_group.name}"
+                new_description = app_owners_group_description(app.name) if app_group.is_owner else None
+                ModifyGroupDetails(group=app_group, name=new_name, description=new_description).execute()
 
         db.session.commit()
 
