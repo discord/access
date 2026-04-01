@@ -82,6 +82,7 @@ class GroupRequestResource(MethodResource):
     @FlaskApiSpecDecorators.request_schema(ResolveGroupRequestSchema)
     @FlaskApiSpecDecorators.response_schema(GroupRequestSchema)
     def put(self, group_request_id: str) -> ResponseReturnValue:
+        print("[[[[[[[[[[[[[Thisi s a skljer j]]]]]]]]]]]]]")
         group_request = (
             GroupRequest.query.options(
                 joinedload(GroupRequest.active_requester),
@@ -98,9 +99,10 @@ class GroupRequestResource(MethodResource):
                 abort(403, "Users cannot approve their own requests")
         # Check if the current user can approve: admins can approve all, app owners can approve for their apps
         elif not AuthorizationHelpers.is_access_admin(g.current_user_id):
+            print("ksjdfh lksjhdflkj should get here???????")
             # If this is an app group request, check if current user is an app owner
-            if group_request.resolved_app_id is not None:
-                app_owner_approvers = get_app_managers(group_request.resolved_app_id)
+            if group_request.requested_app_id is not None:
+                app_owner_approvers = get_app_managers(group_request.requested_app_id)
                 if g.current_user_id not in [approver.id for approver in app_owner_approvers]:
                     abort(403, "Current user is not allowed to perform this action")
             else:
