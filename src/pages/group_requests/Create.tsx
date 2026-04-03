@@ -160,10 +160,16 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     let groupName = formData.name;
     let appId: string | undefined = undefined;
 
-    if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp == null) {
+    if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedAppName === '') {
       setSubmitting(false);
       setRequestError(
-        `The name starts with the reserved app group prefix "${APP_GROUP_PREFIX}" but no app named "${detectedAppName}" was found.`,
+        `Requested name starts with the app group prefix "${APP_GROUP_PREFIX}" but does not list an app. App group names should be in the format "${APP_GROUP_PREFIX}<app name>${APP_NAME_APP_GROUP_SEPARATOR}<group name>".`,
+      );
+      return;
+    } else if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp == null) {
+      setSubmitting(false);
+      setRequestError(
+        `Requested name starts with the app group prefix "${APP_GROUP_PREFIX}" but no app named "${detectedAppName}" was found.`,
       );
       return;
     } else if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
