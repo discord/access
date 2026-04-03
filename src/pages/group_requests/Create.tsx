@@ -104,6 +104,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [selectedApp, setSelectedApp] = React.useState<App | null>(null);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
+  const [nameInput, setNameInput] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
@@ -131,6 +132,22 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   });
   const appSearchOptions = appSearchData?.results ?? [];
 
+  const detectedAppName = React.useMemo(() => {
+    if (groupType !== 'okta_group' || !nameInput.startsWith(APP_GROUP_PREFIX)) return '';
+    const withoutPrefix = nameInput.slice(APP_GROUP_PREFIX.length);
+    const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
+    if (sepIdx <= 0) return '';
+    return withoutPrefix.slice(0, sepIdx);
+  }, [groupType, nameInput]);
+
+  const {data: detectedAppData} = useGetApps({
+    queryParams: {page: 0, per_page: 10, q: detectedAppName},
+  });
+  const detectedApp = React.useMemo(
+    () => detectedAppData?.results?.find((app) => app.name === detectedAppName) ?? null,
+    [detectedAppName, detectedAppData],
+  );
+
   const {data: tagSearchData} = useGetTags({
     queryParams: {page: 0, per_page: 10, q: tagSearchInput},
   });
@@ -139,9 +156,29 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const submit = (formData: CreateGroupRequestForm) => {
     setSubmitting(true);
 
+    let effectiveType = formData.type;
     let groupName = formData.name;
-    if (formData.type === 'app_group') {
+    let appId: string | undefined = undefined;
+
+    if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp == null) {
+      setSubmitting(false);
+      setRequestError(
+        `The name starts with the reserved app group prefix "${APP_GROUP_PREFIX}" but no app named "${detectedAppName}" was found.`,
+      );
+      return;
+    } else if (formData.type === 'okta_group' && formData.name.startsWith(APP_GROUP_PREFIX) && detectedApp != null) {
+      effectiveType = 'app_group';
+      appId = detectedApp.id;
+      const withoutPrefix = formData.name.slice(APP_GROUP_PREFIX.length);
+      const sepIdx = withoutPrefix.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
+      const rest = withoutPrefix.slice(sepIdx + APP_NAME_APP_GROUP_SEPARATOR.length);
+      groupName = APP_GROUP_PREFIX + detectedApp.name + APP_NAME_APP_GROUP_SEPARATOR + rest;
+    } else if (formData.type === 'okta_group' && formData.name.startsWith(ROLE_GROUP_PREFIX)) {
+      effectiveType = 'role_group';
+      groupName = ROLE_GROUP_PREFIX + formData.name.slice(ROLE_GROUP_PREFIX.length);
+    } else if (formData.type === 'app_group') {
       groupName = APP_GROUP_PREFIX + (selectedApp?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + formData.name;
+      appId = selectedApp?.id;
     } else if (formData.type === 'role_group') {
       groupName = ROLE_GROUP_PREFIX + formData.name;
     }
@@ -149,8 +186,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     const body = {
       requested_group_name: groupName,
       requested_group_description: formData.description ?? '',
-      requested_group_type: formData.type,
-      requested_app_id: formData.type === 'app_group' ? selectedApp?.id : undefined,
+      requested_group_type: effectiveType,
+      requested_app_id: appId,
       request_reason: formData.reason ?? '',
       requested_group_tags: selectedTags.map((t) => t.id),
     } as Parameters<typeof createRequest.mutate>[0]['body'];
@@ -227,41 +264,26 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 </Typography>
               </Box>
             ) : null}
-            <TextFieldElement
-              fullWidth
-              label="Name"
-              name="name"
-              variant="outlined"
-              validation={{
-                maxLength: 255,
-                pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
-                validate: (value: string) => {
-                  if (groupType !== 'app_group' && value.startsWith(APP_GROUP_PREFIX)) {
-                    return (
-                      "Only app groups can start with the '" +
-                      APP_GROUP_PREFIX +
-                      "' prefix. Please update the group type or select a different name."
-                    );
-                  }
-                  if (groupType !== 'role_group' && value.startsWith(ROLE_GROUP_PREFIX)) {
-                    return (
-                      "Only roles can start with the '" +
-                      ROLE_GROUP_PREFIX +
-                      "' prefix. Please update the group type or select a different name."
-                    );
-                  }
-                  return true;
-                },
-              }}
-              parseError={(error) => {
-                if (error?.message) return error.message;
-                if (error?.type === 'maxLength') return 'Name can be at most 255 characters';
-                if (error?.type === 'pattern')
-                  return accessConfig.NAME_VALIDATION_ERROR + ' Regex: ' + accessConfig.NAME_VALIDATION_PATTERN;
-                return '';
-              }}
-              required
-            />
+            <Box onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNameInput(e.target.value)} sx={{flexGrow: 1}}>
+              <TextFieldElement
+                fullWidth
+                label="Name"
+                name="name"
+                variant="outlined"
+                validation={{
+                  maxLength: 255,
+                  pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
+                }}
+                parseError={(error) => {
+                  if (error?.message) return error.message;
+                  if (error?.type === 'maxLength') return 'Name can be at most 255 characters';
+                  if (error?.type === 'pattern')
+                    return accessConfig.NAME_VALIDATION_ERROR + ' Regex: ' + accessConfig.NAME_VALIDATION_PATTERN;
+                  return '';
+                }}
+                required
+              />
+            </Box>
           </Box>
         </FormControl>
         <FormControl margin="normal" fullWidth>
