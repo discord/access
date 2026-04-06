@@ -59,7 +59,7 @@
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",
     "typescript": "^4.9.5",
-    "vite": "^7.1.11",
+    "vite": "^7.3.2",
     "vitest": "^3.2.4"
   },
   "optionalDependencies": {
