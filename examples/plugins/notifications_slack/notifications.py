@@ -10,7 +10,16 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 import pluggy
 from slack_sdk import WebClient
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import (
+    AccessRequest,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    RoleRequest,
+)
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
@@ -369,6 +378,63 @@ def access_role_request_created(
 
     # Post to the alerts channel
     send_slack_channel_message(requester, approver_message)
+
+
+@notification_hook_impl
+def access_group_request_created(
+    group_request: GroupRequest,
+    requester: OktaUser,
+    approvers: List[OktaUser],
+) -> None:
+    """Notify approvers that someone requested creation of a new group."""
+    group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
+
+    approver_message = (
+        f":pray: {requester.email} has requested creation of group `{group_request.requested_group_name}` "
+        f"(type: {group_request.requested_group_type}).\n\n"
+        f"<{group_request_url}|View request to approve or reject>\n\n"
+    )
+
+    for approver in approvers:
+        send_slack_dm(approver, approver_message)
+    logger.info(f"Group request approver message: {approver_message}")
+
+    if requester.id not in [approver.id for approver in approvers]:
+        send_slack_dm(requester, approver_message)
+        logger.info("Group request requester received creation notification")
+
+    send_slack_channel_message(requester, approver_message)
+
+
+@notification_hook_impl
+def access_group_request_completed(
+    group_request: GroupRequest,
+    group: Optional[OktaGroup],
+    requester: OktaUser,
+    approvers: List[OktaUser],
+    notify_requester: bool,
+) -> None:
+    """Notify the requester and approvers that a group creation request was resolved."""
+    group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
+    display_name = group.name if group is not None else group_request.requested_group_name
+    status_str = str(group_request.status).lower()
+    emoji = ":white_check_mark:" if status_str == "approved" else ":x:"
+
+    requester_message = (
+        f"{emoji} Request to create {display_name} has been {status_str}.\n\n"
+        f"<{group_request_url}|View request>\n"
+    )
+
+    if notify_requester:
+        send_slack_dm(requester, requester_message)
+    logger.info(f"Group request completion message: {requester_message}")
+
+    for approver in approvers:
+        if approver.id != requester.id:
+            send_slack_dm(approver, requester_message)
+    logger.info("Group request approvers received completion notification")
+
+    send_slack_channel_message(requester, requester_message)
 
 
 @notification_hook_impl

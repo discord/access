@@ -18,7 +18,7 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.access_request import get_all_possible_request_approvers
+from api.models.access_request import get_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
@@ -618,7 +618,7 @@ class ModifyRoleGroups:
     async def _notify_access_request(self, access_request: AccessRequest) -> None:
         requester = db.session.get(OktaUser, access_request.requester_user_id)
 
-        approvers = get_all_possible_request_approvers(access_request)
+        approvers = get_request_approvers(access_request)
 
         self.notification_hook.access_request_completed(
             access_request=access_request,
@@ -646,7 +646,7 @@ class ModifyRoleGroups:
 
         requester = db.session.get(OktaUser, role_request.requester_user_id)
 
-        approvers = get_all_possible_request_approvers(role_request)
+        approvers = get_request_approvers(role_request)
 
         self.notification_hook.access_role_request_completed(
             role_request=role_request,

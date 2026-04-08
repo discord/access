@@ -12,6 +12,7 @@ from api.models import (
     AccessRequestStatus,
     AppGroup,
     AppTagMap,
+    GroupRequest,
     OktaGroup,
     OktaUser,
     OktaUserGroupMember,
@@ -19,7 +20,9 @@ from api.models import (
     OktaGroupTagMap,
     Tag,
 )
+from api.models.access_request import get_request_approvers
 from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
+from api.plugins import get_notification_hook
 from api.services import okta
 from tests.factories import (
     OktaUserFactory,
@@ -1390,3 +1393,162 @@ def test_random_user_cannot_approve_group_request(
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
     assert group_request.approved_group_id is None
+
+
+def test_get_group_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
+    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    users = OktaUserFactory.build_batch(3)
+    db.session.add_all(users)
+    db.session.commit()
+
+    app_obj = AppFactory.create()
+
+    req = GroupRequest()
+    req.requested_group_type = "app_group"
+    req.requested_app_id = app_obj.id
+    req.resolved_app_id = None
+
+    # Scenario 1: App group with app managers → return only app managers, no fallback
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[0], users[1]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) == 2
+    assert users[0] in approvers
+    assert users[1] in approvers
+    assert access_admin not in approvers
+
+    # Scenario 2: App group with no app managers → fall back to access owners
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) >= 1
+    assert access_admin in approvers
+
+    # Scenario 3: Non-app group (no app_id) → return access owners directly
+    req.requested_app_id = None
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[2]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) >= 1
+    assert access_admin in approvers
+    assert users[2] not in approvers
+
+    # Scenario 4: resolved_app_id takes precedence over requested_app_id
+    other_app = AppFactory.create()
+    req.requested_app_id = app_obj.id
+    req.resolved_app_id = other_app.id
+    mocker.patch("api.models.access_request.get_app_managers", return_value=[users[2]])
+
+    approvers = get_request_approvers(req)
+
+    assert len(approvers) == 1
+    assert users[2] in approvers
+    assert access_admin not in approvers
+
+
+def test_resolve_app_group_request_notification(
+    app: Flask, db: SQLAlchemy, mocker: MockerFixture, faker: Faker  # type: ignore[type-arg]
+) -> None:
+    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+
+    requester = OktaUserFactory.build()
+    app_owner_user1 = OktaUserFactory.build()
+    app_owner_user2 = OktaUserFactory.build()
+
+    app_obj = AppFactory.build()
+    db.session.add(requester)
+    db.session.add(app_owner_user1)
+    db.session.add(app_owner_user2)
+    db.session.add(app_obj)
+    db.session.commit()
+
+    owner_group = AppGroupFactory.build(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+
+    db.session.add(OktaUserGroupMember(user_id=app_owner_user1.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner_user2.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    hook = get_notification_hook()
+    request_created_notification_spy = mocker.patch.object(hook, "access_group_request_created")
+    request_completed_notification_spy = mocker.patch.object(hook, "access_group_request_completed")
+
+    group_request = CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="A new app group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need this group",
+    ).execute()
+
+    assert group_request is not None
+    assert request_created_notification_spy.call_count == 1
+    _, kwargs = request_created_notification_spy.call_args
+    assert kwargs["group_request"] == group_request
+    assert kwargs["requester"] == requester
+    assert len(kwargs["approvers"]) == 2
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner_user1,
+        approval_reason="Approved",
+    ).execute()
+
+    assert request_completed_notification_spy.call_count == 1
+    _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs["group_request"] == group_request
+    assert kwargs["requester"] == requester
+    # Completion notification uses prioritized approvers: app group falls back to app managers
+    # only — not all possible approvers including access admin.
+    assert len(kwargs["approvers"]) == 2
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
+    assert access_admin not in kwargs["approvers"]
+
+    # Create a new pending request to test the reject path
+    group_request2 = CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-AnotherGroup",
+        requested_group_description="Another app group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need another group",
+    ).execute()
+
+    assert group_request2 is not None
+
+    request_completed_notification_spy.reset_mock()
+
+    RejectGroupRequest(
+        group_request=group_request2,
+        rejection_reason="Rejected",
+        current_user_id=app_owner_user1.id,
+    ).execute()
+
+    assert request_completed_notification_spy.call_count == 1
+    _, kwargs = request_completed_notification_spy.call_args
+    assert kwargs["group_request"] == group_request2
+    assert kwargs["requester"] == requester
+    assert len(kwargs["approvers"]) == 2
+    assert app_owner_user1 in kwargs["approvers"]
+    assert app_owner_user2 in kwargs["approvers"]
+    assert access_admin not in kwargs["approvers"]

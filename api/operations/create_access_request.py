@@ -16,8 +16,7 @@ from api.models import (
     OktaUser,
     RoleGroup,
 )
-from api.models.app_group import get_access_owners, get_app_managers
-from api.models.okta_group import get_group_managers
+from api.models.access_request import get_request_approvers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
 from api.plugins import get_conditional_access_hook, get_notification_hook
@@ -77,20 +76,7 @@ class CreateAccessRequest:
         db.session.commit()
 
         # Fetch the users to notify
-        approvers = get_group_managers(self.requested_group.id)
-
-        # If there are no approvers, try to get the app managers
-        # or if the only approver is the requester, try to get the app managers
-        if (
-            (len(approvers) == 0 and type(self.requested_group) is AppGroup)
-            or (len(approvers) == 1 and approvers[0].id == self.requester.id)
-            and type(self.requested_group) is AppGroup
-        ):
-            approvers = get_app_managers(self.requested_group.app_id)
-
-        # If there are still no approvers, try to get the access owners
-        if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
-            approvers = get_access_owners()
+        approvers = get_request_approvers(access_request)
 
         group = (
             db.session.query(OktaGroup)
