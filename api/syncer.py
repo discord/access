@@ -184,76 +184,81 @@ def sync_group_memberships(act_as_authority: bool) -> None:
     group_ids_with_group_rules = okta.list_groups_with_active_rules()
 
     for group in groups:
-        is_managed = is_managed_group(group, group_ids_with_group_rules)
+        try:
+            is_managed = is_managed_group(group, group_ids_with_group_rules)
 
-        act_authoritatively = act_as_authority and is_managed
+            act_authoritatively = act_as_authority and is_managed
 
-        logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
+            logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
 
-        members = okta.list_users_for_group(group.id)
+            members = okta.list_users_for_group(group.id)
 
-        logger.info(f"Fetched users list for group {group.id}")
+            logger.info(f"Fetched users list for group {group.id}")
 
-        db_all_group_members = {
-            row.id: row.user_id
-            for row in db.session.query(
-                OktaUserGroupMember.user_id,
-                OktaUserGroupMember.id,
-            ).filter(
-                OktaUserGroupMember.group_id == group.id,
-                OktaUserGroupMember.is_owner.is_(False),
-                db.or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
-                ),
-            )
-        }
+            db_all_group_members = {
+                row.id: row.user_id
+                for row in db.session.query(
+                    OktaUserGroupMember.user_id,
+                    OktaUserGroupMember.id,
+                ).filter(
+                    OktaUserGroupMember.group_id == group.id,
+                    OktaUserGroupMember.is_owner.is_(False),
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    ),
+                )
+            }
 
-        for member in members:
-            # User is a member in okta but not in the DB
-            if member.id not in db_all_group_members.values():
-                logger.info(f"User {member.id} is not in the group in our DB.")
+            for member in members:
+                # User is a member in okta but not in the DB
+                if member.id not in db_all_group_members.values():
+                    logger.info(f"User {member.id} is not in the group in our DB.")
 
-                if act_authoritatively:
-                    okta.remove_user_from_group(group.id, member.id)
+                    if act_authoritatively:
+                        okta.remove_user_from_group(group.id, member.id)
+                    else:
+                        reason = (
+                            "User in Okta group but not in Access group."
+                            if is_managed
+                            else "User added via Okta group rule."
+                        )
+                        ModifyGroupUsers(
+                            group=group.id,
+                            members_to_add=[member.id],
+                            created_reason=reason,
+                        ).execute()
+
+                # User is a member in okta and an entry exists in our DB
                 else:
-                    reason = (
-                        "User in Okta group but not in Access group."
-                        if is_managed
-                        else "User added via Okta group rule."
-                    )
-                    ModifyGroupUsers(
-                        group=group.id,
-                        members_to_add=[member.id],
-                        created_reason=reason,
-                    ).execute()
+                    db_all_group_members = {k: v for k, v in db_all_group_members.items() if v != member.id}
 
-            # User is a member in okta and an entry exists in our DB
-            else:
-                db_all_group_members = {k: v for k, v in db_all_group_members.items() if v != member.id}
+            logger.info("Members in Okta synced to DB.")
 
-        logger.info("Members in Okta synced to DB.")
+            # All remaining values are memberships that are marked active in our DB
+            # But are not valid memberships in okta
+            if db_all_group_members:
+                logger.info(
+                    f"Users were marked as members in the DB but not in okta. Updating. User IDs: {db_all_group_members}"
+                )
 
-        # All remaining values are memberships that are marked active in our DB
-        # But are not valid memberships in okta
-        if db_all_group_members:
-            logger.info(
-                f"Users were marked as members in the DB but not in okta. Updating. User IDs: {db_all_group_members}"
-            )
+                distinct_member_ids = set(db_all_group_members.values())
+                if act_authoritatively:
+                    # Create in okta
+                    for member_id in distinct_member_ids:
+                        okta.add_user_to_group(group.id, member_id)
+                else:
+                    # Remove the direct group memberships to this group in our DB
+                    # This will not affect group memberships that are via other group roles
+                    ModifyGroupUsers(group=group.id, members_to_remove=list(distinct_member_ids)).execute()
 
-            distinct_member_ids = set(db_all_group_members.values())
-            if act_authoritatively:
-                # Create in okta
-                for member_id in distinct_member_ids:
-                    okta.add_user_to_group(group.id, member_id)
-            else:
-                # Remove the direct group memberships to this group in our DB
-                # This will not affect group memberships that are via other group roles
-                ModifyGroupUsers(group=group.id, members_to_remove=list(distinct_member_ids)).execute()
+            logger.info("Members in DB synced to Okta.")
 
-        logger.info("Members in DB synced to Okta.")
-
-        db.session.commit()
+            db.session.commit()
+        except Exception:
+            logger.exception(f"Failed to sync memberships for group {group.id}, skipping.")
+            db.session.rollback()
+            continue
 
     logger.info("Membership sync finished.")
 
@@ -265,99 +270,104 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
     group_ids_with_group_rules = okta.list_groups_with_active_rules()
 
     for group in groups:
-        is_managed = is_managed_group(group, group_ids_with_group_rules)
+        try:
+            is_managed = is_managed_group(group, group_ids_with_group_rules)
 
-        act_authoritatively = act_as_authority and is_managed
+            act_authoritatively = act_as_authority and is_managed
 
-        logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
+            logger.info(f"Syncing group {group.id}. act_authoritatively: {act_authoritatively}")
 
-        owners = okta.list_owners_for_group(group.id)
+            owners = okta.list_owners_for_group(group.id)
 
-        db_all_group_owners = {
-            row.id: row.user_id
-            for row in db.session.query(
-                OktaUserGroupMember.user_id,
-                OktaUserGroupMember.id,
-            ).filter(
-                OktaUserGroupMember.group_id == group.id,
-                OktaUserGroupMember.is_owner.is_(True),
-                db.or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
-                ),
-            )
-        }
-
-        # If the group ownership is managed by Access and there are no owners for it
-        # check to see if it's an AppGroup and if so, add the app owners as owners in Okta
-        if act_authoritatively and len(db_all_group_owners) == 0:
-            app_group = (
-                AppGroup.query.options(
-                    joinedload(AppGroup.app).options(selectinload(App.active_owner_app_groups)),
+            db_all_group_owners = {
+                row.id: row.user_id
+                for row in db.session.query(
+                    OktaUserGroupMember.user_id,
+                    OktaUserGroupMember.id,
+                ).filter(
+                    OktaUserGroupMember.group_id == group.id,
+                    OktaUserGroupMember.is_owner.is_(True),
+                    db.or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > db.func.now(),
+                    ),
                 )
-                .filter(AppGroup.deleted_at.is_(None))
-                .filter(AppGroup.id == group.id)
-                .first()
-            )
+            }
 
-            if app_group is not None and not app_group.is_owner:
-                app_owner_group_ids = [g.id for g in app_group.app.active_owner_app_groups]
-                db_all_group_owners = {
-                    row.id: row.user_id
-                    for row in db.session.query(
-                        OktaUserGroupMember.user_id,
-                        OktaUserGroupMember.id,
-                    ).filter(
-                        OktaUserGroupMember.group_id.in_(app_owner_group_ids),
-                        OktaUserGroupMember.is_owner.is_(True),
-                        db.or_(
-                            OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > db.func.now(),
-                        ),
+            # If the group ownership is managed by Access and there are no owners for it
+            # check to see if it's an AppGroup and if so, add the app owners as owners in Okta
+            if act_authoritatively and len(db_all_group_owners) == 0:
+                app_group = (
+                    AppGroup.query.options(
+                        joinedload(AppGroup.app).options(selectinload(App.active_owner_app_groups)),
                     )
-                }
+                    .filter(AppGroup.deleted_at.is_(None))
+                    .filter(AppGroup.id == group.id)
+                    .first()
+                )
 
-        for owner in owners:
-            # User is a owner in okta but not in the DB
-            if owner.id not in db_all_group_owners.values():
-                logger.info(f"User {owner.id} is not in the group in our DB.")
+                if app_group is not None and not app_group.is_owner:
+                    app_owner_group_ids = [g.id for g in app_group.app.active_owner_app_groups]
+                    db_all_group_owners = {
+                        row.id: row.user_id
+                        for row in db.session.query(
+                            OktaUserGroupMember.user_id,
+                            OktaUserGroupMember.id,
+                        ).filter(
+                            OktaUserGroupMember.group_id.in_(app_owner_group_ids),
+                            OktaUserGroupMember.is_owner.is_(True),
+                            db.or_(
+                                OktaUserGroupMember.ended_at.is_(None),
+                                OktaUserGroupMember.ended_at > db.func.now(),
+                            ),
+                        )
+                    }
 
-                if act_authoritatively:
-                    okta.remove_owner_from_group(group.id, owner.id)
+            for owner in owners:
+                # User is a owner in okta but not in the DB
+                if owner.id not in db_all_group_owners.values():
+                    logger.info(f"User {owner.id} is not in the group in our DB.")
+
+                    if act_authoritatively:
+                        okta.remove_owner_from_group(group.id, owner.id)
+                    else:
+                        reason = (
+                            "User in Okta group but not in Access group."
+                            if is_managed
+                            else "User was added via Okta group rule."
+                        )
+                        ModifyGroupUsers(
+                            group=group.id,
+                            owners_to_add=[owner.id],
+                            created_reason=reason,
+                        ).execute()
+
+                # User is a owner in okta and an entry exists in our DB
                 else:
-                    reason = (
-                        "User in Okta group but not in Access group."
-                        if is_managed
-                        else "User was added via Okta group rule."
-                    )
-                    ModifyGroupUsers(
-                        group=group.id,
-                        owners_to_add=[owner.id],
-                        created_reason=reason,
-                    ).execute()
+                    db_all_group_owners = {k: v for k, v in db_all_group_owners.items() if v != owner.id}
 
-            # User is a owner in okta and an entry exists in our DB
-            else:
-                db_all_group_owners = {k: v for k, v in db_all_group_owners.items() if v != owner.id}
+            # All remaining values are ownerships that are marked active in our DB
+            # But are not valid ownerships in okta
+            if db_all_group_owners:
+                logger.info(
+                    f"Users were marked as owners in the DB but not in okta. Updating. User IDs: {db_all_group_owners}"
+                )
 
-        # All remaining values are ownerships that are marked active in our DB
-        # But are not valid ownerships in okta
-        if db_all_group_owners:
-            logger.info(
-                f"Users were marked as owners in the DB but not in okta. Updating. User IDs: {db_all_group_owners}"
-            )
+                distinct_owner_ids = set(db_all_group_owners.values())
+                if act_authoritatively:
+                    # Create in okta
+                    for owner_id in distinct_owner_ids:
+                        okta.add_owner_to_group(group.id, owner_id)
+                else:
+                    # Remove the direct group ownerships to this group in our DB
+                    # This will not affect group ownerships that are via other group roles
+                    ModifyGroupUsers(group=group.id, owners_to_remove=list(distinct_owner_ids)).execute()
 
-            distinct_owner_ids = set(db_all_group_owners.values())
-            if act_authoritatively:
-                # Create in okta
-                for owner_id in distinct_owner_ids:
-                    okta.add_owner_to_group(group.id, owner_id)
-            else:
-                # Remove the direct group ownerships to this group in our DB
-                # This will not affect group ownerships that are via other group roles
-                ModifyGroupUsers(group=group.id, owners_to_remove=list(distinct_owner_ids)).execute()
-
-        db.session.commit()
+            db.session.commit()
+        except Exception:
+            logger.exception(f"Failed to sync ownerships for group {group.id}, skipping.")
+            db.session.rollback()
+            continue
 
     logger.info("Ownership sync finished.")
 
