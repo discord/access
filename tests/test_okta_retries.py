@@ -62,18 +62,14 @@ def test_retry_logic_no_error(mocker: MockerFixture, mock_sleep: Mock, okta_serv
     assert mock_sleep.call_count == 0
 
 
-def test_retry_logic_all_timeouts_raises(
-    mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService
-) -> None:
+def test_retry_logic_all_timeouts_raises(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
     mocker.patch("asyncio.wait_for", side_effect=asyncio.TimeoutError())
 
     with pytest.raises(Exception, match="timed out"):
         okta_service.get_user("okta_id")
 
 
-def test_retry_logic_timeout_then_success(
-    mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService
-) -> None:
+def test_retry_logic_timeout_then_success(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
     success_response: Tuple[Any, Any, Optional[Exception]] = (UserFactory(), Mock(), None)
     mocker.patch(
         "asyncio.wait_for",
