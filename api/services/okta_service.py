@@ -59,7 +59,12 @@ class OktaService:
                 result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
             except asyncio.TimeoutError as e:
                 logger.warning("Timeout on Okta request. Retrying...")
-                result = (None, e)
+                if attempt == REQUEST_MAX_RETRIES:
+                    raise Exception(
+                        f"Okta request timed out after {1 + REQUEST_MAX_RETRIES} attempts"
+                    ) from e
+                await asyncio.sleep(RETRY_BACKOFF_FACTOR * (2**attempt))
+                continue
 
             if len(result) == 2:
                 response, error = result

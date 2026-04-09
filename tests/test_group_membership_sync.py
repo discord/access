@@ -301,6 +301,29 @@ def test_membership_through_multiple_groups_non_authoritative(db: SQLAlchemy, mo
     assert _get_group_membership(db, pk_2).expired_at == date_2
 
 
+def test_membership_sync_continues_after_group_failure(db: SQLAlchemy, mocker: MockerFixture) -> None:
+    initial_okta_users = UserFactory.create_batch(3)
+    initial_okta_groups = GroupFactory.create_batch(3)
+    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+
+    def fake_list_users_for_group(group_id: str) -> list[User]:
+        if group_id == initial_okta_groups[0].id:
+            raise Exception("Simulated Okta timeout")
+        if group_id == initial_okta_groups[1].id:
+            return initial_okta_users
+        return []
+
+    _ = run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+
+    # Verify the second group still got its members synced despite the first group failing
+    members = _get_group_members(db, initial_okta_groups[1].id)
+    assert len(members) == 3
+
+    # Verify the failing group has no members
+    failed_members = _get_group_members(db, initial_okta_groups[0].id)
+    assert len(failed_members) == 0
+
+
 def seed_db(db: SQLAlchemy, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
     with Session(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
