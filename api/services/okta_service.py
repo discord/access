@@ -28,6 +28,12 @@ REQUEST_TIMEOUT = 30
 logger = logging.getLogger(__name__)
 
 
+class OktaTimeout(Exception):
+    """Raised when an Okta API request times out after all retries."""
+
+    pass
+
+
 class OktaService:
     """For interacting with the Okta API"""
 
@@ -59,7 +65,7 @@ class OktaService:
                 result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
             except asyncio.TimeoutError as e:
                 if attempt == REQUEST_MAX_RETRIES:
-                    raise Exception(f"Okta request timed out after {1 + REQUEST_MAX_RETRIES} attempts") from e
+                    raise OktaTimeout(f"Okta request timed out after {1 + REQUEST_MAX_RETRIES} attempts") from e
                 logger.warning("Timeout on Okta request. Retrying...")
                 await asyncio.sleep(RETRY_BACKOFF_FACTOR * (2**attempt))
                 continue
@@ -219,11 +225,14 @@ class OktaService:
             logger.warning(f"cannot add user with userId of {userId}")
             return
 
-        async with self._get_sessioned_okta_request_executor() as _:
-            _, error = await OktaService._retry(self.okta_client.add_user_to_group, groupId, userId)
+        try:
+            async with self._get_sessioned_okta_request_executor() as _:
+                _, error = await OktaService._retry(self.okta_client.add_user_to_group, groupId, userId)
 
-        if error is not None:
-            raise Exception(error)
+            if error is not None:
+                raise Exception(error)
+        except OktaTimeout:
+            logger.warning(f"Timed out adding user {userId} to group {groupId}")
 
     def add_user_to_group(self, groupId: str, userId: str) -> None:
         asyncio.run(self.async_add_user_to_group(groupId, userId))
@@ -237,11 +246,14 @@ class OktaService:
             logger.warning(f"cannot remove user with userId of {userId}")
             return
 
-        async with self._get_sessioned_okta_request_executor() as _:
-            _, error = await OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId)
+        try:
+            async with self._get_sessioned_okta_request_executor() as _:
+                _, error = await OktaService._retry(self.okta_client.remove_user_from_group, groupId, userId)
 
-        if error is not None:
-            raise Exception(error)
+            if error is not None:
+                raise Exception(error)
+        except OktaTimeout:
+            logger.warning(f"Timed out removing user {userId} from group {groupId}")
 
     def remove_user_from_group(self, groupId: str, userId: str) -> None:
         asyncio.run(self.async_remove_user_from_group(groupId, userId))
@@ -354,23 +366,26 @@ class OktaService:
         if not self.use_group_owners_api:
             return
 
-        async with self._get_sessioned_okta_request_executor() as request_executor:
-            request, error = await request_executor.create_request(
-                method="POST",
-                url="/api/v1/groups/{groupId}/owners".format(groupId=groupId),
-                body={"id": userId, "type": "USER"},
-                headers={},
-                oauth=False,
-            )
+        try:
+            async with self._get_sessioned_okta_request_executor() as request_executor:
+                request, error = await request_executor.create_request(
+                    method="POST",
+                    url="/api/v1/groups/{groupId}/owners".format(groupId=groupId),
+                    body={"id": userId, "type": "USER"},
+                    headers={},
+                    oauth=False,
+                )
 
-            if error is not None:
+                if error is not None:
+                    raise Exception(error)
+
+                _, error = await OktaService._retry(request_executor.execute, request)
+
+            # Ignore error if owner is already assigned to group
+            if error is not None and not error.message.endswith("Provided owner is already assigned to this group"):
                 raise Exception(error)
-
-            _, error = await OktaService._retry(request_executor.execute, request)
-
-        # Ignore error if owner is already assigned to group
-        if error is not None and not error.message.endswith("Provided owner is already assigned to this group"):
-            raise Exception(error)
+        except OktaTimeout:
+            logger.warning(f"Timed out adding owner {userId} to group {groupId}")
 
         return
 
@@ -388,22 +403,25 @@ class OktaService:
         if not self.use_group_owners_api:
             return
 
-        async with self._get_sessioned_okta_request_executor() as request_executor:
-            request, error = await request_executor.create_request(
-                method="DELETE",
-                url="/api/v1/groups/{groupId}/owners/{userId}".format(groupId=groupId, userId=userId),
-                body={},
-                headers={},
-                oauth=False,
-            )
+        try:
+            async with self._get_sessioned_okta_request_executor() as request_executor:
+                request, error = await request_executor.create_request(
+                    method="DELETE",
+                    url="/api/v1/groups/{groupId}/owners/{userId}".format(groupId=groupId, userId=userId),
+                    body={},
+                    headers={},
+                    oauth=False,
+                )
+
+                if error is not None:
+                    raise Exception(error)
+
+                _, error = await OktaService._retry(request_executor.execute, request)
 
             if error is not None:
                 raise Exception(error)
-
-            _, error = await OktaService._retry(request_executor.execute, request)
-
-        if error is not None:
-            raise Exception(error)
+        except OktaTimeout:
+            logger.warning(f"Timed out removing owner {userId} from group {groupId}")
 
         return
 

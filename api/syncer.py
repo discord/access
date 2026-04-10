@@ -34,7 +34,7 @@ from api.operations import (
 )
 from api.plugins import get_notification_hook
 from api.services import okta
-from api.services.okta_service import is_managed_group
+from api.services.okta_service import OktaTimeout, is_managed_group
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +255,10 @@ def sync_group_memberships(act_as_authority: bool) -> None:
             logger.info("Members in DB synced to Okta.")
 
             db.session.commit()
+        except OktaTimeout:
+            logger.warning(f"Timed out syncing memberships for group {group.id}, skipping.", exc_info=True)
+            db.session.rollback()
+            continue
         except Exception:
             logger.exception(f"Failed to sync memberships for group {group.id}, skipping.")
             db.session.rollback()
@@ -364,6 +368,10 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
                     ModifyGroupUsers(group=group.id, owners_to_remove=list(distinct_owner_ids)).execute()
 
             db.session.commit()
+        except OktaTimeout:
+            logger.warning(f"Timed out syncing ownerships for group {group.id}, skipping.", exc_info=True)
+            db.session.rollback()
+            continue
         except Exception:
             logger.exception(f"Failed to sync ownerships for group {group.id}, skipping.")
             db.session.rollback()

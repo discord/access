@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 from pytest_mock import MockerFixture
 
-from api.services.okta_service import REQUEST_MAX_RETRIES, RETRIABLE_STATUS_CODES, OktaService
+from api.services.okta_service import REQUEST_MAX_RETRIES, RETRIABLE_STATUS_CODES, OktaService, OktaTimeout
 from tests.factories import UserFactory
 
 
@@ -65,7 +65,7 @@ def test_retry_logic_no_error(mocker: MockerFixture, mock_sleep: Mock, okta_serv
 def test_retry_logic_all_timeouts_raises(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
     mocker.patch("asyncio.wait_for", side_effect=asyncio.TimeoutError())
 
-    with pytest.raises(Exception, match="timed out"):
+    with pytest.raises(OktaTimeout, match="timed out"):
         okta_service.get_user("okta_id")
 
 
