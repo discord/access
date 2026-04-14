@@ -1481,6 +1481,302 @@
       },
       "type": "object"
     },
+    "CreateGroupRequest": {
+      "properties": {
+        "group_owner": {
+          "default": false,
+          "type": "boolean"
+        },
+        "request_reason": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "requested_app_id": {
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string",
+          "x-nullable": true
+        },
+        "requested_group_description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "requested_group_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "requested_group_tags": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "requested_group_type": {
+          "enum": [
+            "okta_group",
+            "role_group",
+            "app_group"
+          ],
+          "type": "string"
+        },
+        "requested_ownership_ending_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "required": [
+        "requested_group_name",
+        "requested_group_type"
+      ],
+      "type": "object"
+    },
+    "ResolveGroupRequest": {
+      "properties": {
+        "approved": {
+          "type": "boolean"
+        },
+        "resolution_reason": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "resolved_app_id": {
+          "maxLength": 20,
+          "minLength": 20,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolved_group_description": {
+          "maxLength": 1024,
+          "type": "string"
+        },
+        "resolved_group_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "resolved_group_tags": {
+          "items": {
+            "maxLength": 20,
+            "minLength": 20,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "resolved_group_type": {
+          "enum": [
+            "okta_group",
+            "role_group",
+            "app_group"
+          ],
+          "type": "string"
+        },
+        "resolved_ownership_ending_at": {
+          "format": "date-time",
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "required": [
+        "approved"
+      ],
+      "type": "object"
+    },
+    "GroupRequest": {
+      "properties": {
+        "active_requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "active_resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "approved_group": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/PolymorphicGroup"
+            }
+          ],
+          "readOnly": true
+        },
+        "created_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string"
+        },
+        "request_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "requested_app_id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "requested_group_description": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "requested_group_name": {
+          "maxLength": 255,
+          "readOnly": true,
+          "type": "string"
+        },
+        "requested_group_tags": {
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "requested_group_type": {
+          "enum": [
+            "okta_group",
+            "role_group",
+            "app_group"
+          ],
+          "readOnly": true
+        },
+        "requested_ownership_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "requester": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "resolution_reason": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "resolved_app_id": {
+          "maxLength": 20,
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolved_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolved_group_description": {
+          "maxLength": 1024,
+          "readOnly": true,
+          "type": "string"
+        },
+        "resolved_group_name": {
+          "maxLength": 255,
+          "readOnly": true,
+          "type": "string"
+        },
+        "resolved_group_tags": {
+          "items": {
+            "type": "string"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "resolved_group_type": {
+          "enum": [
+            "okta_group",
+            "role_group",
+            "app_group"
+          ],
+          "readOnly": true
+        },
+        "resolved_ownership_ending_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string",
+          "x-nullable": true
+        },
+        "resolver": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OktaUser"
+            }
+          ],
+          "readOnly": true
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED"
+          ],
+          "maxLength": 8,
+          "readOnly": true
+        },
+        "updated_at": {
+          "format": "date-time",
+          "readOnly": true,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "GroupRequestPagination": {
+      "properties": {
+        "next": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "pages": {
+          "readOnly": true,
+          "type": "integer"
+        },
+        "prev": {
+          "format": "url",
+          "readOnly": true,
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/definitions/GroupRequest"
+          },
+          "readOnly": true,
+          "type": "array"
+        },
+        "total": {
+          "readOnly": true,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "Tag": {
       "properties": {
         "active_app_tags": {
@@ -2455,6 +2751,143 @@
             "description": "",
             "schema": {
               "$ref": "#/definitions/RoleRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/group-requests": {
+      "get": {
+        "operationId": "getGroupRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "type": "integer"
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requester_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "requested_group_name",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "assignee_user_id",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "resolver_user_id",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupRequestPagination"
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createGroupRequest",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/CreateGroupRequest"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupRequest"
+            }
+          }
+        }
+      }
+    },
+    "/api/group-requests/{group_request_id}": {
+      "get": {
+        "operationId": "getGroupRequestById",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupRequest"
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "resolveGroupRequestById",
+        "parameters": [
+          {
+            "in": "body",
+            "name": "body",
+            "required": false,
+            "schema": {
+              "$ref": "#/definitions/ResolveGroupRequest"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group_request_id",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/GroupRequest"
             }
           }
         }
