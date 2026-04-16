@@ -389,14 +389,18 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 
 interface CreateRequestProps {
   currentUser: OktaUser;
+  open?: boolean;
+  setOpen?: (open: boolean) => void;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
-  const [open, setOpen] = React.useState(false);
+  const [internalOpen, setInternalOpen] = React.useState(false);
+  const open = props.open ?? internalOpen;
+  const setOpen = props.setOpen ?? setInternalOpen;
 
   return (
     <>
-      <CreateRequestButton setOpen={setOpen} />
+      {props.setOpen == null && <CreateRequestButton setOpen={setOpen} />}
       {open && <CreateRequestDialog currentUser={props.currentUser} setOpen={setOpen} />}
     </>
   );

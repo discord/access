@@ -509,10 +509,14 @@ interface CreateRequestProps {
   owner?: boolean;
   renew?: boolean;
   expired?: boolean;
+  open?: boolean;
+  setOpen?: (open: boolean) => void;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
-  const [open, setOpen] = React.useState<boolean>(false);
+  const [internalOpen, setInternalOpen] = React.useState<boolean>(false);
+  const open = props.open ?? internalOpen;
+  const setOpen = props.setOpen ?? setInternalOpen;
 
   if (
     props.group?.deleted_at != null ||
@@ -524,12 +528,15 @@ export default function CreateRequest(props: CreateRequestProps) {
 
   return (
     <>
-      <CreateRequestButton
-        setOpen={setOpen}
-        group={props.group}
-        owner={props.owner}
-        renew={props.renew}
-        expired={props.expired}></CreateRequestButton>
+      {props.setOpen == null && (
+        <CreateRequestButton
+          setOpen={setOpen}
+          group={props.group}
+          owner={props.owner}
+          renew={props.renew}
+          expired={props.expired}
+        />
+      )}
       {open ? <CreateRequestDialog setOpen={setOpen} {...props} renew={props.renew} /> : null}
     </>
   );
