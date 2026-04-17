@@ -204,7 +204,7 @@ function GroupTable({
         pathParams: {groupId},
       });
     },
-    [putGroupUsers],
+    [putGroupUsers, owner, user.id],
   );
 
   return (
