@@ -605,8 +605,8 @@ export default function Home() {
       </Paper>
       <Paper>
         <Grid container spacing={2} direction="row" sx={{padding: 2}}>
-          <Grid item xs={3}>
-            <Grid container spacing={2} justifyContent="center" direction="column">
+          <Grid item xs={12} lg={3}>
+            <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
@@ -617,7 +617,7 @@ export default function Home() {
                 </Grid>
               </Grid>
               {Object.entries(sections).map(([key, [, buttonTitle, icon]]) => (
-                <Grid item xs={12} key={key}>
+                <Grid item xs={6} sm={4} lg={12} key={key}>
                   <Button
                     variant="contained"
                     size="large"
@@ -630,10 +630,13 @@ export default function Home() {
               ))}
             </Grid>
           </Grid>
-          <Grid item xs={0.1}>
+          <Grid item sx={{display: {xs: 'none', lg: 'flex'}}} lg={0.1}>
             <Divider orientation="vertical" />
           </Grid>
-          <Grid item xs={8.8}>
+          <Grid item xs={12} sx={{display: {xs: 'block', lg: 'none'}, py: '0 !important'}}>
+            <Divider />
+          </Grid>
+          <Grid item xs={12} lg={8.8}>
             <AccordionMaker
               which={whichAccordion}
               expandedSlug={expandedSlug}
