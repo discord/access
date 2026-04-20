@@ -8,8 +8,8 @@ import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
-import Tab from '@mui/material/Tab';
-import Tabs from '@mui/material/Tabs';
+import Button from '@mui/material/Button';
+import Grid from '@mui/material/Grid';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import {alpha, useTheme} from '@mui/material';
@@ -22,16 +22,11 @@ import HowToRegIcon from '@mui/icons-material/HowToReg';
 import GroupRequestIcon from '@mui/icons-material/GroupAdd';
 import RoleRequestIcon from '@mui/icons-material/WorkHistory';
 import AccessRequestIcon from '../components/icons/MoreTime';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import AssistantIcon from '@mui/icons-material/Assistant';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import GeneralIcon from '@mui/icons-material/AllInclusive';
 import LinkIcon from '@mui/icons-material/Link';
 import PeopleLeadIcon from '@mui/icons-material/ContentPaste';
 import FAQIcon from '@mui/icons-material/TipsAndUpdates';
-import SchoolIcon from '@mui/icons-material/School';
-import SummarizeIcon from '@mui/icons-material/Summarize';
 import UserIcon from '@mui/icons-material/AccountBox';
 
 import {appName} from '../config/accessConfig';
@@ -130,6 +125,18 @@ const STAT_CONFIGS: StatConfig[] = [
     id: 'make-group-request',
     Icon: GroupRequestIcon,
     label: 'New group request',
+    isAction: true,
+  },
+  {
+    id: 'explore-user-docs',
+    Icon: UserIcon,
+    label: 'Explore user docs',
+    isAction: true,
+  },
+  {
+    id: 'explore-group-owner-docs',
+    Icon: PeopleLeadIcon,
+    label: 'Explore group owner docs',
     isAction: true,
   },
 ];
@@ -309,7 +316,7 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
 
   return (
     <>
-      <Typography variant="h6" color="text.accent" sx={{margin: '10px 0'}}>
+      <Typography variant="h5" color="text.accent" sx={{mt: 0, mb: '15px'}}>
         {sections[which][0]}
       </Typography>
       {Object.entries(guide[which]).map(([question, answer]) => {
@@ -354,12 +361,10 @@ export default function Home() {
   const hashSlug = location.hash.slice(1) || null;
   const sectionFromHash = hashSlug ? hashSlug.split('--')[0] : null;
 
-  // null = show guide cards; a section key = show that guide's accordion
-  const [selectedGuide, setSelectedGuide] = React.useState<string | null>(
-    sectionFromHash && sections[sectionFromHash] && sectionFromHash !== 'general' ? sectionFromHash : null,
+  const [whichAccordion, setWhichAccordion] = React.useState<string>(
+    sectionFromHash && sections[sectionFromHash] ? sectionFromHash : 'general',
   );
   const [expandedSlug, setExpandedSlug] = React.useState<string | null>(hashSlug);
-  const [docTab, setDocTab] = React.useState(sectionFromHash && sectionFromHash !== 'general' ? 1 : 0);
 
   const [openDialog, setOpenDialog] = React.useState<'access' | 'role' | 'group' | null>(null);
 
@@ -495,12 +500,7 @@ export default function Home() {
     if (!hashSlug) return;
     const section = hashSlug.split('--')[0];
     if (sections[section]) {
-      if (section === 'general') {
-        setDocTab(0);
-      } else {
-        setSelectedGuide(section);
-        setDocTab(1);
-      }
+      setWhichAccordion(section);
       setExpandedSlug(hashSlug);
       setTimeout(() => {
         document.getElementById(`${hashSlug}-header`)?.scrollIntoView({behavior: 'smooth', block: 'start'});
@@ -508,14 +508,8 @@ export default function Home() {
     }
   }, [hashSlug]);
 
-  const handleGuideSelect = (key: string) => {
-    setSelectedGuide(key);
-    setExpandedSlug(null);
-    navigate({hash: ''}, {replace: true});
-  };
-
-  const handleBackToGuides = () => {
-    setSelectedGuide(null);
+  const handleSectionChange = (key: string) => {
+    setWhichAccordion(key);
     setExpandedSlug(null);
     navigate({hash: ''}, {replace: true});
   };
@@ -523,13 +517,7 @@ export default function Home() {
   const handleInternalLink = (slug: string) => {
     const section = slug.split('--')[0];
     if (sections[section]) {
-      if (section === 'general') {
-        setDocTab(0);
-        setSelectedGuide(null);
-      } else {
-        setSelectedGuide(section);
-        setDocTab(1);
-      }
+      setWhichAccordion(section);
       setExpandedSlug(slug);
       navigate({hash: `#${slug}`}, {replace: true});
       setTimeout(() => {
@@ -558,6 +546,8 @@ export default function Home() {
                           if (stat.id === 'make-access-request') setOpenDialog('access');
                           else if (stat.id === 'make-role-request') setOpenDialog('role');
                           else if (stat.id === 'make-group-request') setOpenDialog('group');
+                          else if (stat.id === 'explore-user-docs') handleSectionChange('users');
+                          else if (stat.id === 'explore-group-owner-docs') handleSectionChange('people-lead');
                           else if (stat.path) navigate(stat.path);
                         }}
                         sx={{
@@ -614,111 +604,44 @@ export default function Home() {
         )}
       </Paper>
       <Paper>
-        <Box sx={{px: 2.5, pt: 2.5, pb: 1.5, display: 'flex', alignItems: 'center', gap: 1.5}}>
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '12px',
-              backgroundColor: theme.palette.text.accent,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-            <SchoolIcon sx={{color: '#fff', fontSize: 20}} />
-          </Box>
-          <Box sx={{display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 0.25}}>
-            <Typography variant="subtitle1" fontWeight={700} sx={{lineHeight: 1.2}}>
-              {appName} User Guides
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{lineHeight: 1.2}}>
-              Everything you need to know
-            </Typography>
-          </Box>
-        </Box>
-        <Tabs
-          value={docTab}
-          onChange={(_, v) => {
-            setDocTab(v);
-            if (v === 1) setSelectedGuide(null);
-          }}
-          sx={{px: 2, '& .MuiTab-root': {fontSize: 12, minHeight: 38, textTransform: 'none'}}}>
-          <Tab icon={<SummarizeIcon fontSize="small" />} iconPosition="start" label="Overview" />
-          <Tab icon={<AssistantIcon fontSize="small" />} iconPosition="start" label="Guides" />
-        </Tabs>
-        <Divider />
-        {docTab === 0 && (
-          <Box sx={{p: 2}}>
+        <Grid container spacing={2} direction="row" sx={{padding: 2}}>
+          <Grid item xs={3}>
+            <Grid container spacing={2} justifyContent="center" direction="column">
+              <Grid item xs={12}>
+                <Grid container justifyContent="center">
+                  <Grid item>
+                    <Typography variant="h5" fontWeight={500} color="text.accent">
+                      {appName} User Guides
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Grid>
+              {Object.entries(sections).map(([key, [, buttonTitle, icon]]) => (
+                <Grid item xs={12} key={key}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={icon}
+                    sx={{width: '100%', height: '50px'}}
+                    onClick={() => handleSectionChange(key)}>
+                    {buttonTitle}
+                  </Button>
+                </Grid>
+              ))}
+            </Grid>
+          </Grid>
+          <Grid item xs={0.1}>
+            <Divider orientation="vertical" />
+          </Grid>
+          <Grid item xs={8.8}>
             <AccordionMaker
-              which="general"
+              which={whichAccordion}
               expandedSlug={expandedSlug}
               onSlugChange={setExpandedSlug}
               onInternalLink={handleInternalLink}
             />
-          </Box>
-        )}
-        {docTab === 1 && selectedGuide === null && (
-          <Box sx={{p: 2}}>
-            {Object.entries(sections)
-              .filter(([key]) => key !== 'general')
-              .map(([key, [title, buttonTitle, icon]]) => (
-                <Paper
-                  key={key}
-                  variant="outlined"
-                  sx={{
-                    p: 1.5,
-                    mb: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1.5,
-                    cursor: 'pointer',
-                    transition: 'all 0.15s',
-                    '&:hover': {
-                      backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                      borderColor: theme.palette.primary.main,
-                    },
-                  }}
-                  onClick={() => handleGuideSelect(key)}>
-                  <Box sx={{color: theme.palette.primary.main, display: 'flex'}}>{icon}</Box>
-                  <Box sx={{flex: 1}}>
-                    <Typography variant="body2" fontWeight={600}>
-                      {buttonTitle}
-                    </Typography>
-                    {title !== buttonTitle && (
-                      <Typography variant="caption" color="text.secondary">
-                        {title}
-                      </Typography>
-                    )}
-                  </Box>
-                  <ChevronRightIcon sx={{color: theme.palette.text.secondary, fontSize: 18}} />
-                </Paper>
-              ))}
-          </Box>
-        )}
-        {docTab === 1 && selectedGuide !== null && (
-          <>
-            <Box sx={{display: 'flex', alignItems: 'center', px: 1.5, pt: 1, pb: 0.5}}>
-              <Tooltip title="Back to guides">
-                <IconButton size="small" onClick={handleBackToGuides}>
-                  <ArrowBackIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Typography variant="subtitle2" sx={{ml: 1}}>
-                Guides
-              </Typography>
-            </Box>
-            <Divider />
-            <Box sx={{p: 2}}>
-              <AccordionMaker
-                which={selectedGuide}
-                expandedSlug={expandedSlug}
-                onSlugChange={setExpandedSlug}
-                onInternalLink={handleInternalLink}
-              />
-            </Box>
-          </>
-        )}
+          </Grid>
+        </Grid>
       </Paper>
       <CreateAccessRequest
         currentUser={currentUser}
