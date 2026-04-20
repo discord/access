@@ -5,16 +5,23 @@ import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
-import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
+import Button from '@mui/material/Button';
+import Grid from '@mui/material/Grid';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import {alpha, useTheme} from '@mui/material';
 
 import AdminIcon from '@mui/icons-material/ManageAccounts';
 import AppOwnerIcon from '@mui/icons-material/AppShortcut';
+import ExpiringGroupsIcon from '@mui/icons-material/RunningWithErrors';
+import ExpiringRolesIcon from '@mui/icons-material/HeartBroken';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
+import GroupRequestIcon from '@mui/icons-material/GroupAdd';
+import RoleRequestIcon from '@mui/icons-material/WorkHistory';
+import AccessRequestIcon from '../components/icons/MoreTime';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import GeneralIcon from '@mui/icons-material/AllInclusive';
 import LinkIcon from '@mui/icons-material/Link';
@@ -23,6 +30,116 @@ import FAQIcon from '@mui/icons-material/TipsAndUpdates';
 import UserIcon from '@mui/icons-material/AccountBox';
 
 import {appName} from '../config/accessConfig';
+import {useCurrentUser} from '../authentication';
+import CreateAccessRequest from './requests/Create';
+import CreateRoleRequest from './role_requests/Create';
+import CreateGroupRequest from './group_requests/Create';
+import {
+  useGetRequests,
+  useGetRoleRequests,
+  useGetGroupRequests,
+  useGetUserGroupAudits,
+  useGetGroupRoleAudits,
+} from '../api/apiComponents';
+
+interface StatConfig {
+  id: string;
+  Icon: React.ComponentType<{sx?: object}>;
+  label: string;
+  singularLabel?: string;
+  path?: string;
+  color?: string;
+  isAction?: boolean;
+}
+
+// Number of sections shown when the card is at full width
+const INITIAL_SECTIONS = 5;
+
+// Ordered list of stats that can appear in the summary bar.
+// Items with a count of 0 are skipped; action items (isAction) always show.
+const STAT_CONFIGS: StatConfig[] = [
+  {
+    id: 'role-requests',
+    Icon: RoleRequestIcon,
+    label: 'Pending role requests',
+    singularLabel: 'Pending role request',
+    path: '/role-requests?assignee_user_id=@me',
+    color: '#0EA5E9',
+  },
+  {
+    id: 'access-requests',
+    Icon: AccessRequestIcon,
+    label: 'Pending access requests',
+    singularLabel: 'Pending access request',
+    path: '/requests?assignee_user_id=@me',
+    color: '#0EA5E9',
+  },
+  {
+    id: 'group-requests',
+    Icon: GroupRequestIcon,
+    label: 'Pending group creation requests',
+    singularLabel: 'Pending group creation request',
+    path: '/group-requests?assignee_user_id=@me',
+    color: '#0EA5E9',
+  },
+  {
+    id: 'expiring-roles',
+    Icon: ExpiringRolesIcon,
+    label: 'Roles losing access soon',
+    singularLabel: 'Role losing access soon',
+    path: '/expiring-roles?owner_id=@me',
+  },
+  {
+    id: 'expiring-access',
+    Icon: ExpiringGroupsIcon,
+    label: 'Users losing access soon',
+    singularLabel: 'User losing access soon',
+    path: '/expiring-groups?owner_id=@me',
+  },
+  {
+    id: 'my-roles-expiring',
+    Icon: HowToRegIcon,
+    label: 'My roles losing access soon',
+    singularLabel: 'My role losing access soon',
+    path: '/expiring-roles?role_owner_id=@me',
+  },
+  {
+    id: 'my-access-expiring',
+    Icon: UserIcon,
+    label: 'My access expiring soon',
+    path: '/expiring-groups?user_id=@me',
+  },
+  {
+    id: 'make-access-request',
+    Icon: AccessRequestIcon,
+    label: 'New access request',
+    isAction: true,
+  },
+  {
+    id: 'make-role-request',
+    Icon: RoleRequestIcon,
+    label: 'New role request',
+    isAction: true,
+  },
+  {
+    id: 'make-group-request',
+    Icon: GroupRequestIcon,
+    label: 'New group request',
+    isAction: true,
+  },
+  {
+    id: 'explore-user-docs',
+    Icon: UserIcon,
+    label: 'Explore user docs',
+    isAction: true,
+  },
+  {
+    id: 'explore-group-owner-docs',
+    Icon: PeopleLeadIcon,
+    label: 'Explore group owner docs',
+    isAction: true,
+  },
+];
 
 const sections: Record<string, [string, string, ReactNode]> = {
   // section shorthand --> [guide title, button title, icon]
@@ -199,7 +316,7 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
 
   return (
     <>
-      <Typography variant="h4" color="text.accent" sx={{margin: '15px 0'}}>
+      <Typography variant="h5" color="text.accent" sx={{mt: 0, mb: '15px'}}>
         {sections[which][0]}
       </Typography>
       {Object.entries(guide[which]).map(([question, answer]) => {
@@ -236,16 +353,148 @@ function AccordionMaker({which, expandedSlug, onSlugChange, onInternalLink}: Acc
 }
 
 export default function Home() {
+  const currentUser = useCurrentUser();
+  const theme = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
   const hashSlug = location.hash.slice(1) || null;
   const sectionFromHash = hashSlug ? hashSlug.split('--')[0] : null;
 
-  const [whichAccordion, setWhichAccordion] = React.useState(
+  const [whichAccordion, setWhichAccordion] = React.useState<string>(
     sectionFromHash && sections[sectionFromHash] ? sectionFromHash : 'general',
   );
   const [expandedSlug, setExpandedSlug] = React.useState<string | null>(hashSlug);
+
+  const [openDialog, setOpenDialog] = React.useState<'access' | 'role' | 'group' | null>(null);
+
+  const [now, inOneWeek, inTwoDays] = React.useMemo(() => {
+    const t = Math.floor(Date.now() / 1000);
+    return [t, t + 7 * 24 * 60 * 60, t + 2 * 24 * 60 * 60];
+  }, []);
+
+  const {data: accessRequestsData} = useGetRequests({
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+  });
+  const {data: roleRequestsData} = useGetRoleRequests({
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+  });
+  const {data: groupRequestsData} = useGetGroupRequests({
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+  });
+  const {data: expiringGroupsData} = useGetUserGroupAudits({
+    queryParams: {
+      owner_id: '@me',
+      active: true,
+      start_date: now,
+      end_date: inOneWeek,
+      page: 0,
+      per_page: 1,
+      direct: true,
+      deleted: false,
+    },
+  });
+  const {data: expiringRolesData} = useGetGroupRoleAudits({
+    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 0, per_page: 1},
+  });
+  const {data: myAccessExpiringData} = useGetUserGroupAudits({
+    queryParams: {
+      user_id: '@me',
+      active: true,
+      start_date: now,
+      end_date: inOneWeek,
+      page: 0,
+      per_page: 1,
+      direct: true,
+      deleted: false,
+    },
+  });
+  const {data: myRolesExpiringData} = useGetGroupRoleAudits({
+    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 0, per_page: 1},
+  });
+  const {data: urgentExpiringGroupsData} = useGetUserGroupAudits({
+    queryParams: {
+      owner_id: '@me',
+      active: true,
+      start_date: now,
+      end_date: inTwoDays,
+      page: 0,
+      per_page: 1,
+      direct: true,
+      deleted: false,
+    },
+  });
+  const {data: urgentExpiringRolesData} = useGetGroupRoleAudits({
+    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 0, per_page: 1},
+  });
+  const {data: urgentMyAccessData} = useGetUserGroupAudits({
+    queryParams: {
+      user_id: '@me',
+      active: true,
+      start_date: now,
+      end_date: inTwoDays,
+      page: 0,
+      per_page: 1,
+      direct: true,
+      deleted: false,
+    },
+  });
+  const {data: urgentMyRolesData} = useGetGroupRoleAudits({
+    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 0, per_page: 1},
+  });
+
+  const statCounts: Record<string, number> = {
+    'access-requests': accessRequestsData?.total ?? 0,
+    'role-requests': roleRequestsData?.total ?? 0,
+    'group-requests': groupRequestsData?.total ?? 0,
+    'expiring-access': expiringGroupsData?.total ?? 0,
+    'expiring-roles': expiringRolesData?.total ?? 0,
+    'my-access-expiring': myAccessExpiringData?.total ?? 0,
+    'my-roles-expiring': myRolesExpiringData?.total ?? 0,
+  };
+
+  const expiringColor = (urgentData: {total?: number} | undefined) =>
+    (urgentData?.total ?? 0) > 0 ? '#EF4444' : '#F59E0B';
+
+  const statColors: Record<string, string> = {
+    'expiring-access': expiringColor(urgentExpiringGroupsData),
+    'expiring-roles': expiringColor(urgentExpiringRolesData),
+    'my-access-expiring': expiringColor(urgentMyAccessData),
+    'my-roles-expiring': expiringColor(urgentMyRolesData),
+  };
+
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const [cardWidth, setCardWidth] = React.useState(0);
+  const lockedSectionWidth = React.useRef(0);
+
+  React.useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      if (lockedSectionWidth.current === 0 && w > 0) {
+        // Lock the per-section width based on the initial 5-section layout
+        lockedSectionWidth.current = w / INITIAL_SECTIONS;
+      }
+      setCardWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const sectionW = lockedSectionWidth.current;
+  // Filter out items with zero counts (action items always show)
+  const filteredStats = STAT_CONFIGS.filter((s) => s.isAction || (statCounts[s.id] ?? 0) > 0);
+  // How many sections fit in one row
+  const sectionsPerRow =
+    sectionW > 0 && cardWidth > 0
+      ? Math.min(Math.max(1, Math.floor(cardWidth / sectionW)), INITIAL_SECTIONS)
+      : INITIAL_SECTIONS;
+  // Use two rows only when fewer than 3 items fit per row
+  const rows = sectionsPerRow < 3 ? 2 : 1;
+  const visibleStats = filteredStats.slice(0, sectionsPerRow * rows);
+  const row1Stats = visibleStats.slice(0, sectionsPerRow);
+  const row2Stats = rows === 2 ? visibleStats.slice(sectionsPerRow) : [];
 
   useEffect(() => {
     if (!hashSlug) return;
@@ -279,17 +528,85 @@ export default function Home() {
 
   return (
     <React.Fragment>
+      <Paper ref={cardRef} sx={{mb: 3, display: 'flex', flexDirection: 'column', overflow: 'hidden'}}>
+        {[row1Stats, row2Stats].map((rowStats, rowIndex) =>
+          rowStats.length === 0 ? null : (
+            <React.Fragment key={rowIndex}>
+              {rowIndex > 0 && <Divider />}
+              <Box sx={{display: 'flex', alignItems: 'stretch', justifyContent: 'center', minHeight: 98}}>
+                {rowStats.map((stat, i) => {
+                  const color = stat.isAction
+                    ? theme.palette.text.accent
+                    : statColors[stat.id] ?? stat.color ?? theme.palette.text.secondary;
+                  return (
+                    <React.Fragment key={stat.id}>
+                      {i > 0 && <Divider orientation="vertical" flexItem sx={{my: 1.5}} />}
+                      <Box
+                        onClick={() => {
+                          if (stat.id === 'make-access-request') setOpenDialog('access');
+                          else if (stat.id === 'make-role-request') setOpenDialog('role');
+                          else if (stat.id === 'make-group-request') setOpenDialog('group');
+                          else if (stat.id === 'explore-user-docs') handleSectionChange('users');
+                          else if (stat.id === 'explore-group-owner-docs') handleSectionChange('people-lead');
+                          else if (stat.path) navigate(stat.path);
+                        }}
+                        sx={{
+                          ...(sectionW > 0 ? {width: sectionW, flexShrink: 0} : {flex: 1}),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          py: 2.5,
+                          px: 3,
+                          cursor: 'pointer',
+                          transition: 'background-color 0.15s',
+                          '&:hover': {bgcolor: alpha(color, 0.04)},
+                        }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: stat.isAction ? 'center' : 'flex-start',
+                            width: '100%',
+                          }}>
+                          {stat.isAction ? (
+                            <Typography variant="body2" fontWeight={600} sx={{color}}>
+                              {stat.label}
+                            </Typography>
+                          ) : (
+                            <Box>
+                              <Typography variant="h4" fontWeight={700} sx={{color, lineHeight: 1}}>
+                                {statCounts[stat.id] ?? 0}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{mt: 0.5, display: 'block'}}>
+                                {statCounts[stat.id] === 1 ? stat.singularLabel ?? stat.label : stat.label}
+                              </Typography>
+                            </Box>
+                          )}
+                          <Box
+                            sx={{
+                              p: 1,
+                              borderRadius: 2,
+                              backgroundColor: alpha(color, 0.1),
+                              color,
+                              display: 'flex',
+                              flexShrink: 0,
+                            }}>
+                            <stat.Icon />
+                          </Box>
+                        </Box>
+                      </Box>
+                    </React.Fragment>
+                  );
+                })}
+              </Box>
+            </React.Fragment>
+          ),
+        )}
+      </Paper>
       <Paper>
         <Grid container spacing={2} direction="row" sx={{padding: 2}}>
-          <Grid item xs={3}>
-            <Grid container spacing={2} justifyContent="center" direction="column">
-              <Grid item xs={12}>
-                <Grid container justifyContent="center">
-                  <Grid item>
-                    <Box component="img" src="/logo.png" alt={`${appName} logo`} sx={{width: 250}} />
-                  </Grid>
-                </Grid>
-              </Grid>
+          <Grid item xs={12} lg={3}>
+            <Grid container spacing={2}>
               <Grid item xs={12}>
                 <Grid container justifyContent="center">
                   <Grid item>
@@ -299,8 +616,8 @@ export default function Home() {
                   </Grid>
                 </Grid>
               </Grid>
-              {Object.entries(sections).map(([key, [title, buttonTitle, icon]]) => (
-                <Grid item xs={12} key={key}>
+              {Object.entries(sections).map(([key, [, buttonTitle, icon]]) => (
+                <Grid item xs={6} sm={4} lg={12} key={key}>
                   <Button
                     variant="contained"
                     size="large"
@@ -313,10 +630,13 @@ export default function Home() {
               ))}
             </Grid>
           </Grid>
-          <Grid item xs={0.1}>
+          <Grid item sx={{display: {xs: 'none', lg: 'flex'}}} lg={0.1}>
             <Divider orientation="vertical" />
           </Grid>
-          <Grid item xs={8.8}>
+          <Grid item xs={12} sx={{display: {xs: 'block', lg: 'none'}, py: '0 !important'}}>
+            <Divider />
+          </Grid>
+          <Grid item xs={12} lg={8.8}>
             <AccordionMaker
               which={whichAccordion}
               expandedSlug={expandedSlug}
@@ -326,6 +646,22 @@ export default function Home() {
           </Grid>
         </Grid>
       </Paper>
+      <CreateAccessRequest
+        currentUser={currentUser}
+        open={openDialog === 'access'}
+        setOpen={(o) => setOpenDialog(o ? 'access' : null)}
+      />
+      <CreateRoleRequest
+        currentUser={currentUser}
+        enabled={true}
+        open={openDialog === 'role'}
+        setOpen={(o) => setOpenDialog(o ? 'role' : null)}
+      />
+      <CreateGroupRequest
+        currentUser={currentUser}
+        open={openDialog === 'group'}
+        setOpen={(o) => setOpenDialog(o ? 'group' : null)}
+      />
     </React.Fragment>
   );
 }
