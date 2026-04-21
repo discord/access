@@ -38,6 +38,7 @@ import {
   useGetRequests,
   useGetRoleRequests,
   useGetGroupRequests,
+  useGetRoles,
   useGetUserGroupAudits,
   useGetGroupRoleAudits,
 } from '../api/apiComponents';
@@ -382,6 +383,9 @@ export default function Home() {
   const {data: groupRequestsData} = useGetGroupRequests({
     queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
   });
+  const {data: ownedRolesData} = useGetRoles({
+    queryParams: {owner_id: '@me', page: 0, per_page: 1},
+  });
   const {data: expiringGroupsData} = useGetUserGroupAudits({
     queryParams: {
       owner_id: '@me',
@@ -484,7 +488,11 @@ export default function Home() {
 
   const sectionW = lockedSectionWidth.current;
   // Filter out items with zero counts (action items always show)
-  const filteredStats = STAT_CONFIGS.filter((s) => s.isAction || (statCounts[s.id] ?? 0) > 0);
+  const userOwnsRoles = (ownedRolesData?.total ?? 0) > 0;
+  const filteredStats = STAT_CONFIGS.filter((s) => {
+    if (s.id === 'make-role-request' && !userOwnsRoles) return false;
+    return s.isAction || (statCounts[s.id] ?? 0) > 0;
+  });
   // How many sections fit in one row
   const sectionsPerRow =
     sectionW > 0 && cardWidth > 0
