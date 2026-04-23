@@ -1,7 +1,8 @@
 from typing import Optional
 
 from flask import current_app, has_request_context, request
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
 from api.extensions import db
 from api.models import (
@@ -128,6 +129,15 @@ class ApproveGroupRequest:
             # okta_group / role_group request: only admins can approve
             if not is_admin:
                 return self.group_request
+
+        existing_group = (
+            db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .filter(func.lower(OktaGroup.name) == func.lower(resolved_name))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .first()
+        )
+        if existing_group is not None:
+            return self.group_request
 
         db.session.commit()
 

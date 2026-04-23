@@ -25,6 +25,8 @@ from tests.factories import (
     OktaUserFactory,
     AppFactory,
     AppGroupFactory,
+    OktaGroupFactory,
+    RoleGroupFactory,
     TagFactory,
 )
 
@@ -1390,3 +1392,297 @@ def test_random_user_cannot_approve_group_request(
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
     assert group_request.approved_group_id is None
+
+
+def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_a = AppFactory.create()
+    app_b = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_a)
+    db.session.add(app_b)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_a.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_a.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
+    db.session.add(sensitive_group)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_a.name}-NewGroup",
+        requested_group_description="New group for App A",
+        requested_group_type="app_group",
+        requested_app_id=app_a.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    # attacker overwrites resolved_group_name to target app b sensitive group
+    group_request.resolved_group_name = sensitive_group.name
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing group"
+    )
+    assert group_request.resolved_at is None
+
+    hijacked_ownership = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == sensitive_group.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .filter(OktaUserGroupMember.ended_at.is_(None))
+        .first()
+    )
+    assert hijacked_ownership is None
+
+
+def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_obj = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_obj)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    existing_okta_group = OktaGroupFactory.create(name="Okta-Platform-Admins")
+    db.session.add(existing_okta_group)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    group_request.resolved_group_name = existing_okta_group.name
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
+    )
+    assert group_request.resolved_at is None
+
+    hijacked_ownership = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == existing_okta_group.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .filter(OktaUserGroupMember.ended_at.is_(None))
+        .first()
+    )
+    assert hijacked_ownership is None
+
+
+def test_app_owner_cannot_hijack_role_group_via_resolved_name(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_obj = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_obj)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    existing_role_group = RoleGroupFactory.create(name="Role-Security-Engineers")
+    db.session.add(existing_role_group)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    group_request.resolved_group_name = existing_role_group.name
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
+    )
+    assert group_request.resolved_at is None
+
+    hijacked_ownership = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == existing_role_group.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .filter(OktaUserGroupMember.ended_at.is_(None))
+        .first()
+    )
+    assert hijacked_ownership is None
+
+
+def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_a = AppFactory.create()
+    app_b = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_a)
+    db.session.add(app_b)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_a.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_a.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
+    db.session.add(sensitive_group)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_a.name}-NewGroup",
+        requested_group_description="New group for App A",
+        requested_group_type="app_group",
+        requested_app_id=app_a.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    # case-insensitive lookup should still collides
+    group_request.resolved_group_name = sensitive_group.name.upper()
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "case-insensitive name collision must also be blocked"
+    )
+    assert group_request.resolved_at is None
+
+    hijacked_ownership = (
+        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == sensitive_group.id)
+        .filter(OktaUserGroupMember.user_id == user.id)
+        .filter(OktaUserGroupMember.is_owner.is_(True))
+        .filter(OktaUserGroupMember.ended_at.is_(None))
+        .first()
+    )
+    assert hijacked_ownership is None
