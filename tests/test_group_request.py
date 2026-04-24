@@ -1454,9 +1454,9 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     ).execute()
 
     db.session.refresh(group_request)
-    assert group_request.status == AccessRequestStatus.PENDING, (
-        "approval must be blocked when resolved_group_name collides with a pre-existing group"
-    )
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked when resolved_group_name collides with a pre-existing group"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1526,9 +1526,9 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     ).execute()
 
     db.session.refresh(group_request)
-    assert group_request.status == AccessRequestStatus.PENDING, (
-        "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
-    )
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1598,9 +1598,9 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     ).execute()
 
     db.session.refresh(group_request)
-    assert group_request.status == AccessRequestStatus.PENDING, (
-        "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
-    )
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1673,9 +1673,7 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     ).execute()
 
     db.session.refresh(group_request)
-    assert group_request.status == AccessRequestStatus.PENDING, (
-        "case-insensitive name collision must also be blocked"
-    )
+    assert group_request.status == AccessRequestStatus.PENDING, "case-insensitive name collision must also be blocked"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
