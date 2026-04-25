@@ -19,7 +19,7 @@ from api.models import (
 from api.authorization import AuthorizationHelpers
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import OktaUserFactory, RoleGroupFactory
+from tests.factories import RoleGroupFactory
 
 
 def test_get_role(
