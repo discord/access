@@ -135,9 +135,13 @@ class RoleMemberResource(MethodResource):
                 RoleGroupMap.id.in_(all_should_expire_ids),
                 RoleGroupMap.role_group_id == role.id,
             ).all()
-            for role_group_map in maps:
-                group = db.session.get(OktaGroup, role_group_map.group_id)
-                if group is not None and not AuthorizationHelpers.can_manage_group(group):
+            groups = (
+                db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .filter(OktaGroup.deleted_at.is_(None))
+                .filter(OktaGroup.id.in_([m.group_id for m in maps]))
+            )
+            for group in groups:
+                if not AuthorizationHelpers.can_manage_group(group):
                     abort(403, "Current user is not allowed to perform this action")
 
         if not AuthorizationHelpers.is_access_admin():
