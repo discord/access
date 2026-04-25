@@ -16,6 +16,7 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
+from api.authorization import AuthorizationHelpers
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import RoleGroupFactory
@@ -1372,3 +1373,109 @@ def test_do_not_renew(
     assert len(membership_role) == 1
     assert membership_role[0].ended_at == expiration_datetime
     assert membership_role[0].should_expire is True
+
+
+def test_do_not_renew_scoped_to_route_role(
+    db: SQLAlchemy,
+    client: FlaskClient,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
+    victim_role = RoleGroupFactory.create()
+    victim_okta_group = OktaGroup(
+        id="victim-group-id",
+        name="Victim-Group",
+        type="okta_group",
+    )
+
+    db.session.add(role_group)
+    db.session.add(okta_group)
+    db.session.add(victim_role)
+    db.session.add(victim_okta_group)
+    db.session.add(user)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role_group,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[okta_group.id],
+        sync_to_okta=False,
+    ).execute()
+    ModifyRoleGroups(
+        role_group=victim_role,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[victim_okta_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    victim_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == victim_role.id).first()
+    assert victim_map is not None
+
+    data: dict[str, Any] = {
+        "groups_to_add": [],
+        "owner_groups_to_add": [],
+        "groups_should_expire": [victim_map.id],
+        "owner_groups_should_expire": [],
+        "groups_to_remove": [],
+        "owner_groups_to_remove": [],
+    }
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    rep = client.put(role_url, json=data)
+    assert rep.status_code == 200
+
+    db.session.refresh(victim_map)
+    assert victim_map.should_expire is False
+
+
+def test_do_not_renew_requires_group_ownership(
+    db: SQLAlchemy,
+    client: FlaskClient,
+    mocker: MockerFixture,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
+    db.session.add(role_group)
+    db.session.add(okta_group)
+    db.session.add(user)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    ModifyGroupUsers(
+        group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    ModifyRoleGroups(
+        role_group=role_group,
+        groups_added_ended_at=expiration_datetime,
+        groups_to_add=[okta_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id).first()
+    assert role_group_map is not None
+
+    # User is not an admin and not an owner of the group in the mapping
+    mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
+    mocker.patch.object(AuthorizationHelpers, "is_group_owner", return_value=False)
+
+    data: dict[str, Any] = {
+        "groups_to_add": [],
+        "owner_groups_to_add": [],
+        "groups_should_expire": [role_group_map.id],
+        "owner_groups_should_expire": [],
+        "groups_to_remove": [],
+        "owner_groups_to_remove": [],
+    }
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
+    rep = client.put(role_url, json=data)
+    assert rep.status_code == 403
+
+    db.session.refresh(role_group_map)
+    assert role_group_map.should_expire is False

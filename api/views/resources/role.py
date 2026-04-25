@@ -124,7 +124,26 @@ class RoleMemberResource(MethodResource):
         schema = RoleMemberSchema()
         group_changes = schema.load(request.get_json())
 
-        # If they're an Access admin they can modify any role
+        if (
+            len(group_changes.get("groups_should_expire", [])) > 0
+            or len(group_changes.get("owner_groups_should_expire", [])) > 0
+        ):
+            all_should_expire_ids = group_changes.get("groups_should_expire", []) + group_changes.get(
+                "owner_groups_should_expire", []
+            )
+            maps = RoleGroupMap.query.filter(
+                RoleGroupMap.id.in_(all_should_expire_ids),
+                RoleGroupMap.role_group_id == role.id,
+            ).all()
+            groups = (
+                db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .filter(OktaGroup.deleted_at.is_(None))
+                .filter(OktaGroup.id.in_([m.group_id for m in maps]))
+            )
+            for group in groups:
+                if not AuthorizationHelpers.can_manage_group(group):
+                    abort(403, "Current user is not allowed to perform this action")
+
         if not AuthorizationHelpers.is_access_admin():
             groups = (
                 db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))

@@ -863,6 +863,62 @@ def test_do_not_renew(
     assert membership_user2[0].should_expire is True
 
 
+def test_do_not_renew_scoped_to_route_group(
+    db: SQLAlchemy,
+    client: FlaskClient,
+    mocker: MockerFixture,
+    user: OktaUser,
+    okta_group: OktaGroup,
+) -> None:
+    victim_group = OktaGroup(id="victim-group-id", name="Victim-Group", type="okta_group")
+    victim_user = OktaUserFactory.create()
+
+    db.session.add(okta_group)
+    db.session.add(victim_group)
+    db.session.add(user)
+    db.session.add(victim_user)
+    db.session.commit()
+
+    expiration_datetime = datetime.now() + timedelta(days=1)
+
+    ModifyGroupUsers(
+        group=okta_group,
+        users_added_ended_at=expiration_datetime,
+        members_to_add=[user.id],
+        sync_to_okta=False,
+    ).execute()
+    ModifyGroupUsers(
+        group=victim_group,
+        users_added_ended_at=expiration_datetime,
+        members_to_add=[victim_user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    victim_membership = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == victim_user.id).first()
+    assert victim_membership is not None
+
+    mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=True)
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_remove_user_from_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "async_remove_owner_from_group")
+
+    data: dict[str, Any] = {
+        "members_to_add": [],
+        "owners_to_add": [],
+        "members_should_expire": [victim_membership.id],
+        "owners_should_expire": [],
+        "members_to_remove": [],
+        "owners_to_remove": [],
+    }
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
+    rep = client.put(group_url, json=data)
+    assert rep.status_code == 200
+
+    db.session.refresh(victim_membership)
+    assert victim_membership.should_expire is False
+
+
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_groups_with_and_without_description(
     app: Flask,
