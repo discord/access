@@ -894,9 +894,7 @@ def test_do_not_renew_scoped_to_route_group(
         sync_to_okta=False,
     ).execute()
 
-    victim_membership = OktaUserGroupMember.query.filter(
-        OktaUserGroupMember.user_id == victim_user.id
-    ).first()
+    victim_membership = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == victim_user.id).first()
     assert victim_membership is not None
 
     mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=True)

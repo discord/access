@@ -128,9 +128,8 @@ class RoleMemberResource(MethodResource):
             len(group_changes.get("groups_should_expire", [])) > 0
             or len(group_changes.get("owner_groups_should_expire", [])) > 0
         ):
-            all_should_expire_ids = (
-                group_changes.get("groups_should_expire", [])
-                + group_changes.get("owner_groups_should_expire", [])
+            all_should_expire_ids = group_changes.get("groups_should_expire", []) + group_changes.get(
+                "owner_groups_should_expire", []
             )
             maps = RoleGroupMap.query.filter(
                 RoleGroupMap.id.in_(all_should_expire_ids),
