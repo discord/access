@@ -88,10 +88,12 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
 @router.put("/{role_id}/members", name="role_members_by_id_put")
 def put_role_members(
     role_id: str,
-    body: RoleMember,
     db: DbSession,
     current_user_id: CurrentUserId,
+    body: RoleMember | None = None,
 ) -> dict[str, Any]:
+    if body is None:
+        body = RoleMember()
     role = (
         db.query(RoleGroup)
         .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))

@@ -20,9 +20,9 @@ from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
+from api.auth import permissions as _perms
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import (
-    can_manage_group,
     is_access_admin,
     is_app_owner_group_owner,
 )
@@ -117,6 +117,27 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
     return safe_dump(_group_adapter, group)
 
 
+def _validate_description(value: Any, field_provided: bool) -> str:
+    """Mirror the Marshmallow `context_aware_description_field` semantics."""
+    from api.config import settings
+
+    if not field_provided:
+        if settings.REQUIRE_DESCRIPTIONS:
+            raise HTTPException(400, "Description is required.")
+        return ""
+    if value == "" and settings.REQUIRE_DESCRIPTIONS:
+        raise HTTPException(400, "Description must be between 1 and 1024 characters")
+    if value is None or value == "":
+        if settings.REQUIRE_DESCRIPTIONS:
+            raise HTTPException(400, "Description is required.")
+        return ""
+    if not isinstance(value, str):
+        raise HTTPException(400, "Description must be a string")
+    if len(value) > 1024:
+        raise HTTPException(400, "Description must be 1024 characters or less")
+    return value
+
+
 @router.post("", name="groups_create", status_code=201)
 def post_group(
     request: Request,
@@ -126,6 +147,8 @@ def post_group(
 ) -> dict[str, Any]:
     """Create a new group. Body is the polymorphic group input + tags_to_add."""
     body = body or {}
+    description = _validate_description(body.get("description"), "description" in body)
+    body["description"] = description
     group_type = body.get("type")
     if group_type not in ("okta_group", "role_group", "app_group"):
         raise HTTPException(400, "Invalid or missing group type")
@@ -183,7 +206,9 @@ def put_group(
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    if not can_manage_group(db, current_user_id, group):
+    if "description" in body:
+        body["description"] = _validate_description(body["description"], True)
+    if not _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
@@ -272,7 +297,7 @@ def delete_group(
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    if not can_manage_group(db, current_user_id, group):
+    if not _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
@@ -328,9 +353,9 @@ def get_group_members(
 @router.put("/{group_id}/members", name="group_members_by_id_put")
 def put_group_members(
     group_id: str,
-    body: GroupMember,
     db: DbSession,
     current_user_id: CurrentUserId,
+    body: GroupMember | None = None,
 ) -> dict[str, Any]:
     group = (
         db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
@@ -340,10 +365,12 @@ def put_group_members(
     )
     if group is None:
         raise HTTPException(404, "Not Found")
+    if body is None:
+        raise HTTPException(400, "Request body is required")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
-    if not can_manage_group(db, current_user_id, group):
+    if not _perms.can_manage_group(db, current_user_id, group):
         if (
             len(body.members_to_add) > 0
             or len(body.owners_to_add) > 0

@@ -33,6 +33,18 @@ class _SafeAttrProxy:
         try:
             value = getattr(self._obj, name)
         except InvalidRequestError:
+            # Distinguish collection relationships (return []) from scalar
+            # ones (return None) by inspecting the model's mapper. Falling
+            # back to None for any error.
+            try:
+                from sqlalchemy import inspect as sa_inspect
+
+                mapper = sa_inspect(type(self._obj))
+                rel = mapper.relationships.get(name)
+                if rel is not None and rel.uselist:
+                    return []
+            except Exception:
+                pass
             return None
         # Recursively wrap nested ORM objects so their attribute access is
         # also safe. Detect ORM objects via the SQLAlchemy `_sa_instance_state`

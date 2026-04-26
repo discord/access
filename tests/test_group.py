@@ -158,7 +158,7 @@ def test_put_group(
     # test update group
     update_group_spy = mocker.patch.object(okta, "update_group")
 
-    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1)
+    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1, url_for=url_for)
     _update_group_type(
         client,
         okta_group,
@@ -170,6 +170,7 @@ def test_put_group(
             "tags_to_remove": [tag_id],
         },
         1,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -181,8 +182,9 @@ def test_put_group(
             "tags_to_add": [tag_id],
             "tags_to_remove": [tag_id],
         },
+        url_for=url_for,
     )
-    _update_group_type(client, okta_group, update_group_spy, "okta_group")
+    _update_group_type(client, okta_group, update_group_spy, "okta_group", url_for=url_for)
     _update_group_type(
         client,
         okta_group,
@@ -194,6 +196,7 @@ def test_put_group(
             "tags_to_remove": [],
         },
         1,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -206,6 +209,7 @@ def test_put_group(
             "tags_to_add": [tag_id],
         },
         2,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -216,6 +220,7 @@ def test_put_group(
             "tags_to_add": [],
             "tags_to_remove": [tag_id],
         },
+        url_for=url_for,
     )
 
     # Updating the name of the built-in app owners group should fail
@@ -285,6 +290,7 @@ def _update_group_type(
     group_type: str,
     extra_data: Dict[str, Any] = {},
     expected_tags_count: int = 0,
+    url_for: Any = None,
 ) -> None:
     update_group_spy.reset_mock()
 
@@ -296,6 +302,7 @@ def _update_group_type(
     data.update(extra_data)
 
     group_id = okta_group.id
+    assert url_for is not None, "_update_group_type requires the url_for fixture"
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200

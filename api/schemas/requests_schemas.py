@@ -138,7 +138,12 @@ class ResolveGroupRequest(BaseModel):
 
 
 class GroupMember(BaseModel):
-    """Used by GET/PUT /api/groups/{id}/members."""
+    """Used by GET/PUT /api/groups/{id}/members.
+
+    `members_should_expire` and `owners_should_expire` are lists of
+    OktaUserGroupMember row ids (integers). The other lists are user ids
+    (strings).
+    """
     model_config = ConfigDict(extra="ignore")
     members: list[str] = Field(default_factory=list)
     owners: list[str] = Field(default_factory=list)
@@ -146,8 +151,8 @@ class GroupMember(BaseModel):
     members_to_remove: list[str] = Field(default_factory=list)
     owners_to_add: list[str] = Field(default_factory=list)
     owners_to_remove: list[str] = Field(default_factory=list)
-    members_should_expire: list[str] = Field(default_factory=list)
-    owners_should_expire: list[str] = Field(default_factory=list)
+    members_should_expire: list[int] = Field(default_factory=list)
+    owners_should_expire: list[int] = Field(default_factory=list)
     users_added_ending_at: RFC822DatetimeOpt = None
     created_reason: Optional[str] = ""
 
