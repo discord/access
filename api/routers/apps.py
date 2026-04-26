@@ -7,6 +7,8 @@ from fastapi import APIRouter, Body, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
+
+from api.models import AppTagMap
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -19,6 +21,7 @@ from api.extensions import db as _db
 from api.models import App
 from api.pagination import paginate
 from api.schemas import AppOut, AppSummary, DeleteMessage
+from api.schemas._serialize import safe_dump
 
 from fastapi import Depends
 
@@ -41,23 +44,26 @@ def list_apps(request: Request, db: DbSession, current_user_id: CurrentUserId) -
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     app = (
         db.query(App)
-        .options(selectinload(App.active_app_tags))
+        .options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag))
         .filter(_db.or_(App.id == app_id, App.name == app_id))
         .first()
     )
     if app is None:
         raise HTTPException(404, "Not Found")
-    return _adapter.dump_python(_adapter.validate_python(app, from_attributes=True), mode="json")
+    return safe_dump(_adapter, app)
 
 
 @router.post("", name="apps_create", status_code=201)
 def post_app(
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: str = Depends(require_access_admin_or_app_creator),
 ) -> dict[str, Any]:
     from api.operations import CreateApp
 
+    body = body or {}
+    if not body.get("name"):
+        raise HTTPException(400, "App name is required")
     app_obj = App(name=body.get("name", ""), description=body.get("description", ""))
     created = CreateApp(
         app=app_obj,
@@ -67,20 +73,21 @@ def post_app(
         tags=body.get("tags_to_add", []),
         current_user_id=current_user_id,
     ).execute()
-    refreshed = db.query(App).options(selectinload(App.active_app_tags)).filter(App.id == created.id).first()
-    return _adapter.dump_python(_adapter.validate_python(refreshed, from_attributes=True), mode="json")
+    refreshed = db.query(App).options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag)).filter(App.id == created.id).first()
+    return safe_dump(_adapter, refreshed)
 
 
 @router.put("/{app_id}", name="app_by_id_put")
 def put_app(
     app_id: str,
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     from api.operations import ModifyAppTags
 
+    body = body or {}
     if "tags_to_add" in body or "tags_to_remove" in body:
         ModifyAppTags(
             app=app_obj,
@@ -88,8 +95,8 @@ def put_app(
             tags_to_remove=body.get("tags_to_remove", []),
             current_user_id=current_user_id,
         ).execute()
-    refreshed = db.query(App).options(selectinload(App.active_app_tags)).filter(App.id == app_obj.id).first()
-    return _adapter.dump_python(_adapter.validate_python(refreshed, from_attributes=True), mode="json")
+    refreshed = db.query(App).options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag)).filter(App.id == app_obj.id).first()
+    return safe_dump(_adapter, refreshed)
 
 
 @router.delete("/{app_id}", name="app_by_id_delete")

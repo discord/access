@@ -13,6 +13,7 @@ from api.models import AccessRequestStatus, GroupRequest, OktaUser
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import paginate
 from api.schemas import GroupRequestOut
+from api.schemas._serialize import safe_dump
 
 router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
 _adapter = TypeAdapter(GroupRequestOut)
@@ -29,15 +30,16 @@ def get_group_request(group_request_id: str, db: DbSession, current_user_id: Cur
     gr = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
-    return _adapter.dump_python(_adapter.validate_python(gr, from_attributes=True), mode="json")
+    return safe_dump(_adapter, gr)
 
 
 @router.post("", name="group_requests_create", status_code=201)
 def post_group_request(
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    body = body or {}
     requester = db.get(OktaUser, current_user_id)
     if requester is None:
         raise HTTPException(404, "Requester not found")
@@ -48,16 +50,17 @@ def post_group_request(
         app_id=body.get("app_id"),
         request_reason=body.get("reason", "") or "",
     ).execute()
-    return _adapter.dump_python(_adapter.validate_python(gr, from_attributes=True), mode="json")
+    return safe_dump(_adapter, gr)
 
 
 @router.put("/{group_request_id}", name="group_request_by_id_put")
 def put_group_request(
     group_request_id: str,
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    body = body or {}
     gr = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
@@ -80,4 +83,4 @@ def put_group_request(
             rejection_reason=body.get("reason", "") or "",
         ).execute()
     refreshed = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
-    return _adapter.dump_python(_adapter.validate_python(refreshed, from_attributes=True), mode="json")
+    return safe_dump(_adapter, refreshed)

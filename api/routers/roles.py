@@ -21,6 +21,7 @@ from api.models import OktaGroup, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
 from api.schemas import GroupOut, GroupSummary
+from api.schemas._serialize import safe_dump
 from api.schemas.requests_schemas import RoleMember
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
@@ -51,7 +52,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
     )
     if role is None:
         raise HTTPException(404, "Not Found")
-    return _role_adapter.dump_python(_role_adapter.validate_python(role, from_attributes=True), mode="json")
+    return safe_dump(_role_adapter, role)
 
 
 @router.get("/{role_id}/audit", name="role_audit_by_id")

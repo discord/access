@@ -15,7 +15,7 @@ def test_get_user_audit(
     okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     user_url = url_for("api-audit.users_and_groups")
-    rep = client.get(user_url, query_string={"user_id": "randomid"})
+    rep = client.get(user_url, params={"user_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
@@ -42,7 +42,7 @@ def test_get_user_audit(
     db.session.expunge_all()
 
     # test get user
-    rep = client.get(user_url, query_string={"user_id": user_id})
+    rep = client.get(user_url, params={"user_id": user_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -51,7 +51,7 @@ def test_get_user_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, query_string={"user_id": user_id, "owner": True})
+    rep = client.get(user_url, params={"user_id": user_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -60,7 +60,7 @@ def test_get_user_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, query_string={"user_id": user_id, "q": "App-"})
+    rep = client.get(user_url, params={"user_id": user_id, "q": "App-"})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -79,7 +79,7 @@ def test_get_group_audit(
     tag: Tag, url_for: Any) -> None:
     # test 404
     group_url = url_for("api-audit.users_and_groups")
-    rep = client.get(group_url, query_string={"group_id": "randomid"})
+    rep = client.get(group_url, params={"group_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
@@ -117,7 +117,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": role_group_id})
+    rep = client.get(group_url, params={"group_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -127,7 +127,7 @@ def test_get_group_audit(
     db.session.expunge_all()
 
     # test get group
-    rep = client.get(group_url, query_string={"group_id": okta_group_id})
+    rep = client.get(group_url, params={"group_id": okta_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -136,7 +136,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": okta_group_id, "owner": True})
+    rep = client.get(group_url, params={"group_id": okta_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -145,7 +145,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": okta_group_id, "q": user_email})
+    rep = client.get(group_url, params={"group_id": okta_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -154,7 +154,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": role_group_id})
+    rep = client.get(group_url, params={"group_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -163,7 +163,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": role_group_id, "owner": True})
+    rep = client.get(group_url, params={"group_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -172,7 +172,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": role_group_id, "q": user_email})
+    rep = client.get(group_url, params={"group_id": role_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -181,7 +181,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": app_group_id})
+    rep = client.get(group_url, params={"group_id": app_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -190,7 +190,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": app_group_id, "owner": True})
+    rep = client.get(group_url, params={"group_id": app_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -199,7 +199,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, query_string={"group_id": app_group_id, "q": user_email})
+    rep = client.get(group_url, params={"group_id": app_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -217,7 +217,7 @@ def test_get_role_audit(
     user: OktaUser, url_for: Any) -> None:
     # test 404
     role_url = url_for("api-audit.groups_and_roles")
-    rep = client.get(role_url, query_string={"role_id": "randomid"})
+    rep = client.get(role_url, params={"role_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
@@ -252,7 +252,7 @@ def test_get_role_audit(
     db.session.expunge_all()
 
     # test get role
-    rep = client.get(role_url, query_string={"role_id": role_group_id})
+    rep = client.get(role_url, params={"role_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -261,7 +261,7 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, query_string={"role_id": role_group_id, "owner": True})
+    rep = client.get(role_url, params={"role_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -270,7 +270,7 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, query_string={"role_id": role_group_id, "q": "App-"})
+    rep = client.get(role_url, params={"role_id": role_group_id, "q": "App-"})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -279,10 +279,10 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, query_string={"role_id": app_group_id})
+    rep = client.get(role_url, params={"role_id": app_group_id})
     assert rep.status_code == 404
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, query_string={"role_id": okta_group_id})
+    rep = client.get(role_url, params={"role_id": okta_group_id})
     assert rep.status_code == 404

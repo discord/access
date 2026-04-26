@@ -31,6 +31,7 @@ from api.models import (
 )
 from api.pagination import paginate
 from api.schemas import OktaUserOut, OktaUserSummary
+from api.schemas._serialize import safe_dump
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -99,7 +100,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Not Found")
-    return _user_adapter.dump_python(_user_adapter.validate_python(user, from_attributes=True), mode="json")
+    return safe_dump(_user_adapter, user)
 
 
 @router.get("/{user_id}/audit", name="user_audit_by_id")

@@ -18,6 +18,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from api.models import AppGroup, OktaUser, OktaUserGroupMember
+from api.config import settings
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
@@ -308,7 +309,7 @@ class TestPluginConfigAuthorization:
         self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
         """Test that Access admins can configure plugins on apps."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
-        # No need to create a new user or modify app.config["CURRENT_OKTA_USER_EMAIL"]
+        # No need to create a new user or modify settings.CURRENT_OKTA_USER_EMAIL
         test_app = AppFactory.build(name="TestApp", description="Test App")
 
         db.session.add(test_app)
@@ -1090,7 +1091,7 @@ class TestPluginGroupDeletedOnTypeChange:
         assert test_plugin.group_deleted_calls[0] == group_id
 
     def test_no_hook_without_lifecycle_plugin(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
         """Test that group_deleted hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
             name="TestAppTypeChange3",
@@ -1794,7 +1795,7 @@ class TestPluginAuditLogging:
         assert log_data["event_type"] == EventType.app_modify_plugin.value
         assert log_data["app"]["id"] == test_app.id
         assert log_data["old_app_group_lifecycle_plugin"] is None
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_configuration_change_at_app_level(
         self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
@@ -1840,7 +1841,7 @@ class TestPluginAuditLogging:
         assert log_data["app"]["id"] == test_app.id
         assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["category"] == "original"
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_removal_at_app_level(
         self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
@@ -1881,7 +1882,7 @@ class TestPluginAuditLogging:
         log_data = json.loads(plugin_logs[0].message)
         assert log_data["event_type"] == EventType.app_modify_plugin.value
         assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_configuration_change_at_group_level(
         self,
@@ -1944,7 +1945,7 @@ class TestPluginAuditLogging:
         assert log_data["event_type"] == EventType.group_modify_plugin.value
         assert log_data["group"]["id"] == test_group.id
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["custom_tag"] == "original"
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_no_audit_log_when_plugin_unchanged_at_app_level(
         self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:

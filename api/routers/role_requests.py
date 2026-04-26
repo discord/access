@@ -13,6 +13,7 @@ from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup, Role
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from api.pagination import paginate
 from api.schemas import RoleRequestOut
+from api.schemas._serialize import safe_dump
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 _adapter = TypeAdapter(RoleRequestOut)
@@ -29,15 +30,16 @@ def get_role_request(role_request_id: str, db: DbSession, current_user_id: Curre
     rr = db.query(RoleRequest).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
-    return _adapter.dump_python(_adapter.validate_python(rr, from_attributes=True), mode="json")
+    return safe_dump(_adapter, rr)
 
 
 @router.post("", name="role_requests_create", status_code=201)
 def post_role_request(
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    body = body or {}
     requester = db.get(OktaUser, current_user_id)
     if requester is None:
         raise HTTPException(404, "Requester not found")
@@ -53,16 +55,17 @@ def post_role_request(
         request_reason=body.get("reason", "") or "",
         request_ending_at=body.get("ending_at"),
     ).execute()
-    return _adapter.dump_python(_adapter.validate_python(rr, from_attributes=True), mode="json")
+    return safe_dump(_adapter, rr)
 
 
 @router.put("/{role_request_id}", name="role_request_by_id_put")
 def put_role_request(
     role_request_id: str,
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    body = body or {}
     rr = db.query(RoleRequest).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
@@ -86,4 +89,4 @@ def put_role_request(
             rejection_reason=body.get("reason", "") or "",
         ).execute()
     refreshed = db.query(RoleRequest).filter(RoleRequest.id == role_request_id).first()
-    return _adapter.dump_python(_adapter.validate_python(refreshed, from_attributes=True), mode="json")
+    return safe_dump(_adapter, refreshed)

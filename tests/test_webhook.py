@@ -18,8 +18,8 @@ def test_get_okta_webhook(app: FastAPI, client: TestClient, db: Any, url_for: An
     rep = client.get(webhook_url)
     assert rep.status_code == 403
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
-    app.config["OKTA_WEBHOOK_ID"] = access_owner.id
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    settings.OKTA_WEBHOOK_ID = access_owner.id
 
     rep = client.get(webhook_url)
     assert rep.status_code == 400
@@ -141,8 +141,8 @@ def test_post_okta_webhook(
     rep = client.post(webhook_url)
     assert rep.status_code == 403
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
-    app.config["OKTA_WEBHOOK_ID"] = access_owner.id
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    settings.OKTA_WEBHOOK_ID = access_owner.id
 
     rep = client.post(webhook_url)
     assert rep.status_code == 400

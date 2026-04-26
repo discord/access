@@ -10,6 +10,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.auth import permissions as AuthorizationHelpers
+from api.config import settings
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -804,7 +805,7 @@ def test_get_all_group(client: TestClient, db: Any, access_app: App, url_for: An
     for group in groups:
         assert any(u["id"] == group.id for u in results["results"])
 
-    rep = client.get(groups_url, query_string={"q": "App-"})
+    rep = client.get(groups_url, params={"q": "App-"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -989,7 +990,7 @@ def test_create_groups_with_and_without_description(
     faker: Faker,  # type: ignore[type-arg]
     access_app: App, url_for: Any) -> None:
     """Test that groups work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     db.session.add(access_app)
     db.session.commit()
@@ -1048,7 +1049,7 @@ def test_partial_group_update_preserves_description(
     mocker: MockerFixture,
     okta_group: OktaGroup, url_for: Any) -> None:
     """Test that group updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     # Set up the group with a description
     okta_group.description = "Original description"

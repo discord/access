@@ -7,6 +7,7 @@ from okta.models.group import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from api.config import settings
 from api.models import (
     App,
     AppGroup,
@@ -463,7 +464,7 @@ def test_get_all_app(client: TestClient, db: Any, url_for: Any) -> None:
     for app in apps:
         assert any(u["id"] == app.id for u in results["results"])
 
-    rep = client.get(apps_url, query_string={"q": "a"})
+    rep = client.get(apps_url, params={"q": "a"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -481,7 +482,7 @@ def test_create_app_with_and_without_description(
     url_for: Any,
 ) -> None:
     """Test that apps work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -540,7 +541,7 @@ def test_partial_app_update_preserves_description(
     access_app: App,
     app_group: AppGroup, url_for: Any) -> None:
     """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     # Set up the app with a description
     access_app.description = "Original description"

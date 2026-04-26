@@ -16,11 +16,12 @@ router = APIRouter(prefix="/api/bugs", tags=["bugs"])
 
 @router.post("/sentry", name="sentry_bug")
 def post_sentry(
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     current_user_id: CurrentUserId = "",
 ) -> dict[str, Any]:
     """Forwards a bug-report payload to the configured Sentry DSN's tunnel
     endpoint. Mirrors the Flask implementation."""
+    body = body or {}
     if not settings.FLASK_SENTRY_DSN:
         raise HTTPException(404, "Bug reporting not configured")
     try:

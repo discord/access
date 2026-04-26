@@ -5,6 +5,7 @@ from pytest_mock import MockerFixture
 
 from fastapi import FastAPI
 
+from api.config import settings
 from api.models import (
     App,
     AppGroup,
@@ -878,7 +879,7 @@ def test_disallow_self_add_admin_modify_group_users(
     role_group: RoleGroup,
     user: OktaUser,
 ) -> None:
-    current_user = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     tags = TagFactory.create_batch(
         3,
@@ -1359,7 +1360,7 @@ def test_disallow_self_add_admin_modify_role_groups(
     okta_group: OktaGroup,
     user: OktaUser,
 ) -> None:
-    current_user = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     role_groups = RoleGroupFactory.create_batch(2)
 

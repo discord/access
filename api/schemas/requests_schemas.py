@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from api.schemas.core_schemas import (
     AppOut,
-    GroupOut,
+    GroupRef,
     OktaUserSummary,
     OktaUserGroupMemberOut,
 )
@@ -34,11 +34,10 @@ class AccessRequestOut(BaseModel):
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
     active_requester: Optional[OktaUserSummary] = None
-    requested_group: Optional[GroupOut] = None
-    active_requested_group: Optional[GroupOut] = None
+    requested_group: Optional[GroupRef] = None
+    active_requested_group: Optional[GroupRef] = None
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
-    approved_membership: Optional[OktaUserGroupMemberOut] = None
 
 
 class CreateAccessRequest(BaseModel):
@@ -75,10 +74,10 @@ class RoleRequestOut(BaseModel):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
-    requester_role: Optional[GroupOut] = None
-    active_requester_role: Optional[GroupOut] = None
-    requested_group: Optional[GroupOut] = None
-    active_requested_group: Optional[GroupOut] = None
+    requester_role: Optional[GroupRef] = None
+    active_requester_role: Optional[GroupRef] = None
+    requested_group: Optional[GroupRef] = None
+    active_requested_group: Optional[GroupRef] = None
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
 

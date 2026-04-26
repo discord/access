@@ -12,6 +12,8 @@ from pydantic import BaseModel, TypeAdapter
 from sqlalchemy.orm import Query
 from starlette.requests import Request
 
+from api.schemas._serialize import safe_dump
+
 DEFAULT_PER_PAGE = 50
 DEFAULT_PAGE_NUMBER = 0
 
@@ -29,12 +31,15 @@ def extract_pagination(request: Request) -> tuple[int, int]:
 
 
 def _serialize(item: Any, schema: Any) -> Any:
-    """Convert an ORM object via a Pydantic schema, TypeAdapter, or callable."""
+    """Convert an ORM object via a Pydantic schema, TypeAdapter, or callable.
+
+    Uses `safe_dump` so unloaded SQLAlchemy relationships surface as None
+    rather than raising InvalidRequestError.
+    """
     if isinstance(schema, TypeAdapter):
-        validated = schema.validate_python(item, from_attributes=True)
-        return schema.dump_python(validated, mode="json")
+        return safe_dump(schema, item)
     if isinstance(schema, type) and issubclass(schema, BaseModel):
-        return schema.model_validate(item).model_dump(mode="json")
+        return safe_dump(schema, item)
     if callable(schema):
         return schema(item)
     raise TypeError(f"Unsupported schema type: {type(schema)}")

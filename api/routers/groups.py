@@ -41,6 +41,7 @@ from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.schemas import DeleteMessage, GroupOut, GroupSummary
+from api.schemas._serialize import safe_dump
 from api.schemas.requests_schemas import GroupMember
 
 import copy
@@ -113,19 +114,18 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return _group_adapter.dump_python(
-        _group_adapter.validate_python(group, from_attributes=True), mode="json"
-    )
+    return safe_dump(_group_adapter, group)
 
 
 @router.post("", name="groups_create", status_code=201)
 def post_group(
     request: Request,
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Create a new group. Body is the polymorphic group input + tags_to_add."""
+    body = body or {}
     group_type = body.get("type")
     if group_type not in ("okta_group", "role_group", "app_group"):
         raise HTTPException(400, "Invalid or missing group type")
@@ -168,19 +168,18 @@ def post_group(
         group=group, tags=body.get("tags_to_add", []), current_user_id=current_user_id
     ).execute()
     refreshed = _load_group_with_options(db, created.id)
-    return _group_adapter.dump_python(
-        _group_adapter.validate_python(refreshed, from_attributes=True), mode="json"
-    )
+    return safe_dump(_group_adapter, refreshed)
 
 
 @router.put("/{group_id}", name="group_by_id_put")
 def put_group(
     group_id: str,
     request: Request,
-    body: dict[str, Any] = Body(...),
+    body: dict[str, Any] | None = Body(default=None),
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    body = body or {}
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
@@ -215,9 +214,7 @@ def put_group(
                 current_user_id=current_user_id,
             ).execute()
             refreshed = _load_group_with_options(db, group.id)
-            return _group_adapter.dump_python(
-                _group_adapter.validate_python(refreshed, from_attributes=True), mode="json"
-            )
+            return safe_dump(_group_adapter, refreshed)
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
 
     try:
@@ -265,9 +262,7 @@ def put_group(
     ).execute()
 
     refreshed = _load_group_with_options(db, group.id)
-    return _group_adapter.dump_python(
-        _group_adapter.validate_python(refreshed, from_attributes=True), mode="json"
-    )
+    return safe_dump(_group_adapter, refreshed)
 
 
 @router.delete("/{group_id}", name="group_by_id_delete")

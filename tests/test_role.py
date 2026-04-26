@@ -314,7 +314,7 @@ def test_get_all_role(client: TestClient, db: Any, url_for: Any) -> None:
     for group in groups:
         assert any(u["id"] == group.id for u in results["results"])
 
-    rep = client.get(groups_url, query_string={"q": "r"})
+    rep = client.get(groups_url, params={"q": "r"})
     assert rep.status_code == 200
 
     results = rep.json()

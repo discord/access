@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from api.config import settings
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Tag
 from tests.factories import TagFactory
 
@@ -186,7 +187,7 @@ def test_get_all_tag(client: TestClient, db: Any, url_for: Any) -> None:
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])
 
-    rep = client.get(tags_url, query_string={"q": "Tag-"})
+    rep = client.get(tags_url, params={"q": "Tag-"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -199,7 +200,7 @@ def test_get_all_tag(client: TestClient, db: Any, url_for: Any) -> None:
 def test_create_tag_with_and_without_description(
     app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, url_for: Any) -> None:
     """Test that tags work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     tags_url = url_for("api-tags.tags")
 
@@ -250,7 +251,7 @@ def test_create_tag_with_and_without_description(
 def test_partial_tag_update_preserves_description(
     app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, tag: Tag, url_for: Any) -> None:
     """Test that tag updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     # Set up the tag with a description
     tag.description = "Original description"

@@ -7,6 +7,7 @@ from okta.models import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from api.config import settings
 from api.models import (
     AccessRequestStatus,
     AppGroup,
@@ -264,7 +265,7 @@ def test_approve_group_request_creates_group(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -320,7 +321,7 @@ def test_approve_group_request_sets_owner_with_ending_time(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -383,7 +384,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -472,7 +473,7 @@ def test_approve_group_request_applies_tags(
     user: OktaUser,
     tag: Tag,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(tag)
@@ -532,7 +533,7 @@ def test_approve_group_request_sets_name(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -574,7 +575,7 @@ def test_approve_group_request_sets_type(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     app_obj = AppFactory.create()
 
     db.session.add(user)
@@ -873,7 +874,7 @@ def test_admin_can_reject_request(
     db: Any,
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(admin)
@@ -1006,7 +1007,7 @@ def test_approver_can_modify_group_details(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     tag = TagFactory.create(enabled=True)
     other_tag = TagFactory.create(enabled=True)
 

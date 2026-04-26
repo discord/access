@@ -283,6 +283,42 @@ GroupSummary = Annotated[
 ]
 
 
+# --- Group references (embedded inside requests, audit, etc.) -------------
+# A minimal polymorphic group shape that does NOT touch any "active_*" or
+# "all_*" relationship attributes — those are `lazy="raise_on_sql"` and not
+# always pre-loaded when groups are embedded inside other objects.
+
+
+class _GroupRefBase(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    description: Optional[str] = ""
+    is_managed: bool = True
+    deleted_at: RFC822DatetimeOpt = None
+
+
+class OktaGroupRef(_GroupRefBase):
+    type: Literal["okta_group"] = "okta_group"
+
+
+class RoleGroupRef(_GroupRefBase):
+    type: Literal["role_group"] = "role_group"
+
+
+class AppGroupRef(_GroupRefBase):
+    type: Literal["app_group"] = "app_group"
+    app_id: Optional[str] = None
+    is_owner: bool = False
+    app: Optional[AppIdRef] = None
+
+
+GroupRef = Annotated[
+    Union[OktaGroupRef, RoleGroupRef, AppGroupRef],
+    Field(discriminator="type"),
+]
+
+
 # --- Group inputs (create/update) ------------------------------------------
 
 

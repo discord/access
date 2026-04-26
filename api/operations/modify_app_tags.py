@@ -141,11 +141,7 @@ class ModifyAppTags:
                     {
                         "event_type": EventType.app_modify_tags,
                         "user_agent": _ctx.user_agent if _ctx else None,
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        )
-                        if context
-                        else None,
+                        "ip": _ctx.ip if _ctx else None,
                         "current_user_id": self.current_user_id,
                         "current_user_email": email,
                         "app": self.app,

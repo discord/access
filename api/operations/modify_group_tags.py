@@ -114,11 +114,7 @@ class ModifyGroupTags:
                     {
                         "event_type": EventType.group_modify_tags,
                         "user_agent": _ctx.user_agent if _ctx else None,
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        )
-                        if context
-                        else None,
+                        "ip": _ctx.ip if _ctx else None,
                         "current_user_id": self.current_user_id,
                         "current_user_email": email,
                         "group": group,

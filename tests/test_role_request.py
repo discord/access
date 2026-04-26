@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from api.config import settings
 from api.models import (
     AccessRequestStatus,
     App,
@@ -99,7 +100,7 @@ def test_get_role_request(
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -179,7 +180,7 @@ def test_put_role_request(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     data = rep.json()
     assert data["requester"]["email"] == user.email
@@ -215,7 +216,7 @@ def test_put_role_request(
     assert add_user_to_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     data = rep.json()
     assert data["requester"]["email"] == user.email
@@ -234,7 +235,7 @@ def test_put_role_request(
 
 def test_put_role_request_by_non_owner(
     client: TestClient, app: FastAPI, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(role_group)
@@ -355,7 +356,7 @@ def test_create_role_request(
 
     data = rep.json()
     role_request = db.session.get(RoleRequest, data["id"])
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     assert data["requester"]["email"] == access_owner.email
     assert data["requester_role"]["name"] == role_group.name
@@ -441,7 +442,7 @@ def test_get_all_role_request(
     for request in role_requests:
         assert any(u["id"] == request.id for u in results["results"])
 
-    rep = client.get(role_requests_url, query_string={"q": "pend"})
+    rep = client.get(role_requests_url, params={"q": "pend"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -449,13 +450,13 @@ def test_get_all_role_request(
         assert any(u["id"] == request.id for u in results["results"])
 
     # Should be able to query by requester role and requested group
-    rep = client.get(role_requests_url, query_string={"q": role_requests[0].requester_role.name})
+    rep = client.get(role_requests_url, params={"q": role_requests[0].requester_role.name})
     assert rep.status_code == 200
 
     results = rep.json()
     assert any(u["id"] == role_requests[0].id for u in results["results"])
 
-    rep = client.get(role_requests_url, query_string={"q": role_requests[0].requested_group.name})
+    rep = client.get(role_requests_url, params={"q": role_requests[0].requested_group.name})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -488,7 +489,7 @@ def test_create_role_request_notification(
     assert role_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveRoleRequest(role_request=role_request, approver_user=access_owner).execute()
 
@@ -574,7 +575,7 @@ def test_create_app_role_request_notification(
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveRoleRequest(role_request=role_request, approver_user=access_owner).execute()
 
@@ -605,7 +606,7 @@ def test_create_app_role_request_notification(
 
 
 def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Any) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     users = OktaUserFactory.build_batch(3)
     db.session.add_all(users)
@@ -698,7 +699,7 @@ def test_resolve_app_role_request_notification(
     user: OktaUser,
     mocker: MockerFixture,
 ) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()
@@ -1010,7 +1011,7 @@ def test_time_limit_constraint_tag(
     tag: Tag,
     mocker: MockerFixture,
 ) -> None:
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     # Add App
     db.session.add(access_app)
@@ -1089,7 +1090,7 @@ def test_owner_cant_add_self_constraint_tag(
     tag: Tag,
     mocker: MockerFixture,
 ) -> None:
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     # Add App
     db.session.add(access_app)
@@ -1204,7 +1205,7 @@ def test_role_request_approval_via_direct_add(
     assert role_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ModifyRoleGroups(
         role_group=role_group, groups_to_add=[okta_group.id], sync_to_okta=False, created_reason="test"
@@ -1241,7 +1242,7 @@ def test_role_request_approval_via_direct_add(
     assert role_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ModifyRoleGroups(
         role_group=role_group, owner_groups_to_add=[okta_group2.id], sync_to_okta=False, created_reason="test"

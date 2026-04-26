@@ -10,6 +10,7 @@ from api.schemas.audit_logs import AuditLogSchema, EventType  # noqa: F401
 from api.schemas.core_schemas import (  # noqa: F401
     AppGroupIn,
     AppGroupOut,
+    AppGroupRef,
     AppGroupSummary,
     AppIdRef,
     AppOut,
@@ -17,9 +18,11 @@ from api.schemas.core_schemas import (  # noqa: F401
     AppTagMapOut,
     GroupIn,
     GroupOut,
+    GroupRef,
     GroupSummary,
     OktaGroupIn,
     OktaGroupOut,
+    OktaGroupRef,
     OktaGroupSummary,
     OktaGroupTagMapOut,
     OktaUserGroupMemberOut,
@@ -28,6 +31,7 @@ from api.schemas.core_schemas import (  # noqa: F401
     RoleGroupIn,
     RoleGroupMapOut,
     RoleGroupOut,
+    RoleGroupRef,
     RoleGroupSummary,
     TagOut,
 )

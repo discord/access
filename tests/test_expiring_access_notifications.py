@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pytest_mock import MockerFixture
 
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.config import settings
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.plugins import get_notification_hook
 from fastapi import FastAPI
@@ -786,7 +787,7 @@ def test_owner_expiring_access_notifications_managed_group_admin(
     group2 = OktaGroupFactory.create()
 
     user = OktaUserFactory.create()
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     expiration_datetime = datetime.now() + timedelta(days=2)
 

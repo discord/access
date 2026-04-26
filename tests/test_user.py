@@ -79,11 +79,9 @@ def test_delete_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) 
 
 
 def test_create_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
-    # test 405
+    # test 405 (POST not allowed on /api/users)
     users_url = url_for("api-users.users")
-    # marshmallow-sqlalchemy SQLAlchemyAutoSchema constructors are not typed
-    data = OktaUserSchema().dump(user)  # type: ignore[no-untyped-call]
-    rep = client.post(users_url, json=data)
+    rep = client.post(users_url, json={"id": user.id, "email": user.email})
     assert rep.status_code == 405
 
 
@@ -101,7 +99,7 @@ def test_get_all_user(client: TestClient, db: Any, url_for: Any) -> None:
     for user in users:
         assert any(u["id"] == user.id for u in results["results"])
 
-    rep = client.get(users_url, query_string={"q": "a"})
+    rep = client.get(users_url, params={"q": "a"})
     assert rep.status_code == 200
 
     results = rep.json()
