@@ -1,10 +1,9 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
 from api.models import (
     AccessRequestStatus,
@@ -37,14 +36,13 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
 
 def test_get_role_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # test 404
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
     rep = client.get(role_request_url)
@@ -85,7 +83,7 @@ def test_get_role_request(
     rep = client.get(role_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requester_role"]["name"] == role_group.name
     assert data["requested_group"]["name"] == okta_group.name
@@ -97,7 +95,7 @@ def test_get_role_request(
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
 
@@ -116,7 +114,7 @@ def test_get_role_request(
     rep = client.get(role_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert data["status"] == okta_group_role_request.status
@@ -127,22 +125,21 @@ def test_get_role_request(
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 0
 
 
 def test_put_role_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     role_request: RoleRequest,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # test 404
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
     rep = client.put(role_request_url)
@@ -184,7 +181,7 @@ def test_put_role_request(
 
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requester_role"]["name"] == role_group.name
     assert data["requested_group"]["name"] == okta_group.name
@@ -220,7 +217,7 @@ def test_put_role_request(
 
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requester_role"]["name"] == role_group.name
     assert data["requested_group"]["name"] == okta_group.name
@@ -236,8 +233,7 @@ def test_put_role_request(
 
 
 def test_put_role_request_by_non_owner(
-    client: FlaskClient, app: Flask, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
-) -> None:
+    client: TestClient, app: FastAPI, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     db.session.add(user)
@@ -278,7 +274,7 @@ def test_put_role_request_by_non_owner(
     assert role_request_by_non_owner.status == AccessRequestStatus.PENDING
 
     data: dict[str, Any] = {}
-    app.config["CURRENT_OKTA_USER_EMAIL"] = user.email
+    app.state.current_user_email = user.email
 
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id=role_request_by_owner.id)
     data = {"approved": True, "reason": "test approval"}
@@ -319,7 +315,7 @@ def test_put_role_request_by_non_owner(
     rep = client.put(role_request_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requester_role"]["name"] == role_group.name
     assert data["requested_group"]["name"] == okta_group.name
@@ -336,8 +332,7 @@ def test_put_role_request_by_non_owner(
 
 
 def test_create_role_request(
-    app: Flask, client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup
-) -> None:
+    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any) -> None:
     # test bad data
     role_requests_url = url_for("api-role-requests.role_requests")
     data: dict[str, Any] = {}
@@ -358,7 +353,7 @@ def test_create_role_request(
     rep = client.post(role_requests_url, json=data)
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     role_request = db.session.get(RoleRequest, data["id"])
     access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
@@ -373,14 +368,13 @@ def test_create_role_request(
 
 # Try to create an role request when not the role owner or Access admin, then become owner and try again
 def test_create_role_request_not_role_owner(
-    app: Flask, client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
-) -> None:
+    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
     db.session.add(user)
     db.session.add(okta_group)
     db.session.add(role_group)
     db.session.commit()
 
-    app.config["CURRENT_OKTA_USER_EMAIL"] = user.email
+    app.state.current_user_email = user.email
 
     data = {
         "role_id": role_group.id,
@@ -410,7 +404,7 @@ def test_create_role_request_not_role_owner(
     rep = client.post(role_requests_url, json=data)
     assert rep.status_code == 201
 
-    out = rep.get_json()
+    out = rep.json()
     role_request = db.session.get(RoleRequest, out["id"])
 
     assert out["requester"]["email"] == user.email
@@ -423,12 +417,11 @@ def test_create_role_request_not_role_owner(
 
 
 def test_get_all_role_request(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     role_group: RoleGroup,
     okta_group: OktaGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     role_requests_url = url_for("api-role-requests.role_requests")
     db.session.add(user)
     db.session.add(role_group)
@@ -444,14 +437,14 @@ def test_get_all_role_request(
     rep = client.get(role_requests_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for request in role_requests:
         assert any(u["id"] == request.id for u in results["results"])
 
     rep = client.get(role_requests_url, query_string={"q": "pend"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for request in role_requests:
         assert any(u["id"] == request.id for u in results["results"])
 
@@ -459,18 +452,18 @@ def test_get_all_role_request(
     rep = client.get(role_requests_url, query_string={"q": role_requests[0].requester_role.name})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     assert any(u["id"] == role_requests[0].id for u in results["results"])
 
     rep = client.get(role_requests_url, query_string={"q": role_requests[0].requested_group.name})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     assert any(u["id"] == role_requests[0].id for u in results["results"])
 
 
 def test_create_role_request_notification(
-    app: Flask, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -516,8 +509,8 @@ def test_create_role_request_notification(
 
 
 def test_create_app_role_request_notification(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -611,7 +604,7 @@ def test_create_app_role_request_notification(
     assert kwargs["requester"] == user
 
 
-def test_get_all_possible_role_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
+def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Any) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
 
     users = OktaUserFactory.build_batch(3)
@@ -642,8 +635,8 @@ def test_get_all_possible_role_request_approvers(app: Flask, mocker: MockerFixtu
 
 
 def test_role_request_approvers_tagged(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -697,8 +690,8 @@ def test_role_request_approvers_tagged(
 
 
 def test_resolve_app_role_request_notification(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -811,8 +804,8 @@ def test_resolve_app_role_request_notification(
 
 
 def test_auto_resolve_create_role_request(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     okta_group: OktaGroup,
     role_group: RoleGroup,
     user: OktaUser,
@@ -940,8 +933,8 @@ def test_auto_resolve_create_role_request(
 
 
 def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -1008,8 +1001,8 @@ def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
 
 
 def test_time_limit_constraint_tag(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     access_app: App,
     role_group: RoleGroup,
     app_group: AppGroup,
@@ -1087,8 +1080,8 @@ def test_time_limit_constraint_tag(
 
 
 def test_owner_cant_add_self_constraint_tag(
-    app: Flask,
-    db: SQLAlchemy,
+    app: FastAPI,
+    db: Any,
     access_app: App,
     role_group: RoleGroup,
     app_group: AppGroup,
@@ -1179,14 +1172,13 @@ def test_owner_cant_add_self_constraint_tag(
 
 
 def test_role_request_approval_via_direct_add(
-    client: FlaskClient,
-    app: Flask,
-    db: SQLAlchemy,
+    client: TestClient,
+    app: FastAPI,
+    db: Any,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
-    mocker: MockerFixture,
-) -> None:
+    mocker: MockerFixture, url_for: Any) -> None:
     okta_group2 = OktaGroupFactory.create()
 
     db.session.add(user)
@@ -1230,7 +1222,7 @@ def test_role_request_approval_via_direct_add(
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = client.get(group_url)
     assert rep.status_code == 200
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 0
     assert data["members"][0] == user.id
@@ -1267,7 +1259,7 @@ def test_role_request_approval_via_direct_add(
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group2.id)
     rep = client.get(group_url)
     assert rep.status_code == 200
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["owners"]) == 1
     assert len(data["members"]) == 0
     assert data["owners"][0] == user.id

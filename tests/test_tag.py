@@ -1,18 +1,16 @@
 from typing import Any
 
 import pytest
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Tag
 from tests.factories import TagFactory
 
 
 def test_get_tag(
-    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
-) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.get(tag_url)
@@ -38,13 +36,12 @@ def test_get_tag(
     rep = client.get(tag_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == tag.name
 
 
 def test_put_tag(
-    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
-) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.put(tag_url)
@@ -75,7 +72,7 @@ def test_put_tag(
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["enabled"] is False
@@ -92,7 +89,7 @@ def test_put_tag(
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Updated-again"
     assert data["description"] == "new description"
     assert data["enabled"] is True
@@ -113,8 +110,7 @@ def test_put_tag(
 
 
 def test_delete_tag(
-    client: FlaskClient, db: SQLAlchemy, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup
-) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.delete(tag_url)
@@ -142,7 +138,7 @@ def test_delete_tag(
     assert db.session.get(Tag, tag_id).deleted_at is not None
 
 
-def test_create_tag(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_create_tag(client: TestClient, db: Any, mocker: MockerFixture, url_for: Any) -> None:
     # test bad data
     tags_url = url_for("api-tags.tags")
     data: dict[str, Any] = {}
@@ -154,7 +150,7 @@ def test_create_tag(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) 
     rep = client.post(tags_url, json=data)
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     tag = db.session.get(Tag, data["id"])
 
     assert tag.name == "Created"
@@ -167,7 +163,7 @@ def test_create_tag(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) 
     rep = client.post(tags_url, json=data)
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     tag = db.session.get(Tag, data["id"])
 
     assert tag.name == "Created2"
@@ -176,7 +172,7 @@ def test_create_tag(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture) 
     assert tag.constraints == {}
 
 
-def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
+def test_get_all_tag(client: TestClient, db: Any, url_for: Any) -> None:
     tags_url = url_for("api-tags.tags")
 
     tags = TagFactory.create_batch(3)
@@ -186,14 +182,14 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
     rep = client.get(tags_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])
 
     rep = client.get(tags_url, query_string={"q": "Tag-"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     assert len(results["results"]) == 3
     for tag in tags:
         assert any(u["id"] == tag.id for u in results["results"])
@@ -201,8 +197,7 @@ def test_get_all_tag(client: FlaskClient, db: SQLAlchemy) -> None:
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_tag_with_and_without_description(
-    app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture
-) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, url_for: Any) -> None:
     """Test that tags work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
 
@@ -214,12 +209,12 @@ def test_create_tag_with_and_without_description(
     if require_descriptions:
         # Should fail when REQUIRE_DESCRIPTIONS=True
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "required" in str(response_data).lower()
     else:
         # Should succeed with backwards compatibility
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         tag = db.session.get(Tag, result["id"])
         assert tag.name == "TestTag"
         assert tag.description == ""
@@ -230,12 +225,12 @@ def test_create_tag_with_and_without_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed with empty description
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         tag = db.session.get(Tag, result["id"])
         assert tag.name == "TestTag2"
         assert tag.description == ""
@@ -245,7 +240,7 @@ def test_create_tag_with_and_without_description(
     rep = client.post(tags_url, json=data)
     assert rep.status_code == 201
 
-    result = rep.get_json()
+    result = rep.json()
     tag = db.session.get(Tag, result["id"])
     assert tag.name == "TestTag3"
     assert tag.description == "This has a description"
@@ -253,8 +248,7 @@ def test_create_tag_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_tag_update_preserves_description(
-    app: Flask, client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, tag: Tag
-) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, tag: Tag, url_for: Any) -> None:
     """Test that tag updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
 
@@ -271,12 +265,12 @@ def test_partial_tag_update_preserves_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed
         assert rep.status_code == 200
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "UpdatedWithEmpty"
         assert result["description"] == ""
 
@@ -291,7 +285,7 @@ def test_partial_tag_update_preserves_description(
     data = {"name": "UpdatedTag"}
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedTag"
     assert result["description"] == "Original description"  # Description is preserved
 
@@ -299,6 +293,6 @@ def test_partial_tag_update_preserves_description(
     data = {"name": "UpdatedTag2", "description": "Updated description"}
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedTag2"
     assert result["description"] == "Updated description"

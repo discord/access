@@ -1,9 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from flask import url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from api.models import (
@@ -28,15 +26,14 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
 
 def test_time_limit_modify_group_users(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -105,7 +102,7 @@ def test_time_limit_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -145,7 +142,7 @@ def test_time_limit_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -184,7 +181,7 @@ def test_time_limit_modify_group_users(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
 
@@ -208,7 +205,7 @@ def test_time_limit_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 1
@@ -230,7 +227,7 @@ def test_time_limit_modify_group_users(
     assert add_owner_to_group_spy.call_count == 2
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -270,7 +267,7 @@ def test_time_limit_modify_group_users(
     assert add_owner_to_group_spy.call_count == 2
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -292,15 +289,14 @@ def test_time_limit_modify_group_users(
 
 
 def test_time_limit_modify_role_groups(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -431,14 +427,13 @@ def test_time_limit_modify_role_groups(
 
 
 def test_time_limit_modify_group_type(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -511,7 +506,7 @@ def test_time_limit_modify_group_type(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    ret_data = rep.get_json()
+    ret_data = rep.json()
     assert ret_data["type"] == data["type"]
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == data["description"]
@@ -544,7 +539,7 @@ def test_time_limit_modify_group_type(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    ret_data = rep.get_json()
+    ret_data = rep.json()
     assert ret_data["type"] == data["type"]
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == data["description"]
@@ -568,14 +563,13 @@ def test_time_limit_modify_group_type(
 
 
 def test_time_limit_modify_group_tags(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 7 days initially
     tags = TagFactory.create_batch(
         3,
@@ -658,7 +652,7 @@ def test_time_limit_modify_group_tags(
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == tags[0].name
     assert data["description"] == tags[0].description
     assert data["enabled"] is True
@@ -714,7 +708,7 @@ def test_time_limit_modify_group_tags(
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == tags[2].name
     assert data["description"] == tags[2].description
     assert data["enabled"] is True
@@ -760,7 +754,7 @@ def test_time_limit_modify_group_tags(
     rep = client.put(tag_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == tags[2].name
     assert data["description"] == tags[2].description
     assert data["enabled"] is False
@@ -794,15 +788,14 @@ def test_time_limit_modify_group_tags(
 
 
 def test_time_limit_add_group_tags(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -980,14 +973,13 @@ def test_time_limit_add_group_tags(
 
 
 def test_time_limit_add_app_tags(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,

@@ -1,12 +1,14 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupTags:
@@ -106,12 +108,12 @@ class ModifyGroupTags:
                     .first()
                 )
 
-            context = has_request_context()
-            current_app.logger.info(
+            _ctx = get_request_context()
+            logging.getLogger("api.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.group_modify_tags,
-                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "user_agent": _ctx.user_agent if _ctx else None,
                         "ip": request.headers.get(
                             "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
                         )

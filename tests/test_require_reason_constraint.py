@@ -1,8 +1,6 @@
 from typing import Any
 
-from flask import url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from api.models import (
@@ -23,15 +21,14 @@ from tests.factories import TagFactory
 
 
 def test_require_reason_modify_group_users(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={
@@ -140,7 +137,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 1
 
@@ -200,7 +197,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -237,7 +234,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 0
 
@@ -320,7 +317,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -380,7 +377,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 1
 
@@ -440,7 +437,7 @@ def test_require_reason_modify_group_users(
     assert add_owner_to_group_spy.call_count == 3
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert len(data["owners"]) == 1
 
@@ -459,15 +456,14 @@ def test_require_reason_modify_group_users(
 
 
 def test_require_reason_modify_role_groups(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={
@@ -916,15 +912,14 @@ def test_require_reason_modify_role_groups(
 
 
 def test_require_reason_approve_access_request(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={

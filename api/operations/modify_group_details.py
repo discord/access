@@ -1,4 +1,6 @@
-from flask import current_app, g, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy import func
 from sqlalchemy.orm import with_polymorphic
 
@@ -6,7 +8,7 @@ from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupDetails:
@@ -56,14 +58,14 @@ class ModifyGroupDetails:
                     )
                     db.session.commit()
                 except Exception:
-                    current_app.logger.exception(
+                    logging.getLogger("api").exception(
                         f"Failed to invoke group_updated hook for group {self.group.id} with plugin '{plugin_id}'"
                     )
                     db.session.rollback()
 
         # Audit logging, only if group name changed
         if old_name.lower() != self.group.name.lower():
-            current_app.logger.info(
+            logging.getLogger("api.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.group_modify_name,

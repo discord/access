@@ -1,17 +1,18 @@
 import json
 
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from api.views.resources.webhook import OKTA_WEBHOOK_VERIFICATION_HEADER_NAME
+OKTA_WEBHOOK_VERIFICATION_HEADER_NAME = "X-Okta-Verification-Challenge"
+from fastapi import FastAPI
+from typing import Any
+from api.config import settings
 
 
-def test_get_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy) -> None:
+def test_get_okta_webhook(app: FastAPI, client: TestClient, db: Any, url_for: Any) -> None:
     webhook_url = url_for("api-webhooks.okta_webhook")
 
     rep = client.get(webhook_url)
@@ -25,7 +26,7 @@ def test_get_okta_webhook(app: Flask, client: FlaskClient, db: SQLAlchemy) -> No
 
     rep = client.get(webhook_url, headers={OKTA_WEBHOOK_VERIFICATION_HEADER_NAME: "test"})
     assert rep.status_code == 200
-    results = rep.get_json()
+    results = rep.json()
     results["verification"] == "test"
 
 
@@ -128,14 +129,13 @@ TEST_OKTA_WEBHOOK_USER_MODIFY_EVENT = """
 
 
 def test_post_okta_webhook(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     user: OktaUser,
     okta_group: OktaGroup,
-    role_group: RoleGroup,
-) -> None:
+    role_group: RoleGroup, url_for: Any) -> None:
     webhook_url = url_for("api-webhooks.okta_webhook")
 
     rep = client.post(webhook_url)
@@ -147,7 +147,7 @@ def test_post_okta_webhook(
     rep = client.post(webhook_url)
     assert rep.status_code == 400
 
-    app.config["OKTA_IGA_ACTOR_ID"] = access_owner.id
+    settings.OKTA_IGA_ACTOR_ID = access_owner.id
 
     db.session.add(user)
     db.session.add(okta_group)

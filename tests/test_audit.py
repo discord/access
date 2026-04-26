@@ -1,20 +1,18 @@
-from flask import url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
+from typing import Any
 
 
 def test_get_user_audit(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    okta_group: OktaGroup,
-) -> None:
+    okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     user_url = url_for("api-audit.users_and_groups")
     rep = client.get(user_url, query_string={"user_id": "randomid"})
@@ -47,7 +45,7 @@ def test_get_user_audit(
     rep = client.get(user_url, query_string={"user_id": user_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 10
     assert data["total"] == 10
 
@@ -56,7 +54,7 @@ def test_get_user_audit(
     rep = client.get(user_url, query_string={"user_id": user_id, "owner": True})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 5
     assert data["total"] == 5
 
@@ -65,21 +63,20 @@ def test_get_user_audit(
     rep = client.get(user_url, query_string={"user_id": user_id, "q": "App-"})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
 
 def test_get_group_audit(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
-    tag: Tag,
-) -> None:
+    tag: Tag, url_for: Any) -> None:
     # test 404
     group_url = url_for("api-audit.users_and_groups")
     rep = client.get(group_url, query_string={"group_id": "randomid"})
@@ -123,7 +120,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": role_group_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -133,7 +130,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": okta_group_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
@@ -142,7 +139,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": okta_group_id, "owner": True})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -151,7 +148,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": okta_group_id, "q": user_email})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
@@ -160,7 +157,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": role_group_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -169,7 +166,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 1
     assert data["total"] == 1
 
@@ -178,7 +175,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": role_group_id, "q": user_email})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -187,7 +184,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": app_group_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
@@ -196,7 +193,7 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": app_group_id, "owner": True})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -205,20 +202,19 @@ def test_get_group_audit(
     rep = client.get(group_url, query_string={"group_id": app_group_id, "q": user_email})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
 
 def test_get_role_audit(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
-    user: OktaUser,
-) -> None:
+    user: OktaUser, url_for: Any) -> None:
     # test 404
     role_url = url_for("api-audit.groups_and_roles")
     rep = client.get(role_url, query_string={"role_id": "randomid"})
@@ -259,7 +255,7 @@ def test_get_role_audit(
     rep = client.get(role_url, query_string={"role_id": role_group_id})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 4
     assert data["total"] == 4
 
@@ -268,7 +264,7 @@ def test_get_role_audit(
     rep = client.get(role_url, query_string={"role_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 
@@ -277,7 +273,7 @@ def test_get_role_audit(
     rep = client.get(role_url, query_string={"role_id": role_group_id, "q": "App-"})
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["results"]) == 2
     assert data["total"] == 2
 

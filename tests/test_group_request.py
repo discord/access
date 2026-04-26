@@ -1,12 +1,11 @@
 from datetime import datetime, timedelta, timezone
-from typing import cast, Protocol
+from typing import cast, Protocol, Any
 
 from factory import Faker
-from flask import Flask
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from okta.models import Group
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
 from api.models import (
     AccessRequestStatus,
@@ -37,9 +36,9 @@ class FakerWithPyStr(Protocol):
 
 
 def test_create_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -62,9 +61,9 @@ def test_create_group_request(
 
 
 def test_create_app_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -89,9 +88,9 @@ def test_create_app_group_request(
 
 
 def test_create_role_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -110,9 +109,9 @@ def test_create_role_group_request(
 
 
 def test_create_group_request_with_tags(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
     tag: Tag,
 ) -> None:
@@ -134,9 +133,9 @@ def test_create_group_request_with_tags(
 
 
 def test_create_group_request_with_ownership_ending_at(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -168,9 +167,9 @@ def test_create_group_request_with_ownership_ending_at(
 
 
 def test_create_group_request_tag_limits_ownership_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 90 days
@@ -212,9 +211,9 @@ def test_create_group_request_tag_limits_ownership_time(
 
 
 def test_create_group_request_tag_reduces_requested_ownership_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 30 days
@@ -258,9 +257,9 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
 
 
 def test_approve_group_request_creates_group(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -314,9 +313,9 @@ def test_approve_group_request_creates_group(
 
 
 def test_approve_group_request_sets_owner_with_ending_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -377,9 +376,9 @@ def test_approve_group_request_sets_owner_with_ending_time(
 
 
 def test_approve_group_request_tag_limits_owner_ending_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -465,9 +464,9 @@ def test_approve_group_request_tag_limits_owner_ending_time(
 
 
 def test_approve_group_request_applies_tags(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -526,9 +525,9 @@ def test_approve_group_request_applies_tags(
 
 
 def test_approve_group_request_sets_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -568,9 +567,9 @@ def test_approve_group_request_sets_name(
 
 
 def test_approve_group_request_sets_type(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -667,9 +666,9 @@ def test_approve_group_request_sets_type(
 
 
 def test_app_owner_can_approve_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -732,9 +731,9 @@ def test_app_owner_can_approve_request(
 
 
 def test_app_owner_can_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     app_owner = OktaUserFactory.create()
@@ -790,9 +789,9 @@ def test_app_owner_can_reject_request(
 
 
 def test_wrong_app_owner_cannot_approve_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -869,9 +868,9 @@ def test_wrong_app_owner_cannot_approve_request(
 
 
 def test_admin_can_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
@@ -903,9 +902,9 @@ def test_admin_can_reject_request(
 
 
 def test_any_user_cannot_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     other_user = OktaUserFactory.create()
@@ -937,9 +936,9 @@ def test_any_user_cannot_reject_request(
 
 
 def test_user_can_reject_own_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -968,9 +967,9 @@ def test_user_can_reject_own_request(
 
 
 def test_user_cannot_approve_own_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -1000,9 +999,9 @@ def test_user_cannot_approve_own_request(
 
 
 def test_approver_can_modify_group_details(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1070,9 +1069,9 @@ def test_approver_can_modify_group_details(
 
 
 def test_cannot_approve_already_resolved_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1124,9 +1123,9 @@ def test_cannot_approve_already_resolved_request(
 
 
 def test_cannot_approve_deleted_requester(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1171,9 +1170,9 @@ def test_cannot_approve_deleted_requester(
 
 
 def test_app_owner_auto_approves_own_app_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1249,9 +1248,9 @@ def test_app_owner_auto_approves_own_app_group_request(
 
 
 def test_app_owner_auto_approves_own_app_group_request_tagged(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1353,9 +1352,9 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 
 
 def test_random_user_cannot_approve_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1395,9 +1394,9 @@ def test_random_user_cannot_approve_group_request(
 
 
 def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1470,9 +1469,9 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1542,9 +1541,9 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_role_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1614,9 +1613,9 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,

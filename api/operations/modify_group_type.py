@@ -1,6 +1,8 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy import delete, insert
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
@@ -19,7 +21,7 @@ from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupType:
@@ -97,7 +99,7 @@ class ModifyGroupType:
                         hook.group_deleted(session=db.session, group=self.group, plugin_id=plugin_id)
                         db.session.commit()
                     except Exception:
-                        current_app.logger.exception(
+                        logging.getLogger("api").exception(
                             f"Failed to invoke group_deleted hook for group {self.group.id} with plugin '{plugin_id}'"
                         )
                         db.session.rollback()
@@ -250,7 +252,7 @@ class ModifyGroupType:
                         hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
                         db.session.commit()
                     except Exception:
-                        current_app.logger.exception(
+                        logging.getLogger("api").exception(
                             f"Failed to invoke group_created hook for group {self.group.id}"
                             f" with plugin '{plugin_id}'"
                         )
@@ -262,12 +264,12 @@ class ModifyGroupType:
             if self.current_user_id is not None:
                 email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
-            context = has_request_context()
-            current_app.logger.info(
+            _ctx = get_request_context()
+            logging.getLogger("api.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.group_modify_type,
-                        "user_agent": request.headers.get("User-Agent") if context else None,
+                        "user_agent": _ctx.user_agent if _ctx else None,
                         "ip": request.headers.get(
                             "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
                         )

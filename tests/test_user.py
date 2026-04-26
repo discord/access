@@ -1,25 +1,23 @@
 from datetime import datetime, timezone
 
-from flask import url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
-from api.views.schemas import OktaUserSchema
+
 from tests.factories import OktaUserFactory
+from typing import Any
 
 
 def test_get_user(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     user: OktaUser,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    okta_group: OktaGroup,
-) -> None:
+    okta_group: OktaGroup, url_for: Any) -> None:
     # test 404
     user_url = url_for("api-users.user_by_id", user_id="randomid")
     rep = client.get(user_url)
@@ -55,12 +53,12 @@ def test_get_user(
     rep = client.get(user_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["display_name"] == user_name
     assert data["email"] == user_email
 
 
-def test_put_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> None:
+def test_put_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
     db.session.add(user)
     db.session.commit()
 
@@ -70,7 +68,7 @@ def test_put_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> None:
     assert rep.status_code == 405
 
 
-def test_delete_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> None:
+def test_delete_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
     db.session.add(user)
     db.session.commit()
 
@@ -80,7 +78,7 @@ def test_delete_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> Non
     assert rep.status_code == 405
 
 
-def test_create_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> None:
+def test_create_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
     # test 405
     users_url = url_for("api-users.users")
     # marshmallow-sqlalchemy SQLAlchemyAutoSchema constructors are not typed
@@ -89,7 +87,7 @@ def test_create_user(client: FlaskClient, db: SQLAlchemy, user: OktaUser) -> Non
     assert rep.status_code == 405
 
 
-def test_get_all_user(client: FlaskClient, db: SQLAlchemy) -> None:
+def test_get_all_user(client: TestClient, db: Any, url_for: Any) -> None:
     users_url = url_for("api-users.users")
     users = OktaUserFactory.create_batch(10)
 
@@ -99,19 +97,19 @@ def test_get_all_user(client: FlaskClient, db: SQLAlchemy) -> None:
     rep = client.get(users_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for user in users:
         assert any(u["id"] == user.id for u in results["results"])
 
     rep = client.get(users_url, query_string={"q": "a"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for user in users:
         assert any(u["id"] == user.id for u in results["results"])
 
 
-def test_user_email_uniqueness(client: FlaskClient, db: SQLAlchemy) -> None:
+def test_user_email_uniqueness(client: TestClient, db: Any) -> None:
     known_email = "test@email.com"
 
     # Create a user with a unique email

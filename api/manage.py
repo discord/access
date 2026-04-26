@@ -1,19 +1,19 @@
 from typing import List
 
 import click
-from flask.cli import with_appcontext
+def with_appcontext(f): return f  # FastAPI-mode no-op
 
 
 @click.command("init")
 @click.argument("admin_okta_user_email")
-@with_appcontext
+
 def init(admin_okta_user_email: str) -> None:
     _import_from_okta()
     _init_builtin_apps(admin_okta_user_email)
 
 
 @click.command("import-from-okta")
-@with_appcontext
+
 def import_from_okta() -> None:
     _import_from_okta()
 
@@ -71,7 +71,7 @@ def _import_from_okta() -> None:
 
 @click.command("init-builtin-apps")
 @click.argument("admin_okta_user_id")
-@with_appcontext
+
 def init_builtin_apps(admin_okta_user_email: str) -> None:
     _init_builtin_apps(admin_okta_user_email)
 
@@ -123,9 +123,9 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     default=False,
     help="Sync group memberships from Access to Okta",
 )
-@with_appcontext
+
 def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
-    from flask import current_app
+    from api.config import settings
     from sentry_sdk import start_transaction
 
     from api.syncer import (
@@ -140,7 +140,7 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
         sync_users()
         sync_groups(act_as_authority=sync_groups_authoritatively)
         sync_group_memberships(act_as_authority=sync_group_memberships_authoritatively)
-        if current_app.config["OKTA_USE_GROUP_OWNERS_API"]:
+        if settings.OKTA_USE_GROUP_OWNERS_API:
             sync_group_ownerships(act_as_authority=sync_group_memberships_authoritatively)
         expire_access_requests()
 
@@ -153,7 +153,7 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-@with_appcontext
+
 def fix_unmanaged_groups(dry_run: bool) -> None:
     from api.integrity import (
         verify_and_fix_unmanaged_groups,
@@ -170,7 +170,7 @@ def fix_unmanaged_groups(dry_run: bool) -> None:
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-@with_appcontext
+
 def fix_role_memberships(dry_run: bool) -> None:
     from api.integrity import (
         verify_and_fix_role_memberships,
@@ -194,7 +194,7 @@ def fix_role_memberships(dry_run: bool) -> None:
     default=False,
     help="If set will notify role owners instead of individuals",
 )
-@with_appcontext
+
 def notify(owner: bool, role_owner: bool) -> None:
     from api.syncer import (
         expiring_access_notifications_owner,
@@ -211,7 +211,7 @@ def notify(owner: bool, role_owner: bool) -> None:
 
 
 @click.command("sync-app-group-memberships")
-@with_appcontext
+
 def sync_app_group_memberships() -> None:
     """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
     from api.extensions import db

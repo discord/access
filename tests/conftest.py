@@ -1,13 +1,33 @@
-from typing import Generator
+"""FastAPI test harness.
+
+Replaces the previous Flask + pytest-flask harness. Key behavior changes:
+
+- The `app` fixture returns a `FastAPI` instance.
+- The `client` fixture returns a `fastapi.testclient.TestClient`.
+- The `db` fixture binds a sqlite-in-memory engine via `db.init_app(...)`,
+  creates tables, and seeds the bootstrap "Access" app + admin user.
+- The `mock_user` factory fixture overrides
+  `app.dependency_overrides[get_current_user_id]` to switch the acting user.
+- The `url_for` fixture mirrors `flask.url_for`'s `"<bp>.<endpoint>"` pattern
+  by mapping into FastAPI's named routes.
+"""
+from __future__ import annotations
+
+from typing import Any, Callable, Generator
+from urllib.parse import urlencode
 
 import pytest
 from dotenv import load_dotenv
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pytest_factoryboy import register
+from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
 
 from api.app import create_app
-from api.extensions import db as _db
+from api.auth.dependencies import get_current_user_id
+from api.config import settings
+from api.extensions import _session_scope, db as _db
 from api.models import App, AppGroup, OktaUserGroupMember
 from tests.factories import (
     AccessRequestFactory,
@@ -31,46 +51,102 @@ register(TagFactory, "tag")
 
 
 @pytest.fixture(scope="session")
-def app(request: pytest.FixtureRequest) -> Flask:
+def app(request: pytest.FixtureRequest) -> FastAPI:
     load_dotenv(".testenv")
-    app = create_app(testing=True)
-
-    # Check if parametrization is being used (indirect parametrization)
+    fastapi_app = create_app(testing=True)
     require_descriptions = getattr(request, "param", False)
-    # Set the config on the Flask app (schemas read from current_app.config at validation time)
-    app.config["REQUIRE_DESCRIPTIONS"] = require_descriptions
-
-    return app
+    settings.REQUIRE_DESCRIPTIONS = require_descriptions  # type: ignore[assignment]
+    fastapi_app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
+    return fastapi_app
 
 
 @pytest.fixture
-def db(app: Flask) -> Generator[SQLAlchemy, None, None]:
-    # Drop the data at the beginning of the test to guarantee
-    # a clean database, and to allow DB inspection after a test run.
-    _db.drop_all()
-    _db.app = app
-
-    with app.app_context():
-        _db.create_all()
-
-    access_owner = OktaUserFactory.build(email=app.config["CURRENT_OKTA_USER_EMAIL"])
-    access_app = AppFactory.build(
-        name=App.ACCESS_APP_RESERVED_NAME, description=f"The {App.ACCESS_APP_RESERVED_NAME} Portal"
+def db(app: FastAPI) -> Generator[Any, None, None]:
+    """Bind an in-memory SQLite engine, create tables, and seed bootstrap data."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
     )
-    access_app_owner_group = AppGroupFactory.build(
-        app_id=access_app.id,
-        is_owner=True,
-        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
-        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
-        description=f"Owners of the {access_app.name} application",
-    )
-    access_app_owner_group_membership = OktaUserGroupMember(user_id=access_owner.id, group_id=access_app_owner_group.id)
-    _db.session.add(access_owner)
-    _db.session.add(access_app)
-    _db.session.add(access_app_owner_group)
-    _db.session.add(access_app_owner_group_membership)
-    _db.session.commit()
+    _db.init_app(engine=engine)
+    _db.create_all()
 
-    yield _db
+    token = _session_scope.set("test-session")
+    try:
+        access_owner = OktaUserFactory.build(email=settings.CURRENT_OKTA_USER_EMAIL)
+        access_app = AppFactory.build(
+            name=App.ACCESS_APP_RESERVED_NAME,
+            description=f"The {App.ACCESS_APP_RESERVED_NAME} Portal",
+        )
+        access_app_owner_group = AppGroupFactory.build(
+            app_id=access_app.id,
+            is_owner=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+            + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+            description=f"Owners of the {access_app.name} application",
+        )
+        access_app_owner_group_membership = OktaUserGroupMember(
+            user_id=access_owner.id, group_id=access_app_owner_group.id
+        )
+        _db.session.add(access_owner)
+        _db.session.add(access_app)
+        _db.session.add(access_app_owner_group)
+        _db.session.add(access_app_owner_group_membership)
+        _db.session.commit()
 
-    _db.session.close()
+        yield _db
+    finally:
+        try:
+            _db.session.rollback()
+        except Exception:
+            pass
+        _db.drop_all()
+        _db.remove()
+        _session_scope.reset(token)
+
+
+@pytest.fixture
+def client(app: FastAPI, db: Any) -> Generator[TestClient, None, None]:
+    """Return a FastAPI TestClient that shares the test database session."""
+    app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
+    with TestClient(app, raise_server_exceptions=False) as c:
+        yield c
+    app.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.fixture
+def mock_user(app: FastAPI) -> Generator[Callable[[Any], None], None, None]:
+    """Returns a callable that overrides `get_current_user_id` to return the
+    given user (or user-id string)."""
+    def _set(user_or_id: Any) -> None:
+        if hasattr(user_or_id, "id"):
+            user_id = user_or_id.id
+            email = getattr(user_or_id, "email", None)
+            if email:
+                app.state.current_user_email = email
+        else:
+            user_id = user_or_id
+        app.dependency_overrides[get_current_user_id] = lambda: user_id
+
+    yield _set
+    app.dependency_overrides.pop(get_current_user_id, None)
+
+
+@pytest.fixture
+def url_for(app: FastAPI) -> Callable[..., str]:
+    """Drop-in replacement for `flask.url_for(<bp>.<endpoint>, **kwargs)`."""
+    def _url_for(name: str, **kwargs: Any) -> str:
+        endpoint = name.split(".", 1)[1] if "." in name else name
+        path_params = {k: str(v) for k, v in kwargs.items() if v is not None}
+        try:
+            path = app.url_path_for(endpoint, **path_params)
+            return str(path)
+        except Exception:
+            try:
+                path = app.url_path_for(endpoint)
+                if path_params:
+                    return f"{path}?{urlencode(path_params)}"
+                return str(path)
+            except Exception:
+                return f"/{endpoint}"
+    return _url_for

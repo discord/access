@@ -3,7 +3,9 @@ import string
 from datetime import datetime
 from typing import List, Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 
 from api.extensions import db
 from api.models import (
@@ -20,7 +22,7 @@ from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
 from api.plugins import get_conditional_access_hook, get_notification_hook
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class CreateGroupRequest:
@@ -155,9 +157,9 @@ class CreateGroupRequest:
             approvers = get_access_owners()
 
         # Audit logging
-        context = has_request_context()
+        _ctx = get_request_context()
 
-        current_app.logger.info(
+        logging.getLogger("api.audit").info(
             AuditLogSchema(
                 exclude=[
                     "group_request.resolution_reason",
@@ -171,10 +173,8 @@ class CreateGroupRequest:
             ).dumps(
                 {
                     "event_type": EventType.group_request_create,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.requester.id,
                     "current_user_email": self.requester.email,
                     "group_request": group_request,

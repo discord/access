@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
-from flask_sqlalchemy import SQLAlchemy
 
 from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.syncer import expire_access_requests
+from typing import Any
 
 
 def test_no_expire_new_access_request(
-    db: SQLAlchemy, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
+    db: Any, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -27,7 +27,7 @@ def test_no_expire_new_access_request(
 
 
 def test_expire_old_access_request(
-    db: SQLAlchemy, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
+    db: Any, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -48,7 +48,7 @@ def test_expire_old_access_request(
 
 
 def test_expire_old_temporary_access_request(
-    db: SQLAlchemy, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
+    db: Any, access_request: AccessRequest, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)

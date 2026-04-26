@@ -1,6 +1,8 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
@@ -23,7 +25,7 @@ from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.plugins import get_notification_hook
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ApproveGroupRequest:
@@ -153,16 +155,14 @@ class ApproveGroupRequest:
         db.session.commit()
 
         # Audit logging
-        context = has_request_context()
+        _ctx = get_request_context()
 
-        current_app.logger.info(
+        logging.getLogger("api.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_request_approve,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.approver_id,
                     "current_user_email": self.approver_email,
                     "group_request": self.group_request,
