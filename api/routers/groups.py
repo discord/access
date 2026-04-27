@@ -304,6 +304,34 @@ def put_group(
     ).execute()
 
     refreshed = _load_group_with_options(db, group.id)
+
+    # Audit log — plugin configuration changes at the group level
+    if old_plugin_data_for_audit != (refreshed.plugin_data or {}):
+        from api.context import get_request_context
+        from api.models import OktaUser
+        from api.schemas import AuditLogSchema, EventType
+        import logging as _logging
+
+        _ctx = get_request_context()
+        email = (
+            getattr(db.get(OktaUser, current_user_id), "email", None)
+            if current_user_id is not None
+            else None
+        )
+        _logging.getLogger("api.audit").info(
+            AuditLogSchema().dumps(
+                {
+                    "event_type": EventType.group_modify_plugin,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
+                    "current_user_id": current_user_id,
+                    "current_user_email": email,
+                    "group": refreshed,
+                    "old_plugin_data": old_plugin_data_for_audit,
+                }
+            )
+        )
+
     return safe_dump(_group_adapter, refreshed)
 
 

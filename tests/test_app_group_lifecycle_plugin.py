@@ -1187,7 +1187,7 @@ class TestPluginGroupCreatedOnTypeChange:
         assert test_plugin.group_created_calls[0] == group_id
 
     def test_no_hook_without_lifecycle_plugin(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_created hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(

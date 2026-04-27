@@ -108,6 +108,10 @@ def put_tag(
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    from sqlalchemy.orm import selectinload
+
+    from api.operations import ModifyGroupsTimeLimit
+
     tag = db.query(Tag).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
@@ -120,7 +124,21 @@ def put_tag(
         if key in body:
             setattr(tag, key, body[key])
     db.commit()
-    return safe_dump(_adapter, tag)
+
+    # Re-evaluate time-limit constraints for groups associated with this tag
+    refreshed = (
+        db.query(Tag)
+        .options(selectinload(Tag.active_group_tags))
+        .filter(Tag.id == tag.id)
+        .first()
+    )
+    if refreshed is not None and refreshed.active_group_tags:
+        ModifyGroupsTimeLimit(
+            groups=[tm.group_id for tm in refreshed.active_group_tags],
+            tags=[refreshed.id],
+        ).execute()
+
+    return safe_dump(_adapter, refreshed or tag)
 
 
 @router.delete("/{tag_id}", name="tag_by_id_delete")
