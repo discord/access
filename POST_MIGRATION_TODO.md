@@ -153,17 +153,11 @@ Operations and models can stay loose initially since they're inherited
 from the Flask era. Add a CI check that fails the build on new strict-mode
 violations in those directories.
 
-### 15. Drop `werkzeug` (and other Flask-transitive deps)
-
-Now that Flask is gone, `werkzeug` is no longer required transitively.
-Audit `pip freeze` output for stragglers and remove direct imports if any
-slipped through.
-
 ---
 
 ## Test Ergonomics
 
-### 16. Async test client
+### 15. Async test client
 
 Once routers are async (#2), switch from `fastapi.testclient.TestClient`
 to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
@@ -171,7 +165,7 @@ to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
 DB calls in a single request) and avoids the sync-bridge in the current
 TestClient.
 
-### 17. Replace `factory_boy` with Pydantic-based builders
+### 16. Replace `factory_boy` with Pydantic-based builders
 
 Either:
 - Keep `factory_boy` but decouple it from the legacy SQLAlchemy session
@@ -180,7 +174,7 @@ Either:
   generates fixtures from Pydantic models — keeps test data and request
   schemas in sync automatically.
 
-### 18. Golden-file response snapshots
+### 17. Golden-file response snapshots
 
 Add snapshot tests for the major endpoints (`GET /api/groups`,
 `GET /api/groups/{id}`, `GET /api/users/{id}`, `GET /api/requests`,

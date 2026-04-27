@@ -1,14 +1,15 @@
 
-# Created by https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python,flask
-# Edit at https://www.toptal.com/developers/gitignore?templates=macos,windows,visualstudiocode,jetbrains+all,node,python,flask
+# Created by https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python
+# Edit at https://www.toptal.com/developers/gitignore?templates=macos,windows,visualstudiocode,jetbrains+all,node,python
 
-### Flask ###
+### Local dev ###
+# Local SQLite DB (settings.SQLALCHEMY_DATABASE_URI defaults to
+# sqlite:///instance/access.db) and the .env file the Makefile reads.
 instance/*
 !instance/.gitignore
-.webassets-cache
 .env
 
-### Flask.Python Stack ###
+### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -73,8 +74,6 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
-instance/
 
 # Scrapy stuff:
 .scrapy
@@ -409,8 +408,6 @@ dist
 
 # Django stuff:
 
-# Flask stuff:
-
 # Scrapy stuff:
 
 # Sphinx documentation
@@ -496,7 +493,7 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-# End of https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python,flask
+# End of https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,jetbrains+all,node,python
 
 # try to prevent override config files from being accidentally committed
 config/config.production.json
