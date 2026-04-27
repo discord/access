@@ -71,7 +71,21 @@ def list_tags(request: Request, db: DbSession, current_user_id: CurrentUserId) -
 
 @router.get("/{tag_id}", name="tag_by_id")
 def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    tag = db.query(Tag).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    from sqlalchemy.orm import joinedload, selectinload
+
+    from api.models import AppTagMap, OktaGroupTagMap
+
+    tag = (
+        db.query(Tag)
+        .options(
+            selectinload(Tag.active_group_tags).options(
+                joinedload(OktaGroupTagMap.active_group),
+                joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_tag),
+            ),
+        )
+        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
+        .first()
+    )
     if tag is None:
         raise HTTPException(404, "Not Found")
     return safe_dump(_adapter, tag)

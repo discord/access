@@ -167,6 +167,12 @@ def _role_group_mapping_ref(rgm: Any) -> dict[str, Any] | None:
     }
 
 
+def _access_request_ref(ar: Any) -> dict[str, Any] | None:
+    if ar is None:
+        return None
+    return {"id": ar.id}
+
+
 def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
     m = _SafeAttrProxy(m)
     return {
@@ -186,6 +192,7 @@ def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
         "active_group": _group_ref(getattr(m, "active_group", None)),
         "role_group_mapping": _role_group_mapping_ref(getattr(m, "role_group_mapping", None)),
         "active_role_group_mapping": _role_group_mapping_ref(getattr(m, "active_role_group_mapping", None)),
+        "access_request": _access_request_ref(getattr(m, "access_request", None)),
         "created_actor": _user_summary(getattr(m, "created_actor", None)),
         "ended_actor": _user_summary(getattr(m, "ended_actor", None)),
     }
@@ -231,6 +238,7 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
             joinedload(OktaUserGroupMember.user),
             joinedload(OktaUserGroupMember.created_actor),
             joinedload(OktaUserGroupMember.ended_actor),
+            joinedload(OktaUserGroupMember.access_request),
             selectinload(OktaUserGroupMember.group).options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                 joinedload(AppGroup.app),

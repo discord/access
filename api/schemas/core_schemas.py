@@ -51,6 +51,9 @@ class TagOut(BaseModel):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     deleted_at: RFC822DatetimeOpt = None
+    # Resolved post-class via model_rebuild() — OktaGroupTagMapOut is defined
+    # below.
+    active_group_tags: list["OktaGroupTagMapOut"] = Field(default_factory=list)
 
 
 class TagSummary(BaseModel):
@@ -74,6 +77,9 @@ class OktaGroupTagMapOut(BaseModel):
     created_at: RFC822Datetime
     ended_at: RFC822DatetimeOpt = None
     active_tag: Optional[TagSummary] = None
+    # Populated when the row is reached from the Tag side (`tag.active_group_tags`):
+    active_group: Optional["_GroupRefForMembership"] = None
+    active_app_tag_mapping: Optional["AppTagMapOut"] = None
 
 
 class AppTagMapOut(BaseModel):
@@ -403,3 +409,5 @@ GroupIn = Annotated[
 # Manage forward refs after all classes are defined
 OktaUserOut.model_rebuild()
 AppOut.model_rebuild()
+TagOut.model_rebuild()
+OktaGroupTagMapOut.model_rebuild()
