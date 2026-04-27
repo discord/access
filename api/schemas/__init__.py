@@ -6,6 +6,7 @@ JSON it returns — there is no `only=`/`exclude=` projection plumbing.
 
 Polymorphic groups are modelled as discriminated unions on the `type` field.
 """
+
 from api.schemas.audit_logs import AuditLogSchema, EventType  # noqa: F401
 from api.schemas.core_schemas import (  # noqa: F401
     AppDetail,

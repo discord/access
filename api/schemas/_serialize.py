@@ -11,6 +11,7 @@ default. Routes are still responsible for eagerly loading the relationships
 they actually need; this just keeps optional embedded fields from blowing up
 the response when they're irrelevant.
 """
+
 from __future__ import annotations
 
 from typing import Any

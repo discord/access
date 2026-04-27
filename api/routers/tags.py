@@ -1,4 +1,5 @@
 """Tags router."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -54,6 +55,7 @@ def _validate_constraints(constraints: Any) -> dict[str, Any]:
             raise HTTPException(400, f"Invalid value for constraint {key}: {value!r}")
         valid[key] = value
     return valid
+
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 _adapter = TypeAdapter(TagDetail)
@@ -140,12 +142,7 @@ def put_tag(
     db.commit()
 
     # Re-evaluate time-limit constraints for groups associated with this tag
-    refreshed = (
-        db.query(Tag)
-        .options(selectinload(Tag.active_group_tags))
-        .filter(Tag.id == tag.id)
-        .first()
-    )
+    refreshed = db.query(Tag).options(selectinload(Tag.active_group_tags)).filter(Tag.id == tag.id).first()
     if refreshed is not None and refreshed.active_group_tags:
         ModifyGroupsTimeLimit(
             groups=[tm.group_id for tm in refreshed.active_group_tags],

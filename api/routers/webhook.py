@@ -4,6 +4,7 @@ Authentication is gated on `settings.OKTA_WEBHOOK_ID` matching the caller's
 resolved user id (Okta is configured with a service token whose user id is
 this value). All other callers receive 403.
 """
+
 from __future__ import annotations
 
 import json
@@ -122,9 +123,7 @@ def okta_webhook_post(
             active_role_memberships = (
                 db.query(OktaUserGroupMember)
                 .options(
-                    joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                        RoleGroupMap.active_role_group
-                    )
+                    joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group)
                 )
                 .filter(OktaUserGroupMember.user_id == user.id)
                 .filter(OktaUserGroupMember.group_id == group.id)

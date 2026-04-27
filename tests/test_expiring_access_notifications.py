@@ -778,9 +778,7 @@ def test_role_owner_expiring_access_notifications_role_multiple_dates(db: Any, m
 
 # Test with an externally managed group and a non-externally managed group. The Access admin should only be notified about
 # expiring access for the non-externally managed group
-def test_owner_expiring_access_notifications_managed_group_admin(
-    db: Any, app: FastAPI, mocker: MockerFixture
-) -> None:
+def test_owner_expiring_access_notifications_managed_group_admin(db: Any, app: FastAPI, mocker: MockerFixture) -> None:
     # Create an externally managed group and an Access managed group
     group1 = OktaGroupFactory.create()
     group1.is_managed = False

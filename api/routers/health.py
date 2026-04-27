@@ -1,4 +1,5 @@
 """Health check router. Public — no auth required."""
+
 from __future__ import annotations
 
 from fastapi import APIRouter

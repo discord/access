@@ -5,6 +5,7 @@ The Flask app returned errors as `{"message": "..."}` regardless of source
 `{"detail": "..."}`. These handlers normalize the new app to the legacy shape
 so clients don't need to change.
 """
+
 from __future__ import annotations
 
 import logging

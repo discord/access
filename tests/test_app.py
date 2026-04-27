@@ -48,7 +48,14 @@ def test_get_access_app_includes_owner_group(client: TestClient, db: Any, url_fo
 
 
 def test_get_app(
-    client: TestClient, db: Any, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser, url_for: Any) -> None:
+    client: TestClient,
+    db: Any,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
     rep = client.get(app_url)
@@ -95,7 +102,8 @@ def test_get_app(
 
 
 def test_put_app(
-    client: TestClient, db: Any, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any) -> None:
+    client: TestClient, db: Any, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
     rep = client.put(app_url)
@@ -208,7 +216,9 @@ def test_put_app(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
-def test_delete_app(client: TestClient, db: Any, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any) -> None:
+def test_delete_app(
+    client: TestClient, db: Any, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="100000")
     rep = client.delete(app_url)
@@ -253,7 +263,9 @@ def test_create_app(
     db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
-    tag: Tag, url_for: Any) -> None:
+    tag: Tag,
+    url_for: Any,
+) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
     data: dict[str, Any] = {}
@@ -300,7 +312,9 @@ def test_create_app_with_initial_owners(
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
-    role_group: RoleGroup, url_for: Any) -> None:
+    role_group: RoleGroup,
+    url_for: Any,
+) -> None:
     db.session.add(role_group)
     db.session.add(user)
     db.session.commit()
@@ -430,7 +444,9 @@ def test_create_app_with_name_collision(
     db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
-    app_group: AppGroup, url_for: Any) -> None:
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
     app = AppFactory.create()
     app.name = "Test-Staging"
     db.session.add(app)
@@ -557,12 +573,8 @@ def test_create_app_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_app_update_preserves_description(
-    app: FastAPI,
-    client: TestClient,
-    db: Any,
-    mocker: MockerFixture,
-    access_app: App,
-    app_group: AppGroup, url_for: Any) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
+) -> None:
     """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 

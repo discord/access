@@ -1,4 +1,3 @@
-from fastapi import FastAPI
 """
 Tests for the App Group Lifecycle Plugin functionality.
 
@@ -13,12 +12,13 @@ This includes tests for:
 from typing import Any, Generator
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
-from api.models import AppGroup, OktaUser, OktaUserGroupMember
 from api.config import settings
+from api.models import AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
@@ -256,7 +256,9 @@ class TestPluginAPIEndpoints:
         plugin_ids = [p["id"] for p in data]
         assert DummyPlugin.ID in plugin_ids
 
-    def test_get_app_config_properties(self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any) -> None:
+    def test_get_app_config_properties(
+        self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_config_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
@@ -267,7 +269,9 @@ class TestPluginAPIEndpoints:
         assert "category" in data
         assert data["enabled"]["required"] is True
 
-    def test_get_group_config_properties(self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any) -> None:
+    def test_get_group_config_properties(
+        self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_config_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
@@ -277,7 +281,9 @@ class TestPluginAPIEndpoints:
         assert "group_id" in data
         assert data["group_id"]["required"] is True
 
-    def test_get_app_status_properties(self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any) -> None:
+    def test_get_app_status_properties(
+        self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_status_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
@@ -286,7 +292,9 @@ class TestPluginAPIEndpoints:
         data = response.json()
         assert "last_sync" in data
 
-    def test_get_group_status_properties(self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any) -> None:
+    def test_get_group_status_properties(
+        self, client: TestClient, db: Any, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_status_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
@@ -306,7 +314,8 @@ class TestPluginConfigAuthorization:
     """Tests for plugin configuration authorization - positive cases (should succeed)."""
 
     def test_access_admin_can_configure_plugin_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that Access admins can configure plugins on apps."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
         # No need to create a new user or modify settings.CURRENT_OKTA_USER_EMAIL
@@ -331,7 +340,8 @@ class TestPluginConfigAuthorization:
         assert response_data["plugin_data"][DummyPlugin.ID]["configuration"]["enabled"] is True
 
     def test_app_owner_cannot_configure_plugin_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that app owners (non-Access admins) cannot configure plugins on apps."""
         # Create app owner user
 
@@ -367,7 +377,8 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 403
 
     def test_app_owner_cannot_modify_existing_plugin_config_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that app owners cannot modify existing plugin configuration."""
         # Create app owner
 
@@ -414,7 +425,8 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 403
 
     def test_access_admin_can_configure_plugin_at_group_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that Access admins can configure plugins on groups."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
         test_app = AppFactory.build(
@@ -446,7 +458,8 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 200
 
     def test_app_owner_can_configure_plugin_at_group_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that app owners can configure plugins on their app's groups."""
         # Create app owner
 
@@ -494,7 +507,8 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 200
 
     def test_group_owner_cannot_configure_plugin_at_group_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that group owners (non-app owners) cannot configure plugins on groups."""
         # Create group owner (but not app owner)
 
@@ -585,7 +599,9 @@ class TestPluginHelperFunctions:
 class TestPluginValidation:
     """Tests for plugin configuration validation."""
 
-    def test_valid_app_config(self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+    def test_valid_app_config(
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that valid app configuration is accepted."""
         test_app = AppFactory.build(name="TestApp10")
 
@@ -604,7 +620,8 @@ class TestPluginValidation:
         assert response.status_code == 200
 
     def test_invalid_app_config(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that invalid app configuration is rejected."""
         test_app = AppFactory.build(name="TestApp11")
 
@@ -631,7 +648,8 @@ class TestPluginValidation:
         assert "enabled" in str(response.json())
 
     def test_valid_group_config(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that valid group configuration is accepted."""
         test_app = AppFactory.build(name="TestApp12", app_group_lifecycle_plugin=DummyPlugin.ID)
         test_group = AppGroupFactory.build(
@@ -660,7 +678,8 @@ class TestPluginValidation:
         assert response.status_code == 200
 
     def test_invalid_group_config(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that invalid group configuration is rejected."""
         test_app = AppFactory.build(name="TestApp13", app_group_lifecycle_plugin=DummyPlugin.ID)
         test_group = AppGroupFactory.build(
@@ -850,7 +869,8 @@ class TestPluginGroupUpdatedHook:
     """Tests for the group_updated lifecycle hook fired via the group PUT endpoint."""
 
     def test_name_change_fires_hook(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that renaming an app group fires the group_updated hook with old name."""
         test_app = AppFactory.build(
             name="TestAppUpdated1",
@@ -888,7 +908,8 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_desc == "Same description"
 
     def test_description_change_fires_hook(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that changing an app group's description fires the group_updated hook."""
         test_app = AppFactory.build(
             name="TestAppUpdated2",
@@ -923,7 +944,8 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_desc == "Old description"
 
     def test_no_change_does_not_fire_hook(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that updating a group without changing name or description does not fire the hook."""
         test_app = AppFactory.build(
             name="TestAppUpdated3",
@@ -955,7 +977,8 @@ class TestPluginGroupUpdatedHook:
         assert len(test_plugin.group_updated_calls) == 0
 
     def test_hook_not_fired_without_lifecycle_plugin(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that group_updated hook does not fire when the app has no lifecycle plugin configured."""
         test_app = AppFactory.build(
             name="TestAppUpdated4",
@@ -986,7 +1009,8 @@ class TestPluginGroupUpdatedHook:
         assert len(test_plugin.group_updated_calls) == 0
 
     def test_null_description_normalized(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that a group with NULL description is treated as empty string for comparison."""
         test_app = AppFactory.build(
             name="TestAppUpdated5",
@@ -1023,7 +1047,8 @@ class TestPluginGroupDeletedOnTypeChange:
     """Tests for the group_deleted hook fired when an AppGroup's type is changed to Group or Role."""
 
     def test_app_group_to_okta_group_fires_group_deleted(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that converting an AppGroup to a plain Group fires the group_deleted hook."""
         test_app = AppFactory.build(
             name="TestAppTypeChange1",
@@ -1057,7 +1082,8 @@ class TestPluginGroupDeletedOnTypeChange:
         assert test_plugin.group_deleted_calls[0] == group_id
 
     def test_app_group_to_role_group_fires_group_deleted(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that converting an AppGroup to a Role fires the group_deleted hook."""
         test_app = AppFactory.build(
             name="TestAppTypeChange2",
@@ -1091,7 +1117,8 @@ class TestPluginGroupDeletedOnTypeChange:
         assert test_plugin.group_deleted_calls[0] == group_id
 
     def test_no_hook_without_lifecycle_plugin(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that group_deleted hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
             name="TestAppTypeChange3",
@@ -1125,7 +1152,8 @@ class TestPluginGroupCreatedOnTypeChange:
     """Tests for the group_created hook fired when a Group or Role is converted to an AppGroup."""
 
     def test_okta_group_to_app_group_fires_group_created(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that converting an OktaGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
             name="TestAppCreate1",
@@ -1156,7 +1184,8 @@ class TestPluginGroupCreatedOnTypeChange:
         assert test_plugin.group_created_calls[0] == group_id
 
     def test_role_group_to_app_group_fires_group_created(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
         """Test that converting a RoleGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
             name="TestAppCreate2",
@@ -1760,7 +1789,8 @@ class TestPluginAuditLogging:
     """Tests for plugin configuration audit logging."""
 
     def test_audit_log_plugin_assignment_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    ) -> None:
         """Test that assigning a plugin to an app creates an audit log entry."""
         import json
         import logging
@@ -1798,7 +1828,8 @@ class TestPluginAuditLogging:
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_configuration_change_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    ) -> None:
         """Test that changing app-level plugin configuration creates an audit log entry."""
         import json
         import logging
@@ -1844,7 +1875,8 @@ class TestPluginAuditLogging:
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_removal_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    ) -> None:
         """Test that removing a plugin from an app creates an audit log entry."""
         import json
         import logging
@@ -1891,7 +1923,9 @@ class TestPluginAuditLogging:
         app: FastAPI,
         test_plugin: DummyPlugin,
         caplog: Any,
-        mocker: MockerFixture, url_for: Any) -> None:
+        mocker: MockerFixture,
+        url_for: Any,
+    ) -> None:
         """Test that changing group-level plugin configuration creates an audit log entry."""
         import json
         import logging
@@ -1948,7 +1982,8 @@ class TestPluginAuditLogging:
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_no_audit_log_when_plugin_unchanged_at_app_level(
-        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any) -> None:
+        self, client: TestClient, db: Any, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    ) -> None:
         """Test that no audit log is created when plugin configuration is unchanged."""
         import logging
 
@@ -1985,7 +2020,9 @@ class TestPluginAuditLogging:
         app: FastAPI,
         test_plugin: DummyPlugin,
         caplog: Any,
-        mocker: MockerFixture, url_for: Any) -> None:
+        mocker: MockerFixture,
+        url_for: Any,
+    ) -> None:
         """Test that no audit log is created when group plugin configuration is unchanged."""
         import logging
 

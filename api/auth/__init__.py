@@ -4,6 +4,7 @@ Cloudflare Access (JWT-based) is the primary auth path. OIDC is a secondary
 path preserved for open-source deployments. Permissions helpers and
 `Depends` factories live in `permissions.py`.
 """
+
 from api.auth.dependencies import (  # noqa: F401
     CurrentUser,
     CurrentUserId,

@@ -10,6 +10,7 @@ Run via:
     access notify
     python -m api.manage <command>
 """
+
 from __future__ import annotations
 
 import functools
@@ -29,7 +30,7 @@ def _with_db_context(func: F) -> F:
         from api.database import build_engine
         from api.extensions import _session_scope, db
 
-        if db._engine is None:  # type: ignore[attr-defined]
+        if db._engine is None:
             db.init_app(engine=build_engine())
         token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
         try:
@@ -61,10 +62,10 @@ def _load_plugin_commands() -> None:
     except ImportError:  # pragma: no cover
         return
     try:
-        eps = entry_points(group="access.commands")  # type: ignore[call-arg]
+        eps = entry_points(group="access.commands")
     except TypeError:
         # Older importlib.metadata returns a dict
-        eps = entry_points().get("access.commands", [])  # type: ignore[assignment]
+        eps = entry_points().get("access.commands", [])
     for ep in eps:
         try:
             command = ep.load()

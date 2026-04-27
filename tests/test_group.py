@@ -41,7 +41,9 @@ def test_get_group(
     app_group: AppGroup,
     role_group: RoleGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
     rep = client.get(group_url)
@@ -135,7 +137,8 @@ def test_get_group_members(client: TestClient, db: Any, okta_group: OktaGroup, u
 
 
 def test_put_group(
-    client: TestClient, db: Any, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any) -> None:
+    client: TestClient, db: Any, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any
+) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
     rep = client.put(group_url)
@@ -158,7 +161,9 @@ def test_put_group(
     # test update group
     update_group_spy = mocker.patch.object(okta, "update_group")
 
-    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1, url_for=url_for)
+    _update_group_type(
+        client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1, url_for=url_for
+    )
     _update_group_type(
         client,
         okta_group,
@@ -395,7 +400,9 @@ def test_put_group_members(
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     group_url = url_for("api-groups.group_members_by_id", group_id="randomid")
     rep = client.put(group_url)
@@ -659,7 +666,9 @@ def test_delete_group(
     tag: Tag,
     app_group: AppGroup,
     access_app: App,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
     rep = client.delete(group_url)
@@ -724,7 +733,9 @@ def test_create_group(
     db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
-    tag: Tag, url_for: Any) -> None:
+    tag: Tag,
+    url_for: Any,
+) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
     data: dict[str, Any] = {}
@@ -758,7 +769,9 @@ def test_create_app_group(
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
-    access_app: App, url_for: Any) -> None:
+    access_app: App,
+    url_for: Any,
+) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
     data: dict[str, Any] = {}
@@ -825,7 +838,8 @@ def test_get_all_group(client: TestClient, db: Any, access_app: App, url_for: An
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: Any, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any) -> None:
+    db: Any, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
+) -> None:
     user2 = OktaUserFactory.create()
 
     db.session.add(okta_group)
@@ -934,11 +948,8 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_group(
-    db: Any,
-    client: TestClient,
-    mocker: MockerFixture,
-    user: OktaUser,
-    okta_group: OktaGroup, url_for: Any) -> None:
+    db: Any, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
+) -> None:
     victim_group = OktaGroup(id="victim-group-id", name="Victim-Group", type="okta_group")
     victim_user = OktaUserFactory.create()
 
@@ -995,7 +1006,9 @@ def test_create_groups_with_and_without_description(
     db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
-    access_app: App, url_for: Any) -> None:
+    access_app: App,
+    url_for: Any,
+) -> None:
     """Test that groups work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
@@ -1050,11 +1063,8 @@ def test_create_groups_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_group_update_preserves_description(
-    app: FastAPI,
-    client: TestClient,
-    db: Any,
-    mocker: MockerFixture,
-    okta_group: OktaGroup, url_for: Any) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, okta_group: OktaGroup, url_for: Any
+) -> None:
     """Test that group updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 

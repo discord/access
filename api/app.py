@@ -5,6 +5,7 @@ middleware stack, exception handlers, routers, and the React SPA static
 files. The OIDC and Cloudflare Access auth subsystems are configured here
 when the relevant environment variables are present.
 """
+
 from __future__ import annotations
 
 import logging
@@ -84,7 +85,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # Tests run in-process with an in-memory SQLite database created fresh
         # by the `db` fixture. Setting ENV here keeps the auth dependency in
         # the dev/test bypass branch.
-        settings.ENV = "test"  # type: ignore[assignment]
+        settings.ENV = "test"
 
     _configure_sentry()
     _configure_okta()

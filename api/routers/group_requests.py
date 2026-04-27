@@ -1,4 +1,5 @@
 """Group requests router."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -38,12 +39,7 @@ def list_group_requests(request: Request, db: DbSession, current_user_id: Curren
 
 @router.get("/{group_request_id}", name="group_request_by_id")
 def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    gr = (
-        db.query(GroupRequest)
-        .options(*_load_options())
-        .filter(GroupRequest.id == group_request_id)
-        .first()
-    )
+    gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
     return safe_dump(_adapter, gr)
@@ -75,12 +71,7 @@ def post_group_request(
         requested_ownership_ending_at=parse_datetime_value(body.get("requested_ownership_ending_at")),
         request_reason=body.get("request_reason") or body.get("reason", "") or "",
     ).execute()
-    refreshed = (
-        db.query(GroupRequest)
-        .options(*_load_options())
-        .filter(GroupRequest.id == gr.id)
-        .first()
-    )
+    refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == gr.id).first()
     return safe_dump(_adapter, refreshed)
 
 
@@ -96,12 +87,7 @@ def put_group_request(
     from api.schemas.rfc822 import parse_datetime_value
 
     body = body or {}
-    gr = (
-        db.query(GroupRequest)
-        .options(*_load_options())
-        .filter(GroupRequest.id == group_request_id)
-        .first()
-    )
+    gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
     if "approved" not in body:
@@ -152,10 +138,5 @@ def put_group_request(
             rejection_reason=body.get("resolution_reason", "") or body.get("reason", "") or "",
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = (
-        db.query(GroupRequest)
-        .options(*_load_options())
-        .filter(GroupRequest.id == group_request_id)
-        .first()
-    )
+    refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     return safe_dump(_adapter, refreshed)

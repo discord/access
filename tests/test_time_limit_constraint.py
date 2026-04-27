@@ -33,7 +33,9 @@ def test_time_limit_modify_group_users(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -296,7 +298,9 @@ def test_time_limit_modify_role_groups(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -433,7 +437,9 @@ def test_time_limit_modify_group_type(
     access_app: App,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -569,7 +575,9 @@ def test_time_limit_modify_group_tags(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 7 days initially
     tags = TagFactory.create_batch(
         3,
@@ -795,7 +803,9 @@ def test_time_limit_add_group_tags(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,
@@ -979,7 +989,9 @@ def test_time_limit_add_app_tags(
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.create_batch(
         3,

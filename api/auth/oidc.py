@@ -11,6 +11,7 @@ Endpoints:
 The auth dependency in `api.auth.dependencies.get_current_user_id` consults
 `request.session["userinfo"]["email"]` when OIDC is configured.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 oauth = OAuth()
 
 
-def _parse_secrets(value: Any) -> dict:
+def _parse_secrets(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     if isinstance(value, str):
@@ -37,7 +38,7 @@ def _parse_secrets(value: Any) -> dict:
     raise ValueError("OIDC_CLIENT_SECRETS must be a JSON object or path to one")
 
 
-def _client_kwargs() -> dict:
+def _client_kwargs() -> dict[str, Any]:
     secrets = _parse_secrets(settings.OIDC_CLIENT_SECRETS)
     web = secrets.get("web", secrets)
     kwargs = {
@@ -56,7 +57,7 @@ def _client_kwargs() -> dict:
 
 def register_oidc(app: FastAPI) -> None:
     """Register the OIDC OAuth client and mount the auth endpoints."""
-    if "oidc" not in oauth._clients:  # type: ignore[attr-defined]
+    if "oidc" not in oauth._clients:
         oauth.register(name="oidc", **_client_kwargs())
     app.include_router(_router)
 
@@ -69,7 +70,7 @@ async def login(request: Request, next: Optional[str] = None) -> RedirectRespons
     redirect_uri = settings.OIDC_OVERWRITE_REDIRECT_URI or str(request.url_for("oidc_authorize"))
     if next:
         request.session["oidc_next"] = next
-    return await oauth.oidc.authorize_redirect(request, redirect_uri)  # type: ignore[no-any-return]
+    return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
 
 @_router.get("/authorize", name="oidc_authorize")

@@ -1,4 +1,5 @@
 """Generic pagination request and response schemas."""
+
 from __future__ import annotations
 
 from enum import Enum

@@ -10,6 +10,7 @@
 
 Tests typically override these via `app.dependency_overrides`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -96,12 +97,7 @@ def get_current_user(
     db: DbSession,
     current_user_id: Annotated[str, Depends(get_current_user_id)],
 ) -> OktaUser:
-    user = (
-        db.query(OktaUser)
-        .filter(OktaUser.id == current_user_id)
-        .filter(OktaUser.deleted_at.is_(None))
-        .first()
-    )
+    user = db.query(OktaUser).filter(OktaUser.id == current_user_id).filter(OktaUser.deleted_at.is_(None)).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user

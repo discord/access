@@ -1,4 +1,5 @@
 """Role requests router."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -48,36 +49,19 @@ def post_role_request(
     group_id = body.get("group_id")
     if not role_id or not group_id:
         raise HTTPException(400, "role_id and group_id are required")
-    requester = (
-        db.query(OktaUser)
-        .filter(OktaUser.deleted_at.is_(None))
-        .filter(OktaUser.id == current_user_id)
-        .first()
-    )
-    role = (
-        db.query(RoleGroup)
-        .filter(RoleGroup.deleted_at.is_(None))
-        .filter(RoleGroup.id == role_id)
-        .first()
-    )
+    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
+    role = db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == role_id).first()
     if role is None:
         raise HTTPException(404, "Not Found")
     if requester is None or not _perms.can_manage_group(db, current_user_id, role):
         raise HTTPException(403, "Current user is not allowed to perform this action")
-    group = (
-        db.query(OktaGroup)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(OktaGroup.id == group_id)
-        .first()
-    )
+    group = db.query(OktaGroup).filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == group_id).first()
     if group is None:
         raise HTTPException(404, "Not Found")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
     if type(group) is RoleGroup:
-        raise HTTPException(
-            400, "Role requests may only be made for groups and app groups (not roles)."
-        )
+        raise HTTPException(400, "Role requests may only be made for groups and app groups (not roles).")
 
     # Close any existing pending duplicate requests
     existing = (

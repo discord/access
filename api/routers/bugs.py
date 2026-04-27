@@ -1,10 +1,10 @@
 """Sentry bug-report proxy."""
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-import requests
 from fastapi import APIRouter, Body, HTTPException
 
 from api.auth.dependencies import CurrentUserId

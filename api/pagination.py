@@ -4,6 +4,7 @@ Builds the legacy `{total, pages, next, prev, results}` envelope. URLs use
 fully qualified URLs (FastAPI idiom) — clients should accept either
 relative or absolute URLs.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Optional
@@ -51,7 +52,7 @@ def _build_url(request: Request, page: int, per_page: int) -> str:
 
 def paginate(
     request: Request,
-    query: Query,
+    query: Query[Any],
     schema: Any,
     *,
     extract: Optional[Callable[[], tuple[int, int]]] = None,

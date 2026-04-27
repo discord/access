@@ -6,6 +6,7 @@ so they can be called from anywhere; the `require_*` dependencies are FastAPI
 parameter dependencies that raise HTTPException(403) on failure (and 404 if
 the target object isn't found).
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Optional
@@ -89,9 +90,7 @@ def is_access_admin(db: Session, current_user_id: str) -> bool:
         return False
     return (
         db.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.group_id.in_([ag.id for ag in access_app.active_owner_app_groups])
-        )
+        .filter(OktaUserGroupMember.group_id.in_([ag.id for ag in access_app.active_owner_app_groups]))
         .filter(OktaUserGroupMember.user_id == current_user_id)
         .filter(OktaUserGroupMember.is_owner.is_(False))
         .filter(
@@ -162,12 +161,7 @@ def require_app_owner_or_access_admin_for_app(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> App:
-    app_obj = (
-        db.query(App)
-        .filter(App.deleted_at.is_(None))
-        .filter(or_(App.id == app_id, App.name == app_id))
-        .first()
-    )
+    app_obj = db.query(App).filter(App.deleted_at.is_(None)).filter(or_(App.id == app_id, App.name == app_id)).first()
     if app_obj is None:
         raise HTTPException(status_code=404, detail="Not Found")
     if is_app_owner_group_owner(db, current_user_id, app=app_obj):

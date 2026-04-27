@@ -7,6 +7,7 @@ serializes ORM objects to simple dicts using a small set of well-known
 fields per type. The resulting JSON is structurally compatible with the
 legacy format.
 """
+
 from __future__ import annotations
 
 import json
@@ -193,11 +194,7 @@ def _serialize_group_request(r: Any) -> Optional[dict]:
 def _serialize_obj_common(obj: Any) -> Any:
     """Last-resort: serialize via __dict__ filtering out SQLAlchemy internals."""
     if hasattr(obj, "__dict__"):
-        return {
-            k: _serialize_value(k, v)
-            for k, v in obj.__dict__.items()
-            if not k.startswith("_")
-        }
+        return {k: _serialize_value(k, v) for k, v in obj.__dict__.items() if not k.startswith("_")}
     return str(obj)
 
 

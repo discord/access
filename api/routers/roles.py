@@ -2,15 +2,15 @@
 to that subtype. Most logic is delegated to the groups router via shared
 helpers.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func
-from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth import permissions as _perms
@@ -31,11 +31,7 @@ _role_summary_adapter = TypeAdapter(GroupSummary)
 
 @router.get("", name="roles")
 def list_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    query = (
-        db.query(RoleGroup)
-        .filter(RoleGroup.deleted_at.is_(None))
-        .order_by(func.lower(RoleGroup.name))
-    )
+    query = db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
     q = request.query_params.get("q", "")
     if q:
         like = f"%{q}%"
@@ -45,11 +41,7 @@ def list_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) 
 
 @router.get("/{role_id}", name="role_by_id")
 def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    role = (
-        db.query(RoleGroup)
-        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
-        .first()
-    )
+    role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
     if role is None:
         raise HTTPException(404, "Not Found")
     return safe_dump(_role_adapter, role)
@@ -66,11 +58,7 @@ def get_role_audit(role_id: str, request: Request) -> RedirectResponse:
 
 @router.get("/{role_id}/members", name="role_members_by_id")
 def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    role = (
-        db.query(RoleGroup)
-        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
-        .first()
-    )
+    role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
     if role is None:
         raise HTTPException(404, "Not Found")
     mappings = (
@@ -94,7 +82,7 @@ def put_role_members(
 ) -> dict[str, Any]:
     from sqlalchemy.orm import with_polymorphic
 
-    from api.models import AppGroup, OktaGroup, RoleGroupMap
+    from api.models import AppGroup, RoleGroupMap
     from api.operations.constraints import CheckForReason, CheckForSelfAdd
 
     if body is None:
@@ -157,9 +145,7 @@ def put_role_members(
                     raise HTTPException(403, "Current user is not allowed to perform this action")
 
     # Reject changes to unmanaged groups.
-    affected_ids = (
-        body.groups_to_add + body.owner_groups_to_add + body.groups_to_remove + body.owner_groups_to_remove
-    )
+    affected_ids = body.groups_to_add + body.owner_groups_to_add + body.groups_to_remove + body.owner_groups_to_remove
     if affected_ids:
         unmanaged_count = (
             db.query(_db.func.count(OktaGroup.id))

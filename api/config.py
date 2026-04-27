@@ -5,11 +5,12 @@ Migrated from a Flask `app.config.from_object("api.config")` model to a
 is the source of truth at runtime; tests mutate fields on it directly to
 override behavior (e.g. `settings.REQUIRE_DESCRIPTIONS = True`).
 """
+
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union, cast
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,7 +24,7 @@ def _read_secret_key() -> Optional[str]:
         return f.read().strip()
 
 
-def _parse_oidc_client_secrets(value: Optional[str]) -> Union[None, str, dict]:
+def _parse_oidc_client_secrets(value: Optional[str]) -> Union[None, str, dict[str, Any]]:
     if value is None:
         return None
     if value.startswith("{") and value.endswith("}"):
@@ -40,7 +41,10 @@ class Settings(BaseSettings):
 
     # Environment
     ENV: Literal["development", "test", "production", "staging"] = Field(
-        default_factory=lambda: os.getenv("FLASK_ENV") or os.getenv("ENV") or "development"
+        default_factory=lambda: cast(
+            'Literal["development", "test", "production", "staging"]',
+            os.getenv("FLASK_ENV") or os.getenv("ENV") or "development",
+        )
     )
 
     @property
@@ -63,9 +67,7 @@ class Settings(BaseSettings):
     OKTA_IGA_ACTOR_ID: Optional[str] = None
 
     # Database
-    SQLALCHEMY_DATABASE_URI: Optional[str] = Field(
-        default_factory=lambda: os.getenv("DATABASE_URI")
-    )
+    SQLALCHEMY_DATABASE_URI: Optional[str] = Field(default_factory=lambda: os.getenv("DATABASE_URI"))
     SQLALCHEMY_TRACK_MODIFICATIONS: bool = False
     SQLALCHEMY_ECHO: bool = False
 
@@ -86,7 +88,7 @@ class Settings(BaseSettings):
     CLOUDFLARE_TEAM_DOMAIN: Optional[str] = None
 
     # OIDC
-    OIDC_CLIENT_SECRETS: Union[None, str, dict] = None
+    OIDC_CLIENT_SECRETS: Union[None, str, dict[str, Any]] = None
     OIDC_INTROSPECTION_AUTH_METHOD: str = "client_secret_post"
     OIDC_CLOCK_SKEW: int = 60
     OIDC_OVERWRITE_REDIRECT_URI: Optional[str] = None
@@ -123,7 +125,7 @@ def _build_settings() -> Settings:
     if s.OIDC_CLIENT_SECRETS is not None and isinstance(s.OIDC_CLIENT_SECRETS, str):
         parsed = _parse_oidc_client_secrets(s.OIDC_CLIENT_SECRETS)
         # Reassign through __setattr__; Pydantic v2 settings allow mutation
-        s.OIDC_CLIENT_SECRETS = parsed  # type: ignore[assignment]
+        s.OIDC_CLIENT_SECRETS = parsed
     return s
 
 

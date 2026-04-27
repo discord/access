@@ -16,13 +16,13 @@ The session is bound to a `ContextVar` so each FastAPI request (or CLI
 invocation) gets its own Session. The dependency in `api.database.get_db`
 sets and clears this var per request.
 """
+
 from __future__ import annotations
 
 import contextvars
 import math
-from typing import Any, Callable, Generic, Iterable, Optional, TypeVar
+from typing import Any, Callable, Generic, Optional, TypeVar
 
-import sqlalchemy as sa
 from fastapi import HTTPException
 from google.cloud.sql.connector import Connector, IPTypes
 from sqlalchemy import (
@@ -100,7 +100,7 @@ class Base(DeclarativeBase):
             mro = [c for c in cls.__mro__ if c is not cls and c is not Base and c is not object]
             mapped_parents = [c for c in mro if hasattr(c, "__mapper__")]
             if not mapped_parents:
-                cls.__tablename__ = _camel_to_snake(cls.__name__)  # type: ignore[assignment]
+                cls.__tablename__ = _camel_to_snake(cls.__name__)
         super().__init_subclass__(**kwargs)
 
 
@@ -195,9 +195,7 @@ class _DB:
             expire_on_commit=True,
             query_cls=Query,
         )
-        self._scoped = scoped_session(
-            self._sessionmaker, scopefunc=lambda: _session_scope.get()
-        )
+        self._scoped = scoped_session(self._sessionmaker, scopefunc=lambda: _session_scope.get())
 
     @property
     def engine(self) -> Engine:
@@ -227,7 +225,7 @@ class _DB:
 
 # Attach the query property so every model has `Model.query`. Done after
 # `_DB` is defined because the property delegates to `db.session`.
-Base.query = _QueryProperty()  # type: ignore[attr-defined]
+Base.query = _QueryProperty()
 
 
 db = _DB()

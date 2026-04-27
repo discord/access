@@ -32,7 +32,9 @@ def test_disallow_self_add_modify_group_users(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any,) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     current_user = OktaUserFactory.create()
     app.state.current_user_email = current_user.email
 
@@ -405,7 +407,9 @@ def test_disallow_self_add_modify_role_groups(
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any,) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     current_user = OktaUserFactory.create()
     app.state.current_user_email = current_user.email
 
@@ -875,7 +879,9 @@ def test_disallow_self_add_admin_modify_group_users(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any,) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     tags = TagFactory.create_batch(
@@ -1355,7 +1361,9 @@ def test_disallow_self_add_admin_modify_role_groups(
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any,) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     role_groups = RoleGroupFactory.create_batch(2)

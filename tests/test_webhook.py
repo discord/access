@@ -1,15 +1,16 @@
 import json
+from typing import Any
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from api.config import settings
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
+
 OKTA_WEBHOOK_VERIFICATION_HEADER_NAME = "X-Okta-Verification-Challenge"
-from fastapi import FastAPI
-from typing import Any
-from api.config import settings
 
 
 def test_get_okta_webhook(app: FastAPI, client: TestClient, db: Any, url_for: Any) -> None:
@@ -135,7 +136,9 @@ def test_post_okta_webhook(
     mocker: MockerFixture,
     user: OktaUser,
     okta_group: OktaGroup,
-    role_group: RoleGroup, url_for: Any) -> None:
+    role_group: RoleGroup,
+    url_for: Any,
+) -> None:
     webhook_url = url_for("api-webhooks.okta_webhook")
 
     rep = client.post(webhook_url)

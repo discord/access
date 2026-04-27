@@ -1,14 +1,15 @@
 """Groups router. Endpoints:
 
-  GET    /api/groups
-  POST   /api/groups
-  GET    /api/groups/{group_id}
-  PUT    /api/groups/{group_id}
-  DELETE /api/groups/{group_id}
-  GET    /api/groups/{group_id}/members
-  PUT    /api/groups/{group_id}/members
-  GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
+GET    /api/groups
+POST   /api/groups
+GET    /api/groups/{group_id}
+PUT    /api/groups/{group_id}
+DELETE /api/groups/{group_id}
+GET    /api/groups/{group_id}/members
+PUT    /api/groups/{group_id}/members
+GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -187,9 +188,7 @@ def post_group(
     if existing is not None:
         raise HTTPException(400, "Group already exists with the same name")
 
-    created = CreateGroup(
-        group=group, tags=body.get("tags_to_add", []), current_user_id=current_user_id
-    ).execute()
+    created = CreateGroup(group=group, tags=body.get("tags_to_add", []), current_user_id=current_user_id).execute()
     refreshed = _load_group_with_options(db, created.id)
     return safe_dump(_group_adapter, refreshed)
 
@@ -271,9 +270,7 @@ def put_group(
     body_type = body.get("type")
     if body_type and body_type != group.type:
         if not is_access_admin(db, current_user_id):
-            raise HTTPException(
-                403, "Current user is not an Access admin and not allowed to change group types"
-            )
+            raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}.get(body_type)
         if type_klass is not None:
             new_group = type_klass()
@@ -313,11 +310,7 @@ def put_group(
         import logging as _logging
 
         _ctx = get_request_context()
-        email = (
-            getattr(db.get(OktaUser, current_user_id), "email", None)
-            if current_user_id is not None
-            else None
-        )
+        email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
         _logging.getLogger("api.audit").info(
             AuditLogSchema().dumps(
                 {
@@ -336,9 +329,7 @@ def put_group(
 
 
 @router.delete("/{group_id}", name="group_by_id_delete")
-def delete_group(
-    group_id: str, db: DbSession, current_user_id: CurrentUserId
-) -> dict[str, Any]:
+def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
@@ -347,9 +338,7 @@ def delete_group(
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
     if type(group) is AppGroup and group.is_owner:
-        raise HTTPException(
-            400, "Application owner groups cannot be deleted without first deleting the application"
-        )
+        raise HTTPException(400, "Application owner groups cannot be deleted without first deleting the application")
     DeleteGroup(group=group, current_user_id=current_user_id).execute()
     return DeleteMessage(deleted=True).model_dump()
 
@@ -364,9 +353,7 @@ def get_group_audit(group_id: str, request: Request) -> RedirectResponse:
 
 
 @router.get("/{group_id}/members", name="group_members_by_id")
-def get_group_members(
-    group_id: str, db: DbSession, current_user_id: CurrentUserId
-) -> dict[str, Any]:
+def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     group = (
         db.query(OktaGroup)
         .filter(OktaGroup.deleted_at.is_(None))

@@ -9,6 +9,7 @@ created_actor, ended_actor, role_group_mapping). The response shape is the
 same one the React frontend expects to render the Expiring access /
 Expiring roles pages and the per-user / per-group audit views.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -33,7 +34,7 @@ from api.models import (
 )
 from api.pagination import paginate
 from api.schemas._serialize import _SafeAttrProxy
-from api.schemas.rfc822 import _rfc822  # type: ignore[attr-defined]
+from api.schemas.rfc822 import _rfc822
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 

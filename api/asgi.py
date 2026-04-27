@@ -5,6 +5,7 @@ Run via:
 or under gunicorn with the uvicorn worker:
     gunicorn -k uvicorn.workers.UvicornWorker api.asgi:app
 """
+
 from api.app import create_app
 
 app = create_app()

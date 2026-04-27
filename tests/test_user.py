@@ -69,7 +69,9 @@ def test_get_user(
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    okta_group: OktaGroup, url_for: Any) -> None:
+    okta_group: OktaGroup,
+    url_for: Any,
+) -> None:
     # test 404
     user_url = url_for("api-users.user_by_id", user_id="randomid")
     rep = client.get(user_url)

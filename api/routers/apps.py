@@ -1,4 +1,5 @@
 """Apps router."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -36,15 +37,11 @@ from api.schemas._serialize import safe_dump
 _APP_GROUP_LOAD = (
     selectinload(AppGroup.active_user_memberships).options(
         joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-            RoleGroupMap.active_role_group
-        ),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
     ),
     selectinload(AppGroup.active_user_ownerships).options(
         joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-            RoleGroupMap.active_role_group
-        ),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
     ),
     selectinload(AppGroup.active_group_tags).options(
         joinedload(OktaGroupTagMap.active_tag),
@@ -76,6 +73,7 @@ def _validate_description(value: Any, field_provided: bool) -> str:
         raise HTTPException(400, "Description must be 1024 characters or less")
     return value
 
+
 router = APIRouter(prefix="/api/apps", tags=["apps"])
 _adapter = TypeAdapter(AppDetail)
 _summary_adapter = TypeAdapter(AppSummary)
@@ -93,12 +91,7 @@ def list_apps(request: Request, db: DbSession, current_user_id: CurrentUserId) -
 
 @router.get("/{app_id}", name="app_by_id")
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    app = (
-        db.query(App)
-        .options(*APP_LOAD_OPTIONS)
-        .filter(_db.or_(App.id == app_id, App.name == app_id))
-        .first()
-    )
+    app = db.query(App).options(*APP_LOAD_OPTIONS).filter(_db.or_(App.id == app_id, App.name == app_id)).first()
     if app is None:
         raise HTTPException(404, "Not Found")
     return safe_dump(_adapter, app)
@@ -121,10 +114,7 @@ def post_app(
 
     # Reject duplicates by name.
     existing = (
-        db.query(App)
-        .filter(func.lower(App.name) == func.lower(body["name"]))
-        .filter(App.deleted_at.is_(None))
-        .first()
+        db.query(App).filter(func.lower(App.name) == func.lower(body["name"])).filter(App.deleted_at.is_(None)).first()
     )
     if existing is not None:
         raise HTTPException(400, "App already exists with the same name")
@@ -190,12 +180,7 @@ def post_app(
         tags=body.get("tags_to_add", []),
         current_user_id=current_user_id,
     ).execute()
-    refreshed = (
-        db.query(App)
-        .options(*APP_LOAD_OPTIONS)
-        .filter(App.id == created.id)
-        .first()
-    )
+    refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == created.id).first()
     return safe_dump(_adapter, refreshed)
 
 
@@ -242,18 +227,13 @@ def put_app(
         new_plugin != app_obj.app_group_lifecycle_plugin
         or (new_plugin_data is not None and new_plugin_data != (app_obj.plugin_data or {}))
     ) and not is_access_admin(db, current_user_id):
-        raise HTTPException(
-            403, "Only Access owners are allowed to configure plugins at the app level"
-        )
+        raise HTTPException(403, "Only Access owners are allowed to configure plugins at the app level")
 
     # Reject duplicate name on rename
     new_name: str | None = body.get("name")
     if new_name and new_name.lower() != app_obj.name.lower():
         existing = (
-            db.query(App)
-            .filter(func.lower(App.name) == func.lower(new_name))
-            .filter(App.deleted_at.is_(None))
-            .first()
+            db.query(App).filter(func.lower(App.name) == func.lower(new_name)).filter(App.deleted_at.is_(None)).first()
         )
         if existing is not None:
             raise HTTPException(400, "App already exists with the same name")
@@ -261,9 +241,7 @@ def put_app(
     # tags_to_remove gated on admin
     if "tags_to_remove" in body and len(body["tags_to_remove"]) > 0:
         if not is_access_admin(db, current_user_id):
-            raise HTTPException(
-                403, "Current user is not an Access Admin and not allowed to remove tags from this app"
-            )
+            raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
 
     # Built-in Access app: only tags can be modified
     if app_obj.name == App.ACCESS_APP_RESERVED_NAME:
@@ -274,17 +252,11 @@ def put_app(
                 tags_to_remove=body.get("tags_to_remove", []),
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = (
-                db.query(App)
-                .options(*APP_LOAD_OPTIONS)
-                .filter(App.id == app_obj.id)
-                .first()
-            )
+            refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
             return safe_dump(_adapter, refreshed)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
     old_app_name = app_obj.name
-    old_plugin_data_for_audit = copy.deepcopy(app_obj.plugin_data) if app_obj.plugin_data else {}
     old_plugin_data = app_obj.plugin_data
 
     if "name" in body:
@@ -303,16 +275,12 @@ def put_app(
 
     # Rename associated app groups when the app name changed
     if app_obj.name != old_app_name:
-        old_prefix = (
-            f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-        )
-        new_prefix = (
-            f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-        )
+        old_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        new_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         app_groups = db.query(_AppGroup).filter(_AppGroup.app_id == app_obj.id).all()
         for ag in app_groups:
             if ag.name.startswith(old_prefix):
-                suffix = ag.name[len(old_prefix):]
+                suffix = ag.name[len(old_prefix) :]
                 new_group_name = f"{new_prefix}{suffix}"
             else:
                 new_group_name = f"{new_prefix}{ag.name}"
@@ -328,29 +296,19 @@ def put_app(
         current_user_id=current_user_id,
     ).execute()
 
-    refreshed = (
-        db.query(App)
-        .options(*APP_LOAD_OPTIONS)
-        .filter(App.id == app_obj.id)
-        .first()
-    )
+    refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
 
     # Audit logging — plugin assignment / configuration changes
-    if (
-        old_app_group_lifecycle_plugin != getattr(refreshed, "app_group_lifecycle_plugin", None)
-        or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {})
-    ):
+    if old_app_group_lifecycle_plugin != getattr(
+        refreshed, "app_group_lifecycle_plugin", None
+    ) or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {}):
         from api.context import get_request_context
         from api.models import OktaUser
         from api.schemas import AuditLogSchema, EventType
         import logging as _logging
 
         _ctx = get_request_context()
-        email = (
-            getattr(db.get(OktaUser, current_user_id), "email", None)
-            if current_user_id is not None
-            else None
-        )
+        email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
         _logging.getLogger("api.audit").info(
             AuditLogSchema().dumps(
                 {

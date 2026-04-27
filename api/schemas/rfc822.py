@@ -15,6 +15,7 @@ Routers that read raw `dict[str, Any]` bodies should call
 `parse_datetime_value(body.get("ending_at"))` to coerce the wire string into
 a `datetime` before passing it to operations or SQLAlchemy columns.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone

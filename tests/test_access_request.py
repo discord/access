@@ -42,7 +42,9 @@ def test_get_access_request(
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
     rep = client.get(access_request_url)
@@ -155,7 +157,9 @@ def test_put_access_request(
     mocker: MockerFixture,
     access_request: AccessRequest,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
     rep = client.put(access_request_url)
@@ -235,7 +239,8 @@ def test_put_access_request(
 
 
 def test_put_access_request_by_non_owner(
-    client: TestClient, app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
+    client: TestClient, app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
     access_owner = settings.CURRENT_OKTA_USER_EMAIL
 
     db.session.add(user)
@@ -386,7 +391,9 @@ def test_create_access_request_with_rfc822_ending_at(
     assert access_request.request_ending_at.day == 11
 
 
-def test_get_all_access_request(client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
+def test_get_all_access_request(
+    client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
     access_requests_url = url_for("api-access-requests.access_requests")
     db.session.add(user)
     db.session.add(okta_group)

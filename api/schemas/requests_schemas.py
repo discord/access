@@ -1,5 +1,5 @@
-"""Pydantic models for access/role/group requests and request/response bodies.
-"""
+"""Pydantic models for access/role/group requests and request/response bodies."""
+
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -7,10 +7,8 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.schemas.core_schemas import (
-    AppDetail,
     GroupRef,
     OktaUserSummary,
-    OktaUserGroupMemberDetail,
 )
 from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
 
@@ -166,6 +164,7 @@ class GroupMember(BaseModel):
     OktaUserGroupMember row ids (integers). The other lists are user ids
     (strings).
     """
+
     model_config = ConfigDict(extra="ignore")
     members: list[str] = Field(default_factory=list)
     owners: list[str] = Field(default_factory=list)
@@ -185,6 +184,7 @@ class RoleMember(BaseModel):
     `groups_should_expire` and `owner_groups_should_expire` are RoleGroupMap
     row ids (integers). The other lists are group ids (strings).
     """
+
     model_config = ConfigDict(extra="ignore")
     groups: list[Any] = Field(default_factory=list)
     owner_groups: list[Any] = Field(default_factory=list)

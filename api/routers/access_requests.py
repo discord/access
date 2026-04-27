@@ -1,13 +1,13 @@
 """Access requests router."""
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import TypeAdapter
-from sqlalchemy import String, cast, func
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy import String, cast
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -43,10 +43,12 @@ def list_access_requests(request: Request, db: DbSession, current_user_id: Curre
     query = db.query(AccessRequest).options(*_load_options()).order_by(AccessRequest.created_at.desc())
     if q:
         like = f"%{q}%"
-        query = query.filter(_db.or_(
-            cast(AccessRequest.status, String).ilike(like),
-            AccessRequest.request_reason.ilike(like),
-        ))
+        query = query.filter(
+            _db.or_(
+                cast(AccessRequest.status, String).ilike(like),
+                AccessRequest.request_reason.ilike(like),
+            )
+        )
     return paginate(request, query, _adapter)
 
 

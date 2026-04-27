@@ -168,9 +168,7 @@ def seed_db(db: Any, groups: list[OktaGroup]) -> list[OktaGroup]:
         return session.query(OktaGroup).all()
 
 
-def run_sync(
-    db: Any, mocker: MockerFixture, okta_groups: list[OktaGroup], act_as_authority: bool
-) -> list[OktaGroup]:
+def run_sync(db: Any, mocker: MockerFixture, okta_groups: list[OktaGroup], act_as_authority: bool) -> list[OktaGroup]:
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value={})
         mocker.patch.object(okta, "list_groups", return_value=[Group(g) for g in okta_groups])

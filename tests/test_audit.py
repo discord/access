@@ -1,6 +1,5 @@
 from fastapi.testclient import TestClient
 
-from api.config import settings
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from typing import Any
@@ -68,9 +67,7 @@ def test_group_audit_returns_nested_role_and_group(
     db.session.add(role_group)
     db.session.add(okta_group)
     db.session.commit()
-    ModifyRoleGroups(
-        role_group=role_group, groups_to_add=[okta_group.id], sync_to_okta=False
-    ).execute()
+    ModifyRoleGroups(role_group=role_group, groups_to_add=[okta_group.id], sync_to_okta=False).execute()
 
     rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role_group.id})
     assert rep.status_code == 200
@@ -90,7 +87,9 @@ def test_get_user_audit(
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
-    okta_group: OktaGroup, url_for: Any) -> None:
+    okta_group: OktaGroup,
+    url_for: Any,
+) -> None:
     # test 404
     user_url = url_for("api-audit.users_and_groups")
     rep = client.get(user_url, params={"user_id": "randomid"})
@@ -154,7 +153,9 @@ def test_get_group_audit(
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
-    tag: Tag, url_for: Any) -> None:
+    tag: Tag,
+    url_for: Any,
+) -> None:
     # test 404
     group_url = url_for("api-audit.users_and_groups")
     rep = client.get(group_url, params={"group_id": "randomid"})
@@ -292,7 +293,9 @@ def test_get_role_audit(
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     role_url = url_for("api-audit.groups_and_roles")
     rep = client.get(role_url, params={"role_id": "randomid"})

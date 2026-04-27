@@ -15,6 +15,7 @@ To keep field counts manageable, deeply nested membership/role/tag
 relationships are emitted via dedicated child schemas, not full polymorphic
 re-entries.
 """
+
 from __future__ import annotations
 
 import re
@@ -94,6 +95,7 @@ class AppTagMapDetail(BaseModel):
 
 class AppIdRef(BaseModel):
     """Inline reference to an App by id (used in compact group views)."""
+
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: Optional[str] = None
@@ -112,6 +114,7 @@ class AppSummary(BaseModel):
 
 class AppDetail(AppSummary):
     """Full App detail."""
+
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
     active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
@@ -177,6 +180,7 @@ class OktaUserDetail(OktaUserSummary):
 
 class _GroupRefForMembership(BaseModel):
     """Compact group reference embedded in user/group membership rows."""
+
     model_config = ConfigDict(from_attributes=True)
     id: str
     type: str

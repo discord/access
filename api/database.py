@@ -3,22 +3,23 @@
 The shim in `api.extensions` holds the `db` namespace. This module wires the
 engine into it and provides the request-scoped session dependency.
 """
+
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Annotated, Optional
+from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
 from api.config import settings
-from api.extensions import _session_scope, db, get_cloudsql_conn
+from api.extensions import db, get_cloudsql_conn
 
 
 def build_engine() -> Engine:
     """Construct the SQLAlchemy engine from settings."""
-    kwargs: dict = {}
+    kwargs: dict[str, Any] = {}
     if settings.SQLALCHEMY_ECHO:
         kwargs["echo"] = True
     if settings.CLOUDSQL_CONNECTION_NAME:

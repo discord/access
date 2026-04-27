@@ -11,7 +11,8 @@ from tests.factories import TagFactory
 
 
 def test_get_tag(
-    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.get(tag_url)
@@ -42,7 +43,8 @@ def test_get_tag(
 
 
 def test_put_tag(
-    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.put(tag_url)
@@ -111,7 +113,8 @@ def test_put_tag(
 
 
 def test_delete_tag(
-    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any) -> None:
+    client: TestClient, db: Any, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test 404
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
     rep = client.delete(tag_url)
@@ -198,7 +201,8 @@ def test_get_all_tag(client: TestClient, db: Any, url_for: Any) -> None:
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_tag_with_and_without_description(
-    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, url_for: Any) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, url_for: Any
+) -> None:
     """Test that tags work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
@@ -249,7 +253,8 @@ def test_create_tag_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_tag_update_preserves_description(
-    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, tag: Tag, url_for: Any) -> None:
+    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, tag: Tag, url_for: Any
+) -> None:
     """Test that tag updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 

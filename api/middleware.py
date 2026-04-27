@@ -7,6 +7,7 @@
 - SecurityHeadersMiddleware: emits the same set of headers Flask-Talisman did.
 - CacheControlMiddleware: emits no-store cache headers on `/api/*` responses.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -15,7 +16,6 @@ from typing import Awaitable, Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp
 
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
@@ -74,9 +74,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     response leaves this middleware iff we set the scope here.
     """
 
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
         request.state.request_id = request_id
 
@@ -102,9 +100,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         ctx = RequestContext(
             request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
             user_agent=request.headers.get("user-agent"),
@@ -118,9 +114,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
         csp = DEBUG_CSP if settings.DEBUG else CSP
         response.headers.setdefault("Content-Security-Policy", csp)
@@ -131,9 +125,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class CacheControlMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
         path = request.url.path
         if path.startswith("/api") and not path.startswith("/api/swagger-ui") and not path.startswith("/api/docs"):

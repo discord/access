@@ -11,6 +11,7 @@ Replaces the previous Flask + pytest-flask harness. Key behavior changes:
 - The `url_for` fixture mirrors `flask.url_for`'s `"<bp>.<endpoint>"` pattern
   by mapping into FastAPI's named routes.
 """
+
 from __future__ import annotations
 
 import os
@@ -56,7 +57,7 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
     load_dotenv(".testenv")
     fastapi_app = create_app(testing=True)
     require_descriptions = getattr(request, "param", False)
-    settings.REQUIRE_DESCRIPTIONS = require_descriptions  # type: ignore[assignment]
+    settings.REQUIRE_DESCRIPTIONS = require_descriptions
     fastapi_app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
     return fastapi_app
 
@@ -158,6 +159,7 @@ def client(app: FastAPI, db: Any) -> Generator[TestClient, None, None]:
 def mock_user(app: FastAPI) -> Generator[Callable[[Any], None], None, None]:
     """Returns a callable that overrides `get_current_user_id` to return the
     given user (or user-id string)."""
+
     def _set(user_or_id: Any) -> None:
         if hasattr(user_or_id, "id"):
             user_id = user_or_id.id
@@ -175,6 +177,7 @@ def mock_user(app: FastAPI) -> Generator[Callable[[Any], None], None, None]:
 @pytest.fixture
 def url_for(app: FastAPI) -> Callable[..., str]:
     """Drop-in replacement for `flask.url_for(<bp>.<endpoint>, **kwargs)`."""
+
     def _url_for(name: str, **kwargs: Any) -> str:
         endpoint = name.split(".", 1)[1] if "." in name else name
         path_params = {k: str(v) for k, v in kwargs.items() if v is not None}
@@ -189,4 +192,5 @@ def url_for(app: FastAPI) -> Callable[..., str]:
                 return str(path)
             except Exception:
                 return f"/{endpoint}"
+
     return _url_for

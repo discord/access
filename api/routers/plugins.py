@@ -1,4 +1,5 @@
 """Plugins router. Read-only metadata about app group lifecycle plugins."""
+
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -36,7 +37,9 @@ def list_plugins(current_user_id: CurrentUserId) -> list[dict[str, Any]]:
 )
 def app_config_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str, Any]:
     _ensure_plugin(plugin_id)
-    return {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_config_properties(plugin_id).items()}
+    return {
+        name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_config_properties(plugin_id).items()
+    }
 
 
 @router.get(
@@ -45,7 +48,10 @@ def app_config_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str
 )
 def group_config_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str, Any]:
     _ensure_plugin(plugin_id)
-    return {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_group_config_properties(plugin_id).items()}
+    return {
+        name: asdict(schema)
+        for name, schema in get_app_group_lifecycle_plugin_group_config_properties(plugin_id).items()
+    }
 
 
 @router.get(
@@ -54,7 +60,9 @@ def group_config_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[s
 )
 def app_status_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str, Any]:
     _ensure_plugin(plugin_id)
-    return {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_status_properties(plugin_id).items()}
+    return {
+        name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_status_properties(plugin_id).items()
+    }
 
 
 @router.get(
@@ -63,4 +71,7 @@ def app_status_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str
 )
 def group_status_props(plugin_id: str, current_user_id: CurrentUserId) -> dict[str, Any]:
     _ensure_plugin(plugin_id)
-    return {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_group_status_properties(plugin_id).items()}
+    return {
+        name: asdict(schema)
+        for name, schema in get_app_group_lifecycle_plugin_group_status_properties(plugin_id).items()
+    }

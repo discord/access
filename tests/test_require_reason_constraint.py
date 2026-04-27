@@ -28,7 +28,9 @@ def test_require_reason_modify_group_users(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={
@@ -463,7 +465,9 @@ def test_require_reason_modify_role_groups(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={
@@ -919,7 +923,9 @@ def test_require_reason_approve_access_request(
     app_group: AppGroup,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     tags = TagFactory.create_batch(
         3,
         constraints={

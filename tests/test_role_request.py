@@ -43,7 +43,9 @@ def test_get_role_request(
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
     rep = client.get(role_request_url)
@@ -140,7 +142,9 @@ def test_put_role_request(
     role_request: RoleRequest,
     okta_group: OktaGroup,
     role_group: RoleGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
     rep = client.put(role_request_url)
@@ -234,7 +238,14 @@ def test_put_role_request(
 
 
 def test_put_role_request_by_non_owner(
-    client: TestClient, app: FastAPI, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
+    client: TestClient,
+    app: FastAPI,
+    db: Any,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
@@ -333,7 +344,8 @@ def test_put_role_request_by_non_owner(
 
 
 def test_create_role_request(
-    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any) -> None:
+    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test bad data
     role_requests_url = url_for("api-role-requests.role_requests")
     data: dict[str, Any] = {}
@@ -369,7 +381,14 @@ def test_create_role_request(
 
 # Try to create an role request when not the role owner or Access admin, then become owner and try again
 def test_create_role_request_not_role_owner(
-    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     db.session.add(user)
     db.session.add(okta_group)
     db.session.add(role_group)
@@ -418,11 +437,8 @@ def test_create_role_request_not_role_owner(
 
 
 def test_get_all_role_request(
-    client: TestClient,
-    db: Any,
-    role_group: RoleGroup,
-    okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
     role_requests_url = url_for("api-role-requests.role_requests")
     db.session.add(user)
     db.session.add(role_group)
@@ -1179,7 +1195,9 @@ def test_role_request_approval_via_direct_add(
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
-    mocker: MockerFixture, url_for: Any) -> None:
+    mocker: MockerFixture,
+    url_for: Any,
+) -> None:
     okta_group2 = OktaGroupFactory.create()
 
     db.session.add(user)

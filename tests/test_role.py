@@ -27,7 +27,9 @@ def test_get_role(
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     role_url = url_for("api-roles.role_by_id", role_id="randomid")
     rep = client.get(role_url)
@@ -82,7 +84,9 @@ def test_get_role(
     assert rep.status_code == 404
 
 
-def test_get_role_members(client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any) -> None:
+def test_get_role_members(
+    client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
     rep = client.get(role_url)
@@ -133,7 +137,9 @@ def test_put_role_members(
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
     rep = client.put(role_url)
@@ -329,7 +335,9 @@ def test_complex_role_modifications(
     okta_group: OktaGroup,
     role_group: RoleGroup,
     access_app: App,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
     db.session.add(access_app)
@@ -1305,7 +1313,9 @@ def test_do_not_renew(
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
     db.session.commit()
@@ -1370,11 +1380,8 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_role(
-    db: Any,
-    client: TestClient,
-    role_group: RoleGroup,
-    okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    db: Any, client: TestClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
     victim_role = RoleGroupFactory.create()
     victim_okta_group = OktaGroup(
         id="victim-group-id",
@@ -1432,7 +1439,9 @@ def test_do_not_renew_requires_group_ownership(
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
-    user: OktaUser, url_for: Any) -> None:
+    user: OktaUser,
+    url_for: Any,
+) -> None:
     db.session.add(role_group)
     db.session.add(okta_group)
     db.session.add(user)

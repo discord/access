@@ -1,12 +1,12 @@
 """Users router. Endpoints:
 
-  GET /api/users
-  GET /api/users/{user_id}              (also accepts "@me")
-  GET /api/users/{user_id}/audit         redirects to /api/audit/users
+GET /api/users
+GET /api/users/{user_id}              (also accepts "@me")
+GET /api/users/{user_id}/audit         redirects to /api/audit/users
 """
+
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from fastapi import APIRouter
@@ -74,9 +74,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
                 joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).joinedload(
                     ALL_GROUP_TYPES.AppGroup.app
                 ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                    RoleGroupMap.active_role_group
-                ),
+                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
             ),
             selectinload(OktaUser.active_group_ownerships).options(
                 joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).options(
@@ -86,25 +84,17 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
                         joinedload(OktaGroupTagMap.active_app_tag_mapping),
                     ),
                 ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                    RoleGroupMap.active_role_group
-                ),
+                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
             ),
             selectinload(OktaUser.active_group_memberships_and_ownerships).options(
                 joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).joinedload(
                     ALL_GROUP_TYPES.AppGroup.app
                 ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
-                    RoleGroupMap.active_role_group
-                ),
+                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
             ),
             selectinload(OktaUser.all_group_memberships_and_ownerships).options(
-                joinedload(OktaUserGroupMember.group.of_type(ALL_GROUP_TYPES)).joinedload(
-                    ALL_GROUP_TYPES.AppGroup.app
-                ),
-                joinedload(OktaUserGroupMember.role_group_mapping).joinedload(
-                    RoleGroupMap.role_group
-                ),
+                joinedload(OktaUserGroupMember.group.of_type(ALL_GROUP_TYPES)).joinedload(ALL_GROUP_TYPES.AppGroup.app),
+                joinedload(OktaUserGroupMember.role_group_mapping).joinedload(RoleGroupMap.role_group),
             ),
             joinedload(OktaUser.manager),
         )
