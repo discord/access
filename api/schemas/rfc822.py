@@ -36,20 +36,33 @@ def parse_datetime_value(value: Any) -> Optional[datetime]:
     if value is None or value == "":
         return None
     if isinstance(value, datetime):
-        return value
+        return _to_naive_utc(value)
     if isinstance(value, date):
-        return datetime(value.year, value.month, value.day, tzinfo=timezone.utc)
+        return datetime(value.year, value.month, value.day)
     if not isinstance(value, str):
         raise ValueError(f"Cannot parse {value!r} as a datetime")
     # Try ISO 8601 first; fall back to RFC 822 / RFC 2822.
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return _to_naive_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         pass
     try:
-        return parsedate_to_datetime(value)
+        return _to_naive_utc(parsedate_to_datetime(value))
     except (TypeError, ValueError) as e:
         raise ValueError(f"Cannot parse {value!r} as a datetime") from e
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    """Normalize tz-aware datetimes to naive UTC.
+
+    The SQLAlchemy columns these values land in are `DateTime()` (timezone
+    naive). SQLite stores tz-aware datetimes by stripping the offset (so the
+    wall-clock time stays the same); Postgres converts to UTC then strips.
+    Normalizing here makes the stored value identical on both backends.
+    """
+    if value.tzinfo is not None:
+        value = value.astimezone(timezone.utc).replace(tzinfo=None)
+    return value
 
 
 def _rfc822(value: Optional[datetime]) -> Optional[str]:

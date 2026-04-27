@@ -380,9 +380,10 @@ def test_create_access_request_with_rfc822_ending_at(
     access_request = db.session.get(AccessRequest, response_data["id"])
     assert access_request is not None
     assert access_request.request_ending_at is not None
+    # 2026-05-10 19:09:02 -0700 normalizes to 2026-05-11 02:09:02 UTC.
     assert access_request.request_ending_at.year == 2026
     assert access_request.request_ending_at.month == 5
-    assert access_request.request_ending_at.day == 10
+    assert access_request.request_ending_at.day == 11
 
 
 def test_get_all_access_request(client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:

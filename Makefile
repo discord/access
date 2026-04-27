@@ -30,7 +30,8 @@ help:
 	@echo "  make compose-down       docker compose down"
 	@echo ""
 	@echo "Tests / lint:"
-	@echo "  make pytest             pytest"
+	@echo "  make pytest             pytest (sqlite in-memory)"
+	@echo "  make pytest-postgres    pytest against a disposable postgres:16 container"
 	@echo "  make ruff               tox -e ruff"
 	@echo "  make mypy               tox -e mypy"
 	@echo "  make test               ruff + mypy + pytest"
@@ -149,6 +150,39 @@ compose-down:
 .PHONY: pytest
 pytest: dev
 	$(ACTIVATE) pytest
+
+# ----------------------------------------------------------------------
+# Postgres integration test target
+# ----------------------------------------------------------------------
+# Boots a disposable postgres:16 container on port 5433, runs pytest with
+# TEST_DATABASE_URI pointed at it, then stops the container. The default
+# `make pytest` keeps using the in-memory sqlite the test fixtures fall
+# back to.
+PG_TEST_CONTAINER ?= access-test-pg
+PG_TEST_PORT ?= 5433
+PG_TEST_URI := postgresql+pg8000://postgres:postgres@localhost:$(PG_TEST_PORT)/access_test
+
+.PHONY: pytest-postgres
+pytest-postgres: dev pytest-postgres-up
+	$(ACTIVATE) TEST_DATABASE_URI='$(PG_TEST_URI)' pytest tests/; \
+	  status=$$?; \
+	  $(MAKE) pytest-postgres-down; \
+	  exit $$status
+
+.PHONY: pytest-postgres-up
+pytest-postgres-up:
+	@if [ -z "$$(docker ps -q -f name=^$(PG_TEST_CONTAINER)$$)" ]; then \
+	  docker run -d --rm --name $(PG_TEST_CONTAINER) \
+	    -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=access_test \
+	    -p $(PG_TEST_PORT):5432 postgres:16 >/dev/null; \
+	  echo "Waiting for postgres on :$(PG_TEST_PORT)..."; \
+	  until docker exec $(PG_TEST_CONTAINER) pg_isready -U postgres >/dev/null 2>&1; do sleep 0.5; done; \
+	  echo "postgres ready."; \
+	fi
+
+.PHONY: pytest-postgres-down
+pytest-postgres-down:
+	@docker rm -f $(PG_TEST_CONTAINER) >/dev/null 2>&1 || :
 
 .PHONY: mypy
 mypy: dev

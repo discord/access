@@ -13,6 +13,7 @@ Replaces the previous Flask + pytest-flask harness. Key behavior changes:
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Callable, Generator
 from urllib.parse import urlencode
 
@@ -62,13 +63,23 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
 
 @pytest.fixture
 def db(app: FastAPI) -> Generator[Any, None, None]:
-    """Bind an in-memory SQLite engine, create tables, and seed bootstrap data."""
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    """Bind a test engine, create tables, and seed bootstrap data.
+
+    Defaults to in-memory SQLite. Set `TEST_DATABASE_URI` to point at any
+    other database (e.g. `postgresql+pg8000://postgres:postgres@localhost:5433/access_test`)
+    to verify Postgres-only behaviour.
+    """
+    db_uri = os.environ.get("TEST_DATABASE_URI", "sqlite://")
+    if db_uri.startswith("sqlite"):
+        engine = create_engine(
+            db_uri,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+    else:
+        engine = create_engine(db_uri)
     _db.init_app(engine=engine)
+    _db.drop_all()
     _db.create_all()
 
     token = _session_scope.set("test-session")

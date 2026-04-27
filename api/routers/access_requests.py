@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import TypeAdapter
-from sqlalchemy import func
+from sqlalchemy import String, cast, func
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
@@ -44,7 +44,7 @@ def list_access_requests(request: Request, db: DbSession, current_user_id: Curre
     if q:
         like = f"%{q}%"
         query = query.filter(_db.or_(
-            AccessRequest.status.ilike(like),
+            cast(AccessRequest.status, String).ilike(like),
             AccessRequest.request_reason.ilike(like),
         ))
     return paginate(request, query, _adapter)
