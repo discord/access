@@ -340,16 +340,16 @@ class AppList(MethodResource):
         poly_group = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
         existing_owner_group = (
             db.session.query(poly_group)
-            .options(joinedload(poly_group.active_user_memberships_and_ownerships))
+            .options(joinedload(poly_group.active_user_ownerships))
             .filter(func.lower(OktaGroup.name) == func.lower(owner_group_name))
             .filter(OktaGroup.deleted_at.is_(None))
             .first()
         )
-        if existing_owner_group is not None and len(existing_owner_group.active_user_memberships_and_ownerships) > 0:
+        if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
             abort(
                 409,
-                f"An owner group with members and/or owners already exists for this app name. Select a different app"
-                f" name, change the name of {owner_group_name}, or remove the existing members and/or owners of"
+                f"An owner group with existing owners already exists for this app name. Select a different app"
+                f" name, change the name of {owner_group_name}, or remove the existing owners of"
                 f" {owner_group_name} to be able to proceed.",
             )
 

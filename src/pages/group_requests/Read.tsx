@@ -83,7 +83,6 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const APP_OWNERS_GROUP_SUFFIX = 'Owners';
 const ROLE_GROUP_PREFIX = 'Role-';
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
@@ -820,11 +819,8 @@ export default function ReadGroupRequest() {
                                               : groupType === 'role_group'
                                                 ? ROLE_GROUP_PREFIX + value
                                                 : value;
-                                          if (
-                                            fullName.startsWith(APP_GROUP_PREFIX) &&
-                                            fullName.endsWith(APP_NAME_APP_GROUP_SEPARATOR + APP_OWNERS_GROUP_SUFFIX)
-                                          ) {
-                                            return 'This name is reserved for app owner groups and cannot be used';
+                                          if (groupType !== 'app_group' && fullName.startsWith(APP_GROUP_PREFIX)) {
+                                            return 'The App- prefix cannot be used for non-app groups. Please choose a different group name.';
                                           }
                                           return true;
                                         },

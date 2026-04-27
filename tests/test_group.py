@@ -1037,3 +1037,84 @@ def test_partial_group_update_preserves_description(
     result = rep.get_json()
     assert result["name"] == "UpdatedName2"
     assert result["description"] == "New description"
+
+
+def test_cannot_convert_app_prefixed_group_to_non_app_type(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    app_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members",
+        app_id=access_app.id,
+        is_owner=False,
+    )
+    db.session.add(access_app)
+    db.session.add(app_group)
+    db.session.commit()
+
+    group_url = url_for("api-groups.group_by_id", group_id=app_group.id)
+    rep = client.put(group_url, json={"type": "okta_group", "name": app_group.name, "description": "desc"})
+    assert rep.status_code == 400
+
+    rep = client.put(group_url, json={"type": "role_group", "name": app_group.name, "description": "desc"})
+    assert rep.status_code == 400
+
+    # Changing to app_group (same type, different app) is still allowed
+    rep = client.put(
+        group_url,
+        json={
+            "type": "app_group",
+            "name": app_group.name,
+            "description": "desc",
+            "app_id": access_app.id,
+        },
+    )
+    assert rep.status_code == 200
+
+
+def test_cannot_create_group_with_reserved_app_prefix(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    access_app: App,
+) -> None:
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+
+    db.session.add(access_app)
+    db.session.commit()
+
+    groups_url = url_for("api-groups.groups")
+
+    # okta_group with App- prefix is blocked
+    rep = client.post(groups_url, json={"type": "okta_group", "name": "App-SomeName", "description": ""})
+    assert rep.status_code == 400
+
+    # role_group with App- prefix is blocked
+    rep = client.post(groups_url, json={"type": "role_group", "name": "App-SomeName", "description": ""})
+    assert rep.status_code == 400
+
+    # app_group with App-*-Owners name is blocked
+    owners_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": access_app.id, "name": owners_name, "description": ""}
+    )
+    assert rep.status_code == 400
+
+    # app_group with App-*-NonOwners name is allowed
+    non_owners_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members"
+    )
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": access_app.id, "name": non_owners_name, "description": ""}
+    )
+    assert rep.status_code == 201

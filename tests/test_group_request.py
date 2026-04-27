@@ -1742,7 +1742,7 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name matches the reserved App-*-Owners pattern for a non-app_group type"
+    ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
     assert group_request.resolved_at is None
 
     assert (
@@ -1807,10 +1807,148 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
     db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name matches the reserved App-*-Owners pattern for a non-app_group type"
+    ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
     assert group_request.resolved_at is None
 
     assert (
         OktaGroup.query.filter(OktaGroup.name == "App-Payments-Owners").filter(OktaGroup.deleted_at.is_(None)).first()
+        is None
+    )
+
+
+def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_obj = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_obj)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    # Non-Owners suffix: rule is broader than just App-*-Owners
+    group_request.resolved_group_name = "App-Payments-Members"
+    group_request.resolved_group_type = "okta_group"
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked for any non-app_group resolved_group_name that starts with the App- prefix"
+    assert group_request.resolved_at is None
+
+    assert (
+        OktaGroup.query.filter(OktaGroup.name == "App-Payments-Members").filter(OktaGroup.deleted_at.is_(None)).first()
+        is None
+    )
+
+
+def test_cannot_approve_app_group_request_with_owners_group_name(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    app_owner = OktaUserFactory.create()
+    app_obj = AppFactory.create()
+
+    db.session.add(user)
+    db.session.add(app_owner)
+    db.session.add(app_obj)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group = AppGroupFactory.create(
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+        app_id=app_obj.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_obj.name}-NewGroup",
+        requested_group_description="New group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    owners_group_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    group_request.resolved_group_name = owners_group_name
+    group_request.resolved_group_type = "app_group"
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=app_owner,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked when resolved_group_name matches the App-*-Owners pattern even for app_group type"
+    assert group_request.resolved_at is None
+
+    assert (
+        OktaGroup.query.filter(OktaGroup.name == owners_group_name)
+        .filter(OktaGroup.deleted_at.is_(None))
+        .filter(OktaGroup.id != owner_group.id)
+        .first()
         is None
     )

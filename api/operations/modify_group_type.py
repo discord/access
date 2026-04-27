@@ -69,6 +69,15 @@ class ModifyGroupType:
                 if self.group.is_owner:
                     raise ValueError("Owner app groups cannot have their type modified")
 
+                # Bail if changing away from AppGroup for a group whose name uses the
+                # reserved App- prefix; non-AppGroup groups must not carry that prefix
+                if type(self.group_changes) is not AppGroup and self.group.name.startswith(
+                    AppGroup.APP_GROUP_NAME_PREFIX
+                ):
+                    raise ValueError(
+                        "The App- prefix cannot be used for non-app groups. Please choose a different group name."
+                    )
+
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
                 # the linked GitHub team).

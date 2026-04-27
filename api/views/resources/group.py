@@ -181,9 +181,12 @@ class GroupResource(MethodResource):
                     403,
                     "Current user is not an Access admin and not allowed to change group types",
                 )
-            group = ModifyGroupType(
-                group=group, group_changes=group_changes, current_user_id=g.current_user_id
-            ).execute()
+            try:
+                group = ModifyGroupType(
+                    group=group, group_changes=group_changes, current_user_id=g.current_user_id
+                ).execute()
+            except ValueError as e:
+                abort(400, str(e))
 
         # Store old plugin data for audit logging (must be deep copy to preserve original values)
         old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
@@ -487,6 +490,17 @@ class GroupList(MethodResource):
         )
         if existing_group is not None:
             abort(400, "Group already exists with the same name")
+
+        if type(group) is not AppGroup and group.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
+            abort(400, "The App- prefix cannot be used for non-app groups. Please choose a different group name.")
+
+        if type(group) is AppGroup and group.name.endswith(
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ):
+            abort(
+                400,
+                "App owner groups cannot be created directly. They are created automatically when an app is created.",
+            )
 
         group = CreateGroup(
             group=group, tags=request.get_json().get("tags_to_add", []), current_user_id=g.current_user_id

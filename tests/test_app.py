@@ -658,3 +658,38 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
     data = rep.get_json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+
+
+def test_create_app_succeeds_with_members_only_preexisting_owner_group(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    db.session.add(user)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    owner_group_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    group_with_members = OktaGroupFactory.create(name=owner_group_name)
+    db.session.add(group_with_members)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=group_with_members.id, is_owner=False))
+    db.session.commit()
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.post(apps_url, json={"name": "Payments"})
+    assert rep.status_code == 201
+
+    data = rep.get_json()
+    assert data["name"] == "Payments"
+    assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
