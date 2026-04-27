@@ -50,42 +50,42 @@ VITE_API_SERVER_URL=
 
 > **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the backend on port 6060.
 
-Next, run the following commands to set up your python virtual environment. Access can run on Python 3.11 and above:
+Create the Python virtual environment. Access can run on Python 3.11 and above:
 
 ```
 python3 -m venv venv
 . venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
 ```
 
-Afterward, seed the DB and create the built-in Access app:
+The included [Makefile](Makefile) wraps the rest. Install Python deps:
 
 ```
-alembic upgrade head
-access init <YOUR_OKTA_USER_EMAIL>
+make dev
 ```
 
-Finally, run the server with uvicorn:
+Seed the DB and create the built-in Access app:
 
 ```
-uvicorn api.asgi:app --reload --port 6060
+make db-migrate
+make db-init email=<YOUR_OKTA_USER_EMAIL>
+```
+
+Run the API on port 6060:
+
+```
+make run-backend
 ```
 
 Go to [http://localhost:6060/api/users](http://localhost:6060/api/users) to view the API.
 
-> **Tip:** the included [Makefile](Makefile) wraps these steps. `make run-backend` boots the API; `make run` boots the API and Vite dev server together. See `make help` (or read the Makefile) for the full list of targets including `db-migrate`, `db-init`, `sync`, `notify`, `pytest`, etc.
+`make run` boots the backend and the Vite dev server together. `make help` lists every target (`sync`, `notify`, `db-revision msg=…`, `pytest`, etc.).
 
 ### Node
 
-In a separate window, setup and run Node.js:
+In a separate window, set up and run the React frontend:
 
 ```
-npm install
-```
-
-```
-npm start
+make run-frontend
 ```
 
 Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
@@ -103,14 +103,19 @@ npx openapi-codegen gen api
 
 ## Tests
 
-We use tox to run our tests, which should be installed into the Python venv from 
-our `requirements.txt`.
+```
+make pytest          # run pytest
+make test            # run ruff + mypy + pytest
+```
 
-Invoke the tests using `tox -e test`.
+Under the hood this calls tox (`tox -e test`, etc.); the Makefile is just a thin wrapper.
 
 ## Linting
 
-Run `tox -e ruff` and `tox -e mypy` to run the linters.
+```
+make ruff
+make mypy
+```
 
 ## Production Setup
 
