@@ -100,23 +100,11 @@ scale may want:
 - Move CF / OIDC verification entirely into middleware so dependencies don't
   re-verify on each call
 
-### 10. Tighten service-token semantics
-
-Today's behavior: a CF Access JWT with a `common_name` claim is mapped to
-that string as `current_user_id`, and `X-On-Behalf-Of` is consulted only
-when present. This mirrors the pre-migration Flask code.
-
-Future (per the [keysmith pattern](https://github.com/discord/keysmith)):
-- Explicit allowlist of authorized service-token `common_name`s
-- Mandatory `X-On-Behalf-Of` on service-token requests
-- Returned as a typed `ServiceAuth` dataclass so downstream code can branch
-  on it (e.g. forbid service tokens from approving their own access requests)
-
 ---
 
 ## Background Work / Long-Running Operations
 
-### 11. FastAPI `BackgroundTasks` for multi-Okta-call operations
+### 10. FastAPI `BackgroundTasks` for multi-Okta-call operations
 
 `CreateApp`, `ApproveAccessRequest`, `ModifyGroupUsers`, and
 `ModifyRoleGroups` each make several Okta API calls per HTTP request, often
@@ -131,7 +119,7 @@ Care needed:
 - Tests that assert call-count of mocked Okta methods may need to await
   background tasks before asserting
 
-### 12. Replace the in-process `syncer.py` loop with a proper task runner
+### 11. Replace the in-process `syncer.py` loop with a proper task runner
 
 `api/syncer.py` runs as a long-lived process or one-shot CLI invocation
 today. Migrate to:
@@ -139,7 +127,7 @@ today. Migrate to:
 - Celery + Redis broker (multi-replica)
 - Kubernetes `CronJob` (declarative, no in-process scheduler) — preferred
 
-### 13. Async HTTP for Okta calls
+### 12. Async HTTP for Okta calls
 
 Replace synchronous `requests` calls in `api/services/okta_service.py` with
 `httpx.AsyncClient` and connection pooling. Pairs naturally with #2 (async
@@ -150,13 +138,13 @@ parallel calls but the entry points are sync.
 
 ## Tooling
 
-### 14. ~~Replace Flask-Migrate-style migrations with raw Alembic CLI~~ ✅
+### 13. ~~Replace Flask-Migrate-style migrations with raw Alembic CLI~~ ✅
 
 **Done in the migration.** `migrations/env.py` is plain Alembic;
 `alembic upgrade head` works. Follow-up is just updating runbooks /
 deployment docs that still mention `flask db upgrade`.
 
-### 15. OpenAPI client codegen
+### 14. OpenAPI client codegen
 
 FastAPI auto-publishes `/api/openapi.json` (when `DEBUG=true`). Run
 `npx openapi-codegen gen api` against the new spec and replace any
@@ -164,14 +152,14 @@ hand-written API client code in the frontend with the generated types
 and React-Query hooks. The codegen config in `openapi-codegen.config.ts`
 is already pointed at the new endpoint.
 
-### 16. Strict type checking on routers + schemas
+### 15. Strict type checking on routers + schemas
 
 Enforce `pyright` / `mypy` strict mode on `api/routers/` and `api/schemas/`.
 Operations and models can stay loose initially since they're inherited
 from the Flask era. Add a CI check that fails the build on new strict-mode
 violations in those directories.
 
-### 17. Drop `werkzeug` (and other Flask-transitive deps)
+### 16. Drop `werkzeug` (and other Flask-transitive deps)
 
 Now that Flask is gone, `werkzeug` is no longer required transitively.
 Audit `pip freeze` output for stragglers and remove direct imports if any
@@ -181,7 +169,7 @@ slipped through.
 
 ## Test Ergonomics
 
-### 18. Async test client
+### 17. Async test client
 
 Once routers are async (#2), switch from `fastapi.testclient.TestClient`
 to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
@@ -189,7 +177,7 @@ to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
 DB calls in a single request) and avoids the sync-bridge in the current
 TestClient.
 
-### 19. Replace `factory_boy` with Pydantic-based builders
+### 18. Replace `factory_boy` with Pydantic-based builders
 
 Either:
 - Keep `factory_boy` but decouple it from the legacy SQLAlchemy session
@@ -198,7 +186,7 @@ Either:
   generates fixtures from Pydantic models — keeps test data and request
   schemas in sync automatically.
 
-### 20. Golden-file response snapshots
+### 19. Golden-file response snapshots
 
 Add snapshot tests for the major endpoints (`GET /api/groups`,
 `GET /api/groups/{id}`, `GET /api/users/{id}`, `GET /api/requests`,

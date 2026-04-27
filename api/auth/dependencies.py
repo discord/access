@@ -71,18 +71,10 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
                 set_user({"id": user.id})
             return user.id
         if "common_name" in payload:
+            # Service token: stuff `common_name` into current_user_id and let
+            # downstream lookups fail naturally if it doesn't match a real
+            # OktaUser. Mirrors the pre-migration Flask behavior.
             common_name = payload["common_name"]
-            on_behalf_of = request.headers.get("X-On-Behalf-Of")
-            if on_behalf_of:
-                user = _lookup_user_by_email(db, on_behalf_of)
-                request.state.current_user_id = user.id
-                logger.info(
-                    "service token authenticated",
-                    extra={"common_name": common_name, "on_behalf_of": on_behalf_of},
-                )
-                if settings.FLASK_SENTRY_DSN:
-                    set_user({"id": user.id})
-                return user.id
             request.state.current_user_id = common_name
             return common_name
         raise HTTPException(status_code=403, detail="Invalid Cloudflare authorization token")
