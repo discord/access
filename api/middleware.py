@@ -18,6 +18,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from api.context import RequestContext, reset_request_context, set_request_context
+from api.extensions import _session_scope, db
 
 # Match Flask-Talisman defaults for the Access app
 CSP = (
@@ -45,12 +46,44 @@ def _client_ip(request: Request) -> str | None:
 
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
+    """Tag each request with a UUID and bind the SQLAlchemy session scope.
+
+    `_session_scope` is the `scopefunc` for the application's
+    `scoped_session`. Setting it per request guarantees concurrent requests
+    each get their own Session — without this, every request shares the
+    `"__default__"` key and SQLAlchemy raises "This session is provisioning
+    a new connection; concurrent operations are not permitted" the moment
+    two requests run queries simultaneously.
+
+    If an outer caller (tests, CLI) has already set a scope, leave it alone
+    so request handlers share that session. The session is removed once the
+    response leaves this middleware iff we set the scope here.
+    """
+
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        request.state.request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
-        response = await call_next(request)
-        response.headers["X-Request-Id"] = request.state.request_id
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        owns_scope = _session_scope.get() == "__default__"
+        token = _session_scope.set(request_id) if owns_scope else None
+        try:
+            response = await call_next(request)
+        finally:
+            if owns_scope:
+                try:
+                    db.remove()
+                except Exception:
+                    pass
+                if token is not None:
+                    try:
+                        _session_scope.reset(token)
+                    except ValueError:
+                        # scoped_session ran on a copied context (FastAPI's
+                        # threadpool); the original token isn't valid here.
+                        _session_scope.set("__default__")
+        response.headers["X-Request-Id"] = request_id
         return response
 
 

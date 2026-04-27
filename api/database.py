@@ -40,30 +40,30 @@ def build_engine() -> Engine:
 
 
 def get_db(request: Request) -> Generator[Session, None, None]:
-    """FastAPI dependency that yields a request-scoped Session.
+    """FastAPI dependency that yields the request-scoped Session.
 
-    The session is keyed off a ContextVar; in tests the conftest sets the var
-    once for the entire test, so we don't manipulate it here. We commit on
-    normal exit and rollback on exception.
-
-    Note: we don't reset the contextvar inside this dependency because
-    FastAPI runs sync dependencies in a threadpool with a copied context;
-    `ContextVar.reset` would raise `ValueError` if called across contexts.
-    The session lifecycle (engine + scoped_session) handles cleanup itself.
+    `RequestIdMiddleware` is responsible for setting the `_session_scope`
+    contextvar (so each request gets its own scoped Session) and for
+    calling `db.remove()` when the response has been emitted. This
+    dependency only commits or rolls back the session on the way out; it
+    does not manipulate the scope or close the session, because the
+    response body still needs to be serialized after the dependency
+    returns.
     """
     try:
         yield db.session
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            raise
     except Exception:
         try:
             db.session.rollback()
         except Exception:
             pass
         raise
+    else:
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
 
 DbSession = Annotated[Session, Depends(get_db)]
