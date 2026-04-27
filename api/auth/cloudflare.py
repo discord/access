@@ -1,9 +1,8 @@
 """Cloudflare Access JWT verification.
 
-Sync implementation of the keysmith pattern. Fetches and caches signing keys
-from `https://<team_domain>/cdn-cgi/access/certs`, refreshes on `kid`
-rotation. Used by `get_current_user_id` for both human users (email claim)
-and service tokens (common_name claim).
+Fetches and caches signing keys from `https://<team_domain>/cdn-cgi/access/certs`,
+refreshes on `kid` rotation. Used by `get_current_user_id` for both human
+users (email claim) and service tokens (common_name claim).
 """
 from __future__ import annotations
 

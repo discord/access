@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException
 from pydantic import TypeAdapter
+from sqlalchemy.orm import joinedload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -19,15 +20,30 @@ router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
 _adapter = TypeAdapter(GroupRequestOut)
 
 
+def _load_options() -> tuple:
+    return (
+        joinedload(GroupRequest.requester),
+        joinedload(GroupRequest.active_requester),
+        joinedload(GroupRequest.resolver),
+        joinedload(GroupRequest.active_resolver),
+        joinedload(GroupRequest.approved_group),
+    )
+
+
 @router.get("", name="group_requests")
 def list_group_requests(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    query = db.query(GroupRequest).order_by(GroupRequest.created_at.desc())
+    query = db.query(GroupRequest).options(*_load_options()).order_by(GroupRequest.created_at.desc())
     return paginate(request, query, _adapter)
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")
 def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    gr = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
+    gr = (
+        db.query(GroupRequest)
+        .options(*_load_options())
+        .filter(GroupRequest.id == group_request_id)
+        .first()
+    )
     if gr is None:
         raise HTTPException(404, "Not Found")
     return safe_dump(_adapter, gr)
@@ -59,7 +75,13 @@ def post_group_request(
         requested_ownership_ending_at=parse_datetime_value(body.get("requested_ownership_ending_at")),
         request_reason=body.get("request_reason") or body.get("reason", "") or "",
     ).execute()
-    return safe_dump(_adapter, gr)
+    refreshed = (
+        db.query(GroupRequest)
+        .options(*_load_options())
+        .filter(GroupRequest.id == gr.id)
+        .first()
+    )
+    return safe_dump(_adapter, refreshed)
 
 
 @router.put("/{group_request_id}", name="group_request_by_id_put")
@@ -69,8 +91,6 @@ def put_group_request(
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    from sqlalchemy.orm import joinedload
-
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
     from api.schemas.rfc822 import parse_datetime_value
@@ -78,7 +98,7 @@ def put_group_request(
     body = body or {}
     gr = (
         db.query(GroupRequest)
-        .options(joinedload(GroupRequest.active_requester))
+        .options(*_load_options())
         .filter(GroupRequest.id == group_request_id)
         .first()
     )
@@ -132,5 +152,10 @@ def put_group_request(
             rejection_reason=body.get("resolution_reason", "") or body.get("reason", "") or "",
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
+    refreshed = (
+        db.query(GroupRequest)
+        .options(*_load_options())
+        .filter(GroupRequest.id == group_request_id)
+        .first()
+    )
     return safe_dump(_adapter, refreshed)
