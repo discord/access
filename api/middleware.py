@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.extensions import _session_scope, db
 
@@ -25,6 +26,19 @@ CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "connect-src 'self' *.ingest.sentry.io; "
+    "worker-src 'self' blob:; "
+    "frame-ancestors 'none'"
+)
+
+# Relaxed CSP for development: allow Swagger UI assets served from CDN by
+# FastAPI's auto-generated `/api/docs` page.
+DEBUG_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "connect-src 'self' *.ingest.sentry.io; "
     "worker-src 'self' blob:; "
@@ -108,7 +122,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
-        response.headers.setdefault("Content-Security-Policy", CSP)
+        csp = DEBUG_CSP if settings.DEBUG else CSP
+        response.headers.setdefault("Content-Security-Policy", csp)
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
