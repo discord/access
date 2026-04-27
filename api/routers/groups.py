@@ -202,12 +202,29 @@ def put_group(
     db: DbSession = None,  # type: ignore[assignment]
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
+    from api.plugins.app_group_lifecycle import (
+        get_app_group_lifecycle_plugin_to_invoke,
+        validate_app_group_lifecycle_plugin_group_config,
+    )
+
     body = body or {}
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
     if "description" in body:
         body["description"] = _validate_description(body["description"], True)
+
+    # Validate plugin_data for app groups against the configured plugin's schema.
+    if "plugin_data" in body and isinstance(group, AppGroup):
+        plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+        if plugin_id is not None:
+            try:
+                errors = validate_app_group_lifecycle_plugin_group_config(body["plugin_data"], plugin_id)
+            except ValueError as e:
+                raise HTTPException(400, f"plugin_data: {e}") from e
+            if errors:
+                raise HTTPException(400, f"plugin_data: {errors}")
+
     if not _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:

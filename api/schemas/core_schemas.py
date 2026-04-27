@@ -106,6 +106,8 @@ class AppSummary(BaseModel):
 
 class AppOut(AppSummary):
     """Full App detail."""
+    app_group_lifecycle_plugin: Optional[str] = None
+    plugin_data: Optional[dict[str, Any]] = None
     active_app_tags: list[AppTagMapOut] = Field(default_factory=list)
 
 

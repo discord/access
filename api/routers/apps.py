@@ -180,9 +180,25 @@ def put_app(
     from api.operations import ModifyAppTags, ModifyGroupDetails
     from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_app_config
+
     body = body or {}
     if "description" in body:
         body["description"] = _validate_description(body["description"], True)
+
+    # Snapshot the old plugin state before any mutation.
+    old_app_group_lifecycle_plugin = app_obj.app_group_lifecycle_plugin
+    old_plugin_data_for_audit_pre = copy.deepcopy(app_obj.plugin_data) if app_obj.plugin_data else {}
+
+    # Validate plugin_data against the configured plugin's schema before mutating.
+    new_plugin_id = body.get("app_group_lifecycle_plugin", app_obj.app_group_lifecycle_plugin)
+    if "plugin_data" in body and new_plugin_id is not None:
+        try:
+            errors = validate_app_group_lifecycle_plugin_app_config(body["plugin_data"], new_plugin_id)
+        except ValueError as e:
+            raise HTTPException(400, f"plugin_data: {e}") from e
+        if errors:
+            raise HTTPException(400, f"plugin_data: {errors}")
 
     # Plugin config changes require access admin.
     new_plugin = body.get("app_group_lifecycle_plugin", app_obj.app_group_lifecycle_plugin)
@@ -283,6 +299,37 @@ def put_app(
         .filter(App.id == app_obj.id)
         .first()
     )
+
+    # Audit logging — plugin assignment / configuration changes
+    if (
+        old_app_group_lifecycle_plugin != getattr(refreshed, "app_group_lifecycle_plugin", None)
+        or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {})
+    ):
+        from api.context import get_request_context
+        from api.models import OktaUser
+        from api.schemas import AuditLogSchema, EventType
+        import logging as _logging
+
+        _ctx = get_request_context()
+        email = (
+            getattr(db.get(OktaUser, current_user_id), "email", None)
+            if current_user_id is not None
+            else None
+        )
+        _logging.getLogger("api.audit").info(
+            AuditLogSchema().dumps(
+                {
+                    "event_type": EventType.app_modify_plugin,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
+                    "current_user_id": current_user_id,
+                    "current_user_email": email,
+                    "app": refreshed,
+                    "old_app_group_lifecycle_plugin": old_app_group_lifecycle_plugin,
+                    "old_plugin_data": old_plugin_data_for_audit_pre,
+                }
+            )
+        )
     return safe_dump(_adapter, refreshed)
 
 

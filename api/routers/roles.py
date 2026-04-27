@@ -92,17 +92,102 @@ def put_role_members(
     current_user_id: CurrentUserId,
     body: RoleMember | None = None,
 ) -> dict[str, Any]:
+    from sqlalchemy.orm import with_polymorphic
+
+    from api.models import AppGroup, OktaGroup, RoleGroupMap
+    from api.operations.constraints import CheckForReason, CheckForSelfAdd
+
     if body is None:
         body = RoleMember()
     role = (
         db.query(RoleGroup)
+        .filter(RoleGroup.deleted_at.is_(None))
         .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
         .first()
     )
     if role is None:
         raise HTTPException(404, "Not Found")
-    if not _perms.can_manage_group(db, current_user_id, role) and not _perms.is_access_admin(db, current_user_id):
-        raise HTTPException(403, "Current user is not allowed to perform this action")
+
+    # Authorization: should_expire requires can_manage_group on each affected group.
+    if body.groups_should_expire or body.owner_groups_should_expire:
+        all_should_expire_ids = body.groups_should_expire + body.owner_groups_should_expire
+        maps = (
+            db.query(RoleGroupMap)
+            .filter(RoleGroupMap.id.in_(all_should_expire_ids))
+            .filter(RoleGroupMap.role_group_id == role.id)
+            .all()
+        )
+        affected_group_ids = [m.group_id for m in maps]
+        affected_groups = (
+            db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.id.in_(affected_group_ids))
+            .all()
+        )
+        for g in affected_groups:
+            if not _perms.can_manage_group(db, current_user_id, g):
+                raise HTTPException(403, "Current user is not allowed to perform this action")
+
+    if not _perms.is_access_admin(db, current_user_id):
+        # Each group being added: must be group owner or app owner.
+        added_groups = (
+            db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.id.in_(body.groups_to_add + body.owner_groups_to_add))
+            .all()
+        )
+        for g in added_groups:
+            if not _perms.is_group_owner(db, current_user_id, g) and not _perms.is_app_owner_group_owner(
+                db, current_user_id, app_group=g if isinstance(g, AppGroup) else None
+            ):
+                raise HTTPException(403, "Current user is not allowed to perform this action")
+
+        # Each group being removed: role owners exempt; otherwise must own the group/app.
+        if not _perms.is_group_owner(db, current_user_id, role):
+            removed_groups = (
+                db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .filter(OktaGroup.deleted_at.is_(None))
+                .filter(OktaGroup.id.in_(body.groups_to_remove + body.owner_groups_to_remove))
+                .all()
+            )
+            for g in removed_groups:
+                if not _perms.is_group_owner(db, current_user_id, g) and not _perms.is_app_owner_group_owner(
+                    db, current_user_id, app_group=g if isinstance(g, AppGroup) else None
+                ):
+                    raise HTTPException(403, "Current user is not allowed to perform this action")
+
+    # Reject changes to unmanaged groups.
+    affected_ids = (
+        body.groups_to_add + body.owner_groups_to_add + body.groups_to_remove + body.owner_groups_to_remove
+    )
+    if affected_ids:
+        unmanaged_count = (
+            db.query(_db.func.count(OktaGroup.id))
+            .filter(OktaGroup.id.in_(affected_ids))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.is_managed.is_(False))
+            .scalar()
+        )
+        if unmanaged_count and unmanaged_count > 0:
+            raise HTTPException(400, "Groups not managed by Access cannot be modified")
+
+    valid, err_message = CheckForSelfAdd(
+        group=role,
+        current_user=current_user_id,
+        members_to_add=body.groups_to_add,
+        owners_to_add=body.owner_groups_to_add,
+    ).execute_for_role()
+    if not valid:
+        raise HTTPException(400, err_message)
+
+    valid, err_message = CheckForReason(
+        group=role,
+        reason=body.created_reason or "",
+        members_to_add=body.groups_to_add,
+        owners_to_add=body.owner_groups_to_add,
+    ).execute_for_role()
+    if not valid:
+        raise HTTPException(400, err_message)
 
     ModifyRoleGroups(
         role_group=role,
