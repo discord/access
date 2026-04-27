@@ -78,6 +78,7 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
+const APP_OWNERS_GROUP_SUFFIX = 'Owners';
 const ROLE_GROUP_PREFIX = 'Role-';
 
 function GroupDialog(props: GroupDialogProps) {
@@ -274,6 +275,21 @@ function GroupDialog(props: GroupDialogProps) {
                 validation={{
                   maxLength: 255,
                   pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
+                  validate: (value: string) => {
+                    const fullName =
+                      groupType === 'app_group'
+                        ? APP_GROUP_PREFIX + appName + APP_NAME_APP_GROUP_SEPARATOR + value
+                        : groupType === 'role_group'
+                          ? ROLE_GROUP_PREFIX + value
+                          : value;
+                    if (
+                      fullName.startsWith(APP_GROUP_PREFIX) &&
+                      fullName.endsWith(APP_NAME_APP_GROUP_SEPARATOR + APP_OWNERS_GROUP_SUFFIX)
+                    ) {
+                      return 'This name is reserved for app owner groups and cannot be used';
+                    }
+                    return true;
+                  },
                 }}
                 parseError={(error) => {
                   if (error?.message != '') {
