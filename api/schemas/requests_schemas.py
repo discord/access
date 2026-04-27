@@ -30,6 +30,7 @@ class AccessRequestOut(BaseModel):
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
     resolved_at: RFC822DatetimeOpt = None
+    approval_ending_at: RFC822DatetimeOpt = None
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
@@ -71,6 +72,7 @@ class RoleRequestOut(BaseModel):
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
     resolved_at: RFC822DatetimeOpt = None
+    approval_ending_at: RFC822DatetimeOpt = None
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
@@ -101,23 +103,33 @@ class ResolveRoleRequest(ResolveAccessRequest):
 class GroupRequestOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
-    requester_user_id: Optional[str] = None
-    request_reason: Optional[str] = ""
-    request_group_type: Optional[str] = None
-    request_group_name: Optional[str] = None
-    request_app_id: Optional[str] = None
     status: str
-    resolver_user_id: Optional[str] = None
+    requester_user_id: Optional[str] = None
+    # The legacy column names use `requested_*` and `resolved_*`, mirrored
+    # exactly here so the React frontend's apiSchemas don't have to change.
+    requested_group_name: Optional[str] = None
+    requested_group_description: Optional[str] = ""
+    requested_group_type: Optional[str] = None
+    requested_app_id: Optional[str] = None
+    requested_group_tags: list[str] = Field(default_factory=list)
+    requested_ownership_ending_at: RFC822DatetimeOpt = None
+    request_reason: Optional[str] = ""
+    resolved_group_name: Optional[str] = ""
+    resolved_group_description: Optional[str] = ""
+    resolved_group_type: Optional[str] = ""
+    resolved_app_id: Optional[str] = None
+    resolved_group_tags: list[str] = Field(default_factory=list)
+    resolved_ownership_ending_at: RFC822DatetimeOpt = None
     resolution_reason: Optional[str] = ""
     resolved_at: RFC822DatetimeOpt = None
-    resolved_group_id: Optional[str] = None
+    approved_group_id: Optional[str] = None
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
     active_requester: Optional[OktaUserSummary] = None
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
-    requested_app: Optional[AppOut] = None
+    approved_group: Optional[GroupRef] = None
 
 
 class CreateGroupRequest(BaseModel):

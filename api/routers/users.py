@@ -90,6 +90,22 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
                     RoleGroupMap.active_role_group
                 ),
             ),
+            selectinload(OktaUser.active_group_memberships_and_ownerships).options(
+                joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).joinedload(
+                    ALL_GROUP_TYPES.AppGroup.app
+                ),
+                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
+                    RoleGroupMap.active_role_group
+                ),
+            ),
+            selectinload(OktaUser.all_group_memberships_and_ownerships).options(
+                joinedload(OktaUserGroupMember.group.of_type(ALL_GROUP_TYPES)).joinedload(
+                    ALL_GROUP_TYPES.AppGroup.app
+                ),
+                joinedload(OktaUserGroupMember.role_group_mapping).joinedload(
+                    RoleGroupMap.role_group
+                ),
+            ),
             joinedload(OktaUser.manager),
         )
         .filter(_db.or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))

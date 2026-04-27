@@ -143,6 +143,27 @@ class OktaUserOut(OktaUserSummary):
     updated_at: RFC822Datetime
     profile: dict[str, Any] = Field(default_factory=dict)
     manager: Optional["OktaUserSummary"] = None
+    # Membership / ownership lists. Resolved post-class via model_rebuild()
+    # because OktaUserGroupMemberOut is defined further down.
+    all_group_memberships_and_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
+    active_group_memberships_and_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
+    active_group_memberships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
+    active_group_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def _filter_profile_attrs(cls, value: Any) -> dict[str, Any]:
+        """Mirror the Marshmallow `OktaUserSchema.get_attribute` filter:
+        only emit profile keys present in `USER_DISPLAY_CUSTOM_ATTRIBUTES`.
+        """
+        from api.config import settings
+
+        attrs_to_display = [a for a in settings.USER_DISPLAY_CUSTOM_ATTRIBUTES.split(",") if a]
+        if not attrs_to_display:
+            return {}
+        if not isinstance(value, dict):
+            return {}
+        return {key: value.get(key) for key in attrs_to_display}
 
 
 # --- Group memberships ------------------------------------------------------
