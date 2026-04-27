@@ -17,10 +17,45 @@ from api.auth.permissions import (
 from api.config import settings
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import App, AppTagMap
+from api.models import (
+    App,
+    AppGroup,
+    AppTagMap,
+    OktaGroupTagMap,
+    OktaUserGroupMember,
+    RoleGroupMap,
+)
 from api.pagination import paginate
 from api.schemas import AppOut, AppSummary, DeleteMessage
 from api.schemas._serialize import safe_dump
+
+
+# Eager-load options for an `App` response so the `active_owner_app_groups`
+# and `active_non_owner_app_groups` lists carry enough nested data for the
+# frontend's apps page to render without lazy-load errors.
+_APP_GROUP_LOAD = (
+    selectinload(AppGroup.active_user_memberships).options(
+        joinedload(OktaUserGroupMember.active_user),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
+            RoleGroupMap.active_role_group
+        ),
+    ),
+    selectinload(AppGroup.active_user_ownerships).options(
+        joinedload(OktaUserGroupMember.active_user),
+        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(
+            RoleGroupMap.active_role_group
+        ),
+    ),
+    selectinload(AppGroup.active_group_tags).options(
+        joinedload(OktaGroupTagMap.active_tag),
+        joinedload(OktaGroupTagMap.active_app_tag_mapping),
+    ),
+)
+APP_LOAD_OPTIONS = (
+    selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag),
+    selectinload(App.active_owner_app_groups).options(*_APP_GROUP_LOAD),
+    selectinload(App.active_non_owner_app_groups).options(*_APP_GROUP_LOAD),
+)
 
 
 def _validate_description(value: Any, field_provided: bool) -> str:
@@ -60,7 +95,7 @@ def list_apps(request: Request, db: DbSession, current_user_id: CurrentUserId) -
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     app = (
         db.query(App)
-        .options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag))
+        .options(*APP_LOAD_OPTIONS)
         .filter(_db.or_(App.id == app_id, App.name == app_id))
         .first()
     )
@@ -157,7 +192,7 @@ def post_app(
     ).execute()
     refreshed = (
         db.query(App)
-        .options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag))
+        .options(*APP_LOAD_OPTIONS)
         .filter(App.id == created.id)
         .first()
     )
@@ -241,7 +276,7 @@ def put_app(
             ).execute()
             refreshed = (
                 db.query(App)
-                .options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag))
+                .options(*APP_LOAD_OPTIONS)
                 .filter(App.id == app_obj.id)
                 .first()
             )
@@ -295,7 +330,7 @@ def put_app(
 
     refreshed = (
         db.query(App)
-        .options(selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag))
+        .options(*APP_LOAD_OPTIONS)
         .filter(App.id == app_obj.id)
         .first()
     )

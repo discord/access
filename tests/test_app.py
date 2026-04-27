@@ -24,6 +24,29 @@ from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory
 
 
+def test_get_access_app_includes_owner_group(client: TestClient, db: Any, url_for: Any) -> None:
+    """The conftest seeds the built-in Access app + App-Access-Owners group.
+    Hitting /api/apps/Access must return the owner group under
+    active_owner_app_groups so the React /apps/Access page can render it."""
+    access_app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
+    rep = client.get(access_app_url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["name"] == App.ACCESS_APP_RESERVED_NAME
+    assert "active_owner_app_groups" in data
+    assert "active_non_owner_app_groups" in data
+    expected_owner_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    owner_group_names = [g["name"] for g in data["active_owner_app_groups"]]
+    assert expected_owner_name in owner_group_names
+    # Each owner group should be type=app_group and is_owner=True
+    for g in data["active_owner_app_groups"]:
+        assert g["type"] == "app_group"
+        assert g["is_owner"] is True
+
+
 def test_get_app(
     client: TestClient, db: Any, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser, url_for: Any) -> None:
     # test 404

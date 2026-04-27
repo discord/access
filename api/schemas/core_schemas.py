@@ -109,6 +109,10 @@ class AppOut(AppSummary):
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
     active_app_tags: list[AppTagMapOut] = Field(default_factory=list)
+    # Populated post-class-definition once `AppGroupOut` exists (forward refs
+    # resolved via `model_rebuild()` at the bottom of this file).
+    active_owner_app_groups: list["AppGroupOut"] = Field(default_factory=list)
+    active_non_owner_app_groups: list["AppGroupOut"] = Field(default_factory=list)
 
 
 class AppIn(BaseModel):
@@ -377,3 +381,4 @@ GroupIn = Annotated[
 
 # Manage forward refs after all classes are defined
 OktaUserOut.model_rebuild()
+AppOut.model_rebuild()
