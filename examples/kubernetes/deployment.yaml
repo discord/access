@@ -35,11 +35,13 @@ spec:
             - '600'
             - -b
             - :3000
+            - -k
+            - uvicorn.workers.UvicornWorker
             - --access-logfile
             - '-'
-            - api.wsgi:app
+            - api.asgi:app
           env: # See "Production Setup" in the README for more details on configuring these environment variables
-            - name: FLASK_ENV
+            - name: ENV
               value: production
             - name: OKTA_DOMAIN
               value: mydomain.okta.com # Replace with your Okta domain

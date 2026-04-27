@@ -16,10 +16,10 @@ spec:
         spec:
           containers:
             - command:
-                - flask
+                - access
                 - notify
               env: # See "Production Setup" in the README for more details on configuring these environment variables
-                - name: FLASK_ENV
+                - name: ENV
                   value: production
                 - name: OKTA_DOMAIN
                   value: mydomain.okta.com # Replace with your Okta domain

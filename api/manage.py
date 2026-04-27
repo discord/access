@@ -50,6 +50,33 @@ def cli() -> None:
     """Access CLI."""
 
 
+def _load_plugin_commands() -> None:
+    """Register Click commands published via the `access.commands` entry point.
+
+    Plugins declare commands in their `setup.py` like:
+        entry_points={"access.commands": ["health=my_plugin.cli:health_command"]}
+    """
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:  # pragma: no cover
+        return
+    try:
+        eps = entry_points(group="access.commands")  # type: ignore[call-arg]
+    except TypeError:
+        # Older importlib.metadata returns a dict
+        eps = entry_points().get("access.commands", [])  # type: ignore[assignment]
+    for ep in eps:
+        try:
+            command = ep.load()
+        except Exception:
+            continue
+        if isinstance(command, click.Command):
+            cli.add_command(command, name=ep.name)
+
+
+_load_plugin_commands()
+
+
 @cli.command("init")
 @click.argument("admin_okta_user_email")
 @_with_db_context

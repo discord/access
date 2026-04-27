@@ -77,7 +77,7 @@ def get_base_url() -> str:
     if CLIENT_ORIGIN_URL:
         return CLIENT_ORIGIN_URL
 
-    env = os.environ.get("FLASK_ENV", "development")
+    env = os.environ.get("ENV", "development")
     if env == "production":
         return "https://example.com"
     else:

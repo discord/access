@@ -23,7 +23,7 @@ def _init_datadog() -> Any:
         import datadog
 
         statsd_host_ip = os.environ.get("STATSD_HOST_IP")
-        env = os.environ.get("FLASK_ENV", "development")
+        env = os.environ.get("ENV", "development")
 
         statsd_host = statsd_host_ip if statsd_host_ip else os.environ.get("DD_AGENT_HOST", "127.0.0.1")
         statsd_port = int(os.environ.get("DD_DOGSTATSD_PORT", 8125))
