@@ -1,20 +1,68 @@
-from typing import List
+"""Click-based CLI for Access management commands.
+
+Replaces the Flask-CLI commands (`flask init`, `flask sync`, `flask notify`,
+etc.) that the project used pre-FastAPI migration. Each command runs inside
+a per-invocation database scope set up by `_with_db_context`.
+
+Run via:
+    access init <admin_email>
+    access sync
+    access notify
+    python -m api.manage <command>
+"""
+from __future__ import annotations
+
+import functools
+import uuid
+from typing import Any, Callable, List, TypeVar
 
 import click
-def with_appcontext(f): return f  # FastAPI-mode no-op
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
-@click.command("init")
+def _with_db_context(func: F) -> F:
+    """Initialize the SQLAlchemy engine + scope before running the command."""
+
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from api.database import build_engine
+        from api.extensions import _session_scope, db
+
+        if db._engine is None:  # type: ignore[attr-defined]
+            db.init_app(engine=build_engine())
+        token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
+        try:
+            return func(*args, **kwargs)
+        finally:
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+            db.remove()
+            _session_scope.reset(token)
+
+    return wrapper  # type: ignore[return-value]
+
+
+@click.group()
+def cli() -> None:
+    """Access CLI."""
+
+
+@cli.command("init")
 @click.argument("admin_okta_user_email")
-
+@_with_db_context
 def init(admin_okta_user_email: str) -> None:
+    """Import users/groups/memberships from Okta and create the built-in Access app."""
     _import_from_okta()
     _init_builtin_apps(admin_okta_user_email)
 
 
-@click.command("import-from-okta")
-
+@cli.command("import-from-okta")
+@_with_db_context
 def import_from_okta() -> None:
+    """Import users/groups/memberships from Okta."""
     _import_from_okta()
 
 
@@ -28,7 +76,7 @@ def _import_from_okta() -> None:
         click.echo("Skipping import of Okta Users as they were previously imported")
     else:
         click.echo("Importing Okta Users")
-        user_type_to_user_attrs_to_titles = {}
+        user_type_to_user_attrs_to_titles: dict[str, Any] = {}
 
         users = okta.list_users()
         for user in users:
@@ -69,10 +117,11 @@ def _import_from_okta() -> None:
     click.echo("Completed Okta Import")
 
 
-@click.command("init-builtin-apps")
-@click.argument("admin_okta_user_id")
-
+@cli.command("init-builtin-apps")
+@click.argument("admin_okta_user_email")
+@_with_db_context
 def init_builtin_apps(admin_okta_user_email: str) -> None:
+    """Create the built-in Access app and owner group."""
     _init_builtin_apps(admin_okta_user_email)
 
 
@@ -108,7 +157,7 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     ).execute()
 
 
-@click.command("sync")
+@cli.command("sync")
 @click.option(
     "--sync-groups-authoritatively",
     is_flag=True,
@@ -123,11 +172,12 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     default=False,
     help="Sync group memberships from Access to Okta",
 )
-
+@_with_db_context
 def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
-    from api.config import settings
+    """Sync users/groups/memberships from Okta to Access and expire stale requests."""
     from sentry_sdk import start_transaction
 
+    from api.config import settings
     from api.syncer import (
         expire_access_requests,
         sync_group_memberships,
@@ -145,7 +195,7 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
         expire_access_requests()
 
 
-@click.command("fix-unmanaged-groups")
+@cli.command("fix-unmanaged-groups")
 @click.option(
     "--dry-run",
     is_flag=True,
@@ -153,16 +203,15 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-
+@_with_db_context
 def fix_unmanaged_groups(dry_run: bool) -> None:
-    from api.integrity import (
-        verify_and_fix_unmanaged_groups,
-    )
+    """Verify and fix unmanaged-group state in Access against Okta."""
+    from api.integrity import verify_and_fix_unmanaged_groups
 
     verify_and_fix_unmanaged_groups(dry_run=dry_run)
 
 
-@click.command("fix-role-memberships")
+@cli.command("fix-role-memberships")
 @click.option(
     "--dry-run",
     is_flag=True,
@@ -170,16 +219,15 @@ def fix_unmanaged_groups(dry_run: bool) -> None:
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-
+@_with_db_context
 def fix_role_memberships(dry_run: bool) -> None:
-    from api.integrity import (
-        verify_and_fix_role_memberships,
-    )
+    """Verify and fix role-membership state in Access."""
+    from api.integrity import verify_and_fix_role_memberships
 
     verify_and_fix_role_memberships(dry_run=dry_run)
 
 
-@click.command("notify")
+@cli.command("notify")
 @click.option(
     "--owner",
     is_flag=True,
@@ -194,8 +242,9 @@ def fix_role_memberships(dry_run: bool) -> None:
     default=False,
     help="If set will notify role owners instead of individuals",
 )
-
+@_with_db_context
 def notify(owner: bool, role_owner: bool) -> None:
+    """Send expiring-access notifications."""
     from api.syncer import (
         expiring_access_notifications_owner,
         expiring_access_notifications_role_owner,
@@ -210,8 +259,8 @@ def notify(owner: bool, role_owner: bool) -> None:
         expiring_access_notifications_user()
 
 
-@click.command("sync-app-group-memberships")
-
+@cli.command("sync-app-group-memberships")
+@_with_db_context
 def sync_app_group_memberships() -> None:
     """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
     from api.extensions import db
@@ -220,7 +269,6 @@ def sync_app_group_memberships() -> None:
 
     click.echo("Starting app group lifecycle plugin sync")
 
-    # Find all apps with a plugin configured
     apps: List[App] = (
         App.query.filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).all()
     )
@@ -244,3 +292,7 @@ def sync_app_group_memberships() -> None:
             click.echo(f"  ✗ Failed to sync app '{app.name}': {e}", err=True)
 
     click.echo("Completed app group lifecycle plugin sync")
+
+
+if __name__ == "__main__":
+    cli()
