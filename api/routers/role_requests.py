@@ -14,6 +14,7 @@ from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequ
 from api.pagination import paginate
 from api.schemas import RoleRequestOut
 from api.schemas._serialize import safe_dump
+from api.schemas.rfc822 import parse_datetime_value
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 _adapter = TypeAdapter(RoleRequestOut)
@@ -102,7 +103,7 @@ def post_role_request(
         requested_group=group,
         request_ownership=bool(body.get("group_owner", False)),
         request_reason=body.get("reason", "") or "",
-        request_ending_at=body.get("ending_at"),
+        request_ending_at=parse_datetime_value(body.get("ending_at")),
     ).execute()
     return safe_dump(_adapter, rr)
 
@@ -149,7 +150,7 @@ def put_role_request(
             role_request=rr,
             approver_user=current_user_id,
             approval_reason=body.get("reason", "") or "",
-            ending_at=body.get("ending_at"),
+            ending_at=parse_datetime_value(body.get("ending_at")),
         ).execute()
     else:
         RejectRoleRequest(

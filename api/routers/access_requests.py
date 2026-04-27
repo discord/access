@@ -18,6 +18,7 @@ from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAcce
 from api.pagination import paginate
 from api.schemas import AccessRequestOut
 from api.schemas._serialize import safe_dump
+from api.schemas.rfc822 import parse_datetime_value
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
@@ -78,7 +79,7 @@ def post_access_request(
         requested_group=group,
         request_ownership=bool(body.get("group_owner", False)),
         request_reason=body.get("reason", "") or "",
-        request_ending_at=body.get("ending_at"),
+        request_ending_at=parse_datetime_value(body.get("ending_at")),
     ).execute()
     refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == ar.id).first()
     return safe_dump(_adapter, refreshed)
@@ -137,7 +138,7 @@ def put_access_request(
             access_request=ar,
             approver_user=current_user_id,
             approval_reason=body.get("reason", "") or "",
-            ending_at=body.get("ending_at"),
+            ending_at=parse_datetime_value(body.get("ending_at")),
         ).execute()
     else:
         RejectAccessRequest(

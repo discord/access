@@ -357,6 +357,34 @@ def test_create_access_request(app: FastAPI, client: TestClient, db: Any, okta_g
     assert data["request_ownership"] == access_request.request_ownership
 
 
+def test_create_access_request_with_rfc822_ending_at(
+    app: FastAPI, client: TestClient, db: Any, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """Frontend sends ending_at as RFC822 (e.g. "Sun, 10 May 2026 19:09:02 -0700");
+    the router must parse the wire string into a datetime before it hits the
+    SQLAlchemy DateTime column."""
+    access_requests_url = url_for("api-access-requests.access_requests")
+    db.session.add(okta_group)
+    db.session.commit()
+
+    data = {
+        "group_id": okta_group.id,
+        "group_owner": False,
+        "reason": "test reason",
+        "ending_at": "Sun, 10 May 2026 19:09:02 -0700",
+    }
+    rep = client.post(access_requests_url, json=data)
+    assert rep.status_code == 201, rep.text
+
+    response_data = rep.json()
+    access_request = db.session.get(AccessRequest, response_data["id"])
+    assert access_request is not None
+    assert access_request.request_ending_at is not None
+    assert access_request.request_ending_at.year == 2026
+    assert access_request.request_ending_at.month == 5
+    assert access_request.request_ending_at.day == 10
+
+
 def test_get_all_access_request(client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
     access_requests_url = url_for("api-access-requests.access_requests")
     db.session.add(user)
