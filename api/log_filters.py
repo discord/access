@@ -6,19 +6,19 @@ from gunicorn.glogging import Logger as GunicornLogger
 
 
 class TokenSanitizingFilter(logging.Filter):
-    """Filter that redacts sensitive token information from Flask application logs.
+    """Filter that redacts sensitive token information from application logs.
 
     Note: This filter handles internal application logs. For HTTP access logs,
-    see gunicorn_logging.py which provides specialized handling for those.
+    see RedactingGunicornLogger below for specialized handling.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
         if hasattr(record, "msg") and isinstance(record.msg, str):
             msg = record.msg
 
-            # Check for token logging pattern from flask_oidc
+            # OIDC libraries occasionally log the full refresh-token blob on
+            # error. Redact the whole dict.
             if "Could not refresh token" in msg and "{" in msg:
-                # Replace the entire token dictionary with a placeholder
                 msg = re.sub(r"Could not refresh token (\{.*?\})", "Could not refresh token {REDACTED_TOKEN_DATA}", msg)
 
             # This provides defense-in-depth alongside the Gunicorn logger

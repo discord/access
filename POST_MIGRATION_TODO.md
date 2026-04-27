@@ -138,13 +138,7 @@ parallel calls but the entry points are sync.
 
 ## Tooling
 
-### 13. ~~Replace Flask-Migrate-style migrations with raw Alembic CLI~~ ✅
-
-**Done in the migration.** `migrations/env.py` is plain Alembic;
-`alembic upgrade head` works. Follow-up is just updating runbooks /
-deployment docs that still mention `flask db upgrade`.
-
-### 14. OpenAPI client codegen
+### 13. OpenAPI client codegen
 
 FastAPI auto-publishes `/api/openapi.json` (when `DEBUG=true`). Run
 `npx openapi-codegen gen api` against the new spec and replace any
@@ -152,14 +146,14 @@ hand-written API client code in the frontend with the generated types
 and React-Query hooks. The codegen config in `openapi-codegen.config.ts`
 is already pointed at the new endpoint.
 
-### 15. Strict type checking on routers + schemas
+### 14. Strict type checking on routers + schemas
 
 Enforce `pyright` / `mypy` strict mode on `api/routers/` and `api/schemas/`.
 Operations and models can stay loose initially since they're inherited
 from the Flask era. Add a CI check that fails the build on new strict-mode
 violations in those directories.
 
-### 16. Drop `werkzeug` (and other Flask-transitive deps)
+### 15. Drop `werkzeug` (and other Flask-transitive deps)
 
 Now that Flask is gone, `werkzeug` is no longer required transitively.
 Audit `pip freeze` output for stragglers and remove direct imports if any
@@ -169,7 +163,7 @@ slipped through.
 
 ## Test Ergonomics
 
-### 17. Async test client
+### 16. Async test client
 
 Once routers are async (#2), switch from `fastapi.testclient.TestClient`
 to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
@@ -177,7 +171,7 @@ to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
 DB calls in a single request) and avoids the sync-bridge in the current
 TestClient.
 
-### 18. Replace `factory_boy` with Pydantic-based builders
+### 17. Replace `factory_boy` with Pydantic-based builders
 
 Either:
 - Keep `factory_boy` but decouple it from the legacy SQLAlchemy session
@@ -186,7 +180,7 @@ Either:
   generates fixtures from Pydantic models — keeps test data and request
   schemas in sync automatically.
 
-### 19. Golden-file response snapshots
+### 18. Golden-file response snapshots
 
 Add snapshot tests for the major endpoints (`GET /api/groups`,
 `GET /api/groups/{id}`, `GET /api/users/{id}`, `GET /api/requests`,
@@ -195,15 +189,3 @@ diffable test failures rather than runtime regressions for clients.
 
 Recommend `syrupy` for the snapshot framework — JSON-aware diffs and
 clean `--snapshot-update` ergonomics.
-
----
-
-## Current State
-
-- Branch: `fastapi-migration`
-- Tests: 260/260 passing
-- CLI: `access init`, `access sync`, `access notify`, etc. via console_scripts
-  (`pip install -e .`)
-- Server: `uvicorn api.asgi:app --reload --port 6060`
-- Migrations: `alembic upgrade head`
-- See [Makefile](Makefile) for one-line wrappers around all of the above
