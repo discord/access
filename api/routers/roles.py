@@ -20,12 +20,12 @@ from api.extensions import db as _db
 from api.models import OktaGroup, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
-from api.schemas import GroupOut, GroupSummary
+from api.schemas import GroupDetail, GroupSummary
 from api.schemas._serialize import safe_dump
 from api.schemas.requests_schemas import RoleMember
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
-_role_adapter = TypeAdapter(GroupOut)
+_role_adapter = TypeAdapter(GroupDetail)
 _role_summary_adapter = TypeAdapter(GroupSummary)
 
 

@@ -13,11 +13,11 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, GroupRequest, OktaUser
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import paginate
-from api.schemas import GroupRequestOut
+from api.schemas import GroupRequestDetail
 from api.schemas._serialize import safe_dump
 
 router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
-_adapter = TypeAdapter(GroupRequestOut)
+_adapter = TypeAdapter(GroupRequestDetail)
 
 
 def _load_options() -> tuple:

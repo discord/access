@@ -19,7 +19,7 @@ def test_get_user_at_me_includes_group_memberships(
 ) -> None:
     """The /users/@me page reads active_group_memberships and
     active_group_ownerships to render the user's groups. The migrated
-    OktaUserOut originally dropped these lists."""
+    OktaUserDetail originally dropped these lists."""
     db.session.add(okta_group)
     db.session.commit()
     access_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()

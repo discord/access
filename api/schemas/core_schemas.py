@@ -7,7 +7,7 @@ there is no per-call `only=`/`exclude=` projection.
 Polymorphic groups are modelled as discriminated unions on the `type` field.
 Three union shapes are exposed:
 
-  - `GroupOut`     — full detail (used by `/api/groups/{id}`)
+  - `GroupDetail`     — full detail (used by `/api/groups/{id}`)
   - `GroupSummary` — compact list view (used by `/api/groups`)
   - `GroupIn`      — request body for create/update
 
@@ -41,7 +41,7 @@ def _validate_name(value: str) -> str:
 # --- Tags -------------------------------------------------------------------
 
 
-class TagOut(BaseModel):
+class TagDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: str
@@ -51,9 +51,9 @@ class TagOut(BaseModel):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     deleted_at: RFC822DatetimeOpt = None
-    # Resolved post-class via model_rebuild() — OktaGroupTagMapOut is defined
+    # Resolved post-class via model_rebuild() — OktaGroupTagMapDetail is defined
     # below.
-    active_group_tags: list["OktaGroupTagMapOut"] = Field(default_factory=list)
+    active_group_tags: list["OktaGroupTagMapDetail"] = Field(default_factory=list)
 
 
 class TagSummary(BaseModel):
@@ -72,17 +72,17 @@ class TagIn(BaseModel):
     enabled: bool = True
 
 
-class OktaGroupTagMapOut(BaseModel):
+class OktaGroupTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: RFC822Datetime
     ended_at: RFC822DatetimeOpt = None
     active_tag: Optional[TagSummary] = None
     # Populated when the row is reached from the Tag side (`tag.active_group_tags`):
     active_group: Optional["_GroupRefForMembership"] = None
-    active_app_tag_mapping: Optional["AppTagMapOut"] = None
+    active_app_tag_mapping: Optional["AppTagMapDetail"] = None
 
 
-class AppTagMapOut(BaseModel):
+class AppTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: RFC822Datetime
     ended_at: RFC822DatetimeOpt = None
@@ -110,15 +110,15 @@ class AppSummary(BaseModel):
     deleted_at: RFC822DatetimeOpt = None
 
 
-class AppOut(AppSummary):
+class AppDetail(AppSummary):
     """Full App detail."""
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
-    active_app_tags: list[AppTagMapOut] = Field(default_factory=list)
-    # Populated post-class-definition once `AppGroupOut` exists (forward refs
+    active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
+    # Populated post-class-definition once `AppGroupDetail` exists (forward refs
     # resolved via `model_rebuild()` at the bottom of this file).
-    active_owner_app_groups: list["AppGroupOut"] = Field(default_factory=list)
-    active_non_owner_app_groups: list["AppGroupOut"] = Field(default_factory=list)
+    active_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
+    active_non_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
 
 
 class AppIn(BaseModel):
@@ -144,17 +144,17 @@ class OktaUserSummary(BaseModel):
     deleted_at: RFC822DatetimeOpt = None
 
 
-class OktaUserOut(OktaUserSummary):
+class OktaUserDetail(OktaUserSummary):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     profile: dict[str, Any] = Field(default_factory=dict)
     manager: Optional["OktaUserSummary"] = None
     # Membership / ownership lists. Resolved post-class via model_rebuild()
-    # because OktaUserGroupMemberOut is defined further down.
-    all_group_memberships_and_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
-    active_group_memberships_and_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
-    active_group_memberships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
-    active_group_ownerships: list["OktaUserGroupMemberOut"] = Field(default_factory=list)
+    # because OktaUserGroupMemberDetail is defined further down.
+    all_group_memberships_and_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
+    active_group_memberships_and_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
+    active_group_memberships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
+    active_group_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
 
     @field_validator("profile", mode="before")
     @classmethod
@@ -204,7 +204,7 @@ class _RoleGroupMappingForMembership(BaseModel):
     role_group: Optional[_RoleGroupRef] = None
 
 
-class OktaUserGroupMemberOut(BaseModel):
+class OktaUserGroupMemberDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     is_owner: Optional[bool] = None
     created_at: RFC822Datetime
@@ -223,7 +223,7 @@ class OktaUserGroupMemberOut(BaseModel):
 # --- Role group mappings ----------------------------------------------------
 
 
-class RoleGroupMapOut(BaseModel):
+class RoleGroupMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     is_owner: Optional[bool] = None
     created_at: RFC822Datetime
@@ -248,35 +248,35 @@ class _GroupBase(BaseModel):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     deleted_at: RFC822DatetimeOpt = None
-    active_user_memberships: list[OktaUserGroupMemberOut] = Field(default_factory=list)
-    active_user_ownerships: list[OktaUserGroupMemberOut] = Field(default_factory=list)
-    active_group_tags: list[OktaGroupTagMapOut] = Field(default_factory=list)
+    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
-class OktaGroupOut(_GroupBase):
+class OktaGroupDetail(_GroupBase):
     type: Literal["okta_group"] = "okta_group"
-    active_role_member_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
-    active_role_owner_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
+    active_role_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+    active_role_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
 
-class RoleGroupOut(_GroupBase):
+class RoleGroupDetail(_GroupBase):
     type: Literal["role_group"] = "role_group"
-    active_role_associated_group_member_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
-    active_role_associated_group_owner_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
+    active_role_associated_group_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+    active_role_associated_group_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
 
-class AppGroupOut(_GroupBase):
+class AppGroupDetail(_GroupBase):
     type: Literal["app_group"] = "app_group"
     app_id: Optional[str] = None
     is_owner: bool = False
     plugin_data: Optional[dict[str, Any]] = None
     app: Optional[AppIdRef] = None
-    active_role_member_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
-    active_role_owner_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
+    active_role_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+    active_role_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
 
-GroupOut = Annotated[
-    Union[OktaGroupOut, RoleGroupOut, AppGroupOut],
+GroupDetail = Annotated[
+    Union[OktaGroupDetail, RoleGroupDetail, AppGroupDetail],
     Field(discriminator="type"),
 ]
 
@@ -292,7 +292,7 @@ class _GroupSummaryBase(BaseModel):
     is_managed: bool = True
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
-    active_group_tags: list[OktaGroupTagMapOut] = Field(default_factory=list)
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
 class OktaGroupSummary(_GroupSummaryBase):
@@ -301,8 +301,8 @@ class OktaGroupSummary(_GroupSummaryBase):
 
 class RoleGroupSummary(_GroupSummaryBase):
     type: Literal["role_group"] = "role_group"
-    active_role_associated_group_member_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
-    active_role_associated_group_owner_mappings: list[RoleGroupMapOut] = Field(default_factory=list)
+    active_role_associated_group_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+    active_role_associated_group_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
 
 class AppGroupSummary(_GroupSummaryBase):
@@ -407,7 +407,7 @@ GroupIn = Annotated[
 
 
 # Manage forward refs after all classes are defined
-OktaUserOut.model_rebuild()
-AppOut.model_rebuild()
-TagOut.model_rebuild()
-OktaGroupTagMapOut.model_rebuild()
+OktaUserDetail.model_rebuild()
+AppDetail.model_rebuild()
+TagDetail.model_rebuild()
+OktaGroupTagMapDetail.model_rebuild()

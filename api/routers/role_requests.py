@@ -12,12 +12,12 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from api.pagination import paginate
-from api.schemas import RoleRequestOut
+from api.schemas import RoleRequestDetail
 from api.schemas._serialize import safe_dump
 from api.schemas.rfc822 import parse_datetime_value
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
-_adapter = TypeAdapter(RoleRequestOut)
+_adapter = TypeAdapter(RoleRequestDetail)
 
 
 @router.get("", name="role_requests")

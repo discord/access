@@ -7,10 +7,10 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.schemas.core_schemas import (
-    AppOut,
+    AppDetail,
     GroupRef,
     OktaUserSummary,
-    OktaUserGroupMemberOut,
+    OktaUserGroupMemberDetail,
 )
 from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
 
@@ -18,7 +18,7 @@ from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
 # --- Access requests --------------------------------------------------------
 
 
-class AccessRequestOut(BaseModel):
+class AccessRequestDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     requester_user_id: Optional[str] = None
@@ -59,7 +59,7 @@ class ResolveAccessRequest(BaseModel):
 # --- Role requests ----------------------------------------------------------
 
 
-class RoleRequestOut(BaseModel):
+class RoleRequestDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     requester_user_id: Optional[str] = None
@@ -100,7 +100,7 @@ class ResolveRoleRequest(ResolveAccessRequest):
 # --- Group requests ---------------------------------------------------------
 
 
-class GroupRequestOut(BaseModel):
+class GroupRequestDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     status: str

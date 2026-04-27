@@ -16,13 +16,13 @@ from api.extensions import db as _db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from api.pagination import paginate
-from api.schemas import AccessRequestOut
+from api.schemas import AccessRequestDetail
 from api.schemas._serialize import safe_dump
 from api.schemas.rfc822 import parse_datetime_value
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
-_adapter = TypeAdapter(AccessRequestOut)
+_adapter = TypeAdapter(AccessRequestDetail)
 
 
 def _load_options() -> tuple:

@@ -40,7 +40,7 @@ from api.operations import (
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
-from api.schemas import DeleteMessage, GroupOut, GroupSummary
+from api.schemas import DeleteMessage, GroupDetail, GroupSummary
 from api.schemas._serialize import safe_dump
 from api.schemas.requests_schemas import GroupMember
 
@@ -68,7 +68,7 @@ DEFAULT_LOAD_OPTIONS = (
     ),
 )
 
-_group_adapter = TypeAdapter(GroupOut)
+_group_adapter = TypeAdapter(GroupDetail)
 _group_summary_adapter = TypeAdapter(GroupSummary)
 
 

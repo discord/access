@@ -26,7 +26,7 @@ from api.models import (
     RoleGroupMap,
 )
 from api.pagination import paginate
-from api.schemas import AppOut, AppSummary, DeleteMessage
+from api.schemas import AppDetail, AppSummary, DeleteMessage
 from api.schemas._serialize import safe_dump
 
 
@@ -77,7 +77,7 @@ def _validate_description(value: Any, field_provided: bool) -> str:
     return value
 
 router = APIRouter(prefix="/api/apps", tags=["apps"])
-_adapter = TypeAdapter(AppOut)
+_adapter = TypeAdapter(AppDetail)
 _summary_adapter = TypeAdapter(AppSummary)
 
 

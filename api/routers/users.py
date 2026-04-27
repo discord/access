@@ -30,13 +30,13 @@ from api.models import (
     RoleGroupMap,
 )
 from api.pagination import paginate
-from api.schemas import OktaUserOut, OktaUserSummary
+from api.schemas import OktaUserDetail, OktaUserSummary
 from api.schemas._serialize import safe_dump
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
-_user_adapter = TypeAdapter(OktaUserOut)
+_user_adapter = TypeAdapter(OktaUserDetail)
 _user_summary_adapter = TypeAdapter(OktaUserSummary)
 
 

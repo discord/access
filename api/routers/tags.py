@@ -16,7 +16,7 @@ from api.extensions import db as _db
 from api.models import Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
-from api.schemas import DeleteMessage, TagOut
+from api.schemas import DeleteMessage, TagDetail
 from api.schemas._serialize import safe_dump
 
 
@@ -56,7 +56,7 @@ def _validate_constraints(constraints: Any) -> dict[str, Any]:
     return valid
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
-_adapter = TypeAdapter(TagOut)
+_adapter = TypeAdapter(TagDetail)
 
 
 @router.get("", name="tags")
