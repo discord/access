@@ -38,6 +38,7 @@ from sqlalchemy import (
     JSON,
     MetaData,
     Unicode,
+    and_,
     cast,
     func,
     not_,
@@ -174,6 +175,7 @@ class _DB:
     relationship = staticmethod(relationship)
     func = func
     or_ = staticmethod(or_)
+    and_ = staticmethod(and_)
     not_ = staticmethod(not_)
     text = staticmethod(text)
     cast = staticmethod(cast)
@@ -190,7 +192,7 @@ class _DB:
         self._sessionmaker = sessionmaker(
             bind=engine,
             autoflush=False,
-            expire_on_commit=False,
+            expire_on_commit=True,
             query_cls=Query,
         )
         self._scoped = scoped_session(

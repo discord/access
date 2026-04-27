@@ -13,8 +13,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
+from api.auth import permissions as _perms
 from api.auth.dependencies import CurrentUserId
-from api.auth.permissions import can_manage_group, is_access_admin
 from api.database import DbSession
 from api.extensions import db as _db
 from api.models import OktaGroup, RoleGroup, RoleGroupMap
@@ -80,8 +80,8 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
         .all()
     )
     return {
-        "groups": [m.group_id for m in mappings if not m.is_owner],
-        "owner_groups": [m.group_id for m in mappings if m.is_owner],
+        "groups_in_role": [m.group_id for m in mappings if not m.is_owner],
+        "groups_owned_by_role": [m.group_id for m in mappings if m.is_owner],
     }
 
 
@@ -101,7 +101,7 @@ def put_role_members(
     )
     if role is None:
         raise HTTPException(404, "Not Found")
-    if not can_manage_group(db, current_user_id, role) and not is_access_admin(db, current_user_id):
+    if not _perms.can_manage_group(db, current_user_id, role) and not _perms.is_access_admin(db, current_user_id):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
     ModifyRoleGroups(
@@ -110,6 +110,8 @@ def put_role_members(
         groups_to_remove=body.groups_to_remove,
         owner_groups_to_add=body.owner_groups_to_add,
         owner_groups_to_remove=body.owner_groups_to_remove,
+        groups_should_expire=body.groups_should_expire,
+        owner_groups_should_expire=body.owner_groups_should_expire,
         groups_added_ended_at=body.groups_added_ending_at,
         current_user_id=current_user_id,
         created_reason=body.created_reason or "",

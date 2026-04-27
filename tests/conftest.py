@@ -105,11 +105,40 @@ def db(app: FastAPI) -> Generator[Any, None, None]:
         _session_scope.reset(token)
 
 
+class _DatetimeAwareTestClient(TestClient):
+    """TestClient that serializes datetimes in `json=` payloads to ISO strings.
+
+    The legacy Flask test client tolerated datetime objects in JSON bodies.
+    httpx's stdlib JSON encoder does not, so we pre-process the payload."""
+
+    def request(self, method: str, url: str, **kwargs: Any) -> Any:
+        json_payload = kwargs.get("json")
+        if json_payload is not None:
+            kwargs["json"] = _stringify_datetimes(json_payload)
+        return super().request(method, url, **kwargs)
+
+
+def _stringify_datetimes(obj: Any) -> Any:
+    from datetime import date, datetime
+
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: _stringify_datetimes(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_stringify_datetimes(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_stringify_datetimes(v) for v in obj)
+    return obj
+
+
 @pytest.fixture
 def client(app: FastAPI, db: Any) -> Generator[TestClient, None, None]:
     """Return a FastAPI TestClient that shares the test database session."""
     app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
-    with TestClient(app, raise_server_exceptions=False) as c:
+    with _DatetimeAwareTestClient(app, raise_server_exceptions=False) as c:
         yield c
     app.dependency_overrides.pop(get_current_user_id, None)
 

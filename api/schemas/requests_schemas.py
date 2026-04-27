@@ -158,7 +158,11 @@ class GroupMember(BaseModel):
 
 
 class RoleMember(BaseModel):
-    """Used by GET/PUT /api/roles/{id}/members (role-to-group mappings)."""
+    """Used by GET/PUT /api/roles/{id}/members (role-to-group mappings).
+
+    `groups_should_expire` and `owner_groups_should_expire` are RoleGroupMap
+    row ids (integers). The other lists are group ids (strings).
+    """
     model_config = ConfigDict(extra="ignore")
     groups: list[Any] = Field(default_factory=list)
     owner_groups: list[Any] = Field(default_factory=list)
@@ -166,5 +170,7 @@ class RoleMember(BaseModel):
     groups_to_remove: list[str] = Field(default_factory=list)
     owner_groups_to_add: list[str] = Field(default_factory=list)
     owner_groups_to_remove: list[str] = Field(default_factory=list)
+    groups_should_expire: list[int] = Field(default_factory=list)
+    owner_groups_should_expire: list[int] = Field(default_factory=list)
     groups_added_ending_at: RFC822DatetimeOpt = None
     created_reason: Optional[str] = ""

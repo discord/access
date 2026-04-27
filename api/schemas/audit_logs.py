@@ -232,4 +232,12 @@ class AuditLogSchema:
             if serialized is None and key not in _ALLOWED_NULL_KEYS:
                 continue
             out[key] = serialized
-        return json.dumps(out, default=str)
+
+        def _default(obj: Any) -> Any:
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            if isinstance(obj, Enum):
+                return obj.value
+            return str(obj)
+
+        return json.dumps(out, default=_default)

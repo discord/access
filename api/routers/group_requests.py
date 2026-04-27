@@ -40,6 +40,8 @@ def post_group_request(
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     body = body or {}
+    if not body.get("group_type") or not body.get("group_name"):
+        raise HTTPException(400, "group_type and group_name are required")
     requester = db.get(OktaUser, current_user_id)
     if requester is None:
         raise HTTPException(404, "Requester not found")
@@ -64,22 +66,20 @@ def put_group_request(
     gr = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
+    if "approved" not in body:
+        raise HTTPException(400, "approved is required")
     if gr.status != AccessRequestStatus.PENDING:
         raise HTTPException(400, "Group request has already been resolved")
-    approver = db.get(OktaUser, current_user_id)
-    approver_email = approver.email if approver is not None else None
     if bool(body.get("approved")):
         ApproveGroupRequest(
             group_request=gr,
-            approver_id=current_user_id,
-            approver_email=approver_email,
+            approver_user=current_user_id,
             approval_reason=body.get("reason", "") or "",
         ).execute()
     else:
         RejectGroupRequest(
             group_request=gr,
-            rejector_id=current_user_id,
-            rejector_email=approver_email,
+            current_user_id=current_user_id,
             rejection_reason=body.get("reason", "") or "",
         ).execute()
     refreshed = db.query(GroupRequest).filter(GroupRequest.id == group_request_id).first()
