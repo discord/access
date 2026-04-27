@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from api.schemas.core_schemas import (
     AppOut,
@@ -130,6 +130,16 @@ class GroupRequestOut(BaseModel):
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
     approved_group: Optional[GroupRef] = None
+
+    @field_validator("requested_group_tags", "resolved_group_tags", mode="before")
+    @classmethod
+    def _coerce_tag_list(cls, v: Any) -> Any:
+        # Legacy rows where the JSON column was incorrectly persisted as `{}`
+        # because of sqlalchemy_json's dict-default behavior. Treat any
+        # non-list value as an empty list.
+        if v is None or not isinstance(v, list):
+            return []
+        return v
 
 
 class CreateGroupRequest(BaseModel):

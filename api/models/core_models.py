@@ -938,6 +938,7 @@ class GroupRequest(db.Model):
             nested=True,
         ),
         nullable=False,
+        default=list,
         server_default="[]",
     )
     # Will also be used to populate owner access reason field
@@ -958,6 +959,7 @@ class GroupRequest(db.Model):
             nested=True,
         ),
         nullable=False,
+        default=list,
         server_default="[]",
     )
     resolution_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
