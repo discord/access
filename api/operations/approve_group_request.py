@@ -130,6 +130,17 @@ class ApproveGroupRequest:
             if not is_admin:
                 return self.group_request
 
+        if resolved_type != "app_group" and resolved_name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
+            return self.group_request
+
+        if resolved_type != "role_group" and resolved_name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX):
+            return self.group_request
+
+        if resolved_type == "app_group" and resolved_name.endswith(
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ):
+            return self.group_request
+
         existing_group = (
             db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
             .filter(func.lower(OktaGroup.name) == func.lower(resolved_name))

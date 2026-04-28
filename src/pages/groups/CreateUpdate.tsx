@@ -274,6 +274,21 @@ function GroupDialog(props: GroupDialogProps) {
                 validation={{
                   maxLength: 255,
                   pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
+                  validate: (value: string) => {
+                    const fullName =
+                      groupType === 'app_group'
+                        ? APP_GROUP_PREFIX + appName + APP_NAME_APP_GROUP_SEPARATOR + value
+                        : groupType === 'role_group'
+                          ? ROLE_GROUP_PREFIX + value
+                          : value;
+                    if (groupType !== 'app_group' && fullName.startsWith(APP_GROUP_PREFIX)) {
+                      return 'The App- prefix cannot be used for non-app groups. Please choose a different group name.';
+                    }
+                    if (groupType !== 'role_group' && fullName.startsWith(ROLE_GROUP_PREFIX)) {
+                      return 'The Role- prefix cannot be used for non-role groups. Please choose a different group name.';
+                    }
+                    return true;
+                  },
                 }}
                 parseError={(error) => {
                   if (error?.message != '') {

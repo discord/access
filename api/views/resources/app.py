@@ -4,12 +4,12 @@ from flask import abort, current_app, g, request
 from flask.typing import ResponseReturnValue
 from flask_apispec import MethodResource
 from sqlalchemy import func
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
-from api.models import App, AppGroup, AppTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.models.app_group import app_owners_group_description
 from api.operations import CreateApp, DeleteApp, ModifyAppTags, ModifyGroupDetails
 from api.pagination import paginate
@@ -336,6 +336,22 @@ class AppList(MethodResource):
                     )
 
                 initial_additional_app_groups.append(initial_app_group)
+
+        poly_group = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
+        existing_owner_group = (
+            db.session.query(poly_group)
+            .options(joinedload(poly_group.active_user_ownerships))
+            .filter(func.lower(OktaGroup.name) == func.lower(owner_group_name))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .first()
+        )
+        if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
+            abort(
+                409,
+                f"An owner group with existing owners already exists for this app name. Select a different app"
+                f" name, change the name of {owner_group_name}, or remove the existing owners of"
+                f" {owner_group_name} to be able to proceed.",
+            )
 
         app = CreateApp(
             owner_id=owner_id,

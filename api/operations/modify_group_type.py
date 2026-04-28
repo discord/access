@@ -47,6 +47,15 @@ class ModifyGroupType:
 
             # Clean-up the old child table row
             if type(self.group) is RoleGroup:
+                # Bail if changing away from RoleGroup for a group whose name uses the
+                # reserved Role- prefix; non-RoleGroup groups must not carry that prefix
+                if type(self.group_changes) is not RoleGroup and self.group.name.startswith(
+                    RoleGroup.ROLE_GROUP_NAME_PREFIX
+                ):
+                    raise ValueError(
+                        "The Role- prefix cannot be used for non-role groups. Please choose a different group name."
+                    )
+
                 # End all group attachments to this role and all group memberships via the role grant
                 active_role_associated_groups = RoleGroupMap.query.filter(
                     db.or_(
@@ -68,6 +77,15 @@ class ModifyGroupType:
                 # which cannot have its type changed
                 if self.group.is_owner:
                     raise ValueError("Owner app groups cannot have their type modified")
+
+                # Bail if changing away from AppGroup for a group whose name uses the
+                # reserved App- prefix; non-AppGroup groups must not carry that prefix
+                if type(self.group_changes) is not AppGroup and self.group.name.startswith(
+                    AppGroup.APP_GROUP_NAME_PREFIX
+                ):
+                    raise ValueError(
+                        "The App- prefix cannot be used for non-app groups. Please choose a different group name."
+                    )
 
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
