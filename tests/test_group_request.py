@@ -1952,3 +1952,55 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
         .first()
         is None
     )
+
+
+def test_cannot_approve_non_role_group_request_with_role_prefix(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    admin = OktaUserFactory.create()
+    db.session.add(user)
+    db.session.add(admin)
+    db.session.commit()
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    access_admin_group = RoleGroupFactory.create(name="App-Access-Owners")
+    db.session.add(access_admin_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=admin.id, group_id=access_admin_group.id, is_owner=False))
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins",
+        requested_group_description="A role group",
+        requested_group_type="role_group",
+        request_reason="Need a role",
+    ).execute()
+    assert group_request is not None
+
+    # Override the resolved name/type to use the Role- prefix with a non-role type
+    group_request.resolved_group_name = f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins"
+    group_request.resolved_group_type = "okta_group"
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=admin,
+        approval_reason="Approved",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert (
+        group_request.status == AccessRequestStatus.PENDING
+    ), "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
+    assert group_request.resolved_at is None

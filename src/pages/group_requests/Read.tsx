@@ -822,6 +822,9 @@ export default function ReadGroupRequest() {
                                           if (groupType !== 'app_group' && fullName.startsWith(APP_GROUP_PREFIX)) {
                                             return 'The App- prefix cannot be used for non-app groups. Please choose a different group name.';
                                           }
+                                          if (groupType !== 'role_group' && fullName.startsWith(ROLE_GROUP_PREFIX)) {
+                                            return 'The Role- prefix cannot be used for non-role groups. Please choose a different group name.';
+                                          }
                                           return true;
                                         },
                                       }}

@@ -1118,3 +1118,115 @@ def test_cannot_create_group_with_reserved_app_prefix(
         groups_url, json={"type": "app_group", "app_id": access_app.id, "name": non_owners_name, "description": ""}
     )
     assert rep.status_code == 201
+
+
+def test_cannot_rename_non_app_group_to_app_prefix(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    access_app: App,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    okta_group = OktaGroupFactory.create(name="Payments-Owners")
+    db.session.add(access_app)
+    db.session.add(okta_group)
+    db.session.commit()
+
+    group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
+
+    # Renaming an okta_group to App- prefix without changing the type is blocked
+    rep = client.put(group_url, json={"type": "okta_group", "name": "App-Payments-Owners", "description": ""})
+    assert rep.status_code == 400
+
+    # Renaming to a non-App- prefix is still allowed
+    rep = client.put(group_url, json={"type": "okta_group", "name": "Legitimate-Payments-Owners", "description": ""})
+    assert rep.status_code == 200
+
+    # Simultaneous conversion to app_group and rename to App- prefix is allowed
+    members_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members"
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": access_app.id, "name": members_name, "description": ""},
+    )
+    assert rep.status_code == 200
+
+
+def test_cannot_create_group_with_reserved_role_prefix(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+) -> None:
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+
+    groups_url = url_for("api-groups.groups")
+
+    # okta_group with Role- prefix is blocked
+    rep = client.post(groups_url, json={"type": "okta_group", "name": "Role-SomeName", "description": ""})
+    assert rep.status_code == 400
+
+    # app_group with Role- prefix is blocked
+    rep = client.post(groups_url, json={"type": "app_group", "name": "Role-SomeName", "description": ""})
+    assert rep.status_code == 400
+
+    # role_group with Role- prefix is allowed
+    rep = client.post(
+        groups_url, json={"type": "role_group", "name": f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins", "description": ""}
+    )
+    assert rep.status_code == 201
+
+
+def test_cannot_rename_non_role_group_to_role_prefix(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    okta_group = OktaGroupFactory.create(name="Some-Group")
+    db.session.add(okta_group)
+    db.session.commit()
+
+    group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
+
+    # Renaming an okta_group to Role- prefix without changing the type is blocked
+    rep = client.put(group_url, json={"type": "okta_group", "name": "Role-SomeName", "description": ""})
+    assert rep.status_code == 400
+
+    # Renaming to a non-Role- prefix is still allowed
+    rep = client.put(group_url, json={"type": "okta_group", "name": "Legitimate-SomeName", "description": ""})
+    assert rep.status_code == 200
+
+    # Simultaneous conversion to role_group and rename to Role- prefix is allowed
+    rep = client.put(
+        group_url,
+        json={"type": "role_group", "name": f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins", "description": ""},
+    )
+    assert rep.status_code == 200
+
+
+def test_cannot_convert_role_prefixed_group_to_non_role_type(
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    role_group = RoleGroupFactory.create(name=f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins")
+    db.session.add(role_group)
+    db.session.commit()
+
+    group_url = url_for("api-groups.group_by_id", group_id=role_group.id)
+
+    rep = client.put(group_url, json={"type": "okta_group", "name": role_group.name, "description": "desc"})
+    assert rep.status_code == 400
+
+    rep = client.put(group_url, json={"type": "app_group", "name": role_group.name, "description": "desc"})
+    assert rep.status_code == 400
+
+    # Keeping it as role_group is still allowed
+    rep = client.put(group_url, json={"type": "role_group", "name": role_group.name, "description": "desc"})
+    assert rep.status_code == 200

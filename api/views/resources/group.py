@@ -161,6 +161,23 @@ class GroupResource(MethodResource):
                     "Only tags can be modifed for application owner groups",
                 )
 
+        # Block renaming to a reserved prefix unless the final type matches.
+        # Checked here—before ModifyGroupDetails—using the target type from group_changes, because
+        # a legitimate OktaGroup→AppGroup/RoleGroup conversion sends both the new name and new type
+        # in the same request, so checking type(group) alone would produce a false positive.
+        if "name" in json_data:
+            final_type = type(group_changes) if "type" in json_data else type(group)
+            if group_changes.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX) and final_type is not AppGroup:
+                abort(
+                    400,
+                    "The App- prefix cannot be used for non-app groups. Please choose a different group name.",
+                )
+            if group_changes.name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX) and final_type is not RoleGroup:
+                abort(
+                    400,
+                    "The Role- prefix cannot be used for non-role groups. Please choose a different group name.",
+                )
+
         # Update name and description, sync to Okta, and fire group_updated hook.
         # This runs before ModifyGroupType so the group_created hook (fired inside
         # ModifyGroupType) sees the final name/description.
@@ -493,6 +510,9 @@ class GroupList(MethodResource):
 
         if type(group) is not AppGroup and group.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
             abort(400, "The App- prefix cannot be used for non-app groups. Please choose a different group name.")
+
+        if type(group) is not RoleGroup and group.name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX):
+            abort(400, "The Role- prefix cannot be used for non-role groups. Please choose a different group name.")
 
         if type(group) is AppGroup and group.name.endswith(
             f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"

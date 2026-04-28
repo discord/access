@@ -47,6 +47,15 @@ class ModifyGroupType:
 
             # Clean-up the old child table row
             if type(self.group) is RoleGroup:
+                # Bail if changing away from RoleGroup for a group whose name uses the
+                # reserved Role- prefix; non-RoleGroup groups must not carry that prefix
+                if type(self.group_changes) is not RoleGroup and self.group.name.startswith(
+                    RoleGroup.ROLE_GROUP_NAME_PREFIX
+                ):
+                    raise ValueError(
+                        "The Role- prefix cannot be used for non-role groups. Please choose a different group name."
+                    )
+
                 # End all group attachments to this role and all group memberships via the role grant
                 active_role_associated_groups = RoleGroupMap.query.filter(
                     db.or_(
