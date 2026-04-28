@@ -26,7 +26,7 @@ from api.models import (
 )
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
 # Define a Protocol that includes the pystr method
@@ -310,6 +310,76 @@ def _update_group_type(
     assert ret_data["id"] == group_id
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == expected_tags_count
+
+
+def test_put_app_group_rebind_authorization(
+    app: Flask,
+    client: FlaskClient,
+    db: SQLAlchemy,
+    mocker: MockerFixture,
+    app_group: AppGroup,
+) -> None:
+    source_app = AppFactory.create()
+    target_app = AppFactory.create()
+    source_app_owner_group = AppGroupFactory.create(
+        app_id=source_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{source_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+    )
+    target_app_owner_group = AppGroupFactory.create(
+        app_id=target_app.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+    )
+    app_group.app_id = source_app.id
+    db.session.add_all([source_app, target_app, source_app_owner_group, target_app_owner_group, app_group])
+    db.session.commit()
+
+    # Store IDs before requests — expunge_all() in ModifyGroupType can
+    # detach fixture objects, causing DetachedInstanceError on access.
+    app_group_id = app_group.id
+    source_app_id = source_app.id
+    target_app_id = target_app.id
+    target_app_name = target_app.name
+    target_app_owner_group_id = target_app_owner_group.id
+
+    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    ModifyGroupUsers(group=app_group, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
+
+    mocker.patch.object(okta, "update_group")
+    group_url = url_for("api-groups.group_by_id", group_id=app_group_id)
+    rebind_data: dict[str, Any] = {
+        "type": "app_group",
+        "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Prod",
+        "app_id": target_app_id,
+    }
+
+    # A group owner who does not own the target app cannot rebind the group
+    mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
+    rep = client.put(group_url, json=rebind_data)
+    assert rep.status_code == 403
+    assert db.session.get(AppGroup, app_group_id).app_id == source_app_id
+
+    # An Access admin can rebind the group to a different app
+    mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=True)
+    rep = client.put(group_url, json=rebind_data)
+    assert rep.status_code == 200
+    assert rep.get_json()["app_id"] == target_app_id
+
+    # Reset group back to source app for the next case
+    group_obj = db.session.get(AppGroup, app_group_id)
+    group_obj.app_id = source_app_id
+    db.session.commit()
+
+    # An owner of the target app can also rebind the group
+    mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
+    target_app_owner_group_obj = db.session.get(AppGroup, target_app_owner_group_id)
+    ModifyGroupUsers(group=target_app_owner_group_obj, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
+    rep = client.put(group_url, json=rebind_data)
+    assert rep.status_code == 200
+    assert rep.get_json()["app_id"] == target_app_id
 
 
 def test_put_group_members(

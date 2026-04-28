@@ -14,7 +14,7 @@ from sqlalchemy.orm import (
 from api.apispec import FlaskApiSpecDecorators
 from api.authorization import AuthorizationDecorator, AuthorizationHelpers
 from api.extensions import db
-from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import App, AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -136,6 +136,17 @@ class GroupResource(MethodResource):
                 abort(
                     403,
                     "Current user is not an Access Admin and not allowed to remove tags from this group",
+                )
+
+        # Prevent rebinding an app_group to a different app without owning the target app
+        if type(group) is AppGroup and "app_id" in json_data and json_data["app_id"] != group.app_id:
+            target_app = App.query.filter(App.id == json_data["app_id"]).filter(App.deleted_at.is_(None)).first_or_404()
+            if not (
+                AuthorizationHelpers.is_access_admin() or AuthorizationHelpers.is_app_owner_group_owner(app=target_app)
+            ):
+                abort(
+                    403,
+                    "Current user is not an app owner of the target app and not allowed to reassign this group",
                 )
 
         # Do not allow non-tag modifications of app owner groups (including Access app owner group)
