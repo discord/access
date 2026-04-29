@@ -22,6 +22,7 @@ from api.models import (
     App,
     AppGroup,
     AppTagMap,
+    OktaGroup,
     OktaGroupTagMap,
     OktaUserGroupMember,
     RoleGroupMap,
@@ -157,6 +158,29 @@ def post_app(
     name = body["name"]
     app_group_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
     owner_group_name = f"{app_group_prefix}{_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+
+    # If an owner-named group already exists *with owners*, refuse to create
+    # the app — otherwise CreateApp would silently absorb that group and its
+    # owners, which is confusing if a previous owner was squatting on the
+    # name. An empty pre-existing group, or one with members but no owners,
+    # is fine to absorb.
+    from sqlalchemy.orm import with_polymorphic
+
+    poly_group = with_polymorphic(OktaGroup, [_AppGroup, RoleGroup])
+    existing_owner_group = (
+        db.query(poly_group)
+        .options(selectinload(poly_group.active_user_ownerships))
+        .filter(func.lower(OktaGroup.name) == func.lower(owner_group_name))
+        .filter(OktaGroup.deleted_at.is_(None))
+        .first()
+    )
+    if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
+        raise HTTPException(
+            409,
+            f"An owner group with existing owners already exists for this app name. Select a different app"
+            f" name, change the name of {owner_group_name}, or remove the existing owners of"
+            f" {owner_group_name} to be able to proceed.",
+        )
 
     initial_additional_app_groups: list[dict[str, Any]] = []
     if "initial_additional_app_groups" in body:

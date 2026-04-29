@@ -323,11 +323,12 @@ def _update_group_type(
 
 
 def test_put_app_group_rebind_authorization(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     app_group: AppGroup,
+    url_for: Any,
 ) -> None:
     source_app = AppFactory.create()
     target_app = AppFactory.create()
@@ -355,7 +356,7 @@ def test_put_app_group_rebind_authorization(
     target_app_name = target_app.name
     target_app_owner_group_id = target_app_owner_group.id
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     ModifyGroupUsers(group=app_group, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
 
     mocker.patch.object(okta, "update_group")
@@ -376,7 +377,7 @@ def test_put_app_group_rebind_authorization(
     mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=True)
     rep = client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
-    assert rep.get_json()["app_id"] == target_app_id
+    assert rep.json()["app_id"] == target_app_id
 
     # Reset group back to source app for the next case
     group_obj = db.session.get(AppGroup, app_group_id)
@@ -389,7 +390,7 @@ def test_put_app_group_rebind_authorization(
     ModifyGroupUsers(group=target_app_owner_group_obj, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
     rep = client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
-    assert rep.get_json()["app_id"] == target_app_id
+    assert rep.json()["app_id"] == target_app_id
 
 
 def test_put_group_members(
@@ -1117,10 +1118,11 @@ def test_partial_group_update_preserves_description(
 
 
 def test_cannot_convert_app_prefixed_group_to_non_app_type(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1154,11 +1156,12 @@ def test_cannot_convert_app_prefixed_group_to_non_app_type(
 
 
 def test_cannot_create_group_with_reserved_app_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -1198,10 +1201,11 @@ def test_cannot_create_group_with_reserved_app_prefix(
 
 
 def test_cannot_rename_non_app_group_to_app_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1230,10 +1234,11 @@ def test_cannot_rename_non_app_group_to_app_prefix(
 
 
 def test_cannot_create_group_with_reserved_role_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -1257,9 +1262,10 @@ def test_cannot_create_group_with_reserved_role_prefix(
 
 
 def test_cannot_rename_non_role_group_to_role_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1286,9 +1292,10 @@ def test_cannot_rename_non_role_group_to_role_prefix(
 
 
 def test_cannot_convert_role_prefixed_group_to_non_role_type(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 

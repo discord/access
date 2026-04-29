@@ -1687,9 +1687,9 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
 
 
 def test_cannot_approve_okta_group_with_reserved_app_owners_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1752,9 +1752,9 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
 
 
 def test_cannot_approve_role_group_with_reserved_app_owners_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1817,9 +1817,9 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
 
 
 def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1883,9 +1883,9 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
 
 
 def test_cannot_approve_app_group_request_with_owners_group_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1955,9 +1955,9 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
 
 
 def test_cannot_approve_non_role_group_request_with_role_prefix(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,

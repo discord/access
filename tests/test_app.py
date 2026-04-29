@@ -630,11 +630,12 @@ def test_partial_app_update_preserves_description(
 
 
 def test_create_app_fails_when_preexisting_owner_group_is_occupied(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(user)
     db.session.commit()
@@ -663,10 +664,11 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
 
 
 def test_create_app_succeeds_with_empty_preexisting_owner_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -686,17 +688,18 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
     rep = client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
 
 
 def test_create_app_succeeds_with_members_only_preexisting_owner_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Any,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(user)
     db.session.commit()
@@ -721,6 +724,6 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     rep = client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None

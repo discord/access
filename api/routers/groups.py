@@ -188,6 +188,21 @@ def post_group(
     if existing is not None:
         raise HTTPException(400, "Group already exists with the same name")
 
+    if type(group) is not AppGroup and group.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
+        raise HTTPException(
+            400, "The App- prefix cannot be used for non-app groups. Please choose a different group name."
+        )
+    if type(group) is not RoleGroup and group.name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX):
+        raise HTTPException(
+            400, "The Role- prefix cannot be used for non-role groups. Please choose a different group name."
+        )
+    if type(group) is AppGroup and group.name.endswith(
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    ):
+        raise HTTPException(
+            400, "App owner groups cannot be created directly. They are created automatically when an app is created."
+        )
+
     created = CreateGroup(group=group, tags=body.get("tags_to_add", []), current_user_id=current_user_id).execute()
     refreshed = _load_group_with_options(db, created.id)
     return safe_dump(_group_adapter, refreshed)
@@ -245,6 +260,26 @@ def put_group(
                 403, "Current user is not an Access Admin and not allowed to remove tags from this group"
             )
 
+    # Prevent rebinding an AppGroup to a different app without owning the
+    # target app. Access admins can always rebind. Apply the rebind here when
+    # the group type isn't also changing — type-change rebinds are wired into
+    # ModifyGroupType below.
+    if type(group) is AppGroup and "app_id" in body and body["app_id"] != group.app_id:
+        from api.models import App
+
+        target_app = db.query(App).filter(App.id == body["app_id"]).filter(App.deleted_at.is_(None)).first()
+        if target_app is None:
+            raise HTTPException(404, "Not Found")
+        if not (
+            _perms.is_access_admin(db, current_user_id)
+            or _perms.is_app_owner_group_owner(db, current_user_id, app=target_app)
+        ):
+            raise HTTPException(
+                403, "Current user is not an app owner of the target app and not allowed to reassign this group"
+            )
+        if not body.get("type") or body["type"] == group.type:
+            group.app_id = body["app_id"]
+
     # App owner groups: only tag changes allowed
     if type(group) is AppGroup and group.is_owner:
         if len(body.get("tags_to_add", [])) > 0 or len(body.get("tags_to_remove", [])) > 0:
@@ -257,6 +292,24 @@ def put_group(
             refreshed = _load_group_with_options(db, group.id)
             return safe_dump(_group_adapter, refreshed)
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
+
+    # Block renaming to a reserved prefix unless the final group type matches.
+    # Computed using the target type when the request also changes type, since a
+    # legitimate OktaGroup→AppGroup/RoleGroup conversion sends both the new name
+    # and new type in the same request.
+    if "name" in body:
+        body_type = body.get("type")
+        type_klass_map = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}
+        final_type = type_klass_map.get(body_type) if body_type else type(group)
+        new_name = body["name"]
+        if new_name.startswith(AppGroup.APP_GROUP_NAME_PREFIX) and final_type is not AppGroup:
+            raise HTTPException(
+                400, "The App- prefix cannot be used for non-app groups. Please choose a different group name."
+            )
+        if new_name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX) and final_type is not RoleGroup:
+            raise HTTPException(
+                400, "The Role- prefix cannot be used for non-role groups. Please choose a different group name."
+            )
 
     try:
         ModifyGroupDetails(
@@ -279,7 +332,10 @@ def put_group(
             if isinstance(new_group, AppGroup):
                 new_group.app_id = body.get("app_id", getattr(group, "app_id", None))
                 new_group.is_owner = bool(body.get("is_owner", False))
-            group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
+            try:
+                group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
     old_plugin_data = group.plugin_data
