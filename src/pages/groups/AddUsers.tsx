@@ -47,7 +47,7 @@ import {
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -278,7 +278,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
               name="reason"
               multiline
               rows={4}
-              required={reason}
+              required={requireReasons || reason}
               validation={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {

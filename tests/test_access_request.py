@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -807,3 +808,41 @@ def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
     assert user == kwargs["requester"]
     assert len(kwargs["group_tags"]) == 1
     assert tag in kwargs["group_tags"]
+
+
+@pytest.mark.parametrize("app", [{"REQUIRE_REASONS": True}, {"REQUIRE_REASONS": False}], indirect=True)
+def test_create_access_request_require_reasons(
+    app: Flask, client: FlaskClient, db: SQLAlchemy, okta_group: OktaGroup
+) -> None:
+    require_reasons = app.config.get("REQUIRE_REASONS", False)
+    access_requests_url = url_for("api-access-requests.access_requests")
+
+    db.session.add(okta_group)
+    db.session.commit()
+
+    if require_reasons:
+        data = {
+            "group_id": okta_group.id,
+            "group_owner": False,
+            "reason": "",
+        }
+        rep = client.post(access_requests_url, json=data)
+        assert rep.status_code == 400
+        assert "Reason must be between 1 and 1024 characters" in str(rep.get_json())
+
+        data["reason"] = "   "
+        rep = client.post(access_requests_url, json=data)
+        assert rep.status_code == 400
+        assert "Reason must be between 1 and 1024 characters" in str(rep.get_json())
+
+        data["reason"] = "Valid reason"
+        rep = client.post(access_requests_url, json=data)
+        assert rep.status_code == 201
+    else:
+        data = {
+            "group_id": okta_group.id,
+            "group_owner": False,
+            "reason": "",
+        }
+        rep = client.post(access_requests_url, json=data)
+        assert rep.status_code == 201

@@ -81,6 +81,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
 import AccessHistory from '../../components/AccessHistory';
+import {requireReasons} from '../../config/accessConfig';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -787,6 +788,7 @@ export default function ReadRoleRequest() {
                                   name="reason"
                                   multiline
                                   rows={4}
+                                  required={requireReasons || reason}
                                   validation={{maxLength: 1024}}
                                   parseError={(error) => {
                                     if (error?.message != '') {

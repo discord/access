@@ -43,7 +43,7 @@ import {isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelf} from '../../helpers';
 import {useCurrentUser} from '../../authentication';
 import {group} from 'console';
-import accessConfig from '../../config/accessConfig';
+import accessConfig, {requireReasons} from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
 
@@ -270,7 +270,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
               name="reason"
               multiline
               rows={4}
-              required={requiredReason}
+              required={requireReasons || requiredReason}
               validation={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
