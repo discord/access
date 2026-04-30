@@ -171,7 +171,7 @@ def access_role_request_created(
     """Notify all the approvers of the role request through a direct message."""
     type_of_access = "ownership of" if role_request.request_ownership else "membership to"
 
-    role_request_url = get_base_url() + f"/requests/{role_request.id}"
+    role_request_url = get_base_url() + f"/role-requests/{role_request.id}"
 
     approver_message = (
         f"{requester.email} has requested that {role.name} is granted {type_of_access} {group.name}.\n\n"

@@ -21,6 +21,7 @@ import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} fro
 
 import {
   useGetApps,
+  useGetAppById,
   useGetTags,
   useCreateGroup,
   usePutGroupById,
@@ -76,9 +77,26 @@ const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, lab
   label: label,
 }));
 
-const APP_GROUP_PREFIX = 'App-';
-const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const ROLE_GROUP_PREFIX = 'Role-';
+const OKTA_GROUP_PREFIX = accessConfig.OKTA_GROUP_NAME_PREFIX;
+const APP_GROUP_PREFIX = accessConfig.APP_GROUP_NAME_PREFIX;
+const APP_NAME_APP_GROUP_SEPARATOR = accessConfig.APP_NAME_GROUP_NAME_SEPARATOR;
+const ROLE_GROUP_PREFIX = accessConfig.ROLE_GROUP_NAME_PREFIX;
+
+/** Short segment after App-{appName}- in the stored group name (handles missing nested `app` on API). */
+function stripAppGroupShortName(fullName: string, appName: string): string {
+  if (!fullName) return '';
+  const prefix = APP_GROUP_PREFIX + appName + APP_NAME_APP_GROUP_SEPARATOR;
+  if (appName !== '' && fullName.startsWith(prefix)) {
+    return fullName.slice(prefix.length);
+  }
+  if (!fullName.startsWith(APP_GROUP_PREFIX)) {
+    return fullName;
+  }
+  const rest = fullName.slice(APP_GROUP_PREFIX.length);
+  const i = rest.indexOf(APP_NAME_APP_GROUP_SEPARATOR);
+  if (i === -1) return rest;
+  return rest.slice(i + APP_NAME_APP_GROUP_SEPARATOR.length);
+}
 
 function GroupDialog(props: GroupDialogProps) {
   const navigate = useNavigate();
@@ -94,20 +112,41 @@ function GroupDialog(props: GroupDialogProps) {
   const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>(defaultTags);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
-  const initialAppName = props.app?.name ?? (props.group as AppGroup)?.app?.name ?? '';
-  const [appName, setAppName] = React.useState(initialAppName);
+
+  const appGroupAppId =
+    props.group?.type === 'app_group'
+      ? ((props.group as AppGroup).app_id ?? (props.group as AppGroup).app?.id ?? '')
+      : '';
+
+  const {data: appFetchedForEdit} = useGetAppById(
+    {pathParams: {appId: appGroupAppId}},
+    {enabled: Boolean(appGroupAppId) && props.group != null},
+  );
+
+  const resolvedApp: App | undefined =
+    props.app ?? appFetchedForEdit ?? (props.group as AppGroup)?.app ?? undefined;
+  const resolvedAppName = resolvedApp?.name ?? '';
+
+  const [appName, setAppName] = React.useState(resolvedAppName);
+  React.useEffect(() => {
+    setAppName(resolvedAppName);
+  }, [resolvedAppName]);
+
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
   const appGroupLifecyclePluginId = React.useMemo(() => {
     if (groupType !== 'app_group') return null;
-    const app = props.app ?? (props.group as AppGroup)?.app;
+    const app = resolvedApp;
     return (app as any)?.app_group_lifecycle_plugin || null;
-  }, [groupType, props.app, props.group]);
+  }, [groupType, resolvedApp]);
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
     isAccessAdmin(props.currentUser) ||
-    isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? (props.group as AppGroup)?.app?.id ?? '');
+    isAppOwnerGroupOwner(
+      props.currentUser,
+      props.app?.id ?? (props.group as AppGroup)?.app_id ?? (props.group as AppGroup)?.app?.id ?? '',
+    );
 
   const complete = (
     completedGroup: PolymorphicGroup | undefined,
@@ -167,6 +206,7 @@ function GroupDialog(props: GroupDialogProps) {
 
     switch (group.type) {
       case 'okta_group':
+        group.name = OKTA_GROUP_PREFIX + group.name;
         break;
       case 'role_group':
         group.name = ROLE_GROUP_PREFIX + group.name;
@@ -191,18 +231,22 @@ function GroupDialog(props: GroupDialogProps) {
 
   const createOrUpdateText = props.group == null ? 'Create' : 'Update';
 
+  const formRemountKey = props.group?.id
+    ? `edit-${props.group.id}-${resolvedAppName || 'pending-app'}`
+    : props.app?.id
+      ? `new-app-${props.app.id}`
+      : `new-${defaultGroupType}`;
+
   return (
     <Dialog open onClose={() => props.setOpen(false)}>
       <FormContainer<PolymorphicGroup>
+        key={formRemountKey}
         defaultValues={
           props.app != null || props.group?.type == 'app_group'
             ? {
                 type: defaultGroupType,
-                app: props.app ?? (props.group as AppGroup)?.app ?? {},
-                name:
-                  props.group?.name.substring(
-                    (APP_GROUP_PREFIX + initialAppName + APP_NAME_APP_GROUP_SEPARATOR).length,
-                  ) ?? '',
+                app: resolvedApp ?? {},
+                name: stripAppGroupShortName(props.group?.name ?? '', resolvedAppName),
                 description: props.group?.description ?? '',
               }
             : {
@@ -255,12 +299,14 @@ function GroupDialog(props: GroupDialogProps) {
                 flexDirection: 'row',
                 alignItems: 'center',
               }}>
-              {groupType == 'app_group' || groupType == 'role_group' ? (
+              {groupType == 'app_group' || groupType == 'role_group' || (groupType == 'okta_group' && OKTA_GROUP_PREFIX !== '') ? (
                 <Box sx={{mx: 1}}>
                   <Typography noWrap={true} variant="h6">
                     {groupType == 'role_group'
                       ? ROLE_GROUP_PREFIX
-                      : APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR}
+                      : groupType == 'app_group'
+                        ? APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR
+                        : OKTA_GROUP_PREFIX}
                   </Typography>
                 </Box>
               ) : null}
