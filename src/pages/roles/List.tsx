@@ -28,6 +28,7 @@ import TablePaginationActions from '../../components/actions/TablePaginationActi
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import LinkTableRow from '../../components/LinkTableRow';
+import MarkdownDescription from '../../components/MarkdownDescription';
 
 export default function ListRoles() {
   const navigate = useNavigate();
@@ -136,9 +137,7 @@ export default function ListRoles() {
               <LinkTableRow to={`/roles/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  {(row.description?.length ?? 0) > 115
-                    ? (row.description?.substring(0, 114) ?? '') + '...'
-                    : row.description}
+                  <MarkdownDescription description={row.description} inline />
                 </TableCell>
               </LinkTableRow>
             ))}

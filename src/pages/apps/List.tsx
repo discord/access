@@ -27,6 +27,7 @@ import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
+import MarkdownDescription from '../../components/MarkdownDescription';
 
 export default function ListApps() {
   const navigate = useNavigate();
@@ -135,7 +136,7 @@ export default function ListApps() {
               <LinkTableRow to={`/apps/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>
-                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
+                  <MarkdownDescription description={row.description} inline />
                 </TableCell>
               </LinkTableRow>
             ))}

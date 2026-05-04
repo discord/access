@@ -22,6 +22,7 @@ import React from 'react';
 import {displayUserName, groupBy, groupMemberships, sortGroupMembers} from '../../../helpers';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
 import Ending from '../../../components/Ending';
+import MarkdownDescription from '../../../components/MarkdownDescription';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {Link as RouterLink, useParams} from 'react-router-dom';
 
@@ -150,9 +151,10 @@ const AccordionItem: React.FC<{
                     {appGroup.name}
                   </Link>
                 </Typography>
-                <Typography variant="body1" color="grey">
-                  {appGroup.description}
-                </Typography>
+                <MarkdownDescription
+                  description={appGroup.description}
+                  sx={{mx: 0, width: 'auto', px: 0, color: 'grey'}}
+                />
               </Stack>
               <Box
                 sx={{
@@ -270,9 +272,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
             </Typography>
           )}
           {(appGroupList?.length || 0) > 0 && list_group_description && (
-            <Typography variant="body1" component={'div'}>
-              {list_group_description}
-            </Typography>
+            <MarkdownDescription description={list_group_description} sx={{mx: 0, width: 'auto', px: 0}} />
           )}
           {appGroupList.map((appGroup) => (
             <AccordionItem

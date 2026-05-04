@@ -25,6 +25,7 @@ import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
+import MarkdownDescription from '../../components/MarkdownDescription';
 
 export default function ListGroups() {
   const navigate = useNavigate();
@@ -135,7 +136,7 @@ export default function ListGroups() {
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{displayGroupType(row)}</TableCell>
                 <TableCell colSpan={2}>
-                  {(row.description?.length ?? 0) > 115 ? row.description?.substring(0, 114) + '...' : row.description}
+                  <MarkdownDescription description={row.description} inline />
                 </TableCell>
               </LinkTableRow>
             ))}
