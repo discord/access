@@ -1,9 +1,9 @@
 """FastAPI application factory.
 
-Mirrors the previous Flask `create_app` factory. Wires the database engine,
-middleware stack, exception handlers, routers, and the React SPA static
-files. The OIDC and Cloudflare Access auth subsystems are configured here
-when the relevant environment variables are present.
+Wires the database engine, middleware stack, exception handlers, routers,
+and the React SPA static files. The OIDC and Cloudflare Access auth
+subsystems are configured here when the relevant environment variables are
+present.
 """
 
 from __future__ import annotations

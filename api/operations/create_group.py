@@ -122,7 +122,7 @@ class CreateGroup:
 
         _ctx = get_request_context()
 
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_create,

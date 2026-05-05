@@ -72,7 +72,7 @@ class RejectAccessRequest:
 
         _ctx = get_request_context()
 
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema(exclude=["request.approval_ending_at"]).dumps(
                 {
                     "event_type": EventType.access_reject,

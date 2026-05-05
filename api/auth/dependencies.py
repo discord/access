@@ -51,8 +51,8 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
     if settings.ENV in ("development", "test"):
         email = _dev_user_email(request)
         if email == "Unauthenticated":
-            # Mirror the Flask behavior used by health-check tests where the
-            # endpoint should be reachable without a real user.
+            # Health-check tests set this sentinel to opt out of having a
+            # real OktaUser row resolved; the endpoint runs without auth.
             return ""
         user = _lookup_user_by_email(db, email)
         request.state.current_user_id = user.id
@@ -72,9 +72,9 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
                 set_user({"id": user.id})
             return user.id
         elif "common_name" in payload:
-            # Service token: stuff `common_name` into current_user_id and let
-            # downstream lookups fail naturally if it doesn't match a real
-            # OktaUser. Mirrors the pre-migration Flask behavior.
+            # Service token: pass `common_name` through as the current_user_id
+            # so downstream operations log it; permission checks that need a
+            # real OktaUser will fail naturally if no row matches.
             common_name = payload["common_name"]
             request.state.current_user_id = common_name
             return common_name

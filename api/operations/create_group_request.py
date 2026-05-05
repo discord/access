@@ -159,7 +159,7 @@ class CreateGroupRequest:
         # Audit logging
         _ctx = get_request_context()
 
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema(
                 exclude=[
                     "group_request.resolution_reason",

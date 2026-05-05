@@ -1,11 +1,12 @@
 from fastapi.testclient import TestClient
 
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.extensions import Db
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from typing import Any
 
 
-def test_user_audit_resolves_at_me(client: TestClient, db: Any, url_for: Any) -> None:
+def test_user_audit_resolves_at_me(client: TestClient, db: Db, url_for: Any) -> None:
     """`?user_id=@me` is the reserved alias the React Expiring page uses;
     it must resolve to the authenticated user's id, not 404."""
     user_url = url_for("api-audit.users_and_groups")
@@ -17,7 +18,7 @@ def test_user_audit_resolves_at_me(client: TestClient, db: Any, url_for: Any) ->
     assert "results" in rep.json()
 
 
-def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Any, url_for: Any) -> None:
+def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Db, url_for: Any) -> None:
     """`?role_owner_id=@me` and `?owner_id=@me` should both resolve to the
     authenticated user."""
     url = url_for("api-audit.groups_and_roles")
@@ -31,7 +32,7 @@ def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Any, url_
 
 def test_user_audit_returns_nested_objects(
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     okta_group: OktaGroup,
     url_for: Any,
@@ -57,7 +58,7 @@ def test_user_audit_returns_nested_objects(
 
 def test_group_audit_returns_nested_role_and_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     url_for: Any,
@@ -82,7 +83,7 @@ def test_group_audit_returns_nested_role_and_group(
 
 def test_get_user_audit(
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     access_app: App,
     app_group: AppGroup,
@@ -147,7 +148,7 @@ def test_get_user_audit(
 
 def test_get_group_audit(
     client: TestClient,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -288,7 +289,7 @@ def test_get_group_audit(
 
 def test_get_role_audit(
     client: TestClient,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,

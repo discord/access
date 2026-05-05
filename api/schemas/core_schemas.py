@@ -1,8 +1,7 @@
 """Pydantic v2 models for the Access API.
 
-These replace the Marshmallow schemas under `api/views/schemas/core_schemas.py`.
 Each Pydantic class is the canonical shape for a specific endpoint surface;
-there is no per-call `only=`/`exclude=` projection.
+there is no per-call field projection.
 
 Polymorphic groups are modelled as discriminated unions on the `type` field.
 Three union shapes are exposed:
@@ -162,9 +161,7 @@ class OktaUserDetail(OktaUserSummary):
     @field_validator("profile", mode="before")
     @classmethod
     def _filter_profile_attrs(cls, value: Any) -> dict[str, Any]:
-        """Mirror the Marshmallow `OktaUserSchema.get_attribute` filter:
-        only emit profile keys present in `USER_DISPLAY_CUSTOM_ATTRIBUTES`.
-        """
+        """Only emit profile keys present in `USER_DISPLAY_CUSTOM_ATTRIBUTES`."""
         from api.config import settings
 
         attrs_to_display = [a for a in settings.USER_DISPLAY_CUSTOM_ATTRIBUTES.split(",") if a]

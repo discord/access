@@ -1,8 +1,8 @@
-"""RFC822 datetime serializer + parser for Marshmallow JSON-format compatibility.
+"""RFC 822 datetime serializer + parser.
 
-The legacy Marshmallow schemas configured `DateTime.DEFAULT_FORMAT = "rfc822"`,
-so all datetime fields were emitted (and accepted on input) as e.g.
-`"Sun, 26 Apr 2026 13:45:00 -0000"`. We preserve both directions:
+All datetime fields cross the wire as e.g. `"Sun, 26 Apr 2026 13:45:00 -0000"`,
+which the React frontend's parsers expect. POST_MIGRATION_TODO #5 tracks the
+move to ISO 8601 once the frontend is updated.
 
 - `parse_datetime_value` accepts RFC 822 / RFC 2822 strings, ISO 8601 strings,
   and existing `datetime` / `date` objects, returning a `datetime` (or None).

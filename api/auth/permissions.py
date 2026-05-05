@@ -1,10 +1,9 @@
 """Authorization helpers and FastAPI `Depends` factories.
 
-Replaces the Flask `AuthorizationDecorator` / `AuthorizationHelpers` classes.
-The bare functions `is_*` / `can_*` take an explicit `(db, current_user_id)`
-so they can be called from anywhere; the `require_*` dependencies are FastAPI
-parameter dependencies that raise HTTPException(403) on failure (and 404 if
-the target object isn't found).
+The bare `is_*` / `can_*` functions take an explicit `(db, current_user_id)`
+so they can be called from anywhere; the `require_*` factories are FastAPI
+parameter dependencies that raise HTTPException(403) on failure (and 404
+if the target object isn't found).
 """
 
 from __future__ import annotations
@@ -13,13 +12,13 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload, with_polymorphic
+from sqlalchemy.orm import Session, selectinload
 
 from api.auth.dependencies import CurrentUserId
 from api.config import settings
 from api.database import DbSession
 from api.extensions import db as _db_shim
-from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
+from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember
 
 
 def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
@@ -137,25 +136,6 @@ def require_access_admin_or_app_creator(
     raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
 
 
-def require_group_manager_for_group(
-    group_id: str,
-    db: DbSession,
-    current_user_id: CurrentUserId,
-) -> OktaGroup:
-    poly = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
-    group = (
-        db.query(poly)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
-        .first()
-    )
-    if group is None:
-        raise HTTPException(status_code=404, detail="Not Found")
-    if not can_manage_group(db, current_user_id, group):
-        raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
-    return group
-
-
 def require_app_owner_or_access_admin_for_app(
     app_id: str,
     db: DbSession,
@@ -172,5 +152,4 @@ def require_app_owner_or_access_admin_for_app(
 
 
 # Convenience type aliases for parameter declaration
-GroupForManager = Annotated[OktaGroup, Depends(require_group_manager_for_group)]
 AppForOwner = Annotated[App, Depends(require_app_owner_or_access_admin_for_app)]

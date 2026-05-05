@@ -57,7 +57,7 @@ APP_LOAD_OPTIONS = (
 
 
 def _validate_description(value: Any, field_provided: bool) -> str:
-    """Mirror the Marshmallow `context_aware_description_field` semantics."""
+    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
     if not field_provided:
         if settings.REQUIRE_DESCRIPTIONS:
             raise HTTPException(400, "Description is required.")
@@ -333,7 +333,7 @@ def put_app(
 
         _ctx = get_request_context()
         email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
-        _logging.getLogger("api.audit").info(
+        _logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.app_modify_plugin,

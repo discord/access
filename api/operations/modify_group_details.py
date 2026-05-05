@@ -79,7 +79,7 @@ class ModifyGroupDetails:
                 if self.current_user_id is not None
                 else None
             )
-            logging.getLogger("api.audit").info(
+            logging.getLogger("access.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.group_modify_name,

@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.config import settings
+from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
@@ -24,7 +25,7 @@ from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory
 
 
-def test_get_access_app_includes_owner_group(client: TestClient, db: Any, url_for: Any) -> None:
+def test_get_access_app_includes_owner_group(client: TestClient, db: Db, url_for: Any) -> None:
     """The conftest seeds the built-in Access app + App-Access-Owners group.
     Hitting /api/apps/Access must return the owner group under
     active_owner_app_groups so the React /apps/Access page can render it."""
@@ -49,7 +50,7 @@ def test_get_access_app_includes_owner_group(client: TestClient, db: Any, url_fo
 
 def test_get_app(
     client: TestClient,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -102,7 +103,7 @@ def test_get_app(
 
 
 def test_put_app(
-    client: TestClient, db: Any, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
+    client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
 ) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
@@ -216,9 +217,7 @@ def test_put_app(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
-def test_delete_app(
-    client: TestClient, db: Any, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any
-) -> None:
+def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="100000")
     rep = client.delete(app_url)
@@ -260,7 +259,7 @@ class FakerWithPyStr(Protocol):
 
 def test_create_app(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
@@ -308,7 +307,7 @@ def test_create_app(
 
 def test_create_app_with_initial_owners(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -365,7 +364,7 @@ def test_create_app_with_initial_owners(
 
 def test_create_app_with_additional_groups(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     url_for: Any,
@@ -441,7 +440,7 @@ def test_create_app_with_additional_groups(
 
 def test_create_app_with_name_collision(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     app_group: AppGroup,
@@ -485,7 +484,7 @@ def test_create_app_with_name_collision(
     assert len(app_groups) == 1
 
 
-def test_get_all_app(client: TestClient, db: Any, url_for: Any) -> None:
+def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
     apps = AppFactory.create_batch(10)
 
@@ -515,7 +514,7 @@ def test_get_all_app(client: TestClient, db: Any, url_for: Any) -> None:
 def test_create_app_with_and_without_description(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     url_for: Any,
@@ -573,7 +572,7 @@ def test_create_app_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_app_update_preserves_description(
-    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
+    app: FastAPI, client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
 ) -> None:
     """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
@@ -631,7 +630,7 @@ def test_partial_app_update_preserves_description(
 
 def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -665,7 +664,7 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
 
 def test_create_app_succeeds_with_empty_preexisting_owner_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     url_for: Any,
@@ -695,7 +694,7 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
 
 def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,

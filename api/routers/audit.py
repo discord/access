@@ -3,10 +3,9 @@
   GET /api/audit/users    — user/group membership audit (OktaUserGroupMember rows)
   GET /api/audit/groups   — group/role mapping audit (RoleGroupMap rows)
 
-Both endpoints accept the same set of filters as the legacy Flask endpoints
-and return rows with nested related objects (user, group, role_group,
-created_actor, ended_actor, role_group_mapping). The response shape is the
-same one the React frontend expects to render the Expiring access /
+Both endpoints return rows with nested related objects (user, group,
+role_group, created_actor, ended_actor, role_group_mapping). The response
+shape is the one the React frontend expects to render the Expiring access /
 Expiring roles pages and the per-user / per-group audit views.
 """
 

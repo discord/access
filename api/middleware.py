@@ -4,7 +4,8 @@
   and used as the SQLAlchemy session scope key.
 - RequestContextMiddleware: builds a `RequestContext` from the request headers
   and binds it to a ContextVar so audit logging in operations can read it.
-- SecurityHeadersMiddleware: emits the same set of headers Flask-Talisman did.
+- SecurityHeadersMiddleware: emits the CSP / X-Frame-Options / Referrer-Policy
+  / X-Content-Type-Options headers on every response.
 - CacheControlMiddleware: emits no-store cache headers on `/api/*` responses.
 """
 
@@ -21,7 +22,6 @@ from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.extensions import _session_scope, db
 
-# Match Flask-Talisman defaults for the Access app
 CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "

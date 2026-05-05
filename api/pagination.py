@@ -57,11 +57,9 @@ def paginate(
     *,
     extract: Optional[Callable[[], tuple[int, int]]] = None,
 ) -> dict[str, Any]:
-    """Paginate `query` into the legacy envelope.
-
-    Page numbers are 0-indexed (matching the legacy Flask API). `per_page=-1`
-    returns all rows in a single page.
-    """
+    """Paginate `query` into the `{total, pages, next, prev, results}` wire
+    envelope the React frontend expects. Page numbers are 0-indexed.
+    `per_page=-1` returns all rows in a single page."""
     page, per_page = extract() if extract else extract_pagination(request)
 
     if per_page == -1:

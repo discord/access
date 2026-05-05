@@ -1,10 +1,8 @@
-"""FastAPI exception handlers preserving the legacy `{"message": ...}` envelope.
-
-The Flask app returned errors as `{"message": "..."}` regardless of source
-(Marshmallow validation, `flask.abort`, `first_or_404`). FastAPI defaults to
-`{"detail": "..."}`. These handlers normalize the new app to the legacy shape
-so clients don't need to change.
-"""
+"""FastAPI exception handlers — emit the `{"message": ...}` envelope used
+by the React frontend. FastAPI's default is `{"detail": ...}`; we override
+across `HTTPException`, `RequestValidationError`, and the catch-all
+`Exception` handler so the wire shape stays consistent. Adopting the
+RFC 9457 problem-detail format is a follow-up (POST_MIGRATION_TODO #7)."""
 
 from __future__ import annotations
 

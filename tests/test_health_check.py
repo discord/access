@@ -3,8 +3,10 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from api.extensions import Db
 
-def test_health_check(app: FastAPI, client: TestClient, db: Any, url_for: Any) -> None:
+
+def test_health_check(app: FastAPI, client: TestClient, db: Db, url_for: Any) -> None:
     # test unauthenticated requests by setting the current user email to "Unauthenticated"
     app.state.current_user_email = "Unauthenticated"
 

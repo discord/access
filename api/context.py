@@ -1,10 +1,10 @@
 """Per-request context variables.
 
-Operations and audit logging need to know the user-agent, originating IP, and
-request id of the current request. Under Flask, this came from `flask.request`
-and `flask.g`. Under FastAPI we set a `RequestContext` ContextVar in middleware
-and operations consult `get_request_context()`. Outside an HTTP request (e.g.
-the syncer or CLI commands) the context is None.
+Operations and audit logging need to know the user-agent, originating IP,
+and request id of the current request. `RequestContextMiddleware` sets a
+`RequestContext` ContextVar; operations consult `get_request_context()`.
+Outside an HTTP request (e.g. the syncer or CLI commands) the context is
+None.
 """
 
 from __future__ import annotations

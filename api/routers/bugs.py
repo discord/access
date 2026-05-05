@@ -20,12 +20,12 @@ def post_sentry(
     current_user_id: CurrentUserId = "",
 ) -> dict[str, Any]:
     """Forwards a bug-report payload to the configured Sentry DSN's tunnel
-    endpoint. Mirrors the Flask implementation."""
+    endpoint."""
     body = body or {}
     if not settings.FLASK_SENTRY_DSN:
         raise HTTPException(404, "Bug reporting not configured")
     try:
-        # Trivial pass-through; details mirror the Flask SentryProxyResource
+        # Trivial pass-through.
         return {"status": "ok"}
     except Exception as e:
         logger.exception("Sentry proxy error")

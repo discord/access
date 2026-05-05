@@ -1,9 +1,8 @@
 """Application settings.
 
-Migrated from a Flask `app.config.from_object("api.config")` model to a
-`pydantic_settings.BaseSettings` singleton. The exported `settings` instance
-is the source of truth at runtime; tests mutate fields on it directly to
-override behavior (e.g. `settings.REQUIRE_DESCRIPTIONS = True`).
+`pydantic_settings.BaseSettings` singleton. The exported `settings`
+instance is the source of truth at runtime; tests mutate fields on it
+directly to override behavior (e.g. `settings.REQUIRE_DESCRIPTIONS = True`).
 """
 
 from __future__ import annotations

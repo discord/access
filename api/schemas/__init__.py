@@ -1,10 +1,12 @@
 """Pydantic v2 schemas for the Access API.
 
-These models replace the Marshmallow schemas under `api/views/schemas/`.
 Each endpoint declares one Pydantic model whose field set is exactly the
-JSON it returns — there is no `only=`/`exclude=` projection plumbing.
+JSON it returns — there is no per-call field projection plumbing. Where
+the same entity is exposed in multiple shapes (full read vs. compact list
+vs. embedded reference), define separate models.
 
-Polymorphic groups are modelled as discriminated unions on the `type` field.
+Polymorphic groups are modelled as discriminated unions on the `type`
+field.
 """
 
 from api.schemas.audit_logs import AuditLogSchema, EventType  # noqa: F401

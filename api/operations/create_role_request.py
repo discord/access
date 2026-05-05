@@ -169,7 +169,7 @@ class CreateRoleRequest:
         # Audit logging
         _ctx = get_request_context()
 
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema(exclude=["request.resolution_reason", "request.approval_ending_at"]).dumps(
                 {
                     "event_type": EventType.role_request_create,

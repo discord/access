@@ -1,15 +1,14 @@
 """FastAPI test harness.
 
-Replaces the previous Flask + pytest-flask harness. Key behavior changes:
-
 - The `app` fixture returns a `FastAPI` instance.
 - The `client` fixture returns a `fastapi.testclient.TestClient`.
 - The `db` fixture binds a sqlite-in-memory engine via `db.init_app(...)`,
   creates tables, and seeds the bootstrap "Access" app + admin user.
 - The `mock_user` factory fixture overrides
   `app.dependency_overrides[get_current_user_id]` to switch the acting user.
-- The `url_for` fixture mirrors `flask.url_for`'s `"<bp>.<endpoint>"` pattern
-  by mapping into FastAPI's named routes.
+- The `url_for` fixture maps the legacy `"<bp>.<endpoint>"` name passed to
+  it onto the FastAPI router's named routes — the existing tests reach for
+  this idiom verbatim, so we preserve the call shape.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ from sqlalchemy.pool import StaticPool
 from api.app import create_app
 from api.auth.dependencies import get_current_user_id
 from api.config import settings
-from api.extensions import _session_scope, db as _db
+from api.extensions import Db, _session_scope, db as _db
 from api.models import App, AppGroup, OktaUserGroupMember
 from tests.factories import (
     AccessRequestFactory,
@@ -63,7 +62,7 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
 
 
 @pytest.fixture
-def db(app: FastAPI) -> Generator[Any, None, None]:
+def db(app: FastAPI) -> Generator[Db, None, None]:
     """Bind a test engine, create tables, and seed bootstrap data.
 
     Defaults to in-memory SQLite. Set `TEST_DATABASE_URI` to point at any
@@ -120,8 +119,9 @@ def db(app: FastAPI) -> Generator[Any, None, None]:
 class _DatetimeAwareTestClient(TestClient):
     """TestClient that serializes datetimes in `json=` payloads to ISO strings.
 
-    The legacy Flask test client tolerated datetime objects in JSON bodies.
-    httpx's stdlib JSON encoder does not, so we pre-process the payload."""
+    httpx's stdlib JSON encoder rejects raw datetime objects, so we
+    pre-process the payload — many tests pass timezone-aware datetimes
+    directly to `client.post(..., json=...)`."""
 
     def request(self, method: str, url: str, **kwargs: Any) -> Any:
         json_payload = kwargs.get("json")
@@ -147,7 +147,7 @@ def _stringify_datetimes(obj: Any) -> Any:
 
 
 @pytest.fixture
-def client(app: FastAPI, db: Any) -> Generator[TestClient, None, None]:
+def client(app: FastAPI, db: Db) -> Generator[TestClient, None, None]:
     """Return a FastAPI TestClient that shares the test database session."""
     app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
     with _DatetimeAwareTestClient(app, raise_server_exceptions=False) as c:

@@ -3,6 +3,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
@@ -22,7 +23,7 @@ from tests.factories import TagFactory
 
 def test_require_reason_modify_group_users(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
@@ -459,7 +460,7 @@ def test_require_reason_modify_group_users(
 
 def test_require_reason_modify_role_groups(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
@@ -917,7 +918,7 @@ def test_require_reason_modify_role_groups(
 
 def test_require_reason_approve_access_request(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,

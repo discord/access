@@ -4,6 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
@@ -27,7 +28,7 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
 def test_time_limit_modify_group_users(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
@@ -292,7 +293,7 @@ def test_time_limit_modify_group_users(
 
 def test_time_limit_modify_role_groups(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
@@ -432,7 +433,7 @@ def test_time_limit_modify_role_groups(
 
 def test_time_limit_modify_group_type(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     okta_group: OktaGroup,
@@ -570,7 +571,7 @@ def test_time_limit_modify_group_type(
 
 def test_time_limit_modify_group_tags(
     client: TestClient,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
@@ -797,7 +798,7 @@ def test_time_limit_modify_group_tags(
 
 def test_time_limit_add_group_tags(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,
@@ -984,7 +985,7 @@ def test_time_limit_add_group_tags(
 
 def test_time_limit_add_app_tags(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     app_group: AppGroup,

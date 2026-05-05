@@ -119,7 +119,7 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
 
 
 def _validate_description(value: Any, field_provided: bool) -> str:
-    """Mirror the Marshmallow `context_aware_description_field` semantics."""
+    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
     from api.config import settings
 
     if not field_provided:
@@ -367,7 +367,7 @@ def put_group(
 
         _ctx = get_request_context()
         email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
-        _logging.getLogger("api.audit").info(
+        _logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_modify_plugin,

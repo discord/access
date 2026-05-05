@@ -84,7 +84,7 @@ class RejectGroupRequest:
         # Audit logging
         email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None) if self.rejecter_id else None
         _ctx = get_request_context()
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_request_reject,

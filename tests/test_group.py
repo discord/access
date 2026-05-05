@@ -10,6 +10,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.auth import permissions as AuthorizationHelpers
+from api.extensions import Db
 from api.config import settings
 from api.models import (
     AccessRequest,
@@ -36,7 +37,7 @@ class FakerWithPyStr(Protocol):
 
 def test_get_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -91,7 +92,7 @@ def test_get_group(
     assert data["name"] == app_group.name
 
 
-def test_get_group_members(client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
+def test_get_group_members(client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
     # test 404
     group_url = url_for("api-groups.group_members_by_id", group_id="randomid")
     rep = client.get(group_url)
@@ -137,7 +138,7 @@ def test_get_group_members(client: TestClient, db: Any, okta_group: OktaGroup, u
 
 
 def test_put_group(
-    client: TestClient, db: Any, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any
+    client: TestClient, db: Db, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any
 ) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
@@ -325,7 +326,7 @@ def _update_group_type(
 def test_put_app_group_rebind_authorization(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     app_group: AppGroup,
     url_for: Any,
@@ -395,7 +396,7 @@ def test_put_app_group_rebind_authorization(
 
 def test_put_group_members(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
@@ -661,7 +662,7 @@ def test_put_group_members(
 
 def test_delete_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     tag: Tag,
@@ -731,7 +732,7 @@ def test_delete_group(
 
 def test_create_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
@@ -766,7 +767,7 @@ def test_create_group(
 
 def test_create_app_group(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
@@ -805,7 +806,7 @@ def test_create_app_group(
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
 
 
-def test_get_all_group(client: TestClient, db: Any, access_app: App, url_for: Any) -> None:
+def test_get_all_group(client: TestClient, db: Db, access_app: App, url_for: Any) -> None:
     groups_url = url_for("api-groups.groups")
 
     db.session.add(access_app)
@@ -839,7 +840,7 @@ def test_get_all_group(client: TestClient, db: Any, access_app: App, url_for: An
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: Any, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
+    db: Db, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
     user2 = OktaUserFactory.create()
 
@@ -949,7 +950,7 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_group(
-    db: Any, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
+    db: Db, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
     victim_group = OktaGroup(id="victim-group-id", name="Victim-Group", type="okta_group")
     victim_user = OktaUserFactory.create()
@@ -1004,7 +1005,7 @@ def test_do_not_renew_scoped_to_route_group(
 def test_create_groups_with_and_without_description(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
@@ -1064,7 +1065,7 @@ def test_create_groups_with_and_without_description(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_group_update_preserves_description(
-    app: FastAPI, client: TestClient, db: Any, mocker: MockerFixture, okta_group: OktaGroup, url_for: Any
+    app: FastAPI, client: TestClient, db: Db, mocker: MockerFixture, okta_group: OktaGroup, url_for: Any
 ) -> None:
     """Test that group updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
@@ -1119,7 +1120,7 @@ def test_partial_group_update_preserves_description(
 
 def test_cannot_convert_app_prefixed_group_to_non_app_type(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     url_for: Any,
@@ -1157,7 +1158,7 @@ def test_cannot_convert_app_prefixed_group_to_non_app_type(
 
 def test_cannot_create_group_with_reserved_app_prefix(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
@@ -1202,7 +1203,7 @@ def test_cannot_create_group_with_reserved_app_prefix(
 
 def test_cannot_rename_non_app_group_to_app_prefix(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
     url_for: Any,
@@ -1235,7 +1236,7 @@ def test_cannot_rename_non_app_group_to_app_prefix(
 
 def test_cannot_create_group_with_reserved_role_prefix(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     url_for: Any,
@@ -1263,7 +1264,7 @@ def test_cannot_create_group_with_reserved_role_prefix(
 
 def test_cannot_rename_non_role_group_to_role_prefix(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     url_for: Any,
 ) -> None:
@@ -1293,7 +1294,7 @@ def test_cannot_rename_non_role_group_to_role_prefix(
 
 def test_cannot_convert_role_prefixed_group_to_non_role_type(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     url_for: Any,
 ) -> None:

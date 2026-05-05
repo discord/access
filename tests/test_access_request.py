@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.config import settings
+from api.extensions import Db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -38,7 +39,7 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 def test_get_access_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
@@ -153,7 +154,7 @@ def test_get_access_request(
 def test_put_access_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     access_request: AccessRequest,
     okta_group: OktaGroup,
@@ -239,7 +240,7 @@ def test_put_access_request(
 
 
 def test_put_access_request_by_non_owner(
-    client: TestClient, app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any
+    client: TestClient, app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     access_owner = settings.CURRENT_OKTA_USER_EMAIL
 
@@ -331,7 +332,7 @@ def test_put_access_request_by_non_owner(
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
 
-def test_create_access_request(app: FastAPI, client: TestClient, db: Any, okta_group: OktaGroup, url_for: Any) -> None:
+def test_create_access_request(app: FastAPI, client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any) -> None:
     # test bad data
     access_requests_url = url_for("api-access-requests.access_requests")
     data: dict[str, Any] = {}
@@ -363,7 +364,7 @@ def test_create_access_request(app: FastAPI, client: TestClient, db: Any, okta_g
 
 
 def test_create_access_request_with_rfc822_ending_at(
-    app: FastAPI, client: TestClient, db: Any, okta_group: OktaGroup, url_for: Any
+    app: FastAPI, client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
 ) -> None:
     """Frontend sends ending_at as RFC822 (e.g. "Sun, 10 May 2026 19:09:02 -0700");
     the router must parse the wire string into a datetime before it hits the
@@ -392,7 +393,7 @@ def test_create_access_request_with_rfc822_ending_at(
 
 
 def test_get_all_access_request(
-    client: TestClient, db: Any, okta_group: OktaGroup, user: OktaUser, url_for: Any
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     access_requests_url = url_for("api-access-requests.access_requests")
     db.session.add(user)
@@ -419,7 +420,7 @@ def test_get_all_access_request(
 
 
 def test_create_access_request_notification(
-    app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -463,7 +464,7 @@ def test_create_access_request_notification(
 
 
 def test_create_app_access_request_notification(
-    app: FastAPI, db: Any, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     # test bad data
     app_owner_user = OktaUserFactory.create()
@@ -542,7 +543,7 @@ def test_create_app_access_request_notification(
     assert kwargs["requester"] == user
 
 
-def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture, db: Any) -> None:
+def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     users = OktaUserFactory.build_batch(3)
@@ -573,7 +574,7 @@ def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture,
 
 
 def test_resolve_app_access_request_notification(
-    app: FastAPI, db: Any, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
@@ -671,7 +672,7 @@ def test_resolve_app_access_request_notification(
 
 
 def test_auto_resolve_create_access_request(
-    app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -786,7 +787,7 @@ def test_auto_resolve_create_access_request(
 
 
 def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
-    app: FastAPI, db: Any, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)

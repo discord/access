@@ -4,6 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     App,
@@ -22,7 +23,7 @@ from tests.factories import RoleGroupFactory
 
 def test_get_role(
     client: TestClient,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,
@@ -85,7 +86,7 @@ def test_get_role(
 
 
 def test_get_role_members(
-    client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
@@ -133,7 +134,7 @@ def test_get_role_members(
 
 def test_put_role_members(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
@@ -306,7 +307,7 @@ def test_put_role_members(
     assert ownership_access_request.approved_membership_id is not None
 
 
-def test_get_all_role(client: TestClient, db: Any, url_for: Any) -> None:
+def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
     groups = RoleGroupFactory.create_batch(10)
 
@@ -330,7 +331,7 @@ def test_get_all_role(client: TestClient, db: Any, url_for: Any) -> None:
 
 def test_complex_role_modifications(
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
@@ -1308,7 +1309,7 @@ def test_complex_role_modifications(
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: Any,
+    db: Db,
     client: TestClient,
     mocker: MockerFixture,
     role_group: RoleGroup,
@@ -1380,7 +1381,7 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_role(
-    db: Any, client: TestClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+    db: Db, client: TestClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     victim_role = RoleGroupFactory.create()
     victim_okta_group = OktaGroup(
@@ -1434,7 +1435,7 @@ def test_do_not_renew_scoped_to_route_role(
 
 
 def test_do_not_renew_requires_group_ownership(
-    db: Any,
+    db: Db,
     client: TestClient,
     mocker: MockerFixture,
     role_group: RoleGroup,

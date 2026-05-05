@@ -171,7 +171,7 @@ class ModifyRoleGroups:
 
         _ctx = get_request_context()
 
-        logging.getLogger("api.audit").info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema(exclude=["group.app.id", "group.app.name"]).dumps(
                 {
                     "event_type": EventType.role_group_modify,

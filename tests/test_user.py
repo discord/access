@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
 
 from api.config import settings
+from api.extensions import Db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 
@@ -13,7 +14,7 @@ from typing import Any
 
 def test_get_user_at_me_includes_group_memberships(
     client: TestClient,
-    db: Any,
+    db: Db,
     okta_group: OktaGroup,
     url_for: Any,
 ) -> None:
@@ -43,7 +44,7 @@ def test_get_user_at_me_includes_group_memberships(
 
 def test_get_user_profile_filtered_by_allowlist(
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     url_for: Any,
 ) -> None:
@@ -64,7 +65,7 @@ def test_get_user_profile_filtered_by_allowlist(
 
 def test_get_user(
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     access_app: App,
     app_group: AppGroup,
@@ -112,7 +113,7 @@ def test_get_user(
     assert data["email"] == user_email
 
 
-def test_put_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
+def test_put_user(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     db.session.add(user)
     db.session.commit()
 
@@ -122,7 +123,7 @@ def test_put_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> 
     assert rep.status_code == 405
 
 
-def test_delete_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
+def test_delete_user(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     db.session.add(user)
     db.session.commit()
 
@@ -132,14 +133,14 @@ def test_delete_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) 
     assert rep.status_code == 405
 
 
-def test_create_user(client: TestClient, db: Any, user: OktaUser, url_for: Any) -> None:
+def test_create_user(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     # test 405 (POST not allowed on /api/users)
     users_url = url_for("api-users.users")
     rep = client.post(users_url, json={"id": user.id, "email": user.email})
     assert rep.status_code == 405
 
 
-def test_get_all_user(client: TestClient, db: Any, url_for: Any) -> None:
+def test_get_all_user(client: TestClient, db: Db, url_for: Any) -> None:
     users_url = url_for("api-users.users")
     users = OktaUserFactory.create_batch(10)
 
@@ -161,7 +162,7 @@ def test_get_all_user(client: TestClient, db: Any, url_for: Any) -> None:
         assert any(u["id"] == user.id for u in results["results"])
 
 
-def test_user_email_uniqueness(client: TestClient, db: Any) -> None:
+def test_user_email_uniqueness(client: TestClient, db: Db) -> None:
     known_email = "test@email.com"
 
     # Create a user with a unique email

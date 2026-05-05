@@ -1,9 +1,9 @@
 from setuptools import find_packages, setup
 
-__version__ = "0.2"
+__version__ = "2.0"
 
 setup(
-    name="api",
+    name="access",
     version=__version__,
     packages=find_packages(exclude=["tests"]),
     install_requires=[

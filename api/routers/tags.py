@@ -22,7 +22,7 @@ from api.schemas._serialize import safe_dump
 
 
 def _validate_description(value: Any, field_provided: bool) -> str:
-    """Mirror the Marshmallow `context_aware_description_field` semantics."""
+    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
     if not field_provided:
         if settings.REQUIRE_DESCRIPTIONS:
             raise HTTPException(400, "Description is required.")
@@ -42,7 +42,7 @@ def _validate_description(value: Any, field_provided: bool) -> str:
 
 def _validate_constraints(constraints: Any) -> dict[str, Any]:
     """Validate tag constraints against `Tag.CONSTRAINTS`. Raises HTTPException
-    on bad keys or invalid values, mirroring the legacy Marshmallow validator."""
+    on bad keys or invalid values."""
     if constraints is None:
         return {}
     if not isinstance(constraints, dict):

@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.config import settings
+from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     App,
@@ -39,7 +40,7 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 def test_get_role_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
@@ -137,7 +138,7 @@ def test_get_role_request(
 def test_put_role_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     role_request: RoleRequest,
     okta_group: OktaGroup,
@@ -240,7 +241,7 @@ def test_put_role_request(
 def test_put_role_request_by_non_owner(
     client: TestClient,
     app: FastAPI,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -344,7 +345,7 @@ def test_put_role_request_by_non_owner(
 
 
 def test_create_role_request(
-    app: FastAPI, client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+    app: FastAPI, client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
     # test bad data
     role_requests_url = url_for("api-role-requests.role_requests")
@@ -383,7 +384,7 @@ def test_create_role_request(
 def test_create_role_request_not_role_owner(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -437,7 +438,7 @@ def test_create_role_request_not_role_owner(
 
 
 def test_get_all_role_request(
-    client: TestClient, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     role_requests_url = url_for("api-role-requests.role_requests")
     db.session.add(user)
@@ -480,7 +481,7 @@ def test_get_all_role_request(
 
 
 def test_create_role_request_notification(
-    app: FastAPI, db: Any, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -527,7 +528,7 @@ def test_create_role_request_notification(
 
 def test_create_app_role_request_notification(
     app: FastAPI,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -621,7 +622,7 @@ def test_create_app_role_request_notification(
     assert kwargs["requester"] == user
 
 
-def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Any) -> None:
+def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
     access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     users = OktaUserFactory.build_batch(3)
@@ -653,7 +654,7 @@ def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: MockerFix
 
 def test_role_request_approvers_tagged(
     app: FastAPI,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -708,7 +709,7 @@ def test_role_request_approvers_tagged(
 
 def test_resolve_app_role_request_notification(
     app: FastAPI,
-    db: Any,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
@@ -822,7 +823,7 @@ def test_resolve_app_role_request_notification(
 
 def test_auto_resolve_create_role_request(
     app: FastAPI,
-    db: Any,
+    db: Db,
     okta_group: OktaGroup,
     role_group: RoleGroup,
     user: OktaUser,
@@ -951,7 +952,7 @@ def test_auto_resolve_create_role_request(
 
 def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
     app: FastAPI,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
@@ -1019,7 +1020,7 @@ def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
 
 def test_time_limit_constraint_tag(
     app: FastAPI,
-    db: Any,
+    db: Db,
     access_app: App,
     role_group: RoleGroup,
     app_group: AppGroup,
@@ -1098,7 +1099,7 @@ def test_time_limit_constraint_tag(
 
 def test_owner_cant_add_self_constraint_tag(
     app: FastAPI,
-    db: Any,
+    db: Db,
     access_app: App,
     role_group: RoleGroup,
     app_group: AppGroup,
@@ -1191,7 +1192,7 @@ def test_owner_cant_add_self_constraint_tag(
 def test_role_request_approval_via_direct_add(
     client: TestClient,
     app: FastAPI,
-    db: Any,
+    db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,

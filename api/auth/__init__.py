@@ -19,5 +19,4 @@ from api.auth.permissions import (  # noqa: F401
     require_access_admin,
     require_access_admin_or_app_creator,
     require_app_owner_or_access_admin_for_app,
-    require_group_manager_for_group,
 )

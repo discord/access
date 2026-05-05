@@ -1,8 +1,9 @@
-"""Flask-SQLAlchemy compatibility shim.
+"""SQLAlchemy compatibility shim.
 
-The application has migrated from Flask + Flask-SQLAlchemy to FastAPI + plain
-SQLAlchemy 2.0. This module preserves the `db.X` API surface that the legacy
-models and operations were written against:
+The model layer was originally written against Flask-SQLAlchemy's `db.X`
+API and the application has not yet been ported off it (POST_MIGRATION_TODO
+#1). Until that follow-up lands, this module exposes the same surface on
+top of plain SQLAlchemy 2.0:
 
     - `db.Model`         → declarative `Base`
     - `db.session`       → request-scoped Session via ContextVar
@@ -67,7 +68,9 @@ _session_scope: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 
 
 def _camel_to_snake(name: str) -> str:
-    """Mirror Flask-SQLAlchemy's default __tablename__ generator."""
+    """Generate the implicit __tablename__ for a model class, matching the
+    naming the model layer was originally written against (and which the
+    existing Alembic migrations encode)."""
     out: list[str] = []
     for i, ch in enumerate(name):
         if ch.isupper() and i > 0 and not name[i - 1].isupper():
@@ -105,7 +108,10 @@ class Base(DeclarativeBase):
 
 
 class Pagination(Generic[T]):
-    """Mimics the relevant subset of `flask_sqlalchemy.Pagination`."""
+    """Pagination object used by the `db` shim's `Query.paginate(...)` helper.
+    Exposes the `items / page / per_page / total / pages / has_next /
+    has_prev / next_num / prev_num` attributes the legacy operations were
+    written against; will go away with the shim (POST_MIGRATION_TODO #1)."""
 
     def __init__(self, items: list[T], page: int, per_page: int, total: int):
         self.items = items
@@ -120,7 +126,9 @@ class Pagination(Generic[T]):
 
 
 class Query(SAQuery):
-    """SQLAlchemy Query subclass with Flask-SQLAlchemy-compatible helpers."""
+    """SQLAlchemy Query subclass with the helpers (`first_or_404`,
+    `get_or_404`, `paginate`) the operations layer is written against.
+    Goes away with the shim (POST_MIGRATION_TODO #1)."""
 
     def first_or_404(self, description: str = "Not Found") -> Any:
         obj = self.first()
@@ -154,8 +162,9 @@ class _QueryProperty:
 
 
 class _DB:
-    """The legacy `db` namespace. Exposes the Flask-SQLAlchemy surface used by
-    models and operations, backed by plain SQLAlchemy 2.0."""
+    """The `db` namespace. Exposes the SQLAlchemy types and helpers the
+    models + operations layer were written against, backed by plain
+    SQLAlchemy 2.0. Goes away with the shim (POST_MIGRATION_TODO #1)."""
 
     # Model + metadata
     Model = Base
@@ -230,6 +239,10 @@ Base.query = _QueryProperty()
 
 db = _DB()
 
+# Public alias for the shim's class so callers (notably tests) can type-annotate
+# parameters that take the shim instance — `_DB` itself is private.
+Db = _DB
+
 
 def get_cloudsql_conn(
     cloudsql_connection_name: str,
@@ -254,6 +267,7 @@ def get_cloudsql_conn(
 
 __all__ = [
     "Base",
+    "Db",
     "Pagination",
     "Query",
     "_session_scope",

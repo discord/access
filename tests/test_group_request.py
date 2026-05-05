@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import cast, Protocol, Any
+from typing import cast, Protocol
 
 from factory import Faker
 from fastapi.testclient import TestClient
@@ -8,6 +8,7 @@ from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
 from api.config import settings
+from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     AppGroup,
@@ -39,7 +40,7 @@ class FakerWithPyStr(Protocol):
 def test_create_group_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -64,7 +65,7 @@ def test_create_group_request(
 def test_create_app_group_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -91,7 +92,7 @@ def test_create_app_group_request(
 def test_create_role_group_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -112,7 +113,7 @@ def test_create_role_group_request(
 def test_create_group_request_with_tags(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     tag: Tag,
 ) -> None:
@@ -136,7 +137,7 @@ def test_create_group_request_with_tags(
 def test_create_group_request_with_ownership_ending_at(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -170,7 +171,7 @@ def test_create_group_request_with_ownership_ending_at(
 def test_create_group_request_tag_limits_ownership_time(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 90 days
@@ -214,7 +215,7 @@ def test_create_group_request_tag_limits_ownership_time(
 def test_create_group_request_tag_reduces_requested_ownership_time(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 30 days
@@ -260,7 +261,7 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
 def test_approve_group_request_creates_group(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -316,7 +317,7 @@ def test_approve_group_request_creates_group(
 def test_approve_group_request_sets_owner_with_ending_time(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -379,7 +380,7 @@ def test_approve_group_request_sets_owner_with_ending_time(
 def test_approve_group_request_tag_limits_owner_ending_time(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -467,7 +468,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
 def test_approve_group_request_applies_tags(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -528,7 +529,7 @@ def test_approve_group_request_applies_tags(
 def test_approve_group_request_sets_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -570,7 +571,7 @@ def test_approve_group_request_sets_name(
 def test_approve_group_request_sets_type(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -669,7 +670,7 @@ def test_approve_group_request_sets_type(
 def test_app_owner_can_approve_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -734,7 +735,7 @@ def test_app_owner_can_approve_request(
 def test_app_owner_can_reject_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     app_owner = OktaUserFactory.create()
@@ -792,7 +793,7 @@ def test_app_owner_can_reject_request(
 def test_wrong_app_owner_cannot_approve_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -871,7 +872,7 @@ def test_wrong_app_owner_cannot_approve_request(
 def test_admin_can_reject_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
@@ -905,7 +906,7 @@ def test_admin_can_reject_request(
 def test_any_user_cannot_reject_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     other_user = OktaUserFactory.create()
@@ -939,7 +940,7 @@ def test_any_user_cannot_reject_request(
 def test_user_can_reject_own_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -970,7 +971,7 @@ def test_user_can_reject_own_request(
 def test_user_cannot_approve_own_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -1002,7 +1003,7 @@ def test_user_cannot_approve_own_request(
 def test_approver_can_modify_group_details(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1072,7 +1073,7 @@ def test_approver_can_modify_group_details(
 def test_cannot_approve_already_resolved_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1126,7 +1127,7 @@ def test_cannot_approve_already_resolved_request(
 def test_cannot_approve_deleted_requester(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1173,7 +1174,7 @@ def test_cannot_approve_deleted_requester(
 def test_app_owner_auto_approves_own_app_group_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1251,7 +1252,7 @@ def test_app_owner_auto_approves_own_app_group_request(
 def test_app_owner_auto_approves_own_app_group_request_tagged(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1355,7 +1356,7 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 def test_random_user_cannot_approve_group_request(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     user: OktaUser,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1397,7 +1398,7 @@ def test_random_user_cannot_approve_group_request(
 def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1472,7 +1473,7 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
 def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1544,7 +1545,7 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
 def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1616,7 +1617,7 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
 def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1689,7 +1690,7 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
 def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1754,7 +1755,7 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
 def test_cannot_approve_role_group_with_reserved_app_owners_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1819,7 +1820,7 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
 def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1885,7 +1886,7 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
 def test_cannot_approve_app_group_request_with_owners_group_name(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1957,7 +1958,7 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
 def test_cannot_approve_non_role_group_request_with_role_prefix(
     app: FastAPI,
     client: TestClient,
-    db: Any,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,

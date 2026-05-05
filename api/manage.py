@@ -1,8 +1,7 @@
 """Click-based CLI for Access management commands.
 
-Replaces the Flask-CLI commands (`flask init`, `flask sync`, `flask notify`,
-etc.) that the project used pre-FastAPI migration. Each command runs inside
-a per-invocation database scope set up by `_with_db_context`.
+Each command runs inside a per-invocation database scope set up by
+`_with_db_context`.
 
 Run via:
     access init <admin_email>
