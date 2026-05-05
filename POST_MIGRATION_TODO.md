@@ -1,6 +1,6 @@
 # Post-Migration TODO
 
-Follow-up work after the [Flask + Marshmallow → FastAPI + Pydantic v2 migration](https://github.com/discord/access/pull/REPLACE-ME). Each item is intentionally **deferred** — the initial migration prioritized wire compatibility over idiomatic FastAPI, so several "make it nicer" changes were postponed to keep that diff focused and reviewable.
+Follow-up work after the [Flask + Marshmallow → FastAPI + Pydantic v2 migration](https://github.com/discord/access/pull/425). Each item is intentionally **deferred** — the initial migration prioritized wire compatibility over idiomatic FastAPI, so several "make it nicer" changes were postponed to keep that diff focused and reviewable.
 
 Items grouped roughly by surface area; ordering within each group is rough priority. Most items can be done independently of each other except where called out.
 
@@ -43,14 +43,41 @@ removes the sync-thread-pool overhead per request. Should be done **after**
 Once #2 lands, SQLAlchemy's built-in `async_scoped_session` replaces the
 manual ContextVar plumbing in `api/extensions.py`.
 
-### 4. Eager-loading hygiene
+### 4. Eager-loading hygiene + remove `safe_dump`
 
-Audit:
-- `lazy="raise_on_sql"` usages on models — confirm each is still load-bearing
-- Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins (some routes load
-  more than they use)
-- `safe_dump` swallowing `InvalidRequestError` — consider making it strict
-  and instead fixing the missing eager loads
+Replace `safe_dump`/`_SafeAttrProxy` (`api/schemas/_serialize.py`) with
+strict `adapter.validate_python(obj, from_attributes=True)` calls so
+unloaded relationships fail loud at the responsible route instead of
+silently rendering as `null`.
+
+The Section E commit on the migration PR tried the deletion and rolled
+back when 51 tests across 9 files broke; every failure was an
+`InvalidRequestError` on a relationship the route declined to
+eager-load. The follow-up has to walk each of these routes, list the
+schema fields it returns, and add the matching `selectinload` /
+`joinedload` to the query. Routes / test files that need attention:
+
+- `tests/test_user.py` — `GET /api/users` and `GET /api/users/{id}` —
+  user-detail / membership / ownership graph
+- `tests/test_tag.py` — `GET /api/tags` and `GET /api/tags/{id}` —
+  `Tag.active_group_tags` chain
+- `tests/test_app.py` — `GET /api/apps` list path
+- `tests/test_app_group_lifecycle_plugin.py` — `GET /api/apps/{id}` /
+  plugin metadata routes
+- `tests/test_audit.py` — `GET /api/audit/users` /
+  `GET /api/audit/groups` (the manual `_serialize_user_group_member` /
+  `_serialize_role_group_map` helpers wrap `m`/`rgm` in
+  `_SafeAttrProxy` directly; expand the audit query's
+  `selectinload` / `joinedload` graph instead)
+- `tests/test_group.py` / `tests/test_role.py` /
+  `tests/test_role_request.py` — group + role + role-request routes
+- `tests/test_time_limit_constraint.py` — group time-limit propagation
+
+Also worth doing alongside:
+- Audit `lazy="raise_on_sql"` usages on models — confirm each is still
+  load-bearing now that `safe_dump` is the strict default.
+- Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins; some routes
+  pre-load more than they emit.
 
 The migration preserved the existing eager-loading topology as-is.
 
@@ -119,20 +146,28 @@ Care needed:
 - Tests that assert call-count of mocked Okta methods may need to await
   background tasks before asserting
 
-### 11. Replace the in-process `syncer.py` loop with a proper task runner
-
-`api/syncer.py` runs as a long-lived process or one-shot CLI invocation
-today. Migrate to:
-- APScheduler (in-process, single replica)
-- Celery + Redis broker (multi-replica)
-- Kubernetes `CronJob` (declarative, no in-process scheduler) — preferred
-
-### 12. Async HTTP for Okta calls
+### 11. Async HTTP for Okta calls
 
 Replace synchronous `requests` calls in `api/services/okta_service.py` with
 `httpx.AsyncClient` and connection pooling. Pairs naturally with #2 (async
-SQLAlchemy). Today, the OktaService uses an asyncio loop internally for
-parallel calls but the entry points are sync.
+SQLAlchemy).
+
+**Important sequencing note.** The current `OktaService` sync wrappers
+each call `asyncio.run(...)` internally on an inner async helper. That
+works *today* because every router is `def` (sync) and runs on an
+`anyio.to_thread.run_sync` worker thread that has no event loop. The
+moment any router becomes `async def`, the same call breaks with
+`asyncio.run() cannot be called from a running event loop`. So this
+work is gated on #2 (async SQLAlchemy / async routers) and must land
+together — converting `OktaService` to async without converting the
+routers buys nothing and is risky.
+
+(Note: the previous "Replace the in-process syncer.py loop with a
+proper task runner" entry was removed — the syncer already runs as a
+Kubernetes CronJob via `examples/kubernetes/cron-job-syncer.yaml`,
+invoking `access sync` every 15 minutes. The Dockerfile's default
+`gunicorn` CMD is overridable in the K8s manifest. README.md §
+Kubernetes Deployment and CronJobs already documents this pattern.)
 
 ---
 
@@ -183,3 +218,59 @@ diffable test failures rather than runtime regressions for clients.
 
 Recommend `syrupy` for the snapshot framework — JSON-aware diffs and
 clean `--snapshot-update` ergonomics.
+
+---
+
+## Plugin Interface Modernization
+
+### 18. Make plugin interfaces async; deprecate the sync hooks
+
+The four plugin types (`notifications`, `conditional_access`,
+`app_group_lifecycle`, `metrics_reporter`) currently expose synchronous
+hooks via `pluggy`. Once the application goes async (#2), plugins
+should follow.
+
+Strategy mirrors the existing `DeprecationWarning` pattern in
+`api/plugins/notifications.py:48-74`:
+
+1. Duplicate every hook spec to add an `_async` variant —
+   `access_request_created_async`, `notify_user_async`, etc.
+2. Keep both for one major version. Sync hooks emit
+   `DeprecationWarning` when called.
+3. Remove the sync set at the next major bump.
+
+Plugins authored in this window can pick either flavor; the application
+prefers the async hook when both are registered.
+
+### 19. Pre-2.0 release checklist: drop deprecated plugin parameters
+
+Several `access_expiring_*` hooks already carry `DeprecationWarning`
+for legacy parameters: `groups`, `roles`, `users` on
+`access_expiring_owner`; `groups` on `access_expiring_user`. Their
+deprecation window ends at 2.0 — the parameters and their
+backward-compat shims must be removed before tagging the release.
+
+`api/plugins/notifications.py:48-74` is the canonical list.
+
+---
+
+## Security follow-ups (out of scope for the migration PR)
+
+### 20. Nonce-based CSP
+
+Drop `'unsafe-inline'` from `script-src` and `style-src` in
+`api/middleware.py`. Generate a per-response nonce in
+`SecurityHeadersMiddleware` and thread it through `build/index.html`
++ the React build pipeline so every inline `<script>` / `<style>`
+carries the nonce. Touches the frontend; not a same-PR fix.
+
+### 21. Trust proxy `X-Forwarded-*` only from an allowlist
+
+`api/middleware.py:_client_ip` reads `X-Forwarded-For` / `X-Real-IP`
+from any caller, so an attacker that can reach the FastAPI service
+directly can forge `RequestContext.ip` (audit-log only — no
+auth/rate-limit decision uses it). Configure
+`uvicorn --forwarded-allow-ips=<LB CIDR>` in the production
+deployment (or use Starlette's `ProxyHeadersMiddleware` with an
+explicit `TRUSTED_PROXIES`). Document the setting in the K8s example
+manifests.
