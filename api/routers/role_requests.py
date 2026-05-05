@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import TypeAdapter
+from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -13,25 +14,39 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from api.pagination import paginate
+from api.routers._eager import polymorphic_group_options
 from api.schemas import CreateRoleRequestBody, ResolveRoleRequestBody, RoleRequestDetail
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 _adapter = TypeAdapter(RoleRequestDetail)
 
 
+def _load_options() -> tuple:
+    """Eager-load every relationship `RoleRequestDetail` reads."""
+    return (
+        joinedload(RoleRequest.requester),
+        joinedload(RoleRequest.resolver),
+        joinedload(RoleRequest.active_resolver),
+        selectinload(RoleRequest.requester_role).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.active_requester_role).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.requested_group).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.active_requested_group).options(*polymorphic_group_options()),
+    )
+
+
 @router.get("", name="role_requests")
 def list_role_requests(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    query = db.query(RoleRequest).order_by(RoleRequest.created_at.desc())
+    query = db.query(RoleRequest).options(*_load_options()).order_by(RoleRequest.created_at.desc())
     return paginate(request, query, _adapter)
 
 
 @router.get("/{role_request_id}", name="role_request_by_id")
 def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    rr = db.query(RoleRequest).filter(RoleRequest.id == role_request_id).first()
+    rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_adapter, rr)
+    return dump_orm(_adapter, rr)
 
 
 @router.post("", name="role_requests_create", status_code=201)
@@ -82,7 +97,8 @@ def post_role_request(
         request_reason=body.reason or "",
         request_ending_at=body.ending_at,
     ).execute()
-    return safe_dump(_adapter, rr)
+    refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == rr.id).first()
+    return dump_orm(_adapter, refreshed or rr)
 
 
 @router.put("/{role_request_id}", name="role_request_by_id_put")
@@ -92,19 +108,9 @@ def put_role_request(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
-    from sqlalchemy.orm import joinedload
-
     from api.auth import permissions as _perms
 
-    rr = (
-        db.query(RoleRequest)
-        .options(
-            joinedload(RoleRequest.active_requested_group),
-            joinedload(RoleRequest.active_requester_role),
-        )
-        .filter(RoleRequest.id == role_request_id)
-        .first()
-    )
+    rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
 
@@ -131,5 +137,5 @@ def put_role_request(
             rejection_reason=body.reason or "",
             notify_requester=rr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = db.query(RoleRequest).filter(RoleRequest.id == role_request_id).first()
-    return safe_dump(_adapter, refreshed)
+    refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
+    return dump_orm(_adapter, refreshed)

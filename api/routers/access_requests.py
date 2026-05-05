@@ -26,7 +26,7 @@ from api.models import (
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from api.pagination import paginate
 from api.schemas import AccessRequestDetail, CreateAccessRequestBody, ResolveAccessRequestBody
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
@@ -152,7 +152,7 @@ def get_access_request(access_request_id: str, db: DbSession, current_user_id: C
     ar = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_adapter, ar)
+    return dump_orm(_adapter, ar)
 
 
 @router.post("", name="access_requests_create", status_code=201)
@@ -202,7 +202,7 @@ def post_access_request(
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
     refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == ar.id).first()
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)
 
 
 @router.put("/{access_request_id}", name="access_request_by_id_put")
@@ -261,4 +261,4 @@ def put_access_request(
             current_user_id=current_user_id,
         ).execute()
     refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)

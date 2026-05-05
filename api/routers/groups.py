@@ -29,7 +29,7 @@ from api.auth.permissions import (
 )
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -41,8 +41,13 @@ from api.operations import (
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
+from api.routers._eager import (
+    group_tag_map_options,
+    role_group_map_options,
+    user_group_member_options,
+)
 from api.schemas import CreateGroupBody, DeleteMessage, GroupDetail, GroupSummary, UpdateGroupBody
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import (
     GroupMember,
     _AppGroupCreateBody,
@@ -55,23 +60,17 @@ import copy
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
 ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup])
+
 DEFAULT_LOAD_OPTIONS = (
     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-    selectinload(OktaGroup.active_user_memberships).options(
-        joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-    ),
-    selectinload(OktaGroup.active_user_ownerships).options(
-        joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-    ),
-    selectinload(OktaGroup.active_role_member_mappings).joinedload(RoleGroupMap.active_role_group),
-    selectinload(OktaGroup.active_role_owner_mappings).joinedload(RoleGroupMap.active_role_group),
+    selectinload(OktaGroup.active_user_memberships).options(*user_group_member_options()),
+    selectinload(OktaGroup.active_user_ownerships).options(*user_group_member_options()),
+    selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options()),
+    selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options()),
+    selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
+    selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
     joinedload(AppGroup.app),
-    selectinload(OktaGroup.active_group_tags).options(
-        joinedload(OktaGroupTagMap.active_app_tag_mapping),
-        joinedload(OktaGroupTagMap.active_tag),
-    ),
+    selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
 )
 
 _group_adapter = TypeAdapter(GroupDetail)
@@ -97,10 +96,11 @@ def list_groups(request: Request, db: DbSession, current_user_id: CurrentUserId)
         db.query(OktaGroup)
         .options(
             selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-            selectinload(OktaGroup.active_group_tags).options(
-                joinedload(OktaGroupTagMap.active_app_tag_mapping),
-                joinedload(OktaGroupTagMap.active_tag),
-            ),
+            selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
+            # `RoleGroupSummary` exposes `active_role_associated_group_*_mappings`,
+            # so the list view needs these eager-loaded for role rows.
+            selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
+            selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
             joinedload(AppGroup.app),
         )
         .filter(OktaGroup.deleted_at.is_(None))
@@ -120,7 +120,7 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return safe_dump(_group_adapter, group)
+    return dump_orm(_group_adapter, group)
 
 
 @router.post("", name="groups_create", status_code=201)
@@ -178,7 +178,7 @@ def post_group(
 
     created = CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
     refreshed = _load_group_with_options(db, created.id)
-    return safe_dump(_group_adapter, refreshed)
+    return dump_orm(_group_adapter, refreshed)
 
 
 @router.put("/{group_id}", name="group_by_id_put")
@@ -275,7 +275,7 @@ def put_group(
                 current_user_id=current_user_id,
             ).execute()
             refreshed = _load_group_with_options(db, group.id)
-            return safe_dump(_group_adapter, refreshed)
+            return dump_orm(_group_adapter, refreshed)
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
 
     # Block renaming to a reserved prefix unless the final group type matches.
@@ -363,7 +363,7 @@ def put_group(
             )
         )
 
-    return safe_dump(_group_adapter, refreshed)
+    return dump_orm(_group_adapter, refreshed)
 
 
 @router.delete("/{group_id}", name="group_by_id_delete")

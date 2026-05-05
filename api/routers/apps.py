@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import func
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -23,31 +23,26 @@ from api.models import (
     AppGroup,
     AppTagMap,
     OktaGroup,
-    OktaGroupTagMap,
-    OktaUserGroupMember,
-    RoleGroupMap,
 )
 from api.pagination import paginate
+from api.routers._eager import (
+    group_tag_map_options,
+    role_group_map_options,
+    user_group_member_options,
+)
 from api.schemas import AppDetail, AppSummary, CreateAppBody, DeleteMessage, UpdateAppBody
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 
 
 # Eager-load options for an `App` response so the `active_owner_app_groups`
-# and `active_non_owner_app_groups` lists carry enough nested data for the
-# frontend's apps page to render without lazy-load errors.
+# and `active_non_owner_app_groups` lists carry every relationship the
+# `AppGroupDetail` schema reads.
 _APP_GROUP_LOAD = (
-    selectinload(AppGroup.active_user_memberships).options(
-        joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-    ),
-    selectinload(AppGroup.active_user_ownerships).options(
-        joinedload(OktaUserGroupMember.active_user),
-        joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-    ),
-    selectinload(AppGroup.active_group_tags).options(
-        joinedload(OktaGroupTagMap.active_tag),
-        joinedload(OktaGroupTagMap.active_app_tag_mapping),
-    ),
+    selectinload(AppGroup.active_user_memberships).options(*user_group_member_options()),
+    selectinload(AppGroup.active_user_ownerships).options(*user_group_member_options()),
+    selectinload(AppGroup.active_role_member_mappings).options(*role_group_map_options()),
+    selectinload(AppGroup.active_role_owner_mappings).options(*role_group_map_options()),
+    selectinload(AppGroup.active_group_tags).options(*group_tag_map_options()),
 )
 APP_LOAD_OPTIONS = (
     selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag),
@@ -95,7 +90,7 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[
     app = db.query(App).options(*APP_LOAD_OPTIONS).filter(_db.or_(App.id == app_id, App.name == app_id)).first()
     if app is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_adapter, app)
+    return dump_orm(_adapter, app)
 
 
 @router.post("", name="apps_create", status_code=201)
@@ -201,7 +196,7 @@ def post_app(
         current_user_id=current_user_id,
     ).execute()
     refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == created.id).first()
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)
 
 
 @router.put("/{app_id}", name="app_by_id_put")
@@ -283,7 +278,7 @@ def put_app(
                 current_user_id=current_user_id,
             ).execute()
             refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
-            return safe_dump(_adapter, refreshed)
+            return dump_orm(_adapter, refreshed)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
     old_app_name = app_obj.name
@@ -353,7 +348,7 @@ def put_app(
                 }
             )
         )
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)
 
 
 @router.delete("/{app_id}", name="app_by_id_delete")

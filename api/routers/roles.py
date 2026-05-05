@@ -20,8 +20,9 @@ from api.extensions import db as _db
 from api.models import OktaGroup, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
+from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import GroupDetail, GroupSummary
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import RoleMember
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
@@ -31,7 +32,12 @@ _role_summary_adapter = TypeAdapter(GroupSummary)
 
 @router.get("", name="roles")
 def list_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    query = db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
+    query = (
+        db.query(RoleGroup)
+        .options(*_GROUP_LOAD_OPTIONS)
+        .filter(RoleGroup.deleted_at.is_(None))
+        .order_by(func.lower(RoleGroup.name))
+    )
     q = request.query_params.get("q", "")
     if q:
         like = f"%{q}%"
@@ -41,10 +47,15 @@ def list_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) 
 
 @router.get("/{role_id}", name="role_by_id")
 def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
+    role = (
+        db.query(RoleGroup)
+        .options(*_GROUP_LOAD_OPTIONS)
+        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .first()
+    )
     if role is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_role_adapter, role)
+    return dump_orm(_role_adapter, role)
 
 
 @router.get("/{role_id}/audit", name="role_audit_by_id")

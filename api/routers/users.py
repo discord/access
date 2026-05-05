@@ -13,7 +13,7 @@ from fastapi import APIRouter
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
+from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
 from starlette.requests import Request
 
@@ -23,15 +23,13 @@ from api.extensions import db as _db
 from api.models import (
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
-    OktaUserGroupMember,
     RoleGroup,
-    RoleGroupMap,
 )
 from api.pagination import paginate
+from api.routers._eager import user_group_member_options
 from api.schemas import OktaUserDetail, OktaUserSummary
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -69,33 +67,10 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
     user = (
         db.query(OktaUser)
         .options(
-            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-            selectinload(OktaUser.active_group_memberships).options(
-                joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).joinedload(
-                    ALL_GROUP_TYPES.AppGroup.app
-                ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-            ),
-            selectinload(OktaUser.active_group_ownerships).options(
-                joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).options(
-                    joinedload(ALL_GROUP_TYPES.AppGroup.app),
-                    selectinload(ALL_GROUP_TYPES.active_group_tags).options(
-                        joinedload(OktaGroupTagMap.active_tag),
-                        joinedload(OktaGroupTagMap.active_app_tag_mapping),
-                    ),
-                ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-            ),
-            selectinload(OktaUser.active_group_memberships_and_ownerships).options(
-                joinedload(OktaUserGroupMember.active_group.of_type(ALL_GROUP_TYPES)).joinedload(
-                    ALL_GROUP_TYPES.AppGroup.app
-                ),
-                joinedload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
-            ),
-            selectinload(OktaUser.all_group_memberships_and_ownerships).options(
-                joinedload(OktaUserGroupMember.group.of_type(ALL_GROUP_TYPES)).joinedload(ALL_GROUP_TYPES.AppGroup.app),
-                joinedload(OktaUserGroupMember.role_group_mapping).joinedload(RoleGroupMap.role_group),
-            ),
+            selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
+            selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
+            selectinload(OktaUser.active_group_memberships_and_ownerships).options(*user_group_member_options()),
+            selectinload(OktaUser.all_group_memberships_and_ownerships).options(*user_group_member_options()),
             joinedload(OktaUser.manager),
         )
         .filter(_db.or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
@@ -106,7 +81,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
         from fastapi import HTTPException
 
         raise HTTPException(status_code=404, detail="Not Found")
-    return safe_dump(_user_adapter, user)
+    return dump_orm(_user_adapter, user)
 
 
 @router.get("/{user_id}/audit", name="user_audit_by_id")

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import func
+from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -17,8 +18,11 @@ from api.extensions import db as _db
 from api.models import Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
+from api.routers._eager import group_tag_map_options
 from api.schemas import CreateTagBody, DeleteMessage, TagDetail, UpdateTagBody
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
+
+_TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_options()),)
 
 
 def _validate_description(value: Any, field_provided: bool) -> str:
@@ -64,7 +68,7 @@ _adapter = TypeAdapter(TagDetail)
 @router.get("", name="tags")
 def list_tags(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     q = request.query_params.get("q", "")
-    query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
+    query = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q:
         like = f"%{q}%"
         query = query.filter(Tag.name.ilike(like))
@@ -73,24 +77,10 @@ def list_tags(request: Request, db: DbSession, current_user_id: CurrentUserId) -
 
 @router.get("/{tag_id}", name="tag_by_id")
 def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    from sqlalchemy.orm import joinedload, selectinload
-
-    from api.models import AppTagMap, OktaGroupTagMap
-
-    tag = (
-        db.query(Tag)
-        .options(
-            selectinload(Tag.active_group_tags).options(
-                joinedload(OktaGroupTagMap.active_group),
-                joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_tag),
-            ),
-        )
-        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
-        .first()
-    )
+    tag = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_adapter, tag)
+    return dump_orm(_adapter, tag)
 
 
 @router.post("", name="tags_create", status_code=201)
@@ -111,7 +101,8 @@ def post_tag(
         enabled=body.enabled,
     )
     created = CreateTag(tag=tag, current_user_id=current_user_id).execute()
-    return safe_dump(_adapter, created)
+    refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == created.id).first()
+    return dump_orm(_adapter, refreshed or created)
 
 
 @router.put("/{tag_id}", name="tag_by_id_put")
@@ -139,15 +130,18 @@ def put_tag(
             setattr(tag, key, payload[key])
     db.commit()
 
-    # Re-evaluate time-limit constraints for groups associated with this tag
-    refreshed = db.query(Tag).options(selectinload(Tag.active_group_tags)).filter(Tag.id == tag.id).first()
-    if refreshed is not None and refreshed.active_group_tags:
+    # Re-evaluate time-limit constraints for groups associated with this tag.
+    # `ModifyGroupsTimeLimit` commits, expiring objects, so we re-load
+    # `refreshed` afterwards before serializing.
+    pre_refresh = db.query(Tag).options(selectinload(Tag.active_group_tags)).filter(Tag.id == tag.id).first()
+    if pre_refresh is not None and pre_refresh.active_group_tags:
         ModifyGroupsTimeLimit(
-            groups=[tm.group_id for tm in refreshed.active_group_tags],
-            tags=[refreshed.id],
+            groups=[tm.group_id for tm in pre_refresh.active_group_tags],
+            tags=[pre_refresh.id],
         ).execute()
 
-    return safe_dump(_adapter, refreshed or tag)
+    refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == tag.id).first()
+    return dump_orm(_adapter, refreshed or tag)
 
 
 @router.delete("/{tag_id}", name="tag_by_id_delete")

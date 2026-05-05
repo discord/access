@@ -15,7 +15,7 @@ from api.models import AccessRequestStatus, GroupRequest, OktaUser
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import paginate
 from api.schemas import CreateGroupRequestBody, GroupRequestDetail, ResolveGroupRequestBody
-from api.schemas._serialize import safe_dump
+from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
 router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
@@ -43,7 +43,7 @@ def get_group_request(group_request_id: str, db: DbSession, current_user_id: Cur
     gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
-    return safe_dump(_adapter, gr)
+    return dump_orm(_adapter, gr)
 
 
 @router.post("", name="group_requests_create", status_code=201)
@@ -67,7 +67,7 @@ def post_group_request(
         request_reason=body.request_reason or "",
     ).execute()
     refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == gr.id).first()
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)
 
 
 @router.put("/{group_request_id}", name="group_request_by_id_put")
@@ -131,4 +131,4 @@ def put_group_request(
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
     refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
-    return safe_dump(_adapter, refreshed)
+    return dump_orm(_adapter, refreshed)

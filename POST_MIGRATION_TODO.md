@@ -43,43 +43,23 @@ removes the sync-thread-pool overhead per request. Should be done **after**
 Once #2 lands, SQLAlchemy's built-in `async_scoped_session` replaces the
 manual ContextVar plumbing in `api/extensions.py`.
 
-### 4. Eager-loading hygiene + remove `safe_dump`
+### 4. Eager-loading hygiene
 
-Replace `safe_dump`/`_SafeAttrProxy` (`api/schemas/_serialize.py`) with
-strict `adapter.validate_python(obj, from_attributes=True)` calls so
-unloaded relationships fail loud at the responsible route instead of
-silently rendering as `null`.
+**Strict serialization landed.** `api/schemas/_serialize.py` exposes
+`dump_orm`, which runs each adapter with `from_attributes=True` and lets
+`InvalidRequestError` on unloaded relationships surface to the test
+suite. The eager-load topology covering every field on
+`OktaUserGroupMemberDetail`, `RoleGroupMapDetail`,
+`OktaGroupTagMapDetail` is centralized in `api/routers/_eager.py` and
+re-used across `apps.py`, `groups.py`, `tags.py`, `users.py`,
+`role_requests.py`, and `audit.py`, so the loader stays in lockstep
+with the schema. 281/281 tests green.
 
-The Section E commit on the migration PR tried the deletion and rolled
-back when 51 tests across 9 files broke; every failure was an
-`InvalidRequestError` on a relationship the route declined to
-eager-load. The follow-up has to walk each of these routes, list the
-schema fields it returns, and add the matching `selectinload` /
-`joinedload` to the query. Routes / test files that need attention:
-
-- `tests/test_user.py` — `GET /api/users` and `GET /api/users/{id}` —
-  user-detail / membership / ownership graph
-- `tests/test_tag.py` — `GET /api/tags` and `GET /api/tags/{id}` —
-  `Tag.active_group_tags` chain
-- `tests/test_app.py` — `GET /api/apps` list path
-- `tests/test_app_group_lifecycle_plugin.py` — `GET /api/apps/{id}` /
-  plugin metadata routes
-- `tests/test_audit.py` — `GET /api/audit/users` /
-  `GET /api/audit/groups` (the manual `_serialize_user_group_member` /
-  `_serialize_role_group_map` helpers wrap `m`/`rgm` in
-  `_SafeAttrProxy` directly; expand the audit query's
-  `selectinload` / `joinedload` graph instead)
-- `tests/test_group.py` / `tests/test_role.py` /
-  `tests/test_role_request.py` — group + role + role-request routes
-- `tests/test_time_limit_constraint.py` — group time-limit propagation
-
-Also worth doing alongside:
+**Still to do under this item:**
 - Audit `lazy="raise_on_sql"` usages on models — confirm each is still
-  load-bearing now that `safe_dump` is the strict default.
+  load-bearing now that `dump_orm` is the strict default.
 - Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins; some routes
   pre-load more than they emit.
-
-The migration preserved the existing eager-loading topology as-is.
 
 ---
 

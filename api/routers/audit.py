@@ -32,7 +32,6 @@ from api.models import (
     RoleGroupMap,
 )
 from api.pagination import paginate
-from api.schemas._serialize import _SafeAttrProxy
 from api.schemas.rfc822 import _rfc822
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
@@ -180,7 +179,6 @@ def _access_request_ref(ar: Any) -> dict[str, Any] | None:
 
 
 def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
-    m = _SafeAttrProxy(m)
     return {
         "id": m.id,
         "user_id": m.user_id,
@@ -205,7 +203,6 @@ def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
 
 
 def _serialize_role_group_map(rgm: RoleGroupMap) -> dict[str, Any]:
-    rgm = _SafeAttrProxy(rgm)
     return {
         "id": rgm.id,
         "role_group_id": rgm.role_group_id,
@@ -242,6 +239,7 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
         db.query(OktaUserGroupMember)
         .options(
             joinedload(OktaUserGroupMember.user),
+            joinedload(OktaUserGroupMember.active_user),
             joinedload(OktaUserGroupMember.created_actor),
             joinedload(OktaUserGroupMember.ended_actor),
             joinedload(OktaUserGroupMember.access_request),
@@ -253,7 +251,12 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
                     joinedload(OktaGroupTagMap.active_app_tag_mapping),
                 ),
             ),
+            selectinload(OktaUserGroupMember.active_group).options(
+                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                joinedload(AppGroup.app),
+            ),
             selectinload(OktaUserGroupMember.role_group_mapping).joinedload(RoleGroupMap.role_group),
+            selectinload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         )
         .join(OktaUserGroupMember.user)
         .join(OktaUserGroupMember.group.of_type(group_alias))
@@ -428,6 +431,7 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
         db.query(RoleGroupMap)
         .options(
             joinedload(RoleGroupMap.role_group),
+            joinedload(RoleGroupMap.active_role_group),
             joinedload(RoleGroupMap.created_actor),
             joinedload(RoleGroupMap.ended_actor),
             selectinload(RoleGroupMap.group).options(
@@ -437,6 +441,10 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
                     joinedload(OktaGroupTagMap.active_tag),
                     joinedload(OktaGroupTagMap.active_app_tag_mapping),
                 ),
+            ),
+            selectinload(RoleGroupMap.active_group).options(
+                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                joinedload(AppGroup.app),
             ),
         )
         .join(RoleGroupMap.role_group)
