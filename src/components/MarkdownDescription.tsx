@@ -1,17 +1,63 @@
 import {Box, Typography} from '@mui/material';
+import type {SxProps, Theme} from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 
 interface MarkdownDescriptionProps {
   description: string | null | undefined;
+  inline?: boolean;
+  sx?: SxProps<Theme>;
 }
 
+const FULL_ELEMENTS = [
+  'p',
+  'strong',
+  'em',
+  'code',
+  'pre',
+  'del',
+  'a',
+  'ul',
+  'ol',
+  'li',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'blockquote',
+  'hr',
+  'br',
+];
+
+const INLINE_ELEMENTS = ['strong', 'em', 'code', 'del', 'br'];
+
 /**
- * Component for rendering markdown descriptions with proper styling.
- * Used on detail pages for apps, groups, and tags.
+ * Renders markdown descriptions. Default mode is for detail-page heroes
+ * (centered, full block-level features). `inline` mode renders inside table
+ * cells whose row is wrapped in <a>: single-line CSS clamp, inline-only
+ * formatting, and links unwrapped to plain text to avoid nested anchors.
  */
-export default function MarkdownDescription({description}: MarkdownDescriptionProps) {
+export default function MarkdownDescription({description, inline, sx}: MarkdownDescriptionProps) {
   if (!description) {
     return null;
+  }
+
+  if (inline) {
+    return (
+      <Box
+        sx={{
+          display: '-webkit-box',
+          WebkitLineClamp: 1,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          ...sx,
+        }}>
+        <ReactMarkdown allowedElements={INLINE_ELEMENTS} unwrapDisallowed>
+          {description}
+        </ReactMarkdown>
+      </Box>
+    );
   }
 
   return (
@@ -30,32 +76,10 @@ export default function MarkdownDescription({description}: MarkdownDescriptionPr
             textDecoration: 'underline',
           },
         },
+        ...sx,
       }}>
       <Typography variant="body1" component="div">
-        <ReactMarkdown
-          allowedElements={[
-            'p',
-            'strong',
-            'em',
-            'code',
-            'pre',
-            'del',
-            'a',
-            'ul',
-            'ol',
-            'li',
-            'h1',
-            'h2',
-            'h3',
-            'h4',
-            'h5',
-            'h6',
-            'blockquote',
-            'hr',
-            'br',
-          ]}>
-          {description}
-        </ReactMarkdown>
+        <ReactMarkdown allowedElements={FULL_ELEMENTS}>{description}</ReactMarkdown>
       </Typography>
     </Box>
   );

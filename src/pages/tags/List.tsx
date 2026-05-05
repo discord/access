@@ -24,6 +24,7 @@ import {perPage} from '../../helpers';
 import {useGetTags} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
+import MarkdownDescription from '../../components/MarkdownDescription';
 
 export default function ListTags() {
   const navigate = useNavigate();
@@ -134,9 +135,7 @@ export default function ListTags() {
                 </TableCell>
                 <TableCell>
                   <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>
-                    {(row.description ?? '').length > 115
-                      ? row.description?.substring(0, 114) + '...'
-                      : row.description ?? ''}
+                    <MarkdownDescription description={row.description} inline />
                   </Link>
                 </TableCell>
               </TableRow>
