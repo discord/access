@@ -108,6 +108,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     props.group.active_user_memberships?.map((membership) => membership.active_user!.id).includes(currentUser.id) ??
     false;
 
+  const userOwnedNonRoleGroupIds = !isAccessAdmin(currentUser)
+    ? (currentUser.active_group_ownerships ?? [])
+        .filter((ownership) => ownership.active_group != null && ownership.active_group.type !== 'role_group')
+        .map((ownership) => ownership.active_group!.id!)
+    : null;
+
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [groupSearchInput, setGroupSearchInput] = React.useState('');
   const [groups, setGroups] = React.useState<Array<OktaGroup | AppGroup>>([]);
@@ -220,6 +226,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       <FormContainer<AddGroupsForm> onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addGroupsText}</DialogTitle>
         <DialogContent>
+          {!isAccessAdmin(currentUser) ? (
+            <Alert severity="info" sx={{my: 1}}>
+              You can only add groups that you own from this dialog. To add groups that you do not own to this role,
+              please create a role request from the group's page.
+            </Alert>
+          ) : null}
           <Typography variant="subtitle1" color="text.accent">
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
@@ -296,6 +308,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                     (option) =>
                       option.type != 'role_group' &&
                       option.is_managed == true &&
+                      (userOwnedNonRoleGroupIds == null || userOwnedNonRoleGroupIds.includes(option.id!)) &&
                       (!groups.map((group) => group.id).includes(option.id) ||
                         (currUserRoleGroupMember && !isAccessAdmin(currentUser)
                           ? !disallowedGroups.includes(option.id!)
@@ -387,7 +400,12 @@ interface AddGroupsProps {
 export default function AddGroups(props: AddGroupsProps) {
   const [open, setOpen] = React.useState(false);
 
-  if (props.group.deleted_at != null || !isAccessAdmin(props.currentUser)) {
+  const ownsAtLeastOneNonRoleGroup = (props.currentUser.active_group_ownerships ?? []).some(
+    (ownership) => ownership.active_group != null && ownership.active_group.type !== 'role_group',
+  );
+  const isRoleOwnerWithGroups = isGroupOwner(props.currentUser, props.group.id ?? '') && ownsAtLeastOneNonRoleGroup;
+
+  if (props.group.deleted_at != null || !(isAccessAdmin(props.currentUser) || isRoleOwnerWithGroups)) {
     return null;
   }
 
