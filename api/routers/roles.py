@@ -48,7 +48,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
 
 
 @router.get("/{role_id}/audit", name="role_audit_by_id")
-def get_role_audit(role_id: str, request: Request) -> RedirectResponse:
+def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     from urllib.parse import urlencode
 
     qp = dict(request.query_params)

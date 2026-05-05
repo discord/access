@@ -37,6 +37,12 @@ from api.schemas.rfc822 import _rfc822
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
+# Allowlist for the `order_by` query parameter on the audit endpoints.
+# Replaces an unrestricted `getattr(Model, order_by, ...)` which exposed
+# every class attribute on the SQLAlchemy mapped class (including
+# `metadata`, `__dict__`, etc.) and turned bad input into a 500.
+_VALID_AUDIT_ORDER_BY = {"moniker", "created_at", "ended_at"}
+
 
 # --- Resolution helpers -----------------------------------------------------
 
@@ -382,6 +388,8 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
         )
 
     order_by = request.query_params.get("order_by", "created_at")
+    if order_by not in _VALID_AUDIT_ORDER_BY:
+        raise HTTPException(400, f"order_by must be one of: {sorted(_VALID_AUDIT_ORDER_BY)}")
     order_desc = _bool(request.query_params.get("order_desc"))
     nulls_order = nullsfirst if order_desc else nullslast
     if order_by == "moniker":
@@ -396,7 +404,7 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
                 nullslast(OktaUserGroupMember.created_at.asc()),
             )
     else:
-        col = getattr(OktaUserGroupMember, order_by, OktaUserGroupMember.created_at)
+        col = getattr(OktaUserGroupMember, order_by)
         ordering = (nulls_order(getattr(col, "desc" if order_desc else "asc")()),)
     query = query.order_by(*ordering)
 
@@ -570,6 +578,8 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
         )
 
     order_by = request.query_params.get("order_by", "created_at")
+    if order_by not in _VALID_AUDIT_ORDER_BY:
+        raise HTTPException(400, f"order_by must be one of: {sorted(_VALID_AUDIT_ORDER_BY)}")
     order_desc = _bool(request.query_params.get("order_desc"))
     nulls_order = nullsfirst if order_desc else nullslast
     if order_by == "moniker":
@@ -579,7 +589,7 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
             nullslast(RoleGroupMap.created_at.asc()),
         )
     else:
-        col = getattr(RoleGroupMap, order_by, RoleGroupMap.created_at)
+        col = getattr(RoleGroupMap, order_by)
         ordering = (nulls_order(getattr(col, "desc" if order_desc else "asc")()),)
     query = query.order_by(*ordering)
 

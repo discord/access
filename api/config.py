@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Literal, Optional, Union, cast
 
 from pydantic import Field
@@ -62,8 +63,6 @@ class Settings(BaseSettings):
     OKTA_USE_GROUP_OWNERS_API: bool = False
     CURRENT_OKTA_USER_EMAIL: str = "wumpus@discord.com"
     OKTA_GROUP_PROFILE_CUSTOM_ATTR: Optional[str] = None
-    OKTA_WEBHOOK_ID: Optional[str] = None
-    OKTA_IGA_ACTOR_ID: Optional[str] = None
 
     # Database
     SQLALCHEMY_DATABASE_URI: Optional[str] = Field(default_factory=lambda: os.getenv("DATABASE_URI"))
@@ -128,6 +127,41 @@ def _build_settings() -> Settings:
     return s
 
 
+def assert_env_explicitly_set() -> None:
+    """Fail-closed guard against silently defaulting to development mode.
+
+    `ENV` falls back to "development" via `default_factory` if neither
+    `FLASK_ENV` nor `ENV` is set, which flips DEBUG on, exposes
+    `/api/docs`, and (in CF Access deployments) activates the dev/test
+    auth bypass. Called from `create_app()` at HTTP-server startup so
+    deployments crash loudly on a missing env var instead of fail-open.
+
+    Pytest paths bypass this (the test harness sets `ENV=test` via
+    `.testenv`); CLI runs that don't go through `create_app()` are
+    unaffected. The check honors `ENV` declared in a `.env` file as well
+    as the OS environment, since `pydantic-settings` reads both.
+    """
+    if os.getenv("FLASK_ENV") or os.getenv("ENV"):
+        return
+    # Honor `ENV` declared in `.env` (pydantic-settings reads it). Walk up
+    # from CWD so `make run-backend` from any path still finds it.
+    candidate = Path.cwd() / ".env"
+    if candidate.is_file():
+        try:
+            content = candidate.read_text()
+        except OSError:
+            content = ""
+        for line in content.splitlines():
+            line = line.strip()
+            if line.startswith("ENV=") or line.startswith("FLASK_ENV="):
+                return
+    raise RuntimeError(
+        "ENV is not set. Export ENV=development|test|staging|production "
+        "(or declare it in .env) so deploys cannot silently fall through "
+        "to dev mode."
+    )
+
+
 settings = _build_settings()
 
 
@@ -145,8 +179,6 @@ OKTA_API_TOKEN = settings.OKTA_API_TOKEN
 OKTA_USE_GROUP_OWNERS_API = settings.OKTA_USE_GROUP_OWNERS_API
 CURRENT_OKTA_USER_EMAIL = settings.CURRENT_OKTA_USER_EMAIL
 OKTA_GROUP_PROFILE_CUSTOM_ATTR = settings.OKTA_GROUP_PROFILE_CUSTOM_ATTR
-OKTA_WEBHOOK_ID = settings.OKTA_WEBHOOK_ID
-OKTA_IGA_ACTOR_ID = settings.OKTA_IGA_ACTOR_ID
 SQLALCHEMY_DATABASE_URI = settings.SQLALCHEMY_DATABASE_URI
 SQLALCHEMY_TRACK_MODIFICATIONS = settings.SQLALCHEMY_TRACK_MODIFICATIONS
 SQLALCHEMY_ECHO = settings.SQLALCHEMY_ECHO

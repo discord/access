@@ -17,6 +17,9 @@ from api.schemas._serialize import safe_dump
 
 DEFAULT_PER_PAGE = 50
 DEFAULT_PAGE_NUMBER = 0
+# Hard cap on `per_page`. `per_page=-1` (sentinel for "all") is also clamped
+# to this so a single request can't materialize the whole table in memory.
+MAX_PER_PAGE = 1000
 
 
 def extract_pagination(request: Request) -> tuple[int, int]:
@@ -62,18 +65,13 @@ def paginate(
     `per_page=-1` returns all rows in a single page."""
     page, per_page = extract() if extract else extract_pagination(request)
 
-    if per_page == -1:
-        items = query.all()
-        total = len(items)
-        return {
-            "total": total,
-            "pages": 1,
-            "next": _build_url(request, page=0, per_page=-1),
-            "prev": _build_url(request, page=0, per_page=-1),
-            "results": [_serialize(item, schema) for item in items],
-        }
-
-    if per_page <= 0:
+    # Cap `per_page=-1` (sentinel "all") and any positive value above
+    # MAX_PER_PAGE at MAX_PER_PAGE — a small DoS shield against requests
+    # like `?per_page=-1` that would otherwise stream multi-GB of ORM
+    # objects into memory per request.
+    if per_page == -1 or per_page > MAX_PER_PAGE:
+        per_page = MAX_PER_PAGE
+    elif per_page <= 0:
         per_page = DEFAULT_PER_PAGE
 
     total = query.order_by(None).count()

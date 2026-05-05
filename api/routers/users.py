@@ -110,7 +110,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
 
 
 @router.get("/{user_id}/audit", name="user_audit_by_id")
-def get_user_audit(user_id: str, request: Request) -> RedirectResponse:
+def get_user_audit(user_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     qp = dict(request.query_params)
     qp["user_id"] = user_id
     from urllib.parse import urlencode

@@ -45,8 +45,12 @@ def _configure_sentry() -> None:
     if not settings.FLASK_SENTRY_DSN:
         return
     import sentry_sdk
+    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
+    from pydantic import ValidationError
     from sentry_sdk.integrations.starlette import StarletteIntegration
     from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from starlette.exceptions import HTTPException as StarletteHTTPException
 
     sentry_profile_env_var = environ.get("ENABLE_SENTRY_PROFILER", "0")
     logger.info(f"ENABLE_SENTRY_PROFILER: {sentry_profile_env_var}")
@@ -56,6 +60,10 @@ def _configure_sentry() -> None:
         environment=settings.ENV,
         traces_sample_rate=0.1,
         profiles_sample_rate=float(sentry_profile_env_var),
+        # Don't ship 4xx-class control flow to Sentry — those are user error,
+        # not application error, and request bodies in breadcrumbs may
+        # carry PII.
+        ignore_errors=[HTTPException, StarletteHTTPException, RequestValidationError, ValidationError],
     )
 
 
@@ -91,6 +99,12 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # by the `db` fixture. Setting ENV here keeps the auth dependency in
         # the dev/test bypass branch.
         settings.ENV = "test"
+    else:
+        # Crash on a missing ENV env-var so deployments cannot silently fall
+        # through to dev mode (which exposes /api/docs and disables auth).
+        from api.config import assert_env_explicitly_set
+
+        assert_env_explicitly_set()
 
     _configure_sentry()
     _configure_okta()
@@ -167,7 +181,6 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         roles,
         tags,
         users,
-        webhook,
     )
 
     app.include_router(health.router)
@@ -182,7 +195,6 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.include_router(roles.router)
     app.include_router(tags.router)
     app.include_router(users.router)
-    app.include_router(webhook.router)
 
     # SPA: mount build/ at root so React routing works. Mount LAST so API
     # routes win.

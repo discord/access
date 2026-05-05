@@ -400,7 +400,7 @@ def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -
 
 
 @router.get("/{group_id}/audit", name="group_audit_by_id")
-def get_group_audit(group_id: str, request: Request) -> RedirectResponse:
+def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     from urllib.parse import urlencode
 
     qp = dict(request.query_params)
