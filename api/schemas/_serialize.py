@@ -10,6 +10,10 @@ unloaded relationships instead of raising, letting Pydantic fill in the
 default. Routes are still responsible for eagerly loading the relationships
 they actually need; this just keeps optional embedded fields from blowing up
 the response when they're irrelevant.
+
+Removing this helper in favour of strict serialization is tracked in
+POST_MIGRATION_TODO.md #4 — the full list of routes that need eager-load
+fixes is documented there.
 """
 
 from __future__ import annotations
