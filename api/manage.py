@@ -1,7 +1,7 @@
 """Click-based CLI for Access management commands.
 
 Each command runs inside a per-invocation database scope set up by
-`_with_db_context`.
+`_with_app_context`.
 
 Run via:
     access init <admin_email>
@@ -21,9 +21,11 @@ import click
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _with_db_context(func: F) -> F:
-    """Initialize the SQLAlchemy engine, plugin registry, and per-CLI session
-    scope before running the command."""
+def _with_app_context(func: F) -> F:
+    """Establish a per-invocation app context for a Click command: bind the
+    SQLAlchemy engine, eagerly load every plugin type, and set up a
+    request-scoped session keyed to the CLI run. Mirrors the spirit of the
+    pre-migration `with app.app_context()` block."""
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -86,7 +88,7 @@ _load_plugin_commands()
 
 @cli.command("init")
 @click.argument("admin_okta_user_email")
-@_with_db_context
+@_with_app_context
 def init(admin_okta_user_email: str) -> None:
     """Import users/groups/memberships from Okta and create the built-in Access app."""
     _import_from_okta()
@@ -94,7 +96,7 @@ def init(admin_okta_user_email: str) -> None:
 
 
 @cli.command("import-from-okta")
-@_with_db_context
+@_with_app_context
 def import_from_okta() -> None:
     """Import users/groups/memberships from Okta."""
     _import_from_okta()
@@ -153,7 +155,7 @@ def _import_from_okta() -> None:
 
 @cli.command("init-builtin-apps")
 @click.argument("admin_okta_user_email")
-@_with_db_context
+@_with_app_context
 def init_builtin_apps(admin_okta_user_email: str) -> None:
     """Create the built-in Access app and owner group."""
     _init_builtin_apps(admin_okta_user_email)
@@ -206,7 +208,7 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     default=False,
     help="Sync group memberships from Access to Okta",
 )
-@_with_db_context
+@_with_app_context
 def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
     """Sync users/groups/memberships from Okta to Access and expire stale requests."""
     from sentry_sdk import start_transaction
@@ -237,7 +239,7 @@ def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritative
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-@_with_db_context
+@_with_app_context
 def fix_unmanaged_groups(dry_run: bool) -> None:
     """Verify and fix unmanaged-group state in Access against Okta."""
     from api.integrity import verify_and_fix_unmanaged_groups
@@ -253,7 +255,7 @@ def fix_unmanaged_groups(dry_run: bool) -> None:
     default=False,
     help="If set will run as dry run and not make any changes",
 )
-@_with_db_context
+@_with_app_context
 def fix_role_memberships(dry_run: bool) -> None:
     """Verify and fix role-membership state in Access."""
     from api.integrity import verify_and_fix_role_memberships
@@ -276,7 +278,7 @@ def fix_role_memberships(dry_run: bool) -> None:
     default=False,
     help="If set will notify role owners instead of individuals",
 )
-@_with_db_context
+@_with_app_context
 def notify(owner: bool, role_owner: bool) -> None:
     """Send expiring-access notifications."""
     from api.syncer import (
@@ -294,7 +296,7 @@ def notify(owner: bool, role_owner: bool) -> None:
 
 
 @cli.command("sync-app-group-memberships")
-@_with_db_context
+@_with_app_context
 def sync_app_group_memberships() -> None:
     """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
     from api.extensions import db
