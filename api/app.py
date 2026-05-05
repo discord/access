@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
 from api import exception_handlers, middleware
@@ -110,12 +109,23 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     _configure_okta()
     _validate_plugins()
 
+    from fastapi import Depends
+
+    from api.auth.dependencies import require_authenticated
+
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         docs_url="/api/docs" if settings.DEBUG else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.DEBUG else None,
+        # Defense-in-depth: every endpoint goes through the auth gate.
+        # `require_authenticated` short-circuits for the small allowlist
+        # (health, OIDC login). Endpoints still declare `CurrentUserId`
+        # for the user-id value; the dependency is deduped at runtime.
+        # The SPA catch-all route mounted below inherits this dependency
+        # too, so static assets are inside the gate.
+        dependencies=[Depends(require_authenticated)],
     )
 
     # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture
@@ -150,13 +160,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         )
 
     # Order: outer-most last. RequestId outermost so request_id is on state
-    # for inner middleware and dependencies. RequireAuth runs after the
-    # request id + context are bound (so 403/redirect responses still get
-    # logged with their correlation id) and before the routes / static
-    # mount, so static assets go through the gate too.
+    # for inner middleware and dependencies.
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
-    app.add_middleware(middleware.RequireAuthMiddleware)
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
 
@@ -191,9 +197,34 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.include_router(tags.router)
     app.include_router(users.router)
 
-    # SPA: mount build/ at root so React routing works. Mount LAST so API
-    # routes win.
+    # SPA: serve `build/` from a catch-all FastAPI route so static assets
+    # go through the app-wide `require_authenticated` dependency (an
+    # `app.mount(..., StaticFiles)` would be a Starlette sub-app that
+    # bypasses the dependency chain). Registered LAST so the routers
+    # above match first.
     if BUILD_DIR.exists():
-        app.mount("/", StaticFiles(directory=str(BUILD_DIR), html=True), name="spa")
+        from fastapi import HTTPException
+        from fastapi.responses import FileResponse
+
+        build_dir_resolved = BUILD_DIR.resolve()
+
+        @app.get("/{spa_path:path}", include_in_schema=False, name="spa")
+        def serve_spa(spa_path: str) -> FileResponse:
+            # Unmapped /api/* paths fall through to here; return a real 404
+            # rather than the SPA index.
+            if spa_path == "api" or spa_path.startswith("api/"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            # Resolve safely — refuse anything that escapes BUILD_DIR via
+            # `..` components.
+            try:
+                candidate = (BUILD_DIR / spa_path).resolve()
+                candidate.relative_to(build_dir_resolved)
+            except (ValueError, OSError):
+                raise HTTPException(status_code=404, detail="Not Found")
+            if candidate.is_file():
+                return FileResponse(candidate)
+            # Anything else falls back to index.html so React Router can
+            # handle the path on the client.
+            return FileResponse(BUILD_DIR / "index.html")
 
     return app

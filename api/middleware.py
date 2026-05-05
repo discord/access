@@ -4,26 +4,27 @@
   and used as the SQLAlchemy session scope key.
 - RequestContextMiddleware: builds a `RequestContext` from the request headers
   and binds it to a ContextVar so audit logging in operations can read it.
-- RequireAuthMiddleware: enforces authentication on every request except a
-  small allowlist (health, OIDC login). Static assets — the React SPA mount
-  at `/` — go through this gate too, since middleware intercepts mounts that
-  the FastAPI dependency chain skips.
 - SecurityHeadersMiddleware: emits the CSP / X-Frame-Options / Referrer-Policy
   / X-Content-Type-Options headers on every response.
 - CacheControlMiddleware: emits no-store cache headers on `/api/*` responses.
+
+Authentication is enforced via the FastAPI app-wide
+`dependencies=[Depends(require_authenticated)]` declared in `api.app`,
+not via middleware — that keeps `OIDCRedirectRequired` /
+`HTTPException` flowing through the registered exception handlers
+(see `api.exception_handlers`) instead of duplicating the response
+shapes here. Static assets (the SPA) are covered by a catch-all
+FastAPI route, which also runs through the app-wide dependency.
 """
 
 from __future__ import annotations
 
-import logging
 import uuid
-from typing import Any, Awaitable, Callable
-from urllib.parse import urlencode
+from typing import Awaitable, Callable
 
-from fastapi import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse, RedirectResponse, Response
+from starlette.responses import Response
 
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
@@ -122,51 +123,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         finally:
             reset_request_context(token)
-
-
-class RequireAuthMiddleware(BaseHTTPMiddleware):
-    """Enforce authentication on every request except a small allowlist.
-
-    Allowlist (from `api.auth.dependencies.AUTH_ALLOWLIST_PREFIXES`):
-      - `/api/healthz` (health check, intentionally unauthenticated)
-      - `/api/oidc/*` (login flow has to be reachable without a session)
-
-    Static assets (the React SPA mount at `/`) and the docs endpoints
-    (`/api/docs`, `/api/openapi.json`) are intentionally **inside** the
-    gate. Middleware runs on every ASGI request, including the static
-    files mount that bypasses FastAPI's dependency chain — that's the
-    point of doing this in middleware rather than as a route dependency.
-
-    On failure, OIDC mode redirects to `/api/oidc/login?next=…`; CF
-    Access / dev modes return the same 403 the dependency would have.
-    """
-
-    _logger = logging.getLogger(__name__)
-
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        from api.auth.dependencies import OIDCRedirectRequired, get_current_user_id, is_auth_allowlisted
-
-        path = request.url.path
-        if is_auth_allowlisted(path):
-            return await call_next(request)
-
-        try:
-            # `db.session` returns the request-scoped Session set up by
-            # RequestIdMiddleware; pass it directly (the dependency
-            # signature accepts a bare Session).
-            get_current_user_id(request, db.session)
-        except OIDCRedirectRequired as exc:
-            query = urlencode({"next": exc.next_path})
-            return RedirectResponse(url=f"/api/oidc/login?{query}", status_code=307)
-        except HTTPException as exc:
-            detail: Any = exc.detail
-            body: dict[str, Any]
-            if isinstance(detail, dict):
-                body = detail
-            else:
-                body = {"message": str(detail) if detail is not None else ""}
-            return JSONResponse(body, status_code=exc.status_code, headers=exc.headers or None)
-        return await call_next(request)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
