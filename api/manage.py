@@ -22,15 +22,22 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 def _with_db_context(func: F) -> F:
-    """Initialize the SQLAlchemy engine + scope before running the command."""
+    """Initialize the SQLAlchemy engine, plugin registry, and per-CLI session
+    scope before running the command."""
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         from api.database import build_engine
         from api.extensions import _session_scope, db
+        from api.plugins import load_plugins
 
         if db._engine is None:
             db.init_app(engine=build_engine())
+        # Trigger plugin discovery once per CLI run. Notification, conditional
+        # access, and app-group-lifecycle hooks are all consumed by the
+        # `sync` / `notify` / `sync-app-group-memberships` commands; the
+        # `init` family doesn't need them but the call is cheap (memoized).
+        load_plugins()
         token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
         try:
             return func(*args, **kwargs)

@@ -61,11 +61,16 @@ def _configure_sentry() -> None:
 
 def _validate_plugins() -> None:
     try:
+        from api.plugins import load_plugins
         from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
 
+        load_plugins()
+        # Validate per-app config metadata for any registered app group
+        # lifecycle plugins. The other plugin types don't have a
+        # corresponding metadata-validation step.
         _ = get_app_group_lifecycle_plugins()
     except Exception:
-        logger.exception("Failed to validate app group lifecycle plugins.")
+        logger.exception("Failed to validate plugins.")
         raise
 
 
@@ -91,12 +96,21 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     _configure_okta()
     _validate_plugins()
 
+    from fastapi import Depends
+
+    from api.auth.dependencies import require_authenticated
+
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         docs_url="/api/docs" if settings.DEBUG else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.DEBUG else None,
+        # Defense-in-depth: every endpoint goes through the auth gate.
+        # `require_authenticated` short-circuits for the small allowlist
+        # (health, OIDC login). Endpoints that need the user-id value still
+        # declare `CurrentUserId`; the dependency is deduped at runtime.
+        dependencies=[Depends(require_authenticated)],
     )
 
     # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture

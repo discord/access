@@ -75,7 +75,11 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        # Always generate the request id server-side. Reading it from an
+        # incoming `X-Request-Id` header would let a caller pin every
+        # concurrent request to the same SQLAlchemy session-scope key,
+        # which collapses to a shared session and corrupts Session state.
+        request_id = uuid.uuid4().hex
         request.state.request_id = request_id
 
         owns_scope = _session_scope.get() == "__default__"

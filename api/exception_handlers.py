@@ -10,12 +10,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from urllib.parse import urlencode
+
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
+
+from api.auth.dependencies import OIDCRedirectRequired
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +66,18 @@ async def pydantic_validation_handler(request: Request, exc: ValidationError) ->
     return JSONResponse({"message": _format_validation_error(exc)}, status_code=400)
 
 
+async def oidc_redirect_handler(request: Request, exc: OIDCRedirectRequired) -> RedirectResponse:
+    query = urlencode({"next": exc.next_path})
+    return RedirectResponse(url=f"/api/oidc/login?{query}", status_code=307)
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse | HTMLResponse:
     logger.exception("Unhandled exception", exc_info=exc)
     if _is_api(request):
-        return JSONResponse({"message": str(exc)}, status_code=500)
+        # Return a static body — `str(exc)` for SQLAlchemy errors leaks the
+        # full SQL statement, table/column names, and bound parameters.
+        # Diagnostics already go to the log pipeline via logger.exception.
+        return JSONResponse({"message": "Internal Server Error"}, status_code=500)
     if INDEX_HTML.exists():
         return HTMLResponse(INDEX_HTML.read_text(), status_code=200)
     return JSONResponse({"message": "Internal Server Error"}, status_code=500)
@@ -76,4 +88,5 @@ def install(app: FastAPI) -> None:
     app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, request_validation_handler)  # type: ignore[arg-type]
     app.add_exception_handler(ValidationError, pydantic_validation_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(OIDCRedirectRequired, oidc_redirect_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)

@@ -46,6 +46,18 @@ def _dev_user_email(request: Request) -> str:
     return getattr(request.app.state, "current_user_email", None) or settings.CURRENT_OKTA_USER_EMAIL
 
 
+class OIDCRedirectRequired(Exception):
+    """Raised when OIDC is configured but the request has no session.
+
+    Caught by an exception handler that emits a 307 to `/api/oidc/login`
+    so the browser can complete the auth flow before retrying the
+    original path."""
+
+    def __init__(self, next_path: str) -> None:
+        self.next_path = next_path
+        super().__init__(f"OIDC login required (next={next_path!r})")
+
+
 def get_current_user_id(request: Request, db: DbSession) -> str:
     """Resolve the current user id, raising 403 if unauthenticated."""
     if settings.ENV in ("development", "test"):
@@ -83,7 +95,9 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
     if settings.OIDC_CLIENT_SECRETS:
         userinfo = request.session.get("userinfo") if hasattr(request, "session") else None
         if not userinfo or "email" not in userinfo:
-            raise HTTPException(status_code=403, detail="Not logged in")
+            # Browser flow: the SPA should follow the 307 to the OIDC login
+            # endpoint, which kicks off the authorization-code redirect.
+            raise OIDCRedirectRequired(next_path=request.url.path)
         user = _lookup_user_by_email(db, userinfo["email"])
         request.state.current_user_id = user.id
         if settings.FLASK_SENTRY_DSN:
@@ -105,3 +119,23 @@ def get_current_user(
 
 CurrentUserId = Annotated[str, Depends(get_current_user_id)]
 CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
+
+
+# Defense-in-depth: every `/api/*` request goes through this dependency at
+# the FastAPI app level. Endpoints still declare `CurrentUserId` /
+# `CurrentUser` for the user-id value; this is the safety net if a route
+# forgets the declaration.
+_AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/api/oidc/")
+
+
+def require_authenticated(request: Request, db: DbSession) -> None:
+    """Enforce authentication on every request except `/api/healthz` and
+    the OIDC login endpoints. `/api/docs` and `/api/openapi.json` are
+    intentionally inside the gate even though they're DEBUG-only."""
+    path = request.url.path
+    if any(path == p.rstrip("/") or path.startswith(p) for p in _AUTH_ALLOWLIST_PREFIXES):
+        return
+    if not path.startswith("/api"):
+        # SPA / static assets — handled by the StaticFiles mount.
+        return
+    get_current_user_id(request, db)
