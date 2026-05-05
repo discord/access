@@ -78,13 +78,19 @@ def paginate(
     pages = max(1, (total + per_page - 1) // per_page)
     items = query.limit(per_page).offset(page * per_page).all()
 
-    next_page = min(page + 1, pages - 1)
-    prev_page = max(page - 1, 0)
+    has_next = page < pages - 1
+    has_prev = page > 0
 
     return {
         "total": total,
         "pages": pages,
-        "next": _build_url(request, page=next_page, per_page=per_page),
-        "prev": _build_url(request, page=prev_page, per_page=per_page),
+        "has_next": has_next,
+        "has_prev": has_prev,
+        # Emit a URL only when the page actually exists. Previously
+        # `next_page = min(page + 1, pages - 1)` made the `next` link
+        # point at the current page on the last page, so clients that
+        # followed the link looped.
+        "next": _build_url(request, page=page + 1, per_page=per_page) if has_next else None,
+        "prev": _build_url(request, page=page - 1, per_page=per_page) if has_prev else None,
         "results": [_serialize(item, schema) for item in items],
     }

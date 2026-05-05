@@ -46,9 +46,10 @@ def test_get_tag(
 def test_put_tag(
     client: TestClient, db: Db, tag: Tag, access_app: App, app_group: AppGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
-    # test 404
+    # test 404 — with a valid (empty) body shape so the path resolution
+    # runs ahead of body-validation rejection.
     tag_url = url_for("api-tags.tag_by_id", tag_id="randomid")
-    rep = client.put(tag_url)
+    rep = client.put(tag_url, json={})
     assert rep.status_code == 404
 
     db.session.add(tag)

@@ -1,10 +1,17 @@
-"""Pydantic models for access/role/group requests and request/response bodies."""
+"""Pydantic models for access/role/group requests and request/response bodies.
+
+Naming: `*Detail` is the response shape; `*Body` (e.g. `CreateAccessRequestBody`)
+is the request body that the router parses out of `Body(...)`. The `Body`
+suffix avoids a naming collision with the operation classes
+(`CreateAccessRequest`, `ResolveAccessRequest`, …) imported from
+`api.operations`.
+"""
 
 from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from api.schemas.core_schemas import (
     GroupRef,
@@ -39,7 +46,7 @@ class AccessRequestDetail(BaseModel):
     active_resolver: Optional[OktaUserSummary] = None
 
 
-class CreateAccessRequest(BaseModel):
+class CreateAccessRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     group_id: str
     group_owner: bool = False
@@ -47,9 +54,14 @@ class CreateAccessRequest(BaseModel):
     ending_at: Optional[RFC822DatetimeOpt] = None
 
 
-class ResolveAccessRequest(BaseModel):
+class ResolveAccessRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    approved: bool
+    # `StrictBool` rejects `"false"` / `"true"` strings outright. The
+    # legacy Marshmallow schema declared `fields.Boolean(required=True)`
+    # which had the same behaviour; Python's `bool()` (which the migration
+    # briefly used) interprets every non-empty string as True and silently
+    # turns "false" into an APPROVED outcome.
+    approved: StrictBool
     reason: Optional[str] = ""
     ending_at: Optional[RFC822DatetimeOpt] = None
 
@@ -82,7 +94,7 @@ class RoleRequestDetail(BaseModel):
     active_resolver: Optional[OktaUserSummary] = None
 
 
-class CreateRoleRequest(BaseModel):
+class CreateRoleRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     role_id: str
     group_id: str
@@ -91,7 +103,7 @@ class CreateRoleRequest(BaseModel):
     ending_at: Optional[RFC822DatetimeOpt] = None
 
 
-class ResolveRoleRequest(ResolveAccessRequest):
+class ResolveRoleRequestBody(ResolveAccessRequestBody):
     pass
 
 
@@ -140,18 +152,134 @@ class GroupRequestDetail(BaseModel):
         return v
 
 
-class CreateGroupRequest(BaseModel):
+class CreateGroupRequestBody(BaseModel):
+    """Body for POST /api/group-requests. Field names mirror the legacy
+    SQLAlchemy column names so the React frontend's apiSchemas don't
+    have to change."""
+
     model_config = ConfigDict(extra="ignore")
-    group_type: str
-    group_name: str
+    requested_group_name: Optional[str] = Field(default=None)
+    requested_group_description: Optional[str] = ""
+    requested_group_type: Optional[str] = None
+    requested_app_id: Optional[str] = None
+    # `app_id` is the legacy name that some clients send; aliased to
+    # `requested_app_id`.
+    app_id: Optional[str] = Field(default=None, exclude=True)
+    requested_group_tags: list[str] = Field(default_factory=list)
+    requested_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
+    request_reason: Optional[str] = ""
+    # Legacy aliases the React form sends — fold into the resolved fields.
+    group_name: Optional[str] = Field(default=None, exclude=True)
+    group_type: Optional[str] = Field(default=None, exclude=True)
+    reason: Optional[str] = Field(default=None, exclude=True)
+
+
+class ResolveGroupRequestBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    approved: StrictBool
+    resolution_reason: Optional[str] = ""
+    reason: Optional[str] = ""
+    resolved_group_name: Optional[str] = None
+    resolved_group_description: Optional[str] = None
+    resolved_group_type: Optional[str] = None
+    resolved_app_id: Optional[str] = None
+    resolved_group_tags: Optional[list[str]] = None
+    resolved_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
+
+
+# --- Tags -------------------------------------------------------------------
+
+
+class CreateTagBody(BaseModel):
+    """Body for POST /api/tags."""
+
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    description: Optional[str] = None
+    constraints: Optional[dict[str, Any]] = None
+    enabled: bool = True
+
+
+class UpdateTagBody(BaseModel):
+    """Body for PUT /api/tags/{id}. All fields optional (partial update)."""
+
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    description: Optional[str] = None
+    constraints: Optional[dict[str, Any]] = None
+    enabled: Optional[bool] = None
+
+
+# --- Apps -------------------------------------------------------------------
+
+
+class _InitialAppGroupBody(BaseModel):
+    """Body shape for an entry in `initial_additional_app_groups`."""
+
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    description: Optional[str] = ""
+    type: Optional[str] = "app_group"
+    plugin_data: Optional[dict[str, Any]] = None
+    tags_to_add: Optional[list[str]] = None
+
+
+class CreateAppBody(BaseModel):
+    """Body for POST /api/apps."""
+
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    description: Optional[str] = None
+    initial_owner_id: Optional[str] = None
+    initial_owner_role_ids: Optional[list[str]] = None
+    initial_additional_app_groups: Optional[list[_InitialAppGroupBody]] = None
+    tags_to_add: Optional[list[str]] = None
+    app_group_lifecycle_plugin: Optional[str] = None
+    plugin_data: Optional[dict[str, Any]] = None
+
+
+class UpdateAppBody(BaseModel):
+    """Body for PUT /api/apps/{id}. All fields optional (partial update)."""
+
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    description: Optional[str] = None
+    app_group_lifecycle_plugin: Optional[str] = None
+    plugin_data: Optional[dict[str, Any]] = None
+    tags_to_add: Optional[list[str]] = None
+    tags_to_remove: Optional[list[str]] = None
+
+
+# --- Groups -----------------------------------------------------------------
+
+
+class CreateGroupBody(BaseModel):
+    """Body for POST /api/groups. Type-discriminated subtype information
+    (`type`, `app_id`, `is_owner`) is captured here so the handler can
+    branch on it rather than re-parsing the dict."""
+
+    model_config = ConfigDict(extra="ignore")
+    type: str
+    name: str
+    description: Optional[str] = None
+    is_owner: bool = False
     app_id: Optional[str] = None
-    reason: Optional[str] = ""
+    plugin_data: Optional[dict[str, Any]] = None
+    tags_to_add: Optional[list[str]] = None
 
 
-class ResolveGroupRequest(BaseModel):
+class UpdateGroupBody(BaseModel):
+    """Body for PUT /api/groups/{id}. All fields optional (partial update)."""
+
     model_config = ConfigDict(extra="ignore")
-    approved: bool
-    reason: Optional[str] = ""
+    type: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_owner: Optional[bool] = None
+    app_id: Optional[str] = None
+    plugin_data: Optional[dict[str, Any]] = None
+    tags_to_add: Optional[list[str]] = None
+    tags_to_remove: Optional[list[str]] = None
 
 
 # --- Group/Role membership editor payloads ----------------------------------

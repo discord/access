@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectinload
@@ -28,7 +28,7 @@ from api.models import (
     RoleGroupMap,
 )
 from api.pagination import paginate
-from api.schemas import AppDetail, AppSummary, DeleteMessage
+from api.schemas import AppDetail, AppSummary, CreateAppBody, DeleteMessage, UpdateAppBody
 from api.schemas._serialize import safe_dump
 
 
@@ -100,22 +100,20 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[
 
 @router.post("", name="apps_create", status_code=201)
 def post_app(
-    body: dict[str, Any] | None = Body(default=None),
-    db: DbSession = None,  # type: ignore[assignment]
+    body: CreateAppBody,
+    db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
 ) -> dict[str, Any]:
     from api.models import AppGroup as _AppGroup, OktaUser, RoleGroup
     from api.operations import CreateApp
 
-    body = body or {}
-    if not body.get("name"):
+    if not body.name:
         raise HTTPException(400, "App name is required")
-    description = _validate_description(body.get("description"), "description" in body)
-    body["description"] = description
+    description = _validate_description(body.description, body.description is not None)
 
     # Reject duplicates by name.
     existing = (
-        db.query(App).filter(func.lower(App.name) == func.lower(body["name"])).filter(App.deleted_at.is_(None)).first()
+        db.query(App).filter(func.lower(App.name) == func.lower(body.name)).filter(App.deleted_at.is_(None)).first()
     )
     if existing is not None:
         raise HTTPException(400, "App already exists with the same name")
@@ -124,14 +122,14 @@ def post_app(
     owner_id: str | None = None
     if db.get(OktaUser, current_user_id) is not None:
         owner_id = current_user_id
-    if "initial_owner_id" in body:
+    if body.initial_owner_id is not None:
         owner = (
             db.query(OktaUser)
             .filter(OktaUser.deleted_at.is_(None))
             .filter(
                 _db.or_(
-                    OktaUser.id == body["initial_owner_id"],
-                    OktaUser.email.ilike(body["initial_owner_id"]),
+                    OktaUser.id == body.initial_owner_id,
+                    OktaUser.email.ilike(body.initial_owner_id),
                 )
             )
             .first()
@@ -144,18 +142,18 @@ def post_app(
         raise HTTPException(400, "App initial_owner_id is required")
 
     owner_role_ids: list[str] = []
-    if "initial_owner_role_ids" in body:
+    if body.initial_owner_role_ids is not None:
         roles = (
             db.query(RoleGroup)
-            .filter(RoleGroup.id.in_(body["initial_owner_role_ids"]))
+            .filter(RoleGroup.id.in_(body.initial_owner_role_ids))
             .filter(RoleGroup.deleted_at.is_(None))
             .all()
         )
         owner_role_ids = [r.id for r in roles]
-        if len(owner_role_ids) != len(body["initial_owner_role_ids"]):
+        if len(owner_role_ids) != len(body.initial_owner_role_ids):
             raise HTTPException(400, "Given App initial_owner_role_ids contains invalid role ids")
 
-    name = body["name"]
+    name = body.name
     app_group_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
     owner_group_name = f"{app_group_prefix}{_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
 
@@ -183,25 +181,23 @@ def post_app(
         )
 
     initial_additional_app_groups: list[dict[str, Any]] = []
-    if "initial_additional_app_groups" in body:
-        for ig in body["initial_additional_app_groups"]:
-            n = ig.get("name", "")
-            if not n.startswith(app_group_prefix):
-                raise HTTPException(400, f"Additional app group name must be prefixed with {app_group_prefix}")
-            if n == owner_group_name:
-                raise HTTPException(
-                    400,
-                    f"Cannot specify {_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group",
-                )
-            initial_additional_app_groups.append(ig)
+    for ig in body.initial_additional_app_groups or []:
+        if not ig.name.startswith(app_group_prefix):
+            raise HTTPException(400, f"Additional app group name must be prefixed with {app_group_prefix}")
+        if ig.name == owner_group_name:
+            raise HTTPException(
+                400,
+                f"Cannot specify {_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group",
+            )
+        initial_additional_app_groups.append(ig.model_dump(exclude_none=True))
 
-    app_obj = App(name=name, description=body.get("description", ""))
+    app_obj = App(name=name, description=description)
     created = CreateApp(
         app=app_obj,
         owner_id=owner_id,
         owner_role_ids=owner_role_ids,
         additional_app_groups=initial_additional_app_groups,
-        tags=body.get("tags_to_add", []),
+        tags=body.tags_to_add or [],
         current_user_id=current_user_id,
     ).execute()
     refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == created.id).first()
@@ -211,10 +207,10 @@ def post_app(
 @router.put("/{app_id}", name="app_by_id_put")
 def put_app(
     app_id: str,
-    body: dict[str, Any] | None = Body(default=None),
-    db: DbSession = None,  # type: ignore[assignment]
+    body: UpdateAppBody,
+    db: DbSession,
+    current_user_id: CurrentUserId,
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
-    current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     import copy
 
@@ -226,27 +222,34 @@ def put_app(
 
     from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_app_config
 
-    body = body or {}
-    if "description" in body:
-        body["description"] = _validate_description(body["description"], True)
+    fields_set = body.model_fields_set
+    description = _validate_description(body.description, True) if "description" in fields_set else None
 
     # Snapshot the old plugin state before any mutation.
     old_app_group_lifecycle_plugin = app_obj.app_group_lifecycle_plugin
     old_plugin_data_for_audit_pre = copy.deepcopy(app_obj.plugin_data) if app_obj.plugin_data else {}
 
     # Validate plugin_data against the configured plugin's schema before mutating.
-    new_plugin_id = body.get("app_group_lifecycle_plugin", app_obj.app_group_lifecycle_plugin)
-    if "plugin_data" in body and new_plugin_id is not None:
+    new_plugin_id = (
+        body.app_group_lifecycle_plugin
+        if "app_group_lifecycle_plugin" in fields_set
+        else app_obj.app_group_lifecycle_plugin
+    )
+    if "plugin_data" in fields_set and new_plugin_id is not None:
         try:
-            errors = validate_app_group_lifecycle_plugin_app_config(body["plugin_data"], new_plugin_id)
+            errors = validate_app_group_lifecycle_plugin_app_config(body.plugin_data, new_plugin_id)
         except ValueError as e:
             raise HTTPException(400, f"plugin_data: {e}") from e
         if errors:
             raise HTTPException(400, f"plugin_data: {errors}")
 
     # Plugin config changes require access admin.
-    new_plugin = body.get("app_group_lifecycle_plugin", app_obj.app_group_lifecycle_plugin)
-    new_plugin_data = body.get("plugin_data") if "plugin_data" in body else None
+    new_plugin = (
+        body.app_group_lifecycle_plugin
+        if "app_group_lifecycle_plugin" in fields_set
+        else app_obj.app_group_lifecycle_plugin
+    )
+    new_plugin_data = body.plugin_data if "plugin_data" in fields_set else None
     if (
         new_plugin != app_obj.app_group_lifecycle_plugin
         or (new_plugin_data is not None and new_plugin_data != (app_obj.plugin_data or {}))
@@ -254,7 +257,7 @@ def put_app(
         raise HTTPException(403, "Only Access owners are allowed to configure plugins at the app level")
 
     # Reject duplicate name on rename
-    new_name: str | None = body.get("name")
+    new_name = body.name
     if new_name and new_name.lower() != app_obj.name.lower():
         existing = (
             db.query(App).filter(func.lower(App.name) == func.lower(new_name)).filter(App.deleted_at.is_(None)).first()
@@ -263,17 +266,20 @@ def put_app(
             raise HTTPException(400, "App already exists with the same name")
 
     # tags_to_remove gated on admin
-    if "tags_to_remove" in body and len(body["tags_to_remove"]) > 0:
+    if body.tags_to_remove and len(body.tags_to_remove) > 0:
         if not is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
 
+    tags_to_add = body.tags_to_add or []
+    tags_to_remove = body.tags_to_remove or []
+
     # Built-in Access app: only tags can be modified
     if app_obj.name == App.ACCESS_APP_RESERVED_NAME:
-        if len(body.get("tags_to_add", [])) > 0 or len(body.get("tags_to_remove", [])) > 0:
+        if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             ModifyAppTags(
                 app=app_obj,
-                tags_to_add=body.get("tags_to_add", []),
-                tags_to_remove=body.get("tags_to_remove", []),
+                tags_to_add=tags_to_add,
+                tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
             refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
@@ -283,12 +289,12 @@ def put_app(
     old_app_name = app_obj.name
     old_plugin_data = app_obj.plugin_data
 
-    if "name" in body:
-        app_obj.name = body["name"]
-    if "description" in body:
-        app_obj.description = body["description"]
-    if "app_group_lifecycle_plugin" in body:
-        app_obj.app_group_lifecycle_plugin = body["app_group_lifecycle_plugin"]
+    if body.name is not None:
+        app_obj.name = body.name
+    if description is not None:
+        app_obj.description = description
+    if "app_group_lifecycle_plugin" in fields_set:
+        app_obj.app_group_lifecycle_plugin = body.app_group_lifecycle_plugin
     if new_plugin_data is not None:
         app_obj.plugin_data = new_plugin_data
         if old_plugin_data and app_obj.plugin_data != old_plugin_data:
@@ -315,8 +321,8 @@ def put_app(
 
     ModifyAppTags(
         app=app_obj,
-        tags_to_add=body.get("tags_to_add", []),
-        tags_to_remove=body.get("tags_to_remove", []),
+        tags_to_add=tags_to_add,
+        tags_to_remove=tags_to_remove,
         current_user_id=current_user_id,
     ).execute()
 

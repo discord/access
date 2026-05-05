@@ -161,9 +161,11 @@ def test_put_access_request(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    # test 404
+    # test 404 — PUT against a non-existent access_request_id with a valid
+    # body shape returns 404. (PUT with no body returns 400 because the
+    # ResolveAccessRequestBody schema rejects the missing `approved` field.)
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
-    rep = client.put(access_request_url)
+    rep = client.put(access_request_url, json={"approved": True})
     assert rep.status_code == 404
 
     db.session.add(user)

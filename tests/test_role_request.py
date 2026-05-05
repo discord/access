@@ -146,9 +146,11 @@ def test_put_role_request(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    # test 404
+    # test 404 — PUT against a non-existent role_request_id with a valid
+    # body shape returns 404. (PUT with no body returns 400 because the
+    # ResolveRoleRequestBody schema rejects the missing `approved` field.)
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
-    rep = client.put(role_request_url)
+    rep = client.put(role_request_url, json={"approved": True})
     assert rep.status_code == 404
 
     db.session.add(user)

@@ -4,21 +4,29 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import TypeAdapter
 from sqlalchemy import String, cast
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
+from api.models import (
+    AccessRequest,
+    AccessRequestStatus,
+    App,
+    AppGroup,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+)
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from api.pagination import paginate
-from api.schemas import AccessRequestDetail
+from api.schemas import AccessRequestDetail, CreateAccessRequestBody, ResolveAccessRequestBody
 from api.schemas._serialize import safe_dump
-from api.schemas.rfc822 import parse_datetime_value
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
@@ -39,8 +47,95 @@ def _load_options() -> tuple:
 
 @router.get("", name="access_requests")
 def list_access_requests(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    q = request.query_params.get("q", "")
+    qp = request.query_params
     query = db.query(AccessRequest).options(*_load_options()).order_by(AccessRequest.created_at.desc())
+
+    # Honored search filters: status, requester_user_id, requested_group_id,
+    # assignee_user_id, resolver_user_id. The frontend sends these from the
+    # URL bar on the requests list page; without them the client-side
+    # filters do nothing.
+    status = qp.get("status")
+    if status:
+        query = query.filter(AccessRequest.status == status)
+
+    requester_user_id = qp.get("requester_user_id")
+    if requester_user_id:
+        if requester_user_id == "@me":
+            query = query.filter(AccessRequest.requester_user_id == current_user_id)
+        else:
+            requester_alias = aliased(OktaUser)
+            query = query.join(AccessRequest.requester.of_type(requester_alias)).filter(
+                _db.or_(
+                    AccessRequest.requester_user_id == requester_user_id,
+                    requester_alias.email.ilike(requester_user_id),
+                )
+            )
+
+    requested_group_id = qp.get("requested_group_id")
+    if requested_group_id:
+        query = query.join(AccessRequest.requested_group).filter(
+            _db.or_(
+                AccessRequest.requested_group_id == requested_group_id,
+                OktaGroup.name.ilike(requested_group_id),
+            )
+        )
+
+    assignee_user_id = qp.get("assignee_user_id")
+    if assignee_user_id:
+        if assignee_user_id == "@me":
+            assignee_user_id = current_user_id
+        assignee_user = (
+            db.query(OktaUser)
+            .filter(_db.or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+            .first()
+        )
+        if assignee_user is not None:
+            groups_owned_subquery = (
+                db.query(OktaGroup.id)
+                .options(selectinload(OktaGroup.active_user_ownerships))
+                .join(OktaGroup.active_user_ownerships)
+                .filter(OktaGroup.deleted_at.is_(None))
+                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .subquery()
+            )
+            owner_app_group_alias = aliased(AppGroup)
+            app_groups_owned_subquery = (
+                db.query(AppGroup.id)
+                .options(
+                    joinedload(AppGroup.app)
+                    .joinedload(App.active_owner_app_groups.of_type(owner_app_group_alias))
+                    .selectinload(owner_app_group_alias.active_user_ownerships)
+                )
+                .join(AppGroup.app)
+                .join(App.active_owner_app_groups.of_type(owner_app_group_alias))
+                .join(owner_app_group_alias.active_user_ownerships)
+                .filter(AppGroup.deleted_at.is_(None))
+                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .subquery()
+            )
+            query = query.join(AccessRequest.requested_group).filter(
+                _db.or_(
+                    OktaGroup.id.in_(groups_owned_subquery),
+                    OktaGroup.id.in_(app_groups_owned_subquery),
+                )
+            )
+        else:
+            query = query.filter(False)
+
+    resolver_user_id = qp.get("resolver_user_id")
+    if resolver_user_id:
+        if resolver_user_id == "@me":
+            query = query.filter(AccessRequest.resolver_user_id == current_user_id)
+        else:
+            resolver_alias = aliased(OktaUser)
+            query = query.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).filter(
+                _db.or_(
+                    AccessRequest.resolver_user_id == resolver_user_id,
+                    resolver_alias.email.ilike(resolver_user_id),
+                )
+            )
+
+    q = qp.get("q", "")
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -62,27 +157,50 @@ def get_access_request(access_request_id: str, db: DbSession, current_user_id: C
 
 @router.post("", name="access_requests_create", status_code=201)
 def post_access_request(
-    body: dict[str, Any] | None = Body(default=None),
-    db: DbSession = None,  # type: ignore[assignment]
-    current_user_id: CurrentUserId = None,  # type: ignore[assignment]
+    body: CreateAccessRequestBody,
+    db: DbSession,
+    current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
-    body = body or {}
-    group_id = body.get("group_id")
-    if not group_id:
-        raise HTTPException(400, "group_id is required")
     requester = db.get(OktaUser, current_user_id)
     if requester is None:
         raise HTTPException(404, "Requester not found")
-    group = db.query(OktaGroup).filter(OktaGroup.id == group_id).filter(OktaGroup.deleted_at.is_(None)).first()
+    group = db.query(OktaGroup).filter(OktaGroup.id == body.group_id).filter(OktaGroup.deleted_at.is_(None)).first()
     if group is None:
         raise HTTPException(404, "Group not found")
+    if not group.is_managed:
+        raise HTTPException(400, "Groups not managed by Access cannot be modified")
+
+    # Auto-cancel any prior PENDING access request from the same user for the
+    # same group + ownership mode. Without this, a user clicking "Request"
+    # twice produces multiple PENDING rows that approvers see as duplicates.
+    existing_pending = (
+        db.query(AccessRequest)
+        .filter(AccessRequest.status == AccessRequestStatus.PENDING)
+        .filter(AccessRequest.requester_user_id == requester.id)
+        .filter(AccessRequest.requested_group_id == group.id)
+        .filter(AccessRequest.request_ownership.is_(body.group_owner))
+        .filter(AccessRequest.resolved_at.is_(None))
+        .all()
+    )
+    for prior in existing_pending:
+        RejectAccessRequest(
+            access_request=prior,
+            current_user_id=current_user_id,
+            rejection_reason="Superseded by a newer request from the same user",
+            notify_requester=False,
+        ).execute()
+
     ar = CreateAccessRequest(
         requester_user=requester,
         requested_group=group,
-        request_ownership=bool(body.get("group_owner", False)),
-        request_reason=body.get("reason", "") or "",
-        request_ending_at=parse_datetime_value(body.get("ending_at")),
+        request_ownership=body.group_owner,
+        request_reason=body.reason or "",
+        request_ending_at=body.ending_at,
     ).execute()
+    if ar is None:
+        # Belt and suspenders — `is_managed` is the only path that returns
+        # None today, but covering the contract guards against drift.
+        raise HTTPException(400, "Access request could not be created")
     refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == ar.id).first()
     return safe_dump(_adapter, refreshed)
 
@@ -90,16 +208,13 @@ def post_access_request(
 @router.put("/{access_request_id}", name="access_request_by_id_put")
 def put_access_request(
     access_request_id: str,
-    body: dict[str, Any] | None = Body(default=None),
-    db: DbSession = None,  # type: ignore[assignment]
-    current_user_id: CurrentUserId = None,  # type: ignore[assignment]
+    body: ResolveAccessRequestBody,
+    db: DbSession,
+    current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
-    from sqlalchemy.orm import joinedload
-
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
-    body = body or {}
     ar = (
         db.query(AccessRequest)
         .options(joinedload(AccessRequest.active_requested_group))
@@ -108,22 +223,18 @@ def put_access_request(
     )
     if ar is None:
         raise HTTPException(404, "Not Found")
-    if "approved" not in body:
-        raise HTTPException(400, "approved is required")
-
-    approved = bool(body.get("approved"))
 
     # Requester can always reject their own request, but cannot approve it.
     if ar.requester_user_id == current_user_id:
-        if approved:
+        if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
     elif not can_manage_group(db, current_user_id, ar.active_requested_group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
-    if approved:
+    if body.approved:
         valid, err_message = CheckForReason(
             group=ar.active_requested_group,
-            reason=body.get("reason"),
+            reason=body.reason,
             members_to_add=[ar.requester_user_id] if not ar.request_ownership else [],
             owners_to_add=[ar.requester_user_id] if ar.request_ownership else [],
         ).execute_for_group()
@@ -133,19 +244,19 @@ def put_access_request(
     if ar.status != AccessRequestStatus.PENDING or ar.resolved_at is not None:
         raise HTTPException(400, "Access request is not pending")
 
-    if approved:
+    if body.approved:
         if not ar.requested_group.is_managed:
             raise HTTPException(400, "Groups not managed by Access cannot be modified")
         ApproveAccessRequest(
             access_request=ar,
             approver_user=current_user_id,
-            approval_reason=body.get("reason", "") or "",
-            ending_at=parse_datetime_value(body.get("ending_at")),
+            approval_reason=body.reason or "",
+            ending_at=body.ending_at,
         ).execute()
     else:
         RejectAccessRequest(
             access_request=ar,
-            rejection_reason=body.get("reason", "") or "",
+            rejection_reason=body.reason or "",
             notify_requester=ar.requester_user_id != current_user_id,
             current_user_id=current_user_id,
         ).execute()

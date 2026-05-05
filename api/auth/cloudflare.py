@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import Any, Dict, Optional
 
 import jwt
@@ -22,8 +23,17 @@ from api.config import settings
 
 logger = logging.getLogger(__name__)
 
+# FastAPI runs every sync route handler on `anyio.to_thread.run_sync` worker
+# threads, so `verify_cloudflare_token` runs concurrently from multiple
+# Python threads. `cachetools.cached` is not thread-safe unless a `lock=` is
+# supplied — concurrent reads/writes to the underlying `OrderedDict` (during
+# a `kid` rotation: `cache_clear()` followed immediately by a fresh fetch)
+# can interleave and corrupt the LRU. The same lock guards the rotation in
+# `_refresh_keys` so the clear+refetch is atomic.
+_jwks_cache_lock = threading.RLock()
 
-@cached(cache=TTLCache(maxsize=1, ttl=3600))
+
+@cached(cache=TTLCache(maxsize=1, ttl=3600), lock=_jwks_cache_lock)
 def _signing_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
     r = requests.get(
         f"https://{team_domain}/cdn-cgi/access/certs",
@@ -37,8 +47,9 @@ def _signing_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
 
 
 def _refresh_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
-    _signing_keys.cache_clear()
-    return _signing_keys(team_domain)
+    with _jwks_cache_lock:
+        _signing_keys.cache_clear()
+        return _signing_keys(team_domain)
 
 
 def extract_token(request: Request) -> str:
