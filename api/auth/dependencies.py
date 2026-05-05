@@ -121,21 +121,15 @@ CurrentUserId = Annotated[str, Depends(get_current_user_id)]
 CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
 
 
-# Defense-in-depth: every `/api/*` request goes through this dependency at
-# the FastAPI app level. Endpoints still declare `CurrentUserId` /
-# `CurrentUser` for the user-id value; this is the safety net if a route
-# forgets the declaration.
-_AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/api/oidc/")
+# Defense-in-depth: every request goes through `RequireAuthMiddleware`
+# (`api/middleware.py`) which calls `get_current_user_id`. Endpoints still
+# declare `CurrentUserId` / `CurrentUser` for the user-id *value*; the
+# middleware is the safety net if a route forgets the declaration. Static
+# assets (the SPA mount) are inside the gate too, since middleware
+# intercepts mounts that the FastAPI dependency chain skips.
+AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/api/oidc/")
 
 
-def require_authenticated(request: Request, db: DbSession) -> None:
-    """Enforce authentication on every request except `/api/healthz` and
-    the OIDC login endpoints. `/api/docs` and `/api/openapi.json` are
-    intentionally inside the gate even though they're DEBUG-only."""
-    path = request.url.path
-    if any(path == p.rstrip("/") or path.startswith(p) for p in _AUTH_ALLOWLIST_PREFIXES):
-        return
-    if not path.startswith("/api"):
-        # SPA / static assets — handled by the StaticFiles mount.
-        return
-    get_current_user_id(request, db)
+def is_auth_allowlisted(path: str) -> bool:
+    """Whether a request path bypasses the auth gate (health + OIDC login)."""
+    return any(path == p.rstrip("/") or path.startswith(p) for p in AUTH_ALLOWLIST_PREFIXES)

@@ -110,21 +110,12 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     _configure_okta()
     _validate_plugins()
 
-    from fastapi import Depends
-
-    from api.auth.dependencies import require_authenticated
-
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         docs_url="/api/docs" if settings.DEBUG else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.DEBUG else None,
-        # Defense-in-depth: every endpoint goes through the auth gate.
-        # `require_authenticated` short-circuits for the small allowlist
-        # (health, OIDC login). Endpoints that need the user-id value still
-        # declare `CurrentUserId`; the dependency is deduped at runtime.
-        dependencies=[Depends(require_authenticated)],
     )
 
     # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture
@@ -159,9 +150,13 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         )
 
     # Order: outer-most last. RequestId outermost so request_id is on state
-    # for inner middleware and dependencies.
+    # for inner middleware and dependencies. RequireAuth runs after the
+    # request id + context are bound (so 403/redirect responses still get
+    # logged with their correlation id) and before the routes / static
+    # mount, so static assets go through the gate too.
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
+    app.add_middleware(middleware.RequireAuthMiddleware)
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
 
