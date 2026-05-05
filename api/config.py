@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     ENV: Literal["development", "test", "production", "staging"] = Field(
         default_factory=lambda: cast(
             'Literal["development", "test", "production", "staging"]',
-            os.getenv("FLASK_ENV") or os.getenv("ENV") or "development",
+            os.getenv("ENV") or "development",
         )
     )
 
@@ -130,18 +130,18 @@ def _build_settings() -> Settings:
 def assert_env_explicitly_set() -> None:
     """Fail-closed guard against silently defaulting to development mode.
 
-    `ENV` falls back to "development" via `default_factory` if neither
-    `FLASK_ENV` nor `ENV` is set, which flips DEBUG on, exposes
-    `/api/docs`, and (in CF Access deployments) activates the dev/test
-    auth bypass. Called from `create_app()` at HTTP-server startup so
-    deployments crash loudly on a missing env var instead of fail-open.
+    `ENV` falls back to "development" via `default_factory` if not set,
+    which flips DEBUG on, exposes `/api/docs`, and (in CF Access
+    deployments) activates the dev/test auth bypass. Called from
+    `create_app()` at HTTP-server startup so deployments crash loudly
+    on a missing env var instead of fail-open.
 
     Pytest paths bypass this (the test harness sets `ENV=test` via
     `.testenv`); CLI runs that don't go through `create_app()` are
     unaffected. The check honors `ENV` declared in a `.env` file as well
     as the OS environment, since `pydantic-settings` reads both.
     """
-    if os.getenv("FLASK_ENV") or os.getenv("ENV"):
+    if os.getenv("ENV"):
         return
     # Honor `ENV` declared in `.env` (pydantic-settings reads it). Walk up
     # from CWD so `make run-backend` from any path still finds it.
@@ -152,8 +152,7 @@ def assert_env_explicitly_set() -> None:
         except OSError:
             content = ""
         for line in content.splitlines():
-            line = line.strip()
-            if line.startswith("ENV=") or line.startswith("FLASK_ENV="):
+            if line.strip().startswith("ENV="):
                 return
     raise RuntimeError(
         "ENV is not set. Export ENV=development|test|staging|production "
