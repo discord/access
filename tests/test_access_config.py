@@ -17,6 +17,9 @@ from api.access_config import (
     _merge_override_config,
     NAME_VALIDATION_PATTERN,
     NAME_VALIDATION_ERROR,
+    APP_GROUP_NAME_PREFIX,
+    APP_NAME_GROUP_NAME_SEPARATOR,
+    ROLE_GROUP_NAME_PREFIX,
     ConfigValidationError,
     _validate_override_config,
 )
@@ -29,6 +32,9 @@ def mock_load_default_config() -> Generator[Any, Any, Any]:
         return_value={
             NAME_VALIDATION_PATTERN: "name_pattern",
             NAME_VALIDATION_ERROR: "name_error",
+            APP_GROUP_NAME_PREFIX: "App-",
+            APP_NAME_GROUP_NAME_SEPARATOR: "-",
+            ROLE_GROUP_NAME_PREFIX: "Role-",
         },
     ):
         yield
@@ -41,6 +47,9 @@ def mock_merge_override_config() -> Generator[Any, Any, Any]:
             {
                 NAME_VALIDATION_PATTERN: "override_name_pattern",
                 NAME_VALIDATION_ERROR: "override_name_error",
+                APP_GROUP_NAME_PREFIX: "Override-",
+                APP_NAME_GROUP_NAME_SEPARATOR: "_",
+                ROLE_GROUP_NAME_PREFIX: "OverrideRole-",
             }
         )
         yield mock_merge
@@ -51,6 +60,9 @@ def test_load_config_default(mock_load_default_config: None) -> None:
     assert isinstance(config, AccessConfig)
     assert config.name_pattern == "name_pattern"
     assert config.name_validation_error == "name_error"
+    assert config.app_group_name_prefix == "App-"
+    assert config.app_name_group_name_separator == "-"
+    assert config.role_group_name_prefix == "Role-"
 
 
 def test_load_config_with_override(mock_load_default_config: None, mock_merge_override_config: None) -> None:
@@ -58,6 +70,9 @@ def test_load_config_with_override(mock_load_default_config: None, mock_merge_ov
     assert isinstance(config, AccessConfig)
     assert config.name_pattern == "override_name_pattern"
     assert config.name_validation_error == "override_name_error"
+    assert config.app_group_name_prefix == "Override-"
+    assert config.app_name_group_name_separator == "_"
+    assert config.role_group_name_prefix == "OverrideRole-"
 
 
 def test_load_default_config() -> None:

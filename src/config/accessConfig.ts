@@ -3,6 +3,9 @@ export interface AccessConfig {
   DEFAULT_ACCESS_TIME: string;
   NAME_VALIDATION_PATTERN: string;
   NAME_VALIDATION_ERROR: string;
+  APP_GROUP_NAME_PREFIX: string;
+  APP_NAME_GROUP_NAME_SEPARATOR: string;
+  ROLE_GROUP_NAME_PREFIX: string;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface
