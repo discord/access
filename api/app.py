@@ -51,6 +51,8 @@ def _configure_sentry() -> None:
     from sentry_sdk.integrations.fastapi import FastApiIntegration
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
+    from api.auth.dependencies import OIDCRedirectRequired
+
     sentry_profile_env_var = environ.get("ENABLE_SENTRY_PROFILER", "0")
     logger.info(f"ENABLE_SENTRY_PROFILER: {sentry_profile_env_var}")
     sentry_sdk.init(
@@ -61,8 +63,16 @@ def _configure_sentry() -> None:
         profiles_sample_rate=float(sentry_profile_env_var),
         # Don't ship 4xx-class control flow to Sentry — those are user error,
         # not application error, and request bodies in breadcrumbs may
-        # carry PII.
-        ignore_errors=[HTTPException, StarletteHTTPException, RequestValidationError, ValidationError],
+        # carry PII. OIDCRedirectRequired is the unauthenticated-OIDC
+        # path that the exception handler converts to a 307; that's
+        # control flow too, not an exception worth alerting on.
+        ignore_errors=[
+            HTTPException,
+            StarletteHTTPException,
+            RequestValidationError,
+            ValidationError,
+            OIDCRedirectRequired,
+        ],
     )
 
 
