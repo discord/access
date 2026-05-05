@@ -71,7 +71,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             if settings.FLASK_SENTRY_DSN:
                 set_user({"id": user.id})
             return user.id
-        if "common_name" in payload:
+        elif "common_name" in payload:
             # Service token: stuff `common_name` into current_user_id and let
             # downstream lookups fail naturally if it doesn't match a real
             # OktaUser. Mirrors the pre-migration Flask behavior.
