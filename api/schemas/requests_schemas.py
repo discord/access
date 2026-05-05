@@ -5,19 +5,32 @@ is the request body that the router parses out of `Body(...)`. The `Body`
 suffix avoids a naming collision with the operation classes
 (`CreateAccessRequest`, `ResolveAccessRequest`, …) imported from
 `api.operations`.
+
+`CreateGroupBody`, `UpdateGroupBody`, and `CreateGroupRequestBody` are
+discriminated unions on the group `type` (or `requested_group_type`),
+so the router branches via `isinstance(body, _AppGroupCreateBody)`
+rather than re-parsing the dict.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional, Self, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
+from api.access_config import get_access_config
+from api.config import settings
 from api.schemas.core_schemas import (
     GroupRef,
     OktaUserSummary,
 )
 from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
+
+# Anchored at both ends so a name like "Bad Name!" can't slip past on the
+# strength of an unanchored prefix match.
+_NAME_PATTERN_STR = f"^{get_access_config().name_pattern}$"
+_NAME_MAX_LENGTH = 255
+_DESC_MAX_LENGTH = 1024
 
 
 # --- Access requests --------------------------------------------------------
@@ -152,26 +165,45 @@ class GroupRequestDetail(BaseModel):
         return v
 
 
-class CreateGroupRequestBody(BaseModel):
-    """Body for POST /api/group-requests. Field names mirror the legacy
-    SQLAlchemy column names so the React frontend's apiSchemas don't
-    have to change."""
+class _GroupRequestBodyBase(BaseModel):
+    """Shared fields for the three group-request variants. The discriminator
+    field (`requested_group_type`) is declared on each concrete class as a
+    `Literal[...]` so Pydantic can dispatch via `Field(discriminator=...)`.
+    """
 
     model_config = ConfigDict(extra="ignore")
-    requested_group_name: Optional[str] = Field(default=None)
-    requested_group_description: Optional[str] = ""
-    requested_group_type: Optional[str] = None
-    requested_app_id: Optional[str] = None
-    # `app_id` is the legacy name that some clients send; aliased to
-    # `requested_app_id`.
-    app_id: Optional[str] = Field(default=None, exclude=True)
+    requested_group_name: str = Field(pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
+    requested_group_description: Optional[str] = Field(default="", max_length=_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
     requested_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
     request_reason: Optional[str] = ""
-    # Legacy aliases the React form sends — fold into the resolved fields.
-    group_name: Optional[str] = Field(default=None, exclude=True)
-    group_type: Optional[str] = Field(default=None, exclude=True)
-    reason: Optional[str] = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        if not settings.REQUIRE_DESCRIPTIONS:
+            return self
+        if self.requested_group_description is None or self.requested_group_description == "":
+            raise ValueError("Description is required.")
+        return self
+
+
+class _OktaGroupRequestBody(_GroupRequestBodyBase):
+    requested_group_type: Literal["okta_group"]
+
+
+class _RoleGroupRequestBody(_GroupRequestBodyBase):
+    requested_group_type: Literal["role_group"]
+
+
+class _AppGroupRequestBody(_GroupRequestBodyBase):
+    requested_group_type: Literal["app_group"]
+    requested_app_id: str
+
+
+CreateGroupRequestBody = Annotated[
+    Union[_OktaGroupRequestBody, _RoleGroupRequestBody, _AppGroupRequestBody],
+    Field(discriminator="requested_group_type"),
+]
 
 
 class ResolveGroupRequestBody(BaseModel):
@@ -253,33 +285,85 @@ class UpdateAppBody(BaseModel):
 # --- Groups -----------------------------------------------------------------
 
 
-class CreateGroupBody(BaseModel):
-    """Body for POST /api/groups. Type-discriminated subtype information
-    (`type`, `app_id`, `is_owner`) is captured here so the handler can
-    branch on it rather than re-parsing the dict."""
+class _GroupCreateBodyShared(BaseModel):
+    """Non-discriminator fields shared across the three create variants. Each
+    concrete variant adds its own `type: Literal[...]` so mypy is happy with
+    the per-class discriminator type."""
 
     model_config = ConfigDict(extra="ignore")
-    type: str
-    name: str
-    description: Optional[str] = None
+    name: str = Field(pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_DESC_MAX_LENGTH)
+    tags_to_add: list[str] = Field(default_factory=list)
+    tags_to_remove: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
+
+
+class _OktaGroupCreateBody(_GroupCreateBodyShared):
+    type: Literal["okta_group"]
+
+
+class _RoleGroupCreateBody(_GroupCreateBodyShared):
+    type: Literal["role_group"]
+
+
+class _AppGroupCreateBody(_GroupCreateBodyShared):
+    type: Literal["app_group"]
+    app_id: Optional[str] = None
     is_owner: bool = False
-    app_id: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
-    tags_to_add: Optional[list[str]] = None
 
 
-class UpdateGroupBody(BaseModel):
-    """Body for PUT /api/groups/{id}. All fields optional (partial update)."""
+CreateGroupBody = Annotated[
+    Union[_OktaGroupCreateBody, _RoleGroupCreateBody, _AppGroupCreateBody],
+    Field(discriminator="type"),
+]
+
+
+class _GroupUpdateBodyShared(BaseModel):
+    """Non-discriminator fields shared across the three update variants. All
+    fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    type: Optional[str] = None
-    name: Optional[str] = None
-    description: Optional[str] = None
-    is_owner: Optional[bool] = None
+    name: Optional[str] = Field(default=None, pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_DESC_MAX_LENGTH)
+    tags_to_add: list[str] = Field(default_factory=list)
+    tags_to_remove: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        # Partial PUTs that don't touch description must not fail; only
+        # validate when the client provided a value.
+        if "description" not in self.model_fields_set:
+            return self
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
+
+
+class _OktaGroupUpdateBody(_GroupUpdateBodyShared):
+    type: Literal["okta_group"]
+
+
+class _RoleGroupUpdateBody(_GroupUpdateBodyShared):
+    type: Literal["role_group"]
+
+
+class _AppGroupUpdateBody(_GroupUpdateBodyShared):
+    type: Literal["app_group"]
     app_id: Optional[str] = None
+    is_owner: Optional[bool] = None
     plugin_data: Optional[dict[str, Any]] = None
-    tags_to_add: Optional[list[str]] = None
-    tags_to_remove: Optional[list[str]] = None
+
+
+UpdateGroupBody = Annotated[
+    Union[_OktaGroupUpdateBody, _RoleGroupUpdateBody, _AppGroupUpdateBody],
+    Field(discriminator="type"),
+]
 
 
 # --- Group/Role membership editor payloads ----------------------------------

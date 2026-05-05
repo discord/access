@@ -140,11 +140,12 @@ def test_get_group_members(client: TestClient, db: Db, okta_group: OktaGroup, us
 def test_put_group(
     client: TestClient, db: Db, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any
 ) -> None:
-    # test 404 — PUT against a non-existent group_id with a valid (empty)
-    # body shape returns 404. (PUT with no body returns 400 because the
-    # UpdateGroupBody schema rejects a missing JSON body entirely.)
+    # test 404 — PUT against a non-existent group_id with a valid body shape
+    # returns 404. UpdateGroupBody is a discriminated union on `type`, so the
+    # body must include the discriminator for the schema to parse; missing or
+    # empty bodies fail validation with a 400 instead.
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
-    rep = client.put(group_url, json={})
+    rep = client.put(group_url, json={"type": "okta_group"})
     assert rep.status_code == 404
 
     db.session.add(okta_group)

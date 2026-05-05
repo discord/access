@@ -16,6 +16,7 @@ from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupR
 from api.pagination import paginate
 from api.schemas import CreateGroupRequestBody, GroupRequestDetail, ResolveGroupRequestBody
 from api.schemas._serialize import safe_dump
+from api.schemas.requests_schemas import _AppGroupRequestBody
 
 router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
 _adapter = TypeAdapter(GroupRequestDetail)
@@ -51,22 +52,19 @@ def post_group_request(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
-    name = body.requested_group_name or body.group_name
-    group_type = body.requested_group_type or body.group_type
-    if not name or not group_type:
-        raise HTTPException(400, "requested_group_name and requested_group_type are required")
     requester = db.get(OktaUser, current_user_id)
     if requester is None:
         raise HTTPException(404, "Requester not found")
+    requested_app_id = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
     gr = CreateGroupRequest(
         requester_user=requester,
-        requested_group_name=name,
+        requested_group_name=body.requested_group_name,
         requested_group_description=body.requested_group_description or "",
-        requested_group_type=group_type,
-        requested_app_id=body.requested_app_id or body.app_id,
+        requested_group_type=body.requested_group_type,
+        requested_app_id=requested_app_id,
         requested_group_tags=body.requested_group_tags,
         requested_ownership_ending_at=body.requested_ownership_ending_at,
-        request_reason=body.request_reason or body.reason or "",
+        request_reason=body.request_reason or "",
     ).execute()
     refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == gr.id).first()
     return safe_dump(_adapter, refreshed)

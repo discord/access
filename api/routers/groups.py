@@ -43,7 +43,12 @@ from api.pagination import paginate
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.schemas import CreateGroupBody, DeleteMessage, GroupDetail, GroupSummary, UpdateGroupBody
 from api.schemas._serialize import safe_dump
-from api.schemas.requests_schemas import GroupMember
+from api.schemas.requests_schemas import (
+    GroupMember,
+    _AppGroupCreateBody,
+    _AppGroupUpdateBody,
+    _RoleGroupCreateBody,
+)
 
 import copy
 
@@ -118,27 +123,6 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
     return safe_dump(_group_adapter, group)
 
 
-def _validate_description(value: Any, field_provided: bool) -> str:
-    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
-    from api.config import settings
-
-    if not field_provided:
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if value == "" and settings.REQUIRE_DESCRIPTIONS:
-        raise HTTPException(400, "Description must be between 1 and 1024 characters")
-    if value is None or value == "":
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if not isinstance(value, str):
-        raise HTTPException(400, "Description must be a string")
-    if len(value) > 1024:
-        raise HTTPException(400, "Description must be 1024 characters or less")
-    return value
-
-
 @router.post("", name="groups_create", status_code=201)
 def post_group(
     request: Request,
@@ -147,22 +131,20 @@ def post_group(
     current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
     """Create a new group. Body is the polymorphic group input + tags_to_add."""
-    description = _validate_description(body.description, body.description is not None)
-    if body.type not in ("okta_group", "role_group", "app_group"):
-        raise HTTPException(400, "Invalid or missing group type")
+    description = body.description or ""
 
-    if body.type == "okta_group":
-        group: OktaGroup = OktaGroup(name=body.name, description=description)
-    elif body.type == "role_group":
-        group = RoleGroup(name=body.name, description=description)
-    else:
-        group = AppGroup(
+    if isinstance(body, _AppGroupCreateBody):
+        group: OktaGroup = AppGroup(
             name=body.name,
             description=description,
             app_id=body.app_id,
             is_owner=body.is_owner,
             plugin_data=body.plugin_data or {},
         )
+    elif isinstance(body, _RoleGroupCreateBody):
+        group = RoleGroup(name=body.name, description=description)
+    else:
+        group = OktaGroup(name=body.name, description=description)
 
     if not (
         is_access_admin(db, current_user_id)
@@ -216,10 +198,13 @@ def put_group(
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    description = _validate_description(body.description, True) if "description" in fields_set else None
+    # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
+    # just normalises a `None` (only possible when the client explicitly sent
+    # `null`) to an empty string for ModifyGroupDetails.
+    description = (body.description or "") if "description" in fields_set else None
 
     # Validate plugin_data for app groups against the configured plugin's schema.
-    if "plugin_data" in fields_set and isinstance(group, AppGroup):
+    if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set and isinstance(group, AppGroup):
         plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
         if plugin_id is not None:
             try:
@@ -234,7 +219,9 @@ def put_group(
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
-    new_plugin_data = body.plugin_data if "plugin_data" in fields_set else None
+    new_plugin_data = (
+        body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
+    )
     if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
         if not (
             is_access_admin(db, current_user_id)
@@ -254,7 +241,12 @@ def put_group(
     # target app. Access admins can always rebind. Apply the rebind here when
     # the group type isn't also changing — type-change rebinds are wired into
     # ModifyGroupType below.
-    if type(group) is AppGroup and "app_id" in fields_set and body.app_id != group.app_id:
+    if (
+        type(group) is AppGroup
+        and isinstance(body, _AppGroupUpdateBody)
+        and "app_id" in fields_set
+        and body.app_id != group.app_id
+    ):
         from api.models import App
 
         target_app = db.query(App).filter(App.id == body.app_id).filter(App.deleted_at.is_(None)).first()
@@ -267,7 +259,7 @@ def put_group(
             raise HTTPException(
                 403, "Current user is not an app owner of the target app and not allowed to reassign this group"
             )
-        if not body.type or body.type == group.type:
+        if body.type == group.type:
             group.app_id = body.app_id
 
     tags_to_add = body.tags_to_add or []
@@ -287,12 +279,12 @@ def put_group(
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
 
     # Block renaming to a reserved prefix unless the final group type matches.
-    # Computed using the target type when the request also changes type, since a
-    # legitimate OktaGroup→AppGroup/RoleGroup conversion sends both the new name
-    # and new type in the same request.
+    # Computed using the target type since a legitimate
+    # OktaGroup→AppGroup/RoleGroup conversion sends both the new name and the
+    # new type in the same request.
     if "name" in fields_set and body.name is not None:
         type_klass_map = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}
-        final_type = type_klass_map.get(body.type) if body.type else type(group)
+        final_type = type_klass_map[body.type]
         if body.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX) and final_type is not AppGroup:
             raise HTTPException(
                 400, "The App- prefix cannot be used for non-app groups. Please choose a different group name."
@@ -312,21 +304,20 @@ def put_group(
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    if body_type and body_type != group.type:
+    if body_type != group.type:
         if not is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
-        type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}.get(body_type)
-        if type_klass is not None:
-            new_group = type_klass()
-            for k in ("name", "description", "is_managed"):
-                setattr(new_group, k, getattr(group, k, None))
-            if isinstance(new_group, AppGroup):
-                new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
-                new_group.is_owner = bool(body.is_owner) if body.is_owner is not None else False
-            try:
-                group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
-            except ValueError as e:
-                raise HTTPException(400, str(e)) from e
+        type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
+        new_group = type_klass()
+        for k in ("name", "description", "is_managed"):
+            setattr(new_group, k, getattr(group, k, None))
+        if isinstance(new_group, AppGroup) and isinstance(body, _AppGroupUpdateBody):
+            new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
+            new_group.is_owner = bool(body.is_owner) if body.is_owner is not None else False
+        try:
+            group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
     old_plugin_data = group.plugin_data

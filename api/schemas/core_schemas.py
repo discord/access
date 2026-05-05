@@ -4,11 +4,12 @@ Each Pydantic class is the canonical shape for a specific endpoint surface;
 there is no per-call field projection.
 
 Polymorphic groups are modelled as discriminated unions on the `type` field.
-Three union shapes are exposed:
+Two union shapes are exposed here:
 
-  - `GroupDetail`     — full detail (used by `/api/groups/{id}`)
+  - `GroupDetail`  — full detail (used by `/api/groups/{id}`)
   - `GroupSummary` — compact list view (used by `/api/groups`)
-  - `GroupIn`      — request body for create/update
+
+Request-body unions for create/update live in `requests_schemas.py`.
 
 To keep field counts manageable, deeply nested membership/role/tag
 relationships are emitted via dedicated child schemas, not full polymorphic
@@ -17,25 +18,11 @@ re-entries.
 
 from __future__ import annotations
 
-import re
 from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.access_config import get_access_config
-from api.config import settings
 from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
-
-_access_config = get_access_config()
-_NAME_PATTERN = re.compile(_access_config.name_pattern)
-
-
-def _validate_name(value: str) -> str:
-    if not _NAME_PATTERN.match(value):
-        raise ValueError(f"Group {_access_config.name_validation_error}")
-    if not (1 <= len(value) <= 255):
-        raise ValueError("Name must be between 1 and 255 characters")
-    return value
 
 
 # --- Tags -------------------------------------------------------------------
@@ -61,14 +48,6 @@ class TagSummary(BaseModel):
     id: str
     name: str
     constraints: dict[str, Any] = Field(default_factory=dict)
-    enabled: bool = True
-
-
-class TagIn(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    description: Optional[str] = None
-    constraints: Optional[dict[str, Any]] = None
     enabled: bool = True
 
 
@@ -121,16 +100,6 @@ class AppDetail(AppSummary):
     # resolved via `model_rebuild()` at the bottom of this file).
     active_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
     active_non_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
-
-
-class AppIn(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    description: Optional[str] = None
-    initial_owner_id: Optional[str] = None
-    initial_owner_role_ids: Optional[list[str]] = None
-    initial_additional_app_groups: Optional[list[dict[str, Any]]] = None
-    tags_to_add: list[str] = Field(default_factory=list)
 
 
 # --- Users ------------------------------------------------------------------
@@ -236,7 +205,8 @@ class RoleGroupMapDetail(BaseModel):
 
 
 # --- Polymorphic groups -----------------------------------------------------
-# Three discriminated unions: detail (Out), summary (list view), and input.
+# Two discriminated unions: detail (Out) and summary (list view). The
+# request-body unions live in `requests_schemas.py`.
 
 
 class _GroupBase(BaseModel):
@@ -349,60 +319,6 @@ class AppGroupRef(_GroupRefBase):
 
 GroupRef = Annotated[
     Union[OktaGroupRef, RoleGroupRef, AppGroupRef],
-    Field(discriminator="type"),
-]
-
-
-# --- Group inputs (create/update) ------------------------------------------
-
-
-def _validate_description(value: Optional[str]) -> str:
-    if value is None:
-        return ""
-    if settings.REQUIRE_DESCRIPTIONS:
-        if value == "":
-            raise ValueError("Description is required.")
-        if not (1 <= len(value) <= 1024):
-            raise ValueError("Description must be between 1 and 1024 characters")
-    elif len(value) > 1024:
-        raise ValueError("Description must be 1024 characters or less")
-    return value
-
-
-class _GroupInBase(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    name: str
-    description: Optional[str] = None
-    tags_to_add: list[str] = Field(default_factory=list)
-    tags_to_remove: list[str] = Field(default_factory=list)
-
-    @field_validator("name")
-    @classmethod
-    def _name(cls, v: str) -> str:
-        return _validate_name(v)
-
-    @field_validator("description", mode="before")
-    @classmethod
-    def _desc(cls, v: Optional[str]) -> str:
-        return _validate_description(v)
-
-
-class OktaGroupIn(_GroupInBase):
-    type: Literal["okta_group"]
-
-
-class RoleGroupIn(_GroupInBase):
-    type: Literal["role_group"]
-
-
-class AppGroupIn(_GroupInBase):
-    type: Literal["app_group"]
-    app_id: Optional[str] = None
-    plugin_data: Optional[dict[str, Any]] = None
-
-
-GroupIn = Annotated[
-    Union[OktaGroupIn, RoleGroupIn, AppGroupIn],
     Field(discriminator="type"),
 ]
 
