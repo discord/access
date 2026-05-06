@@ -33,6 +33,8 @@ from api.schemas.core_schemas import (  # noqa: F401
     RoleGroupRef,
     RoleGroupSummary,
     TagDetail,
+    TagListItem,
+    TagSummary,
 )
 from api.schemas.delete_message import DeleteMessage  # noqa: F401
 from api.schemas.pagination import (  # noqa: F401

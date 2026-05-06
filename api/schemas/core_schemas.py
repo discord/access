@@ -51,6 +51,21 @@ class TagSummary(BaseModel):
     enabled: bool = True
 
 
+class TagListItem(BaseModel):
+    """Tag list-endpoint item. Slim field set (id, name, description,
+    enabled, constraints, created_at, updated_at) — does not hydrate
+    `active_group_tags`, which would be an N+1 across the page."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    description: Optional[str] = None
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    enabled: bool = True
+    created_at: RFC822Datetime
+    updated_at: RFC822Datetime
+
+
 class OktaGroupTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: RFC822Datetime

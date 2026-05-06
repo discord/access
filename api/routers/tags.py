@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,13 +13,23 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import require_access_admin
+from api.context import get_request_context
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import Tag
+from api.models import OktaUser, Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
 from api.routers._eager import group_tag_map_options
-from api.schemas import CreateTagBody, DeleteMessage, SearchTagPaginationQuery, TagDetail, UpdateTagBody
+from api.schemas import (
+    AuditLogSchema,
+    CreateTagBody,
+    DeleteMessage,
+    EventType,
+    SearchTagPaginationQuery,
+    TagDetail,
+    TagListItem,
+    UpdateTagBody,
+)
 from api.schemas._serialize import dump_orm
 
 _TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_options()),)
@@ -26,6 +37,7 @@ _TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
 _adapter = TypeAdapter(TagDetail)
+_list_adapter = TypeAdapter(TagListItem)
 
 
 @router.get("", name="tags")
@@ -35,11 +47,11 @@ def list_tags(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchTagPaginationQuery, Query()],
 ) -> dict[str, Any]:
-    query = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
+    query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(Tag.name.ilike(like))
-    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
+        query = query.filter(_db.or_(Tag.name.ilike(like), Tag.description.ilike(like)))
+    return paginate(request, query, _list_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{tag_id}", name="tag_by_id")
@@ -89,10 +101,25 @@ def put_tag(
 
     from api.operations import ModifyGroupsTimeLimit
 
-    tag = db.query(Tag).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = (
+        db.query(Tag)
+        .filter(Tag.deleted_at.is_(None))
+        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
+        .first()
+    )
     if tag is None:
         raise HTTPException(404, "Not Found")
     payload = body.model_dump(exclude_unset=True)
+
+    # Snapshot pre-mutation state for the `tag_modify` audit log emitted
+    # below. Built as a detached `Tag()` so the audit projection treats it
+    # as an ORM-shaped object without holding a session reference.
+    old_tag = Tag(
+        name=tag.name,
+        description=tag.description,
+        constraints=tag.constraints,
+        enabled=tag.enabled,
+    )
 
     # Reject renames that collide with another existing tag (case-insensitive).
     new_name = payload.get("name")
@@ -127,6 +154,23 @@ def put_tag(
         ).execute()
 
     refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == tag.id).first()
+
+    email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id else None
+    _ctx = get_request_context()
+    logging.getLogger("access.audit").info(
+        AuditLogSchema().dumps(
+            {
+                "event_type": EventType.tag_modify,
+                "user_agent": _ctx.user_agent if _ctx else None,
+                "ip": _ctx.ip if _ctx else None,
+                "current_user_id": current_user_id,
+                "current_user_email": email,
+                "tag": refreshed or tag,
+                "old_tag": old_tag,
+            }
+        )
+    )
+
     return dump_orm(_adapter, refreshed or tag)
 
 
@@ -137,7 +181,12 @@ def delete_tag(
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
-    tag = db.query(Tag).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = (
+        db.query(Tag)
+        .filter(Tag.deleted_at.is_(None))
+        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
+        .first()
+    )
     if tag is None:
         raise HTTPException(404, "Not Found")
     DeleteTag(tag=tag, current_user_id=current_user_id).execute()

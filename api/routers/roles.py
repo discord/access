@@ -199,6 +199,19 @@ def put_role_members(
         if unmanaged_count and unmanaged_count > 0:
             raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
+    # Reject role-in-role nesting. Roles can only contain non-role groups.
+    add_ids = body.groups_to_add + body.owner_groups_to_add
+    if add_ids:
+        role_in_add_count = (
+            db.query(_db.func.count(OktaGroup.id))
+            .filter(OktaGroup.id.in_(add_ids))
+            .filter(OktaGroup.deleted_at.is_(None))
+            .filter(OktaGroup.type == RoleGroup.__mapper_args__["polymorphic_identity"])
+            .scalar()
+        )
+        if role_in_add_count and role_in_add_count > 0:
+            raise HTTPException(400, "Roles cannot be added to other Roles")
+
     valid, err_message = CheckForSelfAdd(
         group=role,
         current_user=current_user_id,

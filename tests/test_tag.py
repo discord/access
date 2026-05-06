@@ -1,3 +1,6 @@
+import json
+import logging
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -370,3 +373,101 @@ def test_get_tags_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
     names = [t["name"] for t in rep.json()["results"]]
     assert "ZelaTagOne" in names
     assert "OtherTag" not in names
+
+
+def test_put_tag_404_for_soft_deleted(client: TestClient, db: Db, tag: Tag, url_for: Any) -> None:
+    """PUT on a soft-deleted tag returns 404."""
+    tag.deleted_at = datetime.now(timezone.utc)
+    db.session.add(tag)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id_put", tag_id=tag.id)
+    rep = client.put(tag_url, json={"name": "RenamedAfterDelete"})
+    assert rep.status_code == 404
+
+
+def test_delete_tag_404_for_soft_deleted(client: TestClient, db: Db, tag: Tag, url_for: Any) -> None:
+    """DELETE on an already-soft-deleted tag returns 404."""
+    tag.deleted_at = datetime.now(timezone.utc)
+    db.session.add(tag)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id_delete", tag_id=tag.id)
+    rep = client.delete(tag_url)
+    assert rep.status_code == 404
+
+
+def test_put_tag_emits_tag_modify_audit_log(
+    client: TestClient,
+    db: Db,
+    tag: Tag,
+    url_for: Any,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """PUT /api/tags/{id} emits a `tag_modify` audit log carrying old/new state."""
+    original_name = tag.name
+    db.session.add(tag)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id_put", tag_id=tag.id)
+    with caplog.at_level(logging.INFO, logger="access.audit"):
+        rep = client.put(tag_url, json={"name": "RenamedTag"})
+        assert rep.status_code == 200
+
+    audit_records = [r for r in caplog.records if r.name == "access.audit"]
+    matching = []
+    for record in audit_records:
+        try:
+            payload = json.loads(record.getMessage())
+        except (ValueError, TypeError):
+            continue
+        if payload.get("event_type") == "TAG_MODIFY":
+            matching.append(payload)
+
+    assert len(matching) == 1, f"expected one TAG_MODIFY audit log, got {len(matching)}"
+    payload = matching[0]
+    assert payload["tag"]["id"] == tag.id
+    assert payload["tag"]["name"] == "RenamedTag"
+    assert payload["old_tag"]["name"] == original_name
+
+
+def test_list_tags_search_matches_description(client: TestClient, db: Db, url_for: Any) -> None:
+    """`q` matches against Tag.description as well as Tag.name."""
+    name_only = TagFactory.create(name="HaystackTag", description="generic")
+    desc_only = TagFactory.create(name="OtherName", description="contains needle here")
+    db.session.add_all([name_only, desc_only])
+    db.session.commit()
+
+    tags_url = url_for("api-tags.tags")
+    rep = client.get(tags_url, params={"q": "needle"})
+    assert rep.status_code == 200
+    ids = [t["id"] for t in rep.json()["results"]]
+    assert desc_only.id in ids
+    assert name_only.id not in ids
+
+
+def test_list_tags_response_is_summary_shape(
+    client: TestClient,
+    db: Db,
+    tag: Tag,
+    okta_group: OktaGroup,
+    url_for: Any,
+) -> None:
+    """List response uses `TagListItem` — no `active_group_tags`, no `deleted_at`."""
+    db.session.add(tag)
+    db.session.add(okta_group)
+    db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    tags_url = url_for("api-tags.tags")
+    rep = client.get(tags_url)
+    assert rep.status_code == 200
+    items = rep.json()["results"]
+    matched = [item for item in items if item["id"] == tag.id]
+    assert len(matched) == 1
+    item = matched[0]
+    assert "active_group_tags" not in item
+    assert "deleted_at" not in item
+    expected_keys = {"id", "name", "description", "constraints", "enabled", "created_at", "updated_at"}
+    assert set(item.keys()) == expected_keys

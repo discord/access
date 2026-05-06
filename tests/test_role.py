@@ -1508,3 +1508,44 @@ def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> 
     ids = [r["id"] for r in rep.json()["results"]]
     assert role_a.id in ids
     assert role_b.id not in ids
+
+
+def test_put_role_members_rejects_role_in_role(
+    client: TestClient,
+    db: Db,
+    role_group: RoleGroup,
+    url_for: Any,
+) -> None:
+    """Adding a RoleGroup as a member of another RoleGroup is rejected with 400."""
+    inner_role = RoleGroupFactory.create()
+    db.session.add(role_group)
+    db.session.add(inner_role)
+    db.session.commit()
+
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+
+    # As member
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": [inner_role.id],
+            "owner_groups_to_add": [],
+            "groups_to_remove": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    assert rep.status_code == 400
+    assert "Roles cannot be added to other Roles" in rep.text
+
+    # As owner
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": [],
+            "owner_groups_to_add": [inner_role.id],
+            "groups_to_remove": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    assert rep.status_code == 400
+    assert "Roles cannot be added to other Roles" in rep.text
