@@ -43,6 +43,7 @@ COPY --from=build-step /app/build ./build
 RUN mkdir ./api && mkdir ./migrations
 COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
+COPY alembic.ini ./
 COPY ./config ./config
 RUN pip install -r ./api/requirements.txt
 
