@@ -1285,3 +1285,101 @@ def test_role_request_approval_via_direct_add(
     assert len(data["owners"]) == 1
     assert len(data["members"]) == 0
     assert data["owners"][0] == user.id
+
+
+def test_role_request_list_filters_via_http(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """`status`, `requester_user_id`, `requested_group_id` and
+    `requester_role_id` each narrow the role_requests list. Seed two
+    requests across two users / two roles / two target groups so each
+    filter must *exclude* the other to pass — otherwise a regression that
+    returns everything would still match by ID."""
+    target_user = OktaUserFactory.create()
+    other_user = OktaUserFactory.create()
+    target_role = RoleGroupFactory.create()
+    other_role = RoleGroupFactory.create()
+    target_group = OktaGroupFactory.create()
+    other_group = OktaGroupFactory.create()
+    db.session.add_all([target_user, other_user, target_role, other_role, target_group, other_group])
+    db.session.commit()
+    ModifyGroupUsers(
+        group=target_role, members_to_add=[target_user.id], owners_to_add=[target_user.id], sync_to_okta=False
+    ).execute()
+    ModifyGroupUsers(
+        group=other_role, members_to_add=[other_user.id], owners_to_add=[other_user.id], sync_to_okta=False
+    ).execute()
+
+    target_rr = CreateRoleRequest(
+        requester_user=target_user,
+        requester_role=target_role,
+        requested_group=target_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    other_rr = CreateRoleRequest(
+        requester_user=other_user,
+        requester_role=other_role,
+        requested_group=other_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert target_rr is not None and other_rr is not None
+
+    list_url = url_for("api-role-requests.role_requests")
+
+    def ids(rep: Any) -> list[str]:
+        return [r["id"] for r in rep.json()["results"]]
+
+    rep = client.get(list_url, params={"status": "PENDING"})
+    assert rep.status_code == 200
+    assert {target_rr.id, other_rr.id}.issubset(set(ids(rep)))
+
+    rep = client.get(list_url, params={"status": "APPROVED"})
+    assert rep.status_code == 200
+    assert target_rr.id not in ids(rep)
+    assert other_rr.id not in ids(rep)
+
+    rep = client.get(list_url, params={"requester_user_id": target_user.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_rr.id in found and other_rr.id not in found
+
+    rep = client.get(list_url, params={"requested_group_id": target_group.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_rr.id in found and other_rr.id not in found
+
+    rep = client.get(list_url, params={"requester_role_id": target_role.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_rr.id in found and other_rr.id not in found
+
+
+def test_put_role_request_pending_check_includes_resolved_at(
+    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
+    """Flask gates resolve on `status == PENDING AND resolved_at is None`.
+    The previous FastAPI version dropped the resolved_at half and drifted
+    the error wording."""
+    db.session.add(user)
+    db.session.add(role_group)
+    db.session.add(okta_group)
+    db.session.commit()
+    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
+    rr = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert rr is not None
+    # Force `resolved_at` to a non-null timestamp while leaving status PENDING.
+    rr.resolved_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    put_url = url_for("api-role-requests.role_request_by_id_put", role_request_id=rr.id)
+    rep = client.put(put_url, json={"approved": False, "reason": "no"})
+    assert rep.status_code == 400
+    assert "is not pending" in rep.text

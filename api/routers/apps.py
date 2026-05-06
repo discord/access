@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -15,7 +15,6 @@ from api.auth.permissions import (
     require_access_admin_or_app_creator,
     require_app_owner_or_access_admin_for_app,
 )
-from api.config import settings
 from api.database import DbSession
 from api.extensions import db as _db
 from api.models import (
@@ -30,7 +29,14 @@ from api.routers._eager import (
     role_group_map_options,
     user_group_member_options,
 )
-from api.schemas import AppDetail, AppSummary, CreateAppBody, DeleteMessage, UpdateAppBody
+from api.schemas import (
+    AppDetail,
+    AppSummary,
+    CreateAppBody,
+    DeleteMessage,
+    SearchAppPaginationQuery,
+    UpdateAppBody,
+)
 from api.schemas._serialize import dump_orm
 
 
@@ -51,38 +57,23 @@ APP_LOAD_OPTIONS = (
 )
 
 
-def _validate_description(value: Any, field_provided: bool) -> str:
-    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
-    if not field_provided:
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if value == "" and settings.REQUIRE_DESCRIPTIONS:
-        raise HTTPException(400, "Description must be between 1 and 1024 characters")
-    if value is None or value == "":
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if not isinstance(value, str):
-        raise HTTPException(400, "Description must be a string")
-    if len(value) > 1024:
-        raise HTTPException(400, "Description must be 1024 characters or less")
-    return value
-
-
 router = APIRouter(prefix="/api/apps", tags=["apps"])
 _adapter = TypeAdapter(AppDetail)
 _summary_adapter = TypeAdapter(AppSummary)
 
 
 @router.get("", name="apps")
-def list_apps(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    q = request.query_params.get("q", "")
+def list_apps(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchAppPaginationQuery, Query()],
+) -> dict[str, Any]:
     query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
-    if q:
-        like = f"%{q}%"
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(_db.or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(request, query, _summary_adapter)
+    return paginate(request, query, _summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{app_id}", name="app_by_id")
@@ -102,9 +93,7 @@ def post_app(
     from api.models import AppGroup as _AppGroup, OktaUser, RoleGroup
     from api.operations import CreateApp
 
-    if not body.name:
-        raise HTTPException(400, "App name is required")
-    description = _validate_description(body.description, body.description is not None)
+    description = body.description if body.description is not None else ""
 
     # Reject duplicates by name.
     existing = (
@@ -175,16 +164,9 @@ def post_app(
             f" {owner_group_name} to be able to proceed.",
         )
 
-    initial_additional_app_groups: list[dict[str, Any]] = []
-    for ig in body.initial_additional_app_groups or []:
-        if not ig.name.startswith(app_group_prefix):
-            raise HTTPException(400, f"Additional app group name must be prefixed with {app_group_prefix}")
-        if ig.name == owner_group_name:
-            raise HTTPException(
-                400,
-                f"Cannot specify {_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group",
-            )
-        initial_additional_app_groups.append(ig.model_dump(exclude_none=True))
+    initial_additional_app_groups: list[dict[str, Any]] = [
+        ig.model_dump(exclude_none=True) for ig in (body.initial_additional_app_groups or [])
+    ]
 
     app_obj = App(name=name, description=description)
     created = CreateApp(
@@ -218,7 +200,7 @@ def put_app(
     from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_app_config
 
     fields_set = body.model_fields_set
-    description = _validate_description(body.description, True) if "description" in fields_set else None
+    description = (body.description if body.description is not None else "") if "description" in fields_set else None
 
     # Snapshot the old plugin state before any mutation.
     old_app_group_lifecycle_plugin = app_obj.app_group_lifecycle_plugin
@@ -323,10 +305,14 @@ def put_app(
 
     refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
 
-    # Audit logging — plugin assignment / configuration changes
-    if old_app_group_lifecycle_plugin != getattr(
+    # Audit logging — both name renames and plugin assignment/configuration
+    # changes.
+    name_changed = old_app_name.lower() != app_obj.name.lower()
+    plugin_changed = old_app_group_lifecycle_plugin != getattr(
         refreshed, "app_group_lifecycle_plugin", None
-    ) or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {}):
+    ) or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {})
+
+    if name_changed or plugin_changed:
         from api.context import get_request_context
         from api.models import OktaUser
         from api.schemas import AuditLogSchema, EventType
@@ -334,20 +320,38 @@ def put_app(
 
         _ctx = get_request_context()
         email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
-        _logging.getLogger("access.audit").info(
-            AuditLogSchema().dumps(
-                {
-                    "event_type": EventType.app_modify_plugin,
-                    "user_agent": _ctx.user_agent if _ctx else None,
-                    "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": current_user_id,
-                    "current_user_email": email,
-                    "app": refreshed,
-                    "old_app_group_lifecycle_plugin": old_app_group_lifecycle_plugin,
-                    "old_plugin_data": old_plugin_data_for_audit_pre,
-                }
+        audit_logger = _logging.getLogger("access.audit")
+
+        if name_changed:
+            audit_logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.app_modify_name,
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
+                        "current_user_id": current_user_id,
+                        "current_user_email": email,
+                        "app": refreshed,
+                        "old_app_name": old_app_name,
+                    }
+                )
             )
-        )
+
+        if plugin_changed:
+            audit_logger.info(
+                AuditLogSchema().dumps(
+                    {
+                        "event_type": EventType.app_modify_plugin,
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
+                        "current_user_id": current_user_id,
+                        "current_user_email": email,
+                        "app": refreshed,
+                        "old_app_group_lifecycle_plugin": old_app_group_lifecycle_plugin,
+                        "old_plugin_data": old_plugin_data_for_audit_pre,
+                    }
+                )
+            )
     return dump_orm(_adapter, refreshed)
 
 
@@ -359,6 +363,11 @@ def delete_app(
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> dict[str, Any]:
     from api.operations import DeleteApp
+
+    # The reserved Access app underpins admin auth — deleting it would brick
+    # the app, so refuse outright.
+    if app_obj.name == App.ACCESS_APP_RESERVED_NAME:
+        raise HTTPException(400, "The Access Application cannot be deleted")
 
     DeleteApp(app=app_obj, current_user_id=current_user_id).execute()
     return DeleteMessage(deleted=True).model_dump()

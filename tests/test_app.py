@@ -726,3 +726,90 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     data = rep.json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+
+
+def test_delete_reserved_access_app_blocked(client: TestClient, db: Db, url_for: Any) -> None:
+    """The built-in Access app underpins admin auth, so DELETE must refuse
+    it even for an admin caller."""
+    app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
+    rep = client.delete(app_url)
+    assert rep.status_code == 400
+    assert "cannot be deleted" in rep.text
+
+
+def test_put_app_logs_audit_on_rename(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    url_for: Any,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Flask emitted EventType.app_modify_name on rename; the FastAPI PUT
+    handler must continue to do so."""
+    mocker.patch.object(okta, "update_group")
+    db.session.add(access_app)
+    db.session.commit()
+    old_name = access_app.name
+
+    app_url = url_for("api-apps.app_by_id_put", app_id=access_app.id)
+    new_name = f"{old_name}Renamed"
+    with caplog.at_level("INFO", logger="access.audit"):
+        rep = client.put(app_url, json={"name": new_name})
+    assert rep.status_code == 200, rep.text
+
+    audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
+    assert any("APP_MODIFY_NAME" in m for m in audit_messages), audit_messages
+    assert any(old_name in m for m in audit_messages), audit_messages
+
+
+def test_post_app_validation_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """Body validation enforced at the HTTP layer (not just Pydantic-level).
+    The project's request_validation_handler converts 422 → 400 with the
+    `{"message": ...}` envelope."""
+    apps_url = url_for("api-apps.apps")
+
+    rep = client.post(apps_url, json={"name": ""})
+    assert rep.status_code == 400
+    assert "message" in rep.json()
+
+    rep = client.post(apps_url, json={"name": "MyApp", "description": "x" * 1025})
+    assert rep.status_code == 400
+
+    rep = client.post(
+        apps_url,
+        json={"name": "MyApp", "initial_additional_app_groups": [{"name": "wrong-prefix"}]},
+    )
+    assert rep.status_code == 400
+
+
+def test_post_app_require_descriptions_enforced_via_http(
+    client: TestClient,
+    db: Db,
+    url_for: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REQUIRE_DESCRIPTIONS rejects missing/empty description from a real
+    client request, not just Pydantic.model_validate."""
+    monkeypatch.setattr(settings, "REQUIRE_DESCRIPTIONS", True)
+    apps_url = url_for("api-apps.apps")
+
+    rep = client.post(apps_url, json={"name": "DescRequired"})
+    assert rep.status_code == 400
+    rep = client.post(apps_url, json={"name": "DescRequired", "description": ""})
+    assert rep.status_code == 400
+
+
+def test_get_apps_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """`q` is honored end-to-end on /api/apps."""
+    a1 = AppFactory.create(name="ZelaPaymentsApp", description="Handles money flows")
+    a2 = AppFactory.create(name="LoggingApp", description="Stores logs")
+    db.session.add_all([a1, a2])
+    db.session.commit()
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.get(apps_url, params={"q": "ZelaPayments"})
+    assert rep.status_code == 200
+    names = [a["name"] for a in rep.json()["results"]]
+    assert "ZelaPaymentsApp" in names
+    assert "LoggingApp" not in names

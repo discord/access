@@ -12,9 +12,9 @@ Expiring roles pages and the per-user / per-group audit views.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, nullsfirst, nullslast
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
@@ -32,15 +32,14 @@ from api.models import (
     RoleGroupMap,
 )
 from api.pagination import paginate
+from api.schemas import (
+    AuditOrderBy,
+    SearchGroupRoleAuditPaginationQuery,
+    SearchUserGroupAuditPaginationQuery,
+)
 from api.schemas.rfc822 import _rfc822
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
-
-# Allowlist for the `order_by` query parameter on the audit endpoints.
-# Replaces an unrestricted `getattr(Model, order_by, ...)` which exposed
-# every class attribute on the SQLAlchemy mapped class (including
-# `metadata`, `__dict__`, etc.) and turned bad input into a 500.
-_VALID_AUDIT_ORDER_BY = {"moniker", "created_at", "ended_at"}
 
 
 # --- Resolution helpers -----------------------------------------------------
@@ -90,21 +89,6 @@ def _resolve_role(db: DbSession, value: str | None) -> RoleGroup | None:
     if role is None:
         raise HTTPException(404, "Not Found")
     return role
-
-
-def _bool(value: str | None) -> bool | None:
-    if value is None or value == "":
-        return None
-    return value.lower() == "true"
-
-
-def _int(value: str | None) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
 
 
 # --- Serializers ------------------------------------------------------------
@@ -225,12 +209,16 @@ def _serialize_role_group_map(rgm: RoleGroupMap) -> dict[str, Any]:
 
 
 @router.get("/users", name="users_and_groups")
-def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    user_id = _resolve_me(request.query_params.get("user_id"), current_user_id)
-    group_id = request.query_params.get("group_id")
-    owner_id = _resolve_me(request.query_params.get("owner_id"), current_user_id)
+def users_and_groups(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchUserGroupAuditPaginationQuery, Query()],
+) -> dict[str, Any]:
+    user_id = _resolve_me(q_args.user_id, current_user_id)
+    owner_id = _resolve_me(q_args.owner_id, current_user_id)
     user = _resolve_user(db, user_id)
-    group = _resolve_group(db, group_id)
+    group = _resolve_group(db, q_args.group_id)
     owner = _resolve_user(db, owner_id)
 
     group_alias = aliased(OktaGroup)
@@ -269,7 +257,6 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
 
     # Owner filter — only return memberships in groups owned by `owner`,
     # either directly or transitively via the owning app.
-    app_owner_filter = _bool(request.query_params.get("app_owner"))
     if owner is not None:
         owner_group_ids = [
             row.group_id
@@ -299,7 +286,7 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
             .filter(AppGroup.deleted_at.is_(None))
             .all()
         ]
-        if app_owner_filter is True:
+        if q_args.app_owner is True:
             query = query.filter(
                 _db.or_(
                     OktaUserGroupMember.group_id.in_(owner_group_ids),
@@ -330,19 +317,17 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
                 )
             )
 
-    is_owner_filter = _bool(request.query_params.get("owner"))
-    if is_owner_filter is not None:
-        query = query.filter(OktaUserGroupMember.is_owner == is_owner_filter)
+    if q_args.owner is not None:
+        query = query.filter(OktaUserGroupMember.is_owner == q_args.owner)
 
-    active = _bool(request.query_params.get("active"))
-    if active is True:
+    if q_args.active is True:
         query = query.filter(
             _db.or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > _db.func.now(),
             )
         )
-    elif active is False:
+    elif q_args.active is False:
         query = query.filter(
             _db.and_(
                 OktaUserGroupMember.ended_at.is_not(None),
@@ -350,36 +335,29 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
             )
         )
 
-    needs_review = _bool(request.query_params.get("needs_review"))
-    if needs_review is True:
+    if q_args.needs_review is True:
         query = query.filter(OktaUserGroupMember.should_expire.is_(False))
 
-    direct = _bool(request.query_params.get("direct"))
-    if direct is True:
+    if q_args.direct is True:
         query = query.filter(_db.not_(OktaUserGroupMember.active_role_group_mapping.has()))
 
-    deleted = _bool(request.query_params.get("deleted"))
-    if deleted is False:
+    if q_args.deleted is False:
         query = query.filter(OktaUser.deleted_at.is_(None))
 
-    managed = _bool(request.query_params.get("managed"))
-    if managed is not None:
-        query = query.filter(group_alias.is_managed == managed)
+    if q_args.managed is not None:
+        query = query.filter(group_alias.is_managed == q_args.managed)
 
-    start_date = _int(request.query_params.get("start_date"))
-    end_date = _int(request.query_params.get("end_date"))
-    if start_date is not None and end_date is not None:
+    if q_args.start_date is not None and q_args.end_date is not None:
         query = query.filter(
             _db.and_(
                 OktaUserGroupMember.ended_at.is_not(None),
-                OktaUserGroupMember.ended_at > datetime.fromtimestamp(start_date),
-                OktaUserGroupMember.ended_at < datetime.fromtimestamp(end_date),
+                OktaUserGroupMember.ended_at > datetime.fromtimestamp(q_args.start_date),
+                OktaUserGroupMember.ended_at < datetime.fromtimestamp(q_args.end_date),
             )
         )
 
-    q = request.query_params.get("q")
-    if q:
-        like = f"%{q}%"
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(
             _db.or_(
                 group_alias.name.ilike(like),
@@ -390,38 +368,45 @@ def users_and_groups(request: Request, db: DbSession, current_user_id: CurrentUs
             )
         )
 
-    order_by = request.query_params.get("order_by", "created_at")
-    if order_by not in _VALID_AUDIT_ORDER_BY:
-        raise HTTPException(400, f"order_by must be one of: {sorted(_VALID_AUDIT_ORDER_BY)}")
-    order_desc = _bool(request.query_params.get("order_desc"))
-    nulls_order = nullsfirst if order_desc else nullslast
-    if order_by == "moniker":
+    nulls_order = nullsfirst if q_args.order_desc else nullslast
+    if q_args.order_by == AuditOrderBy.moniker:
         if user is not None:
             ordering = (
-                nulls_order(getattr(group_alias.name, "desc" if order_desc else "asc")()),
+                nulls_order(getattr(group_alias.name, "desc" if q_args.order_desc else "asc")()),
                 nullslast(OktaUserGroupMember.created_at.asc()),
             )
         else:
             ordering = (
-                nulls_order(getattr(func.lower(OktaUser.email), "desc" if order_desc else "asc")()),
+                nulls_order(getattr(func.lower(OktaUser.email), "desc" if q_args.order_desc else "asc")()),
                 nullslast(OktaUserGroupMember.created_at.asc()),
             )
     else:
-        col = getattr(OktaUserGroupMember, order_by)
-        ordering = (nulls_order(getattr(col, "desc" if order_desc else "asc")()),)
+        col = getattr(OktaUserGroupMember, q_args.order_by.value)
+        ordering = (nulls_order(getattr(col, "desc" if q_args.order_desc else "asc")()),)
     query = query.order_by(*ordering)
 
-    return paginate(request, query, _serialize_user_group_member)
+    return paginate(
+        request,
+        query,
+        _serialize_user_group_member,
+        extract=lambda: (q_args.page, q_args.per_page),
+    )
 
 
 @router.get("/groups", name="groups_and_roles")
-def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    role_id = _resolve_me(request.query_params.get("role_id"), current_user_id)
-    group_id = request.query_params.get("group_id")
-    owner_id = _resolve_me(request.query_params.get("owner_id"), current_user_id)
-    role_owner_id = _resolve_me(request.query_params.get("role_owner_id"), current_user_id)
+def groups_and_roles(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchGroupRoleAuditPaginationQuery, Query()],
+) -> dict[str, Any]:
+    from api.auth.permissions import is_access_admin
+
+    role_id = _resolve_me(q_args.role_id, current_user_id)
+    owner_id = _resolve_me(q_args.owner_id, current_user_id)
+    role_owner_id = _resolve_me(q_args.role_owner_id, current_user_id)
     role = _resolve_role(db, role_id)
-    group = _resolve_group(db, group_id)
+    group = _resolve_group(db, q_args.group_id)
     owner = _resolve_user(db, owner_id)
     role_owner = _resolve_user(db, role_owner_id)
 
@@ -456,7 +441,6 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
     if group is not None:
         query = query.filter(RoleGroupMap.group_id == group.id)
 
-    app_owner_filter = _bool(request.query_params.get("app_owner"))
     if owner is not None:
         owner_group_ids = [
             row.group_id
@@ -486,7 +470,7 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
             .filter(AppGroup.deleted_at.is_(None))
             .all()
         ]
-        if app_owner_filter is True:
+        if q_args.app_owner is True:
             query = query.filter(
                 _db.or_(
                     RoleGroupMap.group_id.in_(owner_group_ids),
@@ -530,21 +514,47 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
             )
             .all()
         ]
-        query = query.filter(RoleGroupMap.role_group_id.in_(role_owner_role_ids))
+        # Access admins additionally see roles that have NO active owner —
+        # those are the roles only an admin can resolve expiring access for.
+        unowned_admin_role_ids: list[str] = []
+        if is_access_admin(db, role_owner.id):
+            owners_subquery = (
+                db.query(OktaUserGroupMember.group_id)
+                .filter(
+                    _db.and_(
+                        OktaUserGroupMember.is_owner.is_(True),
+                        _db.or_(
+                            OktaUserGroupMember.ended_at.is_(None),
+                            OktaUserGroupMember.ended_at > _db.func.now(),
+                        ),
+                    )
+                )
+                .subquery()
+            )
+            unowned_admin_role_ids = [
+                rg.id
+                for rg in db.query(RoleGroup)
+                .filter(_db.and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery)))
+                .all()
+            ]
+        query = query.filter(
+            _db.or_(
+                RoleGroupMap.role_group_id.in_(role_owner_role_ids),
+                RoleGroupMap.role_group_id.in_(unowned_admin_role_ids),
+            )
+        )
 
-    is_owner_filter = _bool(request.query_params.get("owner"))
-    if is_owner_filter is not None:
-        query = query.filter(RoleGroupMap.is_owner == is_owner_filter)
+    if q_args.owner is not None:
+        query = query.filter(RoleGroupMap.is_owner == q_args.owner)
 
-    active = _bool(request.query_params.get("active"))
-    if active is True:
+    if q_args.active is True:
         query = query.filter(
             _db.or_(
                 RoleGroupMap.ended_at.is_(None),
                 RoleGroupMap.ended_at > _db.func.now(),
             )
         )
-    elif active is False:
+    elif q_args.active is False:
         query = query.filter(
             _db.and_(
                 RoleGroupMap.ended_at.is_not(None),
@@ -552,28 +562,23 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
             )
         )
 
-    needs_review = _bool(request.query_params.get("needs_review"))
-    if needs_review is True:
+    if q_args.needs_review is True:
         query = query.filter(RoleGroupMap.should_expire.is_(False))
 
-    managed = _bool(request.query_params.get("managed"))
-    if managed is not None:
-        query = query.filter(group_alias.is_managed == managed)
+    if q_args.managed is not None:
+        query = query.filter(group_alias.is_managed == q_args.managed)
 
-    start_date = _int(request.query_params.get("start_date"))
-    end_date = _int(request.query_params.get("end_date"))
-    if start_date is not None and end_date is not None:
+    if q_args.start_date is not None and q_args.end_date is not None:
         query = query.filter(
             _db.and_(
                 RoleGroupMap.ended_at.is_not(None),
-                RoleGroupMap.ended_at > datetime.fromtimestamp(start_date),
-                RoleGroupMap.ended_at < datetime.fromtimestamp(end_date),
+                RoleGroupMap.ended_at > datetime.fromtimestamp(q_args.start_date),
+                RoleGroupMap.ended_at < datetime.fromtimestamp(q_args.end_date),
             )
         )
 
-    q = request.query_params.get("q")
-    if q:
-        like = f"%{q}%"
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(
             _db.or_(
                 RoleGroup.id.ilike(like),
@@ -585,20 +590,21 @@ def groups_and_roles(request: Request, db: DbSession, current_user_id: CurrentUs
             )
         )
 
-    order_by = request.query_params.get("order_by", "created_at")
-    if order_by not in _VALID_AUDIT_ORDER_BY:
-        raise HTTPException(400, f"order_by must be one of: {sorted(_VALID_AUDIT_ORDER_BY)}")
-    order_desc = _bool(request.query_params.get("order_desc"))
-    nulls_order = nullsfirst if order_desc else nullslast
-    if order_by == "moniker":
+    nulls_order = nullsfirst if q_args.order_desc else nullslast
+    if q_args.order_by == AuditOrderBy.moniker:
         target = RoleGroup.name if role is None else group_alias.name
         ordering = (
-            nulls_order(getattr(target, "desc" if order_desc else "asc")()),
+            nulls_order(getattr(target, "desc" if q_args.order_desc else "asc")()),
             nullslast(RoleGroupMap.created_at.asc()),
         )
     else:
-        col = getattr(RoleGroupMap, order_by)
-        ordering = (nulls_order(getattr(col, "desc" if order_desc else "asc")()),)
+        col = getattr(RoleGroupMap, q_args.order_by.value)
+        ordering = (nulls_order(getattr(col, "desc" if q_args.order_desc else "asc")()),)
     query = query.order_by(*ordering)
 
-    return paginate(request, query, _serialize_role_group_map)
+    return paginate(
+        request,
+        query,
+        _serialize_role_group_map,
+        extract=lambda: (q_args.page, q_args.per_page),
+    )

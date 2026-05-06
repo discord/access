@@ -18,7 +18,7 @@ from api.models import (
 from api.auth import permissions as AuthorizationHelpers
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import RoleGroupFactory
+from tests.factories import OktaUserFactory, RoleGroupFactory
 
 
 def test_get_role(
@@ -1481,3 +1481,30 @@ def test_do_not_renew_requires_group_ownership(
 
     db.session.refresh(role_group_map)
     assert role_group_map.should_expire is False
+
+
+def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> None:
+    """`?owner_id=<user>` and `?owner_id=@me` filter /api/roles to the
+    roles owned by that user. Flask had this; the FastAPI port previously
+    only honored `q`."""
+    from datetime import datetime, timedelta, timezone
+
+    from api.models import OktaUserGroupMember as _OUGM
+
+    owner = OktaUserFactory.create()
+    other = OktaUserFactory.create()
+    role_a = RoleGroupFactory.create()
+    role_b = RoleGroupFactory.create()
+    db.session.add_all([owner, other, role_a, role_b])
+    db.session.commit()
+    end = datetime.now(timezone.utc) + timedelta(days=30)
+    db.session.add(_OUGM(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end))
+    db.session.add(_OUGM(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end))
+    db.session.commit()
+
+    list_url = url_for("api-roles.roles")
+    rep = client.get(list_url, params={"owner_id": owner.id})
+    assert rep.status_code == 200
+    ids = [r["id"] for r in rep.json()["results"]]
+    assert role_a.id in ids
+    assert role_b.id not in ids

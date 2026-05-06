@@ -188,3 +188,23 @@ def test_user_email_uniqueness(client: TestClient, db: Db) -> None:
     user2.deleted_at = datetime.now(timezone.utc)
     db.session.add(user2)
     db.session.commit()  # This should not raise an exception
+
+
+def test_user_summary_includes_timestamps(
+    client: TestClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    """`OktaUserSummary` exposes `created_at` and `updated_at` so the
+    React user list can sort by creation time. Flask's Marshmallow
+    UserList included these in `only=(...)`; the FastAPI summary
+    schema must keep parity."""
+    db.session.add(user)
+    db.session.commit()
+
+    rep = client.get(url_for("api-users.users"))
+    assert rep.status_code == 200
+    results = rep.json()["results"]
+    assert results, "expected at least one user in the list"
+    sample = next(r for r in results if r["id"] == user.id)
+    assert "created_at" in sample
+    assert "updated_at" in sample
+    assert sample["created_at"] is not None

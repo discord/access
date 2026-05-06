@@ -12,9 +12,9 @@ GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst
@@ -46,7 +46,14 @@ from api.routers._eager import (
     role_group_map_options,
     user_group_member_options,
 )
-from api.schemas import CreateGroupBody, DeleteMessage, GroupDetail, GroupSummary, UpdateGroupBody
+from api.schemas import (
+    CreateGroupBody,
+    DeleteMessage,
+    GroupDetail,
+    GroupSummary,
+    SearchGroupPaginationQuery,
+    UpdateGroupBody,
+)
 from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import (
     GroupMember,
@@ -88,10 +95,12 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
 
 
 @router.get("", name="groups")
-def list_groups(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    q = request.query_params.get("q", "")
-    managed = request.query_params.get("managed")
-
+def list_groups(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchGroupPaginationQuery, Query()],
+) -> dict[str, Any]:
     query = (
         db.query(OktaGroup)
         .options(
@@ -106,13 +115,13 @@ def list_groups(request: Request, db: DbSession, current_user_id: CurrentUserId)
         .filter(OktaGroup.deleted_at.is_(None))
         .order_by(func.lower(OktaGroup.name))
     )
-    if q:
-        like = f"%{q}%"
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(_db.or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
-    if managed is not None and managed != "":
-        query = query.filter(OktaGroup.is_managed == (managed.lower() == "true"))
+    if q_args.managed is not None:
+        query = query.filter(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(request, query, _group_summary_adapter)
+    return paginate(request, query, _group_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{group_id}", name="group_by_id")
@@ -435,6 +444,9 @@ def put_group_members(
     )
     if group is None:
         raise HTTPException(404, "Not Found")
+    # Body is `Optional` so the missing-group 404 above fires even when the
+    # client sends no body. After the 404 we still require a body for the
+    # actual mutation.
     if body is None:
         raise HTTPException(400, "Request body is required")
     if not group.is_managed:

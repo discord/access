@@ -29,7 +29,7 @@ from api.operations import (
 )
 from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, get_notification_hook
 from api.services import okta
-from tests.factories import AccessRequestFactory, AppGroupFactory, OktaUserFactory
+from tests.factories import AccessRequestFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
@@ -843,3 +843,93 @@ def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
     assert user == kwargs["requester"]
     assert len(kwargs["group_tags"]) == 1
     assert tag in kwargs["group_tags"]
+
+
+def test_q_search_covers_all_fields_via_http(
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
+    """The `q` search must hit requester email+name, requested group
+    name+description, and the request id prefix. Previously only `status`
+    and `request_reason` were searched. Seed two requests with disjoint
+    requesters and groups so each search must *exclude* the other to pass
+    — a regression that returns everything would still match by ID but
+    fail the exclusion assertions."""
+    target_user = OktaUserFactory.create(
+        email="zelda-target@example.com", first_name="Zelda", last_name="Target"
+    )
+    other_user = OktaUserFactory.create(
+        email="other-noise@example.com", first_name="Other", last_name="Noise"
+    )
+    target_group = OktaGroupFactory.create(name="ZeldaTargetGroup", description="zd-desc")
+    other_group = OktaGroupFactory.create(name="OtherNoiseGroup", description="on-desc")
+    db.session.add_all([target_user, other_user, target_group, other_group])
+    db.session.commit()
+
+    target_ar = CreateAccessRequest(
+        requester_user=target_user,
+        requested_group=target_group,
+        request_ownership=False,
+        request_reason="dummy",
+    ).execute()
+    other_ar = CreateAccessRequest(
+        requester_user=other_user,
+        requested_group=other_group,
+        request_ownership=False,
+        request_reason="dummy",
+    ).execute()
+    assert target_ar is not None and other_ar is not None
+
+    requests_url = url_for("api-access-requests.access_requests")
+
+    def ids(rep: Any) -> list[str]:
+        return [r["id"] for r in rep.json()["results"]]
+
+    # Requester email substring.
+    rep = client.get(requests_url, params={"q": "zelda-target"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requester first/last name substring.
+    rep = client.get(requests_url, params={"q": "Zelda"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requested group name substring.
+    rep = client.get(requests_url, params={"q": "ZeldaTargetGroup"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requested group description substring.
+    rep = client.get(requests_url, params={"q": "zd-desc"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # AccessRequest id prefix.
+    rep = client.get(requests_url, params={"q": target_ar.id[:6]})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found
+
+
+def test_post_access_request_403_for_deleted_user(
+    client: TestClient, db: Db, okta_group: OktaGroup, mock_user: Any, url_for: Any
+) -> None:
+    """Flask returned 403 (not 404) when current_user_id resolves to a
+    soft-deleted user."""
+    from datetime import datetime, timezone
+
+    deleted_user = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_user)
+    db.session.add(okta_group)
+    db.session.commit()
+    mock_user(deleted_user.id)
+
+    rep = client.post(
+        url_for("api-access-requests.access_requests_create"),
+        json={"group_id": okta_group.id, "group_owner": False, "reason": "test"},
+    )
+    assert rep.status_code == 403

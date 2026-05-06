@@ -1,8 +1,21 @@
+from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
-from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
+from api.models import (
+    App,
+    AppGroup,
+    AppTagMap,
+    OktaGroup,
+    OktaGroupTagMap,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    Tag,
+)
 from api.extensions import Db
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
+from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 from typing import Any
 
 
@@ -368,3 +381,69 @@ def test_get_role_audit(
 
     rep = client.get(role_url, params={"role_id": okta_group_id})
     assert rep.status_code == 404
+
+
+def test_audit_users_default_order_is_newest_first(client: TestClient, db: Db, url_for: Any) -> None:
+    """Without `order_by` / `order_desc`, /api/audit/users must default to
+    `created_at DESC`. Flask's Marshmallow schema declared
+    `order_desc=True`; the FastAPI Query Model mirrors that. Seed three
+    rows with controlled `created_at` so a regression that flips the
+    direction reliably fails this test."""
+    group = OktaGroupFactory.create()
+    u_old, u_mid, u_new = (OktaUserFactory.create() for _ in range(3))
+    db.session.add_all([group, u_old, u_mid, u_new])
+    db.session.commit()
+    ModifyGroupUsers(
+        group=group,
+        members_to_add=[u_old.id, u_mid.id, u_new.id],
+        sync_to_okta=False,
+    ).execute()
+
+    base = datetime.now(timezone.utc) - timedelta(days=10)
+    pinned = {
+        u_old.id: base,
+        u_mid.id: base + timedelta(days=2),
+        u_new.id: base + timedelta(days=4),
+    }
+    for ugm in db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.group_id == group.id).all():
+        if ugm.user_id in pinned:
+            ugm.created_at = pinned[ugm.user_id]
+    db.session.commit()
+
+    rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
+    assert rep.status_code == 200
+    rows = rep.json()["results"]
+    seeded_rows = [r for r in rows if r["user_id"] in pinned]
+    assert [r["user_id"] for r in seeded_rows] == [u_new.id, u_mid.id, u_old.id]
+
+
+def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, url_for: Any) -> None:
+    """Same direction-of-default contract as `users` — seed three
+    `RoleGroupMap` rows at controlled `created_at` and confirm the
+    response order is newest-first when no order params are provided."""
+    role = RoleGroupFactory.create()
+    g_old, g_mid, g_new = (OktaGroupFactory.create() for _ in range(3))
+    db.session.add_all([role, g_old, g_mid, g_new])
+    db.session.commit()
+    ModifyRoleGroups(
+        role_group=role,
+        groups_to_add=[g_old.id, g_mid.id, g_new.id],
+        sync_to_okta=False,
+    ).execute()
+
+    base = datetime.now(timezone.utc) - timedelta(days=10)
+    pinned = {
+        g_old.id: base,
+        g_mid.id: base + timedelta(days=2),
+        g_new.id: base + timedelta(days=4),
+    }
+    for rgm in db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role.id).all():
+        if rgm.group_id in pinned:
+            rgm.created_at = pinned[rgm.group_id]
+    db.session.commit()
+
+    rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id})
+    assert rep.status_code == 200
+    rows = rep.json()["results"]
+    seeded_rows = [r for r in rows if r["group_id"] in pinned]
+    assert [r["group_id"] for r in seeded_rows] == [g_new.id, g_mid.id, g_old.id]

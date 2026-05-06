@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import TypeAdapter
 from sqlalchemy import String, cast
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
@@ -25,7 +25,12 @@ from api.models import (
 )
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from api.pagination import paginate
-from api.schemas import AccessRequestDetail, CreateAccessRequestBody, ResolveAccessRequestBody
+from api.schemas import (
+    AccessRequestDetail,
+    CreateAccessRequestBody,
+    ResolveAccessRequestBody,
+    SearchAccessRequestPaginationQuery,
+)
 from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
@@ -46,44 +51,43 @@ def _load_options() -> tuple:
 
 
 @router.get("", name="access_requests")
-def list_access_requests(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    qp = request.query_params
+def list_access_requests(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchAccessRequestPaginationQuery, Query()],
+) -> dict[str, Any]:
     query = db.query(AccessRequest).options(*_load_options()).order_by(AccessRequest.created_at.desc())
 
     # Honored search filters: status, requester_user_id, requested_group_id,
     # assignee_user_id, resolver_user_id. The frontend sends these from the
     # URL bar on the requests list page; without them the client-side
     # filters do nothing.
-    status = qp.get("status")
-    if status:
-        query = query.filter(AccessRequest.status == status)
+    if q_args.status:
+        query = query.filter(AccessRequest.status == q_args.status)
 
-    requester_user_id = qp.get("requester_user_id")
-    if requester_user_id:
-        if requester_user_id == "@me":
+    if q_args.requester_user_id:
+        if q_args.requester_user_id == "@me":
             query = query.filter(AccessRequest.requester_user_id == current_user_id)
         else:
             requester_alias = aliased(OktaUser)
             query = query.join(AccessRequest.requester.of_type(requester_alias)).filter(
                 _db.or_(
-                    AccessRequest.requester_user_id == requester_user_id,
-                    requester_alias.email.ilike(requester_user_id),
+                    AccessRequest.requester_user_id == q_args.requester_user_id,
+                    requester_alias.email.ilike(q_args.requester_user_id),
                 )
             )
 
-    requested_group_id = qp.get("requested_group_id")
-    if requested_group_id:
+    if q_args.requested_group_id:
         query = query.join(AccessRequest.requested_group).filter(
             _db.or_(
-                AccessRequest.requested_group_id == requested_group_id,
-                OktaGroup.name.ilike(requested_group_id),
+                AccessRequest.requested_group_id == q_args.requested_group_id,
+                OktaGroup.name.ilike(q_args.requested_group_id),
             )
         )
 
-    assignee_user_id = qp.get("assignee_user_id")
-    if assignee_user_id:
-        if assignee_user_id == "@me":
-            assignee_user_id = current_user_id
+    if q_args.assignee_user_id:
+        assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             db.query(OktaUser)
             .filter(_db.or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
@@ -122,29 +126,48 @@ def list_access_requests(request: Request, db: DbSession, current_user_id: Curre
         else:
             query = query.filter(False)
 
-    resolver_user_id = qp.get("resolver_user_id")
-    if resolver_user_id:
-        if resolver_user_id == "@me":
+    if q_args.resolver_user_id:
+        if q_args.resolver_user_id == "@me":
             query = query.filter(AccessRequest.resolver_user_id == current_user_id)
         else:
             resolver_alias = aliased(OktaUser)
             query = query.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).filter(
                 _db.or_(
-                    AccessRequest.resolver_user_id == resolver_user_id,
-                    resolver_alias.email.ilike(resolver_user_id),
+                    AccessRequest.resolver_user_id == q_args.resolver_user_id,
+                    resolver_alias.email.ilike(q_args.resolver_user_id),
                 )
             )
 
-    q = qp.get("q", "")
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            _db.or_(
-                cast(AccessRequest.status, String).ilike(like),
-                AccessRequest.request_reason.ilike(like),
+    # Free-text search: id prefix, status, requester/resolver name+email,
+    # requested group name+description. Mirrors the 14-field Flask search.
+    if q_args.q:
+        like = f"%{q_args.q}%"
+        q_requester_alias = aliased(OktaUser)
+        q_resolver_alias = aliased(OktaUser)
+        query = (
+            query.join(AccessRequest.requester.of_type(q_requester_alias))
+            .join(AccessRequest.requested_group)
+            .outerjoin(AccessRequest.resolver.of_type(q_resolver_alias))
+            .filter(
+                _db.or_(
+                    AccessRequest.id.like(f"{q_args.q}%"),
+                    cast(AccessRequest.status, String).ilike(like),
+                    q_requester_alias.email.ilike(like),
+                    q_requester_alias.first_name.ilike(like),
+                    q_requester_alias.last_name.ilike(like),
+                    q_requester_alias.display_name.ilike(like),
+                    (q_requester_alias.first_name + " " + q_requester_alias.last_name).ilike(like),
+                    OktaGroup.name.ilike(like),
+                    OktaGroup.description.ilike(like),
+                    q_resolver_alias.email.ilike(like),
+                    q_resolver_alias.first_name.ilike(like),
+                    q_resolver_alias.last_name.ilike(like),
+                    q_resolver_alias.display_name.ilike(like),
+                    (q_resolver_alias.first_name + " " + q_resolver_alias.last_name).ilike(like),
+                )
             )
         )
-    return paginate(request, query, _adapter)
+    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{access_request_id}", name="access_request_by_id")
@@ -161,9 +184,14 @@ def post_access_request(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> dict[str, Any]:
-    requester = db.get(OktaUser, current_user_id)
+    requester = (
+        db.query(OktaUser)
+        .filter(OktaUser.deleted_at.is_(None))
+        .filter(OktaUser.id == current_user_id)
+        .first()
+    )
     if requester is None:
-        raise HTTPException(404, "Requester not found")
+        raise HTTPException(403, "Current user is not allowed to perform this action")
     group = db.query(OktaGroup).filter(OktaGroup.id == body.group_id).filter(OktaGroup.deleted_at.is_(None)).first()
     if group is None:
         raise HTTPException(404, "Group not found")

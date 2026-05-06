@@ -28,9 +28,17 @@ from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
 
 # Anchored at both ends so a name like "Bad Name!" can't slip past on the
 # strength of an unanchored prefix match.
-_NAME_PATTERN_STR = f"^{get_access_config().name_pattern}$"
-_NAME_MAX_LENGTH = 255
-_DESC_MAX_LENGTH = 1024
+_GROUP_NAME_PATTERN_STR = f"^{get_access_config().name_pattern}$"
+_GROUP_NAME_MAX_LENGTH = 255
+_GROUP_DESC_MAX_LENGTH = 1024
+
+# Apps and Tags do not enforce a name pattern but share the same DB column
+# widths as groups (Unicode(255) for `name`, Unicode(1024) for `description`
+# — see api/models/core_models.py).
+_APP_NAME_MAX_LENGTH = 255
+_APP_DESC_MAX_LENGTH = 1024
+_TAG_NAME_MAX_LENGTH = 255
+_TAG_DESC_MAX_LENGTH = 1024
 
 
 # --- Access requests --------------------------------------------------------
@@ -172,8 +180,8 @@ class _GroupRequestBodyBase(BaseModel):
     """
 
     model_config = ConfigDict(extra="ignore")
-    requested_group_name: str = Field(pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
-    requested_group_description: Optional[str] = Field(default="", max_length=_DESC_MAX_LENGTH)
+    requested_group_name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
+    requested_group_description: Optional[str] = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
     requested_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
     request_reason: Optional[str] = ""
@@ -222,24 +230,68 @@ class ResolveGroupRequestBody(BaseModel):
 # --- Tags -------------------------------------------------------------------
 
 
+def _validate_tag_constraints(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Reject unknown constraint keys and constraint values that fail the
+    per-key validator. Pydantic-side replacement for the previous
+    `_validate_constraints` helper in `api/routers/tags.py`."""
+    if v is None:
+        return None
+    # Local import to avoid a model→schema import cycle.
+    from api.models import Tag
+
+    valid: dict[str, Any] = {}
+    for key, value in v.items():
+        if key not in Tag.CONSTRAINTS:
+            raise ValueError(f"Unknown constraint: {key}")
+        if not Tag.CONSTRAINTS[key].validator(value):
+            raise ValueError(f"Invalid value for constraint {key}: {value!r}")
+        valid[key] = value
+    return valid
+
+
 class CreateTagBody(BaseModel):
     """Body for POST /api/tags."""
 
     model_config = ConfigDict(extra="ignore")
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=_TAG_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: bool = True
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
+
+    @field_validator("constraints")
+    @classmethod
+    def _check_constraints(cls, v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        return _validate_tag_constraints(v)
 
 
 class UpdateTagBody(BaseModel):
     """Body for PUT /api/tags/{id}. All fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=_TAG_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        # Partial PUTs that don't touch description must not fail.
+        if "description" not in self.model_fields_set:
+            return self
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
+
+    @field_validator("constraints")
+    @classmethod
+    def _check_constraints(cls, v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        return _validate_tag_constraints(v)
 
 
 # --- Apps -------------------------------------------------------------------
@@ -260,8 +312,8 @@ class CreateAppBody(BaseModel):
     """Body for POST /api/apps."""
 
     model_config = ConfigDict(extra="ignore")
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=_APP_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
     initial_owner_id: Optional[str] = None
     initial_owner_role_ids: Optional[list[str]] = None
     initial_additional_app_groups: Optional[list[_InitialAppGroupBody]] = None
@@ -269,17 +321,49 @@ class CreateAppBody(BaseModel):
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
 
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_initial_app_group_names(self) -> Self:
+        if not self.initial_additional_app_groups:
+            return self
+        # Local import to avoid model→schema cycles.
+        from api.models import AppGroup as _AppGroup
+
+        prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{self.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        owner_group_name = f"{prefix}{_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        for ig in self.initial_additional_app_groups:
+            if not ig.name.startswith(prefix):
+                raise ValueError(f"Additional app group name must be prefixed with {prefix}")
+            if ig.name == owner_group_name:
+                raise ValueError(
+                    f"Cannot specify {_AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX} group as an additional app group"
+                )
+        return self
+
 
 class UpdateAppBody(BaseModel):
     """Body for PUT /api/apps/{id}. All fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=_APP_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_APP_DESC_MAX_LENGTH)
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
     tags_to_add: Optional[list[str]] = None
     tags_to_remove: Optional[list[str]] = None
+
+    @model_validator(mode="after")
+    def _check_description_required(self) -> Self:
+        if "description" not in self.model_fields_set:
+            return self
+        if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
+            raise ValueError("Description is required.")
+        return self
 
 
 # --- Groups -----------------------------------------------------------------
@@ -291,8 +375,8 @@ class _GroupCreateBodyShared(BaseModel):
     the per-class discriminator type."""
 
     model_config = ConfigDict(extra="ignore")
-    name: str = Field(pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_DESC_MAX_LENGTH)
+    name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
     tags_to_add: list[str] = Field(default_factory=list)
     tags_to_remove: list[str] = Field(default_factory=list)
 
@@ -329,8 +413,8 @@ class _GroupUpdateBodyShared(BaseModel):
     fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = Field(default=None, pattern=_NAME_PATTERN_STR, min_length=1, max_length=_NAME_MAX_LENGTH)
-    description: Optional[str] = Field(default=None, max_length=_DESC_MAX_LENGTH)
+    name: Optional[str] = Field(default=None, pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
     tags_to_add: list[str] = Field(default_factory=list)
     tags_to_remove: list[str] = Field(default_factory=list)
 

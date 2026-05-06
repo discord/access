@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -12,53 +12,16 @@ from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import require_access_admin
-from api.config import settings
 from api.database import DbSession
 from api.extensions import db as _db
 from api.models import Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
 from api.routers._eager import group_tag_map_options
-from api.schemas import CreateTagBody, DeleteMessage, TagDetail, UpdateTagBody
+from api.schemas import CreateTagBody, DeleteMessage, SearchTagPaginationQuery, TagDetail, UpdateTagBody
 from api.schemas._serialize import dump_orm
 
 _TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_options()),)
-
-
-def _validate_description(value: Any, field_provided: bool) -> str:
-    """Validate `description` against `settings.REQUIRE_DESCRIPTIONS`."""
-    if not field_provided:
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if value == "" and settings.REQUIRE_DESCRIPTIONS:
-        raise HTTPException(400, "Description must be between 1 and 1024 characters")
-    if value is None or value == "":
-        if settings.REQUIRE_DESCRIPTIONS:
-            raise HTTPException(400, "Description is required.")
-        return ""
-    if not isinstance(value, str):
-        raise HTTPException(400, "Description must be a string")
-    if len(value) > 1024:
-        raise HTTPException(400, "Description must be 1024 characters or less")
-    return value
-
-
-def _validate_constraints(constraints: Any) -> dict[str, Any]:
-    """Validate tag constraints against `Tag.CONSTRAINTS`. Raises HTTPException
-    on bad keys or invalid values."""
-    if constraints is None:
-        return {}
-    if not isinstance(constraints, dict):
-        raise HTTPException(400, "Constraints must be an object")
-    valid: dict[str, Any] = {}
-    for key, value in constraints.items():
-        if key not in Tag.CONSTRAINTS:
-            raise HTTPException(400, f"Unknown constraint: {key}")
-        if not Tag.CONSTRAINTS[key].validator(value):
-            raise HTTPException(400, f"Invalid value for constraint {key}: {value!r}")
-        valid[key] = value
-    return valid
 
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
@@ -66,13 +29,17 @@ _adapter = TypeAdapter(TagDetail)
 
 
 @router.get("", name="tags")
-def list_tags(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    q = request.query_params.get("q", "")
+def list_tags(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchTagPaginationQuery, Query()],
+) -> dict[str, Any]:
     query = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
-    if q:
-        like = f"%{q}%"
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(Tag.name.ilike(like))
-    return paginate(request, query, _adapter)
+    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{tag_id}", name="tag_by_id")
@@ -90,14 +57,19 @@ def post_tag(
     current_user_id: CurrentUserId,
     _admin: str = Depends(require_access_admin),
 ) -> dict[str, Any]:
-    if not body.name:
-        raise HTTPException(400, "Tag name is required")
-    constraints = _validate_constraints(body.constraints or {})
-    description = _validate_description(body.description, body.description is not None)
+    # Reject duplicates by name. Without this, CreateTag.execute() silently
+    # returns the existing tag and the endpoint replies 201 with the wrong
+    # row, which clients don't expect.
+    existing = (
+        db.query(Tag).filter(func.lower(Tag.name) == func.lower(body.name)).filter(Tag.deleted_at.is_(None)).first()
+    )
+    if existing is not None:
+        raise HTTPException(400, "Tag already exists with the same name")
+
     tag = Tag(
         name=body.name,
-        description=description,
-        constraints=constraints,
+        description=body.description if body.description is not None else "",
+        constraints=body.constraints or {},
         enabled=body.enabled,
     )
     created = CreateTag(tag=tag, current_user_id=current_user_id).execute()
@@ -121,10 +93,24 @@ def put_tag(
     if tag is None:
         raise HTTPException(404, "Not Found")
     payload = body.model_dump(exclude_unset=True)
-    if "constraints" in payload:
-        payload["constraints"] = _validate_constraints(payload["constraints"])
-    if "description" in payload:
-        payload["description"] = _validate_description(payload["description"], True)
+
+    # Reject renames that collide with another existing tag (case-insensitive).
+    new_name = payload.get("name")
+    if new_name and new_name.lower() != tag.name.lower():
+        collision = (
+            db.query(Tag)
+            .filter(Tag.id != tag.id)
+            .filter(func.lower(Tag.name) == func.lower(new_name))
+            .filter(Tag.deleted_at.is_(None))
+            .first()
+        )
+        if collision is not None:
+            raise HTTPException(400, "Tag already exists with the same name")
+
+    if "constraints" in payload and payload["constraints"] is None:
+        payload["constraints"] = {}
+    if "description" in payload and payload["description"] is None:
+        payload["description"] = ""
     for key in ("name", "description", "constraints", "enabled"):
         if key in payload:
             setattr(tag, key, payload[key])

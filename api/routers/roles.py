@@ -5,23 +5,23 @@ helpers.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
-from sqlalchemy import func
+from sqlalchemy import func, nullsfirst
 from starlette.requests import Request
 
 from api.auth import permissions as _perms
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import OktaGroup, RoleGroup, RoleGroupMap
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
-from api.schemas import GroupDetail, GroupSummary
+from api.schemas import GroupDetail, GroupSummary, SearchRolePaginationQuery
 from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import RoleMember
 
@@ -31,18 +31,49 @@ _role_summary_adapter = TypeAdapter(GroupSummary)
 
 
 @router.get("", name="roles")
-def list_roles(request: Request, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+def list_roles(
+    request: Request,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    q_args: Annotated[SearchRolePaginationQuery, Query()],
+) -> dict[str, Any]:
     query = (
         db.query(RoleGroup)
         .options(*_GROUP_LOAD_OPTIONS)
         .filter(RoleGroup.deleted_at.is_(None))
         .order_by(func.lower(RoleGroup.name))
     )
-    q = request.query_params.get("q", "")
-    if q:
-        like = f"%{q}%"
+
+    # Filter to roles owned by `owner_id` (id or email; supports `@me`).
+    if q_args.owner_id:
+        owner_id = current_user_id if q_args.owner_id == "@me" else q_args.owner_id
+        owner = (
+            db.query(OktaUser)
+            .filter(_db.or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+            .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+            .first()
+        )
+        if owner is None:
+            raise HTTPException(404, "Not Found")
+        owned_role_ids = [
+            row.group_id
+            for row in db.query(OktaUserGroupMember.group_id)
+            .filter(OktaUserGroupMember.user_id == owner.id)
+            .filter(OktaUserGroupMember.is_owner.is_(True))
+            .filter(
+                _db.or_(
+                    OktaUserGroupMember.ended_at.is_(None),
+                    OktaUserGroupMember.ended_at > _db.func.now(),
+                )
+            )
+            .all()
+        ]
+        query = query.filter(RoleGroup.id.in_(owned_role_ids))
+
+    if q_args.q:
+        like = f"%{q_args.q}%"
         query = query.filter(_db.or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-    return paginate(request, query, _role_summary_adapter)
+    return paginate(request, query, _role_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
 @router.get("/{role_id}", name="role_by_id")

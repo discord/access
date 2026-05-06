@@ -304,3 +304,69 @@ def test_partial_tag_update_preserves_description(
     result = rep.json()
     assert result["name"] == "UpdatedTag2"
     assert result["description"] == "Updated description"
+
+
+def test_post_tag_validation_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """Empty name, overlong description, unknown constraint key and bad
+    constraint value all rejected at the HTTP layer."""
+    tags_url = url_for("api-tags.tags")
+
+    rep = client.post(tags_url, json={"name": ""})
+    assert rep.status_code == 400
+
+    rep = client.post(tags_url, json={"name": "good", "description": "x" * 1025})
+    assert rep.status_code == 400
+
+    rep = client.post(tags_url, json={"name": "good", "constraints": {"not_a_real_constraint": True}})
+    assert rep.status_code == 400
+
+    rep = client.post(
+        tags_url, json={"name": "good", "constraints": {"disallow_self_add_ownership": "not-bool"}}
+    )
+    assert rep.status_code == 400
+
+
+def test_post_tag_require_descriptions_via_http(
+    client: TestClient, db: Db, url_for: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REQUIRE_DESCRIPTIONS gates POST at the HTTP boundary."""
+    monkeypatch.setattr(settings, "REQUIRE_DESCRIPTIONS", True)
+    tags_url = url_for("api-tags.tags")
+    rep = client.post(tags_url, json={"name": "needs-desc"})
+    assert rep.status_code == 400
+
+
+def test_post_tag_duplicate_name_blocked(client: TestClient, db: Db, url_for: Any) -> None:
+    """Duplicate tag name on POST returns 400 (not silent 201)."""
+    tags_url = url_for("api-tags.tags")
+    rep = client.post(tags_url, json={"name": "DupTag"})
+    assert rep.status_code == 201
+
+    rep = client.post(tags_url, json={"name": "duptag"})  # case-insensitive
+    assert rep.status_code == 400
+    assert "already exists" in rep.text
+
+
+def test_put_tag_rename_collision_blocked(client: TestClient, db: Db, url_for: Any) -> None:
+    """Renaming a tag onto another tag's name is rejected with 400."""
+    tag_a = TagFactory.create(name="OneTag")
+    tag_b = TagFactory.create(name="OtherTag")
+    db.session.add_all([tag_a, tag_b])
+    db.session.commit()
+
+    put_url = url_for("api-tags.tag_by_id_put", tag_id=tag_b.id)
+    rep = client.put(put_url, json={"name": "onetag"})  # case-insensitive
+    assert rep.status_code == 400
+    assert "already exists" in rep.text
+
+
+def test_get_tags_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """Q — `q` query param honored on /api/tags."""
+    db.session.add_all([TagFactory.create(name="ZelaTagOne"), TagFactory.create(name="OtherTag")])
+    db.session.commit()
+    tags_url = url_for("api-tags.tags")
+    rep = client.get(tags_url, params={"q": "ZelaTag"})
+    assert rep.status_code == 200
+    names = [t["name"] for t in rep.json()["results"]]
+    assert "ZelaTagOne" in names
+    assert "OtherTag" not in names

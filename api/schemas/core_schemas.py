@@ -112,12 +112,15 @@ class OktaUserSummary(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     display_name: Optional[str] = None
+    # The list endpoint includes timestamps so the frontend can sort/group by
+    # creation time. Flask exposed these via Marshmallow's `only=(...)` tuple;
+    # leaving them off the Pydantic summary loses that capability.
+    created_at: RFC822DatetimeOpt = None
+    updated_at: RFC822DatetimeOpt = None
     deleted_at: RFC822DatetimeOpt = None
 
 
 class OktaUserDetail(OktaUserSummary):
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
     profile: dict[str, Any] = Field(default_factory=dict)
     manager: Optional["OktaUserSummary"] = None
     # Membership / ownership lists. Resolved post-class via model_rebuild()

@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import cast, Protocol
+from typing import Any, cast, Protocol
 
 from factory import Faker
 from fastapi.testclient import TestClient
@@ -2005,3 +2005,125 @@ def test_cannot_approve_non_role_group_request_with_role_prefix(
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
     assert group_request.resolved_at is None
+
+
+def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """`status`, `requester_user_id`, `requested_group_type`,
+    `requested_app_id` and `q` each narrow /api/group-requests. Seed two
+    requests of different types/requesters/apps so each filter must
+    *exclude* the other to pass — a regression that returns everything
+    would still match by ID."""
+    from api.operations import CreateGroupRequest
+
+    target_user = OktaUserFactory.create()
+    other_user = OktaUserFactory.create()
+    target_app = AppFactory.create()
+    db.session.add_all([target_user, other_user, target_app])
+    db.session.commit()
+
+    target_gr = CreateGroupRequest(
+        requester_user=target_user,
+        requested_group_name="ZelaTargetOktaGroup",
+        requested_group_description="zela target desc",
+        requested_group_type="okta_group",
+        requested_app_id=None,
+        requested_group_tags=[],
+        requested_ownership_ending_at=None,
+        request_reason="please",
+    ).execute()
+    other_gr = CreateGroupRequest(
+        requester_user=other_user,
+        requested_group_name=f"App-{target_app.name}-OtherDistinctApp",
+        requested_group_description="distinct app group desc",
+        requested_group_type="app_group",
+        requested_app_id=target_app.id,
+        requested_group_tags=[],
+        requested_ownership_ending_at=None,
+        request_reason="please",
+    ).execute()
+    assert target_gr is not None and other_gr is not None
+
+    list_url = url_for("api-group-requests.group_requests")
+
+    def ids(rep: Any) -> list[str]:
+        return [r["id"] for r in rep.json()["results"]]
+
+    rep = client.get(list_url, params={"status": "PENDING"})
+    assert rep.status_code == 200
+    assert {target_gr.id, other_gr.id}.issubset(set(ids(rep)))
+
+    rep = client.get(list_url, params={"requester_user_id": target_user.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+    rep = client.get(list_url, params={"requested_group_type": "okta_group"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+    rep = client.get(list_url, params={"requested_app_id": target_app.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert other_gr.id in found and target_gr.id not in found
+
+    rep = client.get(list_url, params={"q": "ZelaTargetOktaGroup"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+
+def test_post_group_request_validation_via_http(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """POST /api/group-requests pre-validates: deleted requester → 403,
+    unknown tag → 400, and `app_group` without `requested_app_id` → 400
+    (the Pydantic discriminator catches it before the handler runs)."""
+    from datetime import datetime, timezone
+
+    create_url = url_for("api-group-requests.group_requests_create")
+
+    # (a) Deleted requester → 403
+    deleted = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted)
+    db.session.commit()
+    mock_user(deleted.id)
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": [],
+        },
+    )
+    assert rep.status_code == 403
+    mock_user(None)  # restore default
+
+    # (b) Unknown tag → 400
+    db.session.add(user)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": ["tag-does-not-exist"],
+        },
+    )
+    assert rep.status_code == 400
+    assert "tags not found" in rep.text
+
+    # (c) app_group missing requested_app_id → 400 (Pydantic discriminator
+    # rejects the missing required field on _AppGroupRequestBody).
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+        },
+    )
+    assert rep.status_code == 400

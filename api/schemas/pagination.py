@@ -10,17 +10,36 @@ from pydantic import BaseModel, ConfigDict, Field
 T = TypeVar("T")
 
 
-class SearchPaginationRequest(BaseModel):
+class SearchPaginationQuery(BaseModel):
+    """Base for any list endpoint. `per_page=-1` is the legacy "all rows"
+    sentinel — the pagination helper clamps it to MAX_PER_PAGE."""
+
     page: int = Field(0, ge=0)
     per_page: int = Field(50, ge=-1)
     q: Optional[str] = None
 
 
-class SearchGroupPaginationRequest(SearchPaginationRequest):
+class SearchUserPaginationQuery(SearchPaginationQuery):
+    pass
+
+
+class SearchAppPaginationQuery(SearchPaginationQuery):
+    pass
+
+
+class SearchTagPaginationQuery(SearchPaginationQuery):
+    pass
+
+
+class SearchGroupPaginationQuery(SearchPaginationQuery):
     managed: Optional[bool] = None
 
 
-class SearchAccessRequestPaginationRequest(SearchPaginationRequest):
+class SearchRolePaginationQuery(SearchPaginationQuery):
+    owner_id: Optional[str] = None
+
+
+class SearchAccessRequestPaginationQuery(SearchPaginationQuery):
     status: Optional[str] = None
     requester_user_id: Optional[str] = None
     assignee_user_id: Optional[str] = None
@@ -28,12 +47,13 @@ class SearchAccessRequestPaginationRequest(SearchPaginationRequest):
     resolver_user_id: Optional[str] = None
 
 
-class SearchRoleRequestPaginationRequest(SearchAccessRequestPaginationRequest):
+class SearchRoleRequestPaginationQuery(SearchAccessRequestPaginationQuery):
     requester_role_id: Optional[str] = None
 
 
-class SearchGroupRequestPaginationRequest(SearchAccessRequestPaginationRequest):
-    pass
+class SearchGroupRequestPaginationQuery(SearchAccessRequestPaginationQuery):
+    requested_group_type: Optional[str] = None
+    requested_app_id: Optional[str] = None
 
 
 class AuditOrderBy(str, Enum):
@@ -42,27 +62,33 @@ class AuditOrderBy(str, Enum):
     ended_at = "ended_at"
 
 
-class SearchAuditPaginationRequest(SearchPaginationRequest):
+class SearchAuditPaginationQuery(SearchPaginationQuery):
+    """Common audit-endpoint filter set. Defaults match Flask: order
+    newest-first by `created_at`."""
+
     owner: Optional[bool] = None
     active: Optional[bool] = None
     needs_review: Optional[bool] = None
-    order_by: AuditOrderBy = AuditOrderBy.moniker
-    order_desc: bool = False
+    order_by: AuditOrderBy = AuditOrderBy.created_at
+    order_desc: bool = True
     user_id: Optional[str] = None
     group_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    app_owner: Optional[bool] = None
+    managed: Optional[bool] = None
+    start_date: Optional[int] = None
+    end_date: Optional[int] = None
     direct: Optional[bool] = None
+    deleted: Optional[bool] = None
 
 
-class SearchUserGroupAuditPaginationRequest(SearchAuditPaginationRequest):
+class SearchUserGroupAuditPaginationQuery(SearchAuditPaginationQuery):
     pass
 
 
-class SearchGroupRoleAuditPaginationRequest(SearchAuditPaginationRequest):
+class SearchGroupRoleAuditPaginationQuery(SearchAuditPaginationQuery):
     role_id: Optional[str] = None
-
-
-class SearchRolePaginationRequest(SearchPaginationRequest):
-    pass
+    role_owner_id: Optional[str] = None
 
 
 # --- Response envelope ------------------------------------------------------
