@@ -96,19 +96,14 @@ export default function NavItems(props: NavItemsProps) {
         displayIcon={<UserIcon />}
         tooltip="View users in your organization"
       />
+      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} tooltip="View and manage roles" />
+      <ListItemLink to="/apps" displayText="Apps" displayIcon={<AppIcon />} tooltip="View and manage connected apps" />
       <ListItemLink
         to="/groups"
         displayText="Groups"
         displayIcon={<GroupIcon />}
-        tooltip="View and manage all kinds of groups, including roles and app groups"
-      />
-      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} tooltip="View and manage roles" />
-      <ListItemLink
-        to="/apps"
-        displayText="Apps"
-        displayIcon={<AppIcon />}
         sx={{pb: 1}}
-        tooltip="View and manage connected apps"
+        tooltip="View and manage all kinds of groups, including roles and app groups"
       />
       <Divider />
       <ListItemLink
