@@ -8,6 +8,7 @@ import Collapse from '@mui/material/Collapse';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
 import ListSubheader from '@mui/material/ListSubheader';
+import Tooltip from '@mui/material/Tooltip';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import UserIcon from '@mui/icons-material/Person';
@@ -32,10 +33,11 @@ interface ListItemLinkProps extends ListItemProps {
   displayText: string;
   displayIcon?: JSX.Element;
   open?: boolean;
+  tooltip?: string;
 }
 
 function ListItemLink(props: ListItemLinkProps) {
-  const {to, displayText, displayIcon, open, ...other} = props;
+  const {to, displayText, displayIcon, open, tooltip, ...other} = props;
 
   let icon = null;
   if (open != null) {
@@ -44,13 +46,23 @@ function ListItemLink(props: ListItemLinkProps) {
 
   other.sx = Object.assign({textDecoration: 'none', color: 'inherit', p: 0}, other.sx ?? {});
 
+  const button = (
+    <ListItemButton>
+      <ListItemIcon>{displayIcon}</ListItemIcon>
+      <ListItemText primary={displayText} />
+      {icon}
+    </ListItemButton>
+  );
+
   return (
     <ListItem component={RouterLink as any} to={to} {...other}>
-      <ListItemButton>
-        <ListItemIcon>{displayIcon}</ListItemIcon>
-        <ListItemText primary={displayText} />
-        {icon}
-      </ListItemButton>
+      {tooltip ? (
+        <Tooltip title={tooltip} placement="right" enterDelay={400}>
+          {button}
+        </Tooltip>
+      ) : (
+        button
+      )}
     </ListItem>
   );
 }
@@ -78,10 +90,26 @@ export default function NavItems(props: NavItemsProps) {
 
   return (
     <List>
-      <ListItemLink to="/users" displayText="Users" displayIcon={<UserIcon />} />
-      <ListItemLink to="/groups" displayText="Groups" displayIcon={<GroupIcon />} />
-      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} />
-      <ListItemLink to="/apps" displayText="Apps" displayIcon={<AppIcon />} sx={{pb: 1}} />
+      <ListItemLink
+        to="/users"
+        displayText="Users"
+        displayIcon={<UserIcon />}
+        tooltip="View users in your organization"
+      />
+      <ListItemLink
+        to="/groups"
+        displayText="Groups"
+        displayIcon={<GroupIcon />}
+        tooltip="View and manage all kinds of groups, including roles and app groups"
+      />
+      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} tooltip="View and manage roles" />
+      <ListItemLink
+        to="/apps"
+        displayText="Apps"
+        displayIcon={<AppIcon />}
+        sx={{pb: 1}}
+        tooltip="View and manage connected apps"
+      />
       <Divider />
       <ListItemLink
         to="/role-requests"
@@ -90,6 +118,7 @@ export default function NavItems(props: NavItemsProps) {
         open={openAccessRequests}
         onClick={() => setOpenAccessRequests(!openAccessRequests)}
         sx={{pt: 1}}
+        tooltip="Create or review requests for individuals or roles to join groups"
       />
       <Collapse component="li" in={props.open && openAccessRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
@@ -101,14 +130,22 @@ export default function NavItems(props: NavItemsProps) {
             displayText="From Me"
             displayIcon={<RequestFromMe />}
             sx={{pl: 4}}
+            tooltip="Role-based access requests you submitted"
           />
           <ListItemLink
             to="/role-requests?assignee_user_id=@me"
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
+            tooltip="Role-based access requests awaiting your approval"
           />
-          <ListItemLink to="/role-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+          <ListItemLink
+            to="/role-requests"
+            displayText="All"
+            displayIcon={<RequestAll />}
+            sx={{pl: 4}}
+            tooltip="All role-based access requests"
+          />
           <ListSubheader disableSticky sx={subheaderSx}>
             Individual
           </ListSubheader>
@@ -117,14 +154,22 @@ export default function NavItems(props: NavItemsProps) {
             displayText="From Me"
             displayIcon={<RequestFromMe />}
             sx={{pl: 4}}
+            tooltip="Individual access requests you submitted"
           />
           <ListItemLink
             to="/requests?assignee_user_id=@me"
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
+            tooltip="Individual access requests awaiting your approval"
           />
-          <ListItemLink to="/requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+          <ListItemLink
+            to="/requests"
+            displayText="All"
+            displayIcon={<RequestAll />}
+            sx={{pl: 4}}
+            tooltip="All individual access requests"
+          />
         </List>
       </Collapse>
       <ListItemLink
@@ -134,6 +179,7 @@ export default function NavItems(props: NavItemsProps) {
         open={openGroupRequests}
         onClick={() => setOpenGroupRequests(!openGroupRequests)}
         sx={{py: 1}}
+        tooltip="Requests to create new groups, including roles and app groups"
       />
       <Collapse component="li" in={props.open && openGroupRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
@@ -142,14 +188,22 @@ export default function NavItems(props: NavItemsProps) {
             displayText="From Me"
             displayIcon={<RequestFromMe />}
             sx={{pl: 4}}
+            tooltip="Group creation requests you submitted"
           />
           <ListItemLink
             to="/group-requests?assignee_user_id=@me"
             displayText="Assigned to Me"
             displayIcon={<RequestToMe />}
             sx={{pl: 4}}
+            tooltip="Group creation requests awaiting your approval"
           />
-          <ListItemLink to="/group-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+          <ListItemLink
+            to="/group-requests"
+            displayText="All"
+            displayIcon={<RequestAll />}
+            sx={{pl: 4}}
+            tooltip="All group creation requests"
+          />
         </List>
       </Collapse>
       <Divider />
@@ -160,6 +214,7 @@ export default function NavItems(props: NavItemsProps) {
         open={openExpiringAccess}
         onClick={() => setOpenExpiringAccess(!openExpiringAccess)}
         sx={{pt: 1}}
+        tooltip="Review access expiring soon"
       />
       <Collapse component="li" in={props.open && openExpiringAccess} timeout="auto" unmountOnExit>
         <List disablePadding>
@@ -171,14 +226,22 @@ export default function NavItems(props: NavItemsProps) {
             displayText="My Roles"
             displayIcon={<ExpiringRolesOwnedByMe />}
             sx={{pl: 4}}
+            tooltip="Roles you own that are losing access soon"
           />
           <ListItemLink
             to="/expiring-roles?owner_id=@me"
             displayText="My Groups"
             displayIcon={<ExpiringOwnedByMe />}
             sx={{pl: 4}}
+            tooltip="Groups you own with expiring role-based access"
           />
-          <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+          <ListItemLink
+            to="/expiring-roles"
+            displayText="All"
+            displayIcon={<ExpiringAll />}
+            sx={{pl: 4}}
+            tooltip="All expiring role-based access"
+          />
           <ListSubheader disableSticky sx={subheaderSx}>
             Individual
           </ListSubheader>
@@ -187,14 +250,22 @@ export default function NavItems(props: NavItemsProps) {
             displayText="My Access"
             displayIcon={<ExpiringMyAccess />}
             sx={{pl: 4}}
+            tooltip="Your individual access expiring soon"
           />
           <ListItemLink
             to="/expiring-groups?owner_id=@me"
             displayText="My Groups"
             displayIcon={<ExpiringOwnedByMe />}
             sx={{pl: 4}}
+            tooltip="Groups you own with expiring individual access"
           />
-          <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+          <ListItemLink
+            to="/expiring-groups"
+            displayText="All"
+            displayIcon={<ExpiringAll />}
+            sx={{pl: 4}}
+            tooltip="All expiring individual access"
+          />
         </List>
       </Collapse>
     </List>
