@@ -85,6 +85,45 @@ def test_get_role(
     assert rep.status_code == 404
 
 
+def test_get_role_prefers_active_after_name_reuse(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    db.session.add(role_group)
+    db.session.commit()
+    role_name = role_group.name
+    soft_deleted_id = role_group.id
+
+    role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+    db.session.commit()
+
+    new_role = RoleGroupFactory.create(name=role_name)
+    db.session.add(new_role)
+    db.session.commit()
+    active_id = new_role.id
+    assert active_id != soft_deleted_id
+
+    rep = client.get(url_for("api-roles.role_by_id", role_id=role_name))
+    assert rep.status_code == 200
+    assert rep.json()["id"] == active_id
+
+
+def test_get_role_members_404_when_role_soft_deleted(
+    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
+    db.session.add(role_group)
+    db.session.add(okta_group)
+    db.session.commit()
+    db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id))
+    db.session.commit()
+    role_id = role_group.id
+
+    role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
+    db.session.commit()
+
+    rep = client.get(url_for("api-roles.role_members_by_id", role_id=role_id))
+    assert rep.status_code == 404
+
+
 def test_get_role_members(
     client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
@@ -1588,9 +1627,7 @@ def test_put_role_members_rejects_missing_required_lists(
     assert rep.status_code == 400
 
 
-def test_put_role_members_missing_body_400(
-    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
-) -> None:
+def test_put_role_members_missing_body_400(client: TestClient, db: Db, role_group: RoleGroup, url_for: Any) -> None:
     """No body at all returns 400 (matches groups.py PUT members shape).
     Regression guard for the dropped `RoleMember()` substitution path."""
     db.session.add(role_group)

@@ -26,7 +26,11 @@ from api.models import (
 from api.models.tag import coalesce_constraints
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from api.pagination import paginate
-from api.routers._eager import polymorphic_group_options
+from api.routers._eager import (
+    group_tag_map_options,
+    polymorphic_group_options,
+    user_group_member_options,
+)
 from api.schemas import (
     CreateRoleRequestBody,
     ResolveRoleRequestBody,
@@ -34,6 +38,7 @@ from api.schemas import (
     RoleRequestPagination,
     SearchRoleRequestPaginationQuery,
 )
+
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 
 
@@ -43,9 +48,15 @@ def _load_options() -> tuple:
         joinedload(RoleRequest.requester),
         joinedload(RoleRequest.resolver),
         joinedload(RoleRequest.active_resolver),
-        selectinload(RoleRequest.requester_role).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.requester_role).options(
+            *polymorphic_group_options(),
+            selectinload(OktaGroup.active_user_memberships).options(*user_group_member_options()),
+        ),
         selectinload(RoleRequest.active_requester_role).options(*polymorphic_group_options()),
-        selectinload(RoleRequest.requested_group).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.requested_group).options(
+            *polymorphic_group_options(),
+            selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
+        ),
         selectinload(RoleRequest.active_requested_group).options(*polymorphic_group_options()),
     )
 

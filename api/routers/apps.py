@@ -74,7 +74,13 @@ def list_apps(
 
 @router.get("/{app_id}", name="app_by_id")
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDetail:
-    app = db.query(App).options(*APP_LOAD_OPTIONS).filter(_db.or_(App.id == app_id, App.name == app_id)).first()
+    app = (
+        db.query(App)
+        .options(*APP_LOAD_OPTIONS)
+        .filter(App.deleted_at.is_(None))
+        .filter(_db.or_(App.id == app_id, App.name == app_id))
+        .first()
+    )
     if app is None:
         raise HTTPException(404, "Not Found")
     return AppDetail.model_validate(app, from_attributes=True)

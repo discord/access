@@ -438,11 +438,11 @@ def users_and_groups(
             OktaUser.display_name.ilike(like),
             (OktaUser.first_name + " " + OktaUser.last_name).ilike(like),
         )
-        if user is not None and group is None and owner is None:
+        if user is not None:
             query = query.filter(_db.or_(*group_cols))
-        elif group is not None and user is None and owner is None:
+        if group is not None:
             query = query.filter(_db.or_(*user_cols))
-        else:
+        if owner is not None or (user is None and group is None):
             query = query.filter(_db.or_(*group_cols, *user_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable
@@ -685,11 +685,11 @@ def groups_and_roles(
             group_alias.name.ilike(like),
             group_alias.description.ilike(like),
         )
-        if group is not None and role is None:
+        if group is not None:
             query = query.filter(_db.or_(*role_cols))
-        elif role is not None and group is None:
+        if role is not None:
             query = query.filter(_db.or_(*group_cols))
-        else:
+        if owner is not None or (group is None and role is None):
             query = query.filter(_db.or_(*role_cols, *group_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable.

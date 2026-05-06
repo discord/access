@@ -452,9 +452,7 @@ def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, 
 # --- Fix 4 parity tests --------------------------------------------------------
 
 
-def test_users_audit_q_with_user_id_searches_only_groups(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_users_audit_q_with_user_id_searches_only_groups(client: TestClient, db: Db, url_for: Any) -> None:
     """When `user_id` is pinned, the free-text `q` filter must narrow to
     *group* columns only — `?user_id=...&q=Alice` should match group
     names but not user profile fields (the user is already pinned)."""
@@ -477,9 +475,7 @@ def test_users_audit_q_with_user_id_searches_only_groups(
     assert other_group.id not in matched_group_ids
 
 
-def test_users_audit_q_with_group_id_searches_only_users(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_users_audit_q_with_group_id_searches_only_users(client: TestClient, db: Db, url_for: Any) -> None:
     """Symmetric: with `group_id` set, `q` must restrict to user columns
     so the response excludes memberships whose user doesn't match — even
     if the group name does."""
@@ -488,9 +484,7 @@ def test_users_audit_q_with_group_id_searches_only_users(
     group = OktaGroupFactory.create(name="GroupZlatan", description="zlatan-themed")
     db.session.add_all([matching_user, other_user, group])
     db.session.commit()
-    ModifyGroupUsers(
-        group=group, members_to_add=[matching_user.id, other_user.id], sync_to_okta=False
-    ).execute()
+    ModifyGroupUsers(group=group, members_to_add=[matching_user.id, other_user.id], sync_to_okta=False).execute()
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id, "q": "zlatan"})
     assert rep.status_code == 200
@@ -500,9 +494,7 @@ def test_users_audit_q_with_group_id_searches_only_users(
     assert other_user.id not in matched_user_ids
 
 
-def test_groups_audit_q_with_role_id_searches_only_groups(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_groups_audit_q_with_role_id_searches_only_groups(client: TestClient, db: Db, url_for: Any) -> None:
     """When `role_id` is set on /api/audit/groups, `q` must restrict to
     the *associated group* columns and ignore the role columns."""
     role = RoleGroupFactory.create(name="ZebraRole")
@@ -526,9 +518,7 @@ def test_groups_audit_q_with_role_id_searches_only_groups(
     assert other_group.id not in matched_group_ids
 
 
-def test_users_audit_owner_id_excludes_owner_self_membership(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_users_audit_owner_id_excludes_owner_self_membership(client: TestClient, db: Db, url_for: Any) -> None:
     """When filtering /api/audit/users by `owner_id`, the response must
     exclude the owner's own memberships. The frontend's "expiring access"
     review surface is meant to show *other* users' access the owner owes
@@ -610,9 +600,7 @@ def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
     assert not sample.get("active_role_associated_group_owner_mappings")
 
 
-def test_users_audit_direct_flag_reorders(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_users_audit_direct_flag_reorders(client: TestClient, db: Db, url_for: Any) -> None:
     """When `direct` is present and neither `user_id` nor `owner_id` is
     supplied, the order_by re-applies using the email/created_at compound
     shape: with `?direct=true&order_by=moniker`, rows come back ordered
@@ -634,8 +622,74 @@ def test_users_audit_direct_flag_reorders(
     assert rep.status_code == 200, rep.text
     rows = rep.json()["results"]
     seeded_emails = [
-        r["user"]["email"]
-        for r in rows
-        if r["user"]["email"] in {"zara@example.com", "alpha@example.com"}
+        r["user"]["email"] for r in rows if r["user"]["email"] in {"zara@example.com", "alpha@example.com"}
     ]
     assert seeded_emails == ["alpha@example.com", "zara@example.com"]
+
+
+def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(client: TestClient, db: Db, url_for: Any) -> None:
+    """`user_id` + `owner_id` pinned: the narrow group-only `q` filter
+    AND-applies on top of the broad either-side filter. A search term that
+    matches user columns but no group columns must return zero rows."""
+    user = OktaUserFactory.create(email="zzqterm@example.com", first_name="Zzqterm", last_name="Doe")
+    owner = OktaUserFactory.create(email="owner-pin@example.com", first_name="Pin", last_name="Owner")
+    group = OktaGroupFactory.create(name="GroupA", description="alpha")
+    db.session.add_all([user, owner, group])
+    db.session.commit()
+    ModifyGroupUsers(
+        group=group,
+        members_to_add=[user.id],
+        owners_to_add=[owner.id],
+        sync_to_okta=False,
+    ).execute()
+
+    rep = client.get(
+        url_for("api-audit.users_and_groups"),
+        params={"user_id": user.id, "owner_id": owner.id, "q": "Zzqterm"},
+    )
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    assert all(r["group"]["id"] != group.id for r in rows)
+
+
+def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """`user_id` + `group_id` pinned: both narrow filters compose. A `q`
+    that matches user columns but no group columns must filter out the
+    pinned row."""
+    user = OktaUserFactory.create(email="qtfirst@example.com", first_name="Qtfirst", last_name="X")
+    group = OktaGroupFactory.create(name="GroupBeta", description="beta")
+    db.session.add_all([user, group])
+    db.session.commit()
+    ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+    rep = client.get(
+        url_for("api-audit.users_and_groups"),
+        params={"user_id": user.id, "group_id": group.id, "q": "Qtfirst"},
+    )
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    assert rows == []
+
+
+def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_for: Any) -> None:
+    """On `/api/audit/groups`, `role_id` + `owner_id` pinned: the narrow
+    associated-group `q` filter AND-applies on top of the broad either-side
+    filter. A `q` that matches role columns but no group columns must
+    return zero rows."""
+    role = RoleGroupFactory.create(name="ZqxRole", description="zqx-only-role")
+    associated = OktaGroupFactory.create(name="GroupGamma", description="gamma")
+    owner = OktaUserFactory.create(email="role-pin-owner@example.com", first_name="Pin", last_name="Owner")
+    db.session.add_all([role, associated, owner])
+    db.session.commit()
+    ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=associated, owners_to_add=[owner.id], sync_to_okta=False).execute()
+
+    rep = client.get(
+        url_for("api-audit.groups_and_roles"),
+        params={"role_id": role.id, "owner_id": owner.id, "q": "Zqx"},
+    )
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    assert all(r.get("group", {}).get("id") != associated.id for r in rows)

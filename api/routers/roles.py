@@ -87,6 +87,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> Gro
         db.query(RoleGroup)
         .options(*_GROUP_LOAD_OPTIONS)
         .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
         .first()
     )
     if role is None:
@@ -105,7 +106,12 @@ def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserI
 
 @router.get("/{role_id}/members", name="role_members_by_id")
 def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleMembersSummary:
-    role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
+    role = (
+        db.query(RoleGroup)
+        .filter(RoleGroup.deleted_at.is_(None))
+        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .first()
+    )
     if role is None:
         raise HTTPException(404, "Not Found")
     mappings = (

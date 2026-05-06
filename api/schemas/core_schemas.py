@@ -341,6 +341,35 @@ GroupRef = Annotated[
 ]
 
 
+# Wider polymorphic refs surfaced inside `RoleRequestDetail`. The role-request
+# detail page renders the role's current members and the target group's tags
+# inline, so those two relationship arrays must travel with the embedded
+# group refs (the bare `GroupRef` shape intentionally omits them to keep
+# audit/list payloads slim).
+class RoleRequestRequesterRoleRef(_GroupRefBase):
+    type: Literal["role_group"] = "role_group"
+    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+
+
+class RoleRequestRequestedOktaGroupRef(_GroupRefBase):
+    type: Literal["okta_group"] = "okta_group"
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+
+
+class RoleRequestRequestedAppGroupRef(_GroupRefBase):
+    type: Literal["app_group"] = "app_group"
+    app_id: Optional[str] = None
+    is_owner: bool = False
+    app: Optional[AppIdRef] = None
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+
+
+RoleRequestRequestedGroupRef = Annotated[
+    Union[RoleRequestRequestedOktaGroupRef, RoleRequestRequestedAppGroupRef],
+    Field(discriminator="type"),
+]
+
+
 # --- Members views (list-of-IDs response shapes) ----------------------------
 
 

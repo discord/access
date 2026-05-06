@@ -252,6 +252,26 @@ def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_ap
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
+def test_get_app_excludes_soft_deleted(
+    client: TestClient, db: Db, mocker: MockerFixture, access_app: App, url_for: Any
+) -> None:
+    db.session.add(access_app)
+    db.session.commit()
+    app_id = access_app.id
+    app_name = access_app.name
+
+    mocker.patch.object(okta, "async_delete_group")
+    rep = client.delete(url_for("api-apps.app_by_id", app_id=app_id))
+    assert rep.status_code == 200
+    assert db.session.get(App, app_id).deleted_at is not None
+
+    rep = client.get(url_for("api-apps.app_by_id", app_id=app_id))
+    assert rep.status_code == 404
+
+    rep = client.get(url_for("api-apps.app_by_id", app_id=app_name))
+    assert rep.status_code == 404
+
+
 # Define a Protocol that includes the pystr method
 class FakerWithPyStr(Protocol):
     def pystr(self) -> str: ...

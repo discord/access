@@ -135,6 +135,58 @@ def test_get_role_request(
     assert len(data["groups_owned_by_role"]) == 0
 
 
+def test_get_role_request_includes_nested_role_and_group_data(
+    client: TestClient,
+    db: Db,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    tag: Tag,
+    url_for: Any,
+) -> None:
+    role_member = OktaUserFactory.create()
+
+    db.session.add(user)
+    db.session.add(role_member)
+    db.session.add(okta_group)
+    db.session.add(role_group)
+    db.session.add(tag)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=role_group,
+        members_to_add=[role_member.id],
+        owners_to_add=[user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="needs-nested-data",
+    ).execute()
+    assert role_request is not None
+
+    rep = client.get(url_for("api-role-requests.role_request_by_id", role_request_id=role_request.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+
+    assert data["requester_role"]["type"] == "role_group"
+    member_user_ids = [
+        m["active_user"]["id"] for m in data["requester_role"]["active_user_memberships"] if m.get("active_user")
+    ]
+    assert role_member.id in member_user_ids
+
+    assert data["requested_group"]["type"] == "okta_group"
+    tag_ids = [t["active_tag"]["id"] for t in data["requested_group"]["active_group_tags"] if t.get("active_tag")]
+    assert tag.id in tag_ids
+
+
 def test_put_role_request(
     app: FastAPI,
     client: TestClient,
@@ -1287,9 +1339,7 @@ def test_role_request_approval_via_direct_add(
     assert data["owners"][0] == user.id
 
 
-def test_role_request_list_filters_via_http(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_role_request_list_filters_via_http(client: TestClient, db: Db, url_for: Any) -> None:
     """`status`, `requester_user_id`, `requested_group_id` and
     `requester_role_id` each narrow the role_requests list. Seed two
     requests across two users / two roles / two target groups so each

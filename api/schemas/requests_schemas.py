@@ -23,6 +23,8 @@ from api.config import settings
 from api.schemas.core_schemas import (
     GroupRef,
     OktaUserSummary,
+    RoleRequestRequestedGroupRef,
+    RoleRequestRequesterRoleRef,
 )
 from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
 
@@ -107,9 +109,15 @@ class RoleRequestDetail(BaseModel):
     created_at: RFC822Datetime
     updated_at: RFC822Datetime
     requester: Optional[OktaUserSummary] = None
-    requester_role: Optional[GroupRef] = None
+    requester_role: Optional[RoleRequestRequesterRoleRef] = None
+    # `active_requester_role` and `active_requested_group` use the lenient
+    # polymorphic `GroupRef` because `active_requester_role`'s SQLAlchemy
+    # primaryjoin currently mirrors `active_requested_group` (joins on
+    # `requested_group_id`), so the value at runtime is the requested group,
+    # not the requester role. Tightening the type to a role-only literal
+    # would surface that model-side defect as a 500.
     active_requester_role: Optional[GroupRef] = None
-    requested_group: Optional[GroupRef] = None
+    requested_group: Optional[RoleRequestRequestedGroupRef] = None
     active_requested_group: Optional[GroupRef] = None
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
@@ -413,7 +421,9 @@ class _GroupUpdateBodyShared(BaseModel):
     fields optional (partial update)."""
 
     model_config = ConfigDict(extra="ignore")
-    name: Optional[str] = Field(default=None, pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
+    name: Optional[str] = Field(
+        default=None, pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH
+    )
     description: Optional[str] = Field(default=None, max_length=_GROUP_DESC_MAX_LENGTH)
     tags_to_add: list[str] = Field(default_factory=list)
     tags_to_remove: list[str] = Field(default_factory=list)
