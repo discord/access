@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -24,8 +24,6 @@ from api.models import (
 )
 from api.pagination import paginate
 from api.routers._eager import (
-    group_tag_map_options,
-    role_group_map_options,
     user_group_member_options,
 )
 from api.schemas import (
@@ -38,18 +36,20 @@ from api.schemas import (
 )
 
 
-# Eager-load options for an `App` response so the `active_owner_app_groups`
-# and `active_non_owner_app_groups` lists carry every relationship the
-# `AppGroupDetail` schema reads.
+# Eager-load options for an `App` response. `AppGroupForAppDetail` only
+# exposes user memberships/ownerships on the nested app groups — Flask's
+# `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS` strips role-mapping and group-tag
+# arrays via dotted-path entries — so we deliberately don't pull those
+# loaders here.
 _APP_GROUP_LOAD = (
     selectinload(AppGroup.active_user_memberships).options(*user_group_member_options()),
     selectinload(AppGroup.active_user_ownerships).options(*user_group_member_options()),
-    selectinload(AppGroup.active_role_member_mappings).options(*role_group_map_options()),
-    selectinload(AppGroup.active_role_owner_mappings).options(*role_group_map_options()),
-    selectinload(AppGroup.active_group_tags).options(*group_tag_map_options()),
 )
 APP_LOAD_OPTIONS = (
-    selectinload(App.active_app_tags).joinedload(AppTagMap.active_tag),
+    selectinload(App.active_app_tags).options(
+        joinedload(AppTagMap.active_tag),
+        joinedload(AppTagMap.active_app),
+    ),
     selectinload(App.active_owner_app_groups).options(*_APP_GROUP_LOAD),
     selectinload(App.active_non_owner_app_groups).options(*_APP_GROUP_LOAD),
 )

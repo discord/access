@@ -509,3 +509,34 @@ def test_get_tag_returns_deleted_when_no_active_match(
     rep = client.get(tag_url)
     assert rep.status_code == 200
     assert rep.json()["id"] == deleted.id
+
+
+def test_get_tag_detail_includes_active_app_tags(
+    client: TestClient,
+    db: Db,
+    tag: Tag,
+    access_app: App,
+    url_for: Any,
+) -> None:
+    """Flask `TagResource.get()` `exclude=("all_group_tags", "all_app_tags")`
+    retains `active_app_tags` — the tag-detail page renders the apps the tag
+    is attached to. The FastAPI `TagDetail` must include `active_app_tags`."""
+    db.session.add(tag)
+    db.session.add(access_app)
+    db.session.commit()
+    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
+    rep = client.get(tag_url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert "active_app_tags" in data
+    assert isinstance(data["active_app_tags"], list)
+    app_ids = [
+        entry["active_app"]["id"]
+        for entry in data["active_app_tags"]
+        if entry.get("active_app") is not None
+    ]
+    assert access_app.id in app_ids

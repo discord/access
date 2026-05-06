@@ -14,6 +14,7 @@ from api.schemas.audit_rows import AuditGroupRoleRow, AuditUserGroupRow  # noqa:
 from api.schemas.core_schemas import (  # noqa: F401
     AppDetail,
     AppGroupDetail,
+    AppGroupForAppDetail,
     AppGroupRef,
     AppGroupSummary,
     AppIdRef,
@@ -32,6 +33,7 @@ from api.schemas.core_schemas import (  # noqa: F401
     OktaUserGroupMemberDetail,
     OktaUserSummary,
     RoleGroupDetail,
+    RoleGroupListItem,
     RoleGroupMapDetail,
     RoleGroupRef,
     RoleGroupSummary,
@@ -79,6 +81,7 @@ from api.schemas.pagination import (  # noqa: F401
 )
 from api.schemas.requests_schemas import (  # noqa: F401
     AccessRequestDetail,
+    AccessRequestSummary,
     CreateAccessRequestBody,
     CreateAppBody,
     CreateGroupBody,
@@ -92,6 +95,7 @@ from api.schemas.requests_schemas import (  # noqa: F401
     ResolveRoleRequestBody,
     RoleMember,
     RoleRequestDetail,
+    RoleRequestSummary,
     UpdateAppBody,
     UpdateGroupBody,
     UpdateTagBody,

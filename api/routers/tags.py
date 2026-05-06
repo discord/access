@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, nullsfirst
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -15,7 +15,7 @@ from api.auth.permissions import require_access_admin
 from api.context import get_request_context
 from api.database import DbSession
 from api.extensions import db as _db
-from api.models import OktaUser, Tag
+from api.models import AppTagMap, OktaUser, Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
 from api.routers._eager import group_tag_map_options
@@ -30,7 +30,13 @@ from api.schemas import (
     UpdateTagBody,
 )
 
-_TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_options()),)
+_TAG_LOAD_OPTIONS = (
+    selectinload(Tag.active_group_tags).options(*group_tag_map_options()),
+    selectinload(Tag.active_app_tags).options(
+        joinedload(AppTagMap.active_app),
+        joinedload(AppTagMap.active_tag),
+    ),
+)
 
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])

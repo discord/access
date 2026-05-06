@@ -208,3 +208,52 @@ def test_user_summary_includes_timestamps(
     assert "created_at" in sample
     assert "updated_at" in sample
     assert sample["created_at"] is not None
+
+
+def test_get_user_manager_includes_profile(
+    client: TestClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    """Flask's nested manager schema retained `profile` (filtered to
+    `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The FastAPI `OktaUserDetail.manager`
+    must expose the same dict so the React user-detail page can render the
+    manager's title alongside their name."""
+    manager = OktaUserFactory.create()
+    manager.profile = {"Title": "Director", "Manager": "ceo@example.com"}
+    db.session.add(manager)
+    db.session.commit()
+
+    user.manager_id = manager.id
+    db.session.add(user)
+    db.session.commit()
+
+    rep = client.get(url_for("api-users.user_by_id", user_id=user.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["manager"] is not None
+    assert "profile" in data["manager"]
+    profile = data["manager"]["profile"]
+    # Defaults are "Title,Manager"; both should round-trip from the manager
+    # row's profile column.
+    assert profile.get("Title") == "Director"
+    assert profile.get("Manager") == "ceo@example.com"
+
+
+def test_get_user_excludes_aggregated_membership_lists(
+    client: TestClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    """Flask's `UserResource.get()` excluded `all_group_memberships_and_ownerships`
+    and `active_group_memberships_and_ownerships`. The FastAPI `OktaUserDetail`
+    must drop them too — they're large nested lists that would otherwise
+    duplicate the data already in `active_group_memberships` /
+    `active_group_ownerships`."""
+    db.session.add(user)
+    db.session.commit()
+
+    rep = client.get(url_for("api-users.user_by_id", user_id=user.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert "all_group_memberships_and_ownerships" not in data
+    assert "active_group_memberships_and_ownerships" not in data
+    # Sanity — the slimmer pair is still emitted.
+    assert "active_group_memberships" in data
+    assert "active_group_ownerships" in data

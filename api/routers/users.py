@@ -109,8 +109,6 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> Okt
         .options(
             selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
             selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
-            selectinload(OktaUser.active_group_memberships_and_ownerships).options(*user_group_member_options()),
-            selectinload(OktaUser.all_group_memberships_and_ownerships).options(*user_group_member_options()),
             joinedload(OktaUser.manager),
         )
         .filter(_db.or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))

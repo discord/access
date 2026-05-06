@@ -41,6 +41,10 @@ class TagDetail(BaseModel):
     # Resolved post-class via model_rebuild() — OktaGroupTagMapDetail is defined
     # below.
     active_group_tags: list["OktaGroupTagMapDetail"] = Field(default_factory=list)
+    # Tag detail also lists the apps this tag is attached to. Flask
+    # `TagResource.get()` `exclude=("all_group_tags", "all_app_tags")`
+    # retains the `active_app_tags` projection.
+    active_app_tags: list["AppTagMapDetail"] = Field(default_factory=list)
 
 
 class TagSummary(BaseModel):
@@ -81,18 +85,29 @@ class AppTagMapDetail(BaseModel):
     created_at: RFC822Datetime
     ended_at: RFC822DatetimeOpt = None
     active_tag: Optional[TagSummary] = None
+    # Populated when the row is reached from the Tag side
+    # (`tag.active_app_tags`). Flask emitted `active_app.{id, name, description}`
+    # via the legacy AppTagMapSchema only-list.
+    active_app: Optional["AppSummary"] = None
 
 
 # --- Apps -------------------------------------------------------------------
 
 
 class AppIdRef(BaseModel):
-    """Inline reference to an App by id (used in compact group views)."""
+    """Inline reference to an App by id (used in compact group views).
+
+    Flask `AppGroupSchema.app = Nested(AppSchema, only=("id", "name",
+    "deleted_at", "app_group_lifecycle_plugin"))` exposed the lifecycle
+    plugin id on every embedded app reference so the React frontend can
+    dispatch on plugin behaviour without a follow-up `/api/apps/{id}` fetch.
+    """
 
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: Optional[str] = None
     deleted_at: RFC822DatetimeOpt = None
+    app_group_lifecycle_plugin: Optional[str] = None
 
 
 class AppSummary(BaseModel):
@@ -111,10 +126,16 @@ class AppDetail(AppSummary):
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
     active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
-    # Populated post-class-definition once `AppGroupDetail` exists (forward refs
-    # resolved via `model_rebuild()` at the bottom of this file).
-    active_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
-    active_non_owner_app_groups: list["AppGroupDetail"] = Field(default_factory=list)
+    # Flask `AppResource.get()` `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS` strips
+    # `active_role_member_mappings`, `active_role_owner_mappings`, and
+    # `active_group_tags` on the *nested* app groups (those land via
+    # `active_owner_app_groups.<dotted-path>` exclude entries). Use a
+    # dedicated slimmer shape — `AppGroupForAppDetail` — instead of
+    # `AppGroupDetail` so the App-detail response doesn't pull every
+    # role-association mapping per nested group. Forward refs resolved
+    # via `model_rebuild()` at the bottom of this file.
+    active_owner_app_groups: list["AppGroupForAppDetail"] = Field(default_factory=list)
+    active_non_owner_app_groups: list["AppGroupForAppDetail"] = Field(default_factory=list)
 
 
 # --- Users ------------------------------------------------------------------
@@ -135,28 +156,54 @@ class OktaUserSummary(BaseModel):
     deleted_at: RFC822DatetimeOpt = None
 
 
+def _filter_profile_attrs(value: Any) -> dict[str, Any]:
+    """Filter `OktaUser.profile` to keys in `USER_DISPLAY_CUSTOM_ATTRIBUTES`.
+
+    Marshmallow applied the same filter via `OktaUserSchema.get_attribute`;
+    the FastAPI side reuses this helper anywhere `profile` is exposed
+    (top-level on `OktaUserDetail`, nested on `OktaUserManagerRef`)."""
+    from api.config import settings
+
+    attrs_to_display = [a for a in settings.USER_DISPLAY_CUSTOM_ATTRIBUTES.split(",") if a]
+    if not attrs_to_display:
+        return {}
+    if not isinstance(value, dict):
+        return {}
+    return {key: value.get(key) for key in attrs_to_display}
+
+
+class OktaUserManagerRef(OktaUserSummary):
+    """Embedded manager reference inside `OktaUserDetail`.
+
+    Flask's `OktaUserSchema.manager = Nested(OktaUserSchema, exclude=(...))`
+    retained `profile` (filtered to `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The
+    React user-detail page reads `manager.profile.Title` to render the
+    manager's job title alongside their name."""
+
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def _filter_profile(cls, value: Any) -> dict[str, Any]:
+        return _filter_profile_attrs(value)
+
+
 class OktaUserDetail(OktaUserSummary):
     profile: dict[str, Any] = Field(default_factory=dict)
-    manager: Optional["OktaUserSummary"] = None
-    # Membership / ownership lists. Resolved post-class via model_rebuild()
-    # because OktaUserGroupMemberDetail is defined further down.
-    all_group_memberships_and_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
-    active_group_memberships_and_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
+    manager: Optional[OktaUserManagerRef] = None
+    # Membership / ownership lists. The aggregated
+    # `*_group_memberships_and_ownerships` pair Flask's `UserResource.get()`
+    # excluded — they duplicate the data already in `active_group_memberships`
+    # and `active_group_ownerships` and bloat the response. Resolved
+    # post-class via model_rebuild() because OktaUserGroupMemberDetail is
+    # defined further down.
     active_group_memberships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
     active_group_ownerships: list["OktaUserGroupMemberDetail"] = Field(default_factory=list)
 
     @field_validator("profile", mode="before")
     @classmethod
-    def _filter_profile_attrs(cls, value: Any) -> dict[str, Any]:
-        """Only emit profile keys present in `USER_DISPLAY_CUSTOM_ATTRIBUTES`."""
-        from api.config import settings
-
-        attrs_to_display = [a for a in settings.USER_DISPLAY_CUSTOM_ATTRIBUTES.split(",") if a]
-        if not attrs_to_display:
-            return {}
-        if not isinstance(value, dict):
-            return {}
-        return {key: value.get(key) for key in attrs_to_display}
+    def _filter_profile(cls, value: Any) -> dict[str, Any]:
+        return _filter_profile_attrs(value)
 
 
 # --- Group memberships ------------------------------------------------------
@@ -264,6 +311,34 @@ class AppGroupDetail(_GroupBase):
     active_role_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
 
 
+class AppGroupForAppDetail(BaseModel):
+    """Slimmer shape used inside `AppDetail.active_*_app_groups`.
+
+    Flask's `AppResource.get()` excluded `active_role_member_mappings`,
+    `active_role_owner_mappings`, and `active_group_tags` on the nested
+    app-groups via dotted-path entries in `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS`.
+    The outer `AppGroupDetail` retains them for direct
+    `GET /api/groups/{id}` calls; this variant drops them when the same
+    rows are embedded inside an `AppDetail` payload."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    type: Literal["app_group"] = "app_group"
+    name: str
+    description: Optional[str] = ""
+    is_managed: bool = True
+    externally_managed_data: Optional[dict[str, Any]] = None
+    created_at: RFC822Datetime
+    updated_at: RFC822Datetime
+    deleted_at: RFC822DatetimeOpt = None
+    app_id: Optional[str] = None
+    is_owner: bool = False
+    plugin_data: Optional[dict[str, Any]] = None
+    app: Optional[AppIdRef] = None
+    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+
+
 GroupDetail = Annotated[
     Union[OktaGroupDetail, RoleGroupDetail, AppGroupDetail],
     Field(discriminator="type"),
@@ -303,6 +378,23 @@ GroupSummary = Annotated[
     Union[OktaGroupSummary, RoleGroupSummary, AppGroupSummary],
     Field(discriminator="type"),
 ]
+
+
+class RoleGroupListItem(BaseModel):
+    """Slim row shape for `GET /api/roles`.
+
+    Flask `RoleList.get()` `only=(id, type, name, description, created_at,
+    updated_at)`. The role-list page does not render tags or role
+    associations, so we pay neither the loader cost nor the JSON bloat
+    from emitting them on every row."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    type: Literal["role_group"] = "role_group"
+    name: str
+    description: Optional[str] = ""
+    created_at: RFC822Datetime
+    updated_at: RFC822Datetime
 
 
 # --- Group references (embedded inside requests, audit, etc.) -------------
@@ -402,3 +494,4 @@ OktaUserDetail.model_rebuild()
 AppDetail.model_rebuild()
 TagDetail.model_rebuild()
 OktaGroupTagMapDetail.model_rebuild()
+AppTagMapDetail.model_rebuild()

@@ -988,3 +988,120 @@ def test_post_access_request_for_role_group_with_associated_groups(
     body = rep.json()
     assert body["requested_group"]["id"] == role.id
     assert body["status"] == AccessRequestStatus.PENDING
+
+
+def test_get_access_request_detail_requested_group_for_role_group(
+    client: TestClient,
+    db: Db,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Flask `AccessRequestResource.get()` `only=` retains
+    `requested_group.active_group_tags`,
+    `requested_group.active_role_associated_group_member_mappings`, and
+    `requested_group.active_role_associated_group_owner_mappings` on a
+    role-type requested group. The React request-detail page lists the
+    role's associated groups inline."""
+    db.session.add(user)
+    db.session.add(okta_group)
+    db.session.add(role_group)
+    db.session.commit()
+
+    # Wire the role to one member-group and one owner-group so both
+    # association arrays have content.
+    member_group = OktaGroupFactory.create()
+    owner_group = OktaGroupFactory.create()
+    db.session.add(member_group)
+    db.session.add(owner_group)
+    db.session.commit()
+    ModifyRoleGroups(
+        role_group=role_group,
+        groups_to_add=[member_group.id],
+        owner_groups_to_add=[owner_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    ar = CreateAccessRequest(
+        requester_user=user,
+        requested_group=role_group,
+        request_ownership=False,
+        request_reason="role-detail rich-ref test",
+    ).execute()
+    assert ar is not None
+
+    rep = client.get(url_for("api-access-requests.access_request_by_id", access_request_id=ar.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    rg = data["requested_group"]
+    assert rg["type"] == "role_group"
+    assert "active_group_tags" in rg
+    assert "active_role_associated_group_member_mappings" in rg
+    assert "active_role_associated_group_owner_mappings" in rg
+    member_ids = [
+        m["active_group"]["id"]
+        for m in rg["active_role_associated_group_member_mappings"]
+        if m.get("active_group") is not None
+    ]
+    owner_ids = [
+        m["active_group"]["id"]
+        for m in rg["active_role_associated_group_owner_mappings"]
+        if m.get("active_group") is not None
+    ]
+    assert member_group.id in member_ids
+    assert owner_group.id in owner_ids
+
+
+def test_get_access_request_detail_requested_group_for_app_group(
+    client: TestClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    user: OktaUser,
+    tag: Tag,
+    url_for: Any,
+) -> None:
+    """Flask `AccessRequestResource.get()` `only=` retains
+    `requested_group.is_owner`, `requested_group.app`, and
+    `requested_group.active_group_tags` on an app-group requested group.
+    The React request-detail page renders the app name and any tags
+    attached to the group."""
+    access_app.app_group_lifecycle_plugin = "noop"
+    db.session.add(user)
+    db.session.add(access_app)
+    db.session.commit()
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+    db.session.add(tag)
+    db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    ar = CreateAccessRequest(
+        requester_user=user,
+        requested_group=app_group,
+        request_ownership=False,
+        request_reason="app-group rich-ref test",
+    ).execute()
+    assert ar is not None
+
+    rep = client.get(url_for("api-access-requests.access_request_by_id", access_request_id=ar.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    rg = data["requested_group"]
+    assert rg["type"] == "app_group"
+    assert "is_owner" in rg and rg["is_owner"] is False
+    assert rg["app"] is not None
+    assert rg["app"].get("id") == access_app.id
+    # `app_group_lifecycle_plugin` parity check (covers the `AppIdRef` fix
+    # at the same time, on the embedded path).
+    assert rg["app"].get("app_group_lifecycle_plugin") == "noop"
+    assert "active_group_tags" in rg
+    tag_ids = [
+        entry["active_tag"]["id"]
+        for entry in rg["active_group_tags"]
+        if entry.get("active_tag") is not None
+    ]
+    assert tag.id in tag_ids

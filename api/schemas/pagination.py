@@ -12,13 +12,13 @@ from api.schemas.core_schemas import (
     AppSummary,
     GroupSummary,
     OktaUserSummary,
-    RoleGroupSummary,
+    RoleGroupListItem,
     TagListItem,
 )
 from api.schemas.requests_schemas import (
-    AccessRequestDetail,
+    AccessRequestSummary,
     GroupRequestDetail,
-    RoleRequestDetail,
+    RoleRequestSummary,
 )
 
 T = TypeVar("T")
@@ -132,7 +132,7 @@ class GroupPagination(PaginationResponse[GroupSummary]):
     pass
 
 
-class RolePagination(PaginationResponse[RoleGroupSummary]):
+class RolePagination(PaginationResponse[RoleGroupListItem]):
     pass
 
 
@@ -144,11 +144,11 @@ class TagPagination(PaginationResponse[TagListItem]):
     pass
 
 
-class AccessRequestPagination(PaginationResponse[AccessRequestDetail]):
+class AccessRequestPagination(PaginationResponse[AccessRequestSummary]):
     pass
 
 
-class RoleRequestPagination(PaginationResponse[RoleRequestDetail]):
+class RoleRequestPagination(PaginationResponse[RoleRequestSummary]):
     pass
 
 

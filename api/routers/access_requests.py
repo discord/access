@@ -28,6 +28,7 @@ from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.schemas import (
     AccessRequestDetail,
     AccessRequestPagination,
+    AccessRequestSummary,
     CreateAccessRequestBody,
     ResolveAccessRequestBody,
     SearchAccessRequestPaginationQuery,
@@ -36,12 +37,12 @@ from api.schemas import (
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
 
-# Eager-load options for the access-request POST response refetch — chains
-# the polymorphic group + tag + role-association loaders under
-# `AccessRequest.requested_group` so the response serialization (and any
-# plugin hook walking these relationships) doesn't N+1 row-by-row when the
-# requested group is a Role.
-def _post_load_options() -> tuple:
+# Eager-load options for the *detail* GET (`AccessRequestDetail`). Chains the
+# polymorphic group + tag + role-association loaders under
+# `AccessRequest.requested_group` so the rich `_RichRequestedGroupRef`
+# projection (group tags + role-association mappings + AppGroup.app) can
+# be serialized without lazy='raise_on_sql' surprises.
+def _detail_load_options() -> tuple:
     requested_group_load = selectinload(AccessRequest.requested_group).options(
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
         joinedload(AppGroup.app),
@@ -59,7 +60,10 @@ def _post_load_options() -> tuple:
     )
 
 
-def _load_options() -> tuple:
+def _summary_load_options() -> tuple:
+    """Slim eager-loads for list / POST / PUT (`AccessRequestSummary`).
+    Skips the per-type tag and role-association loaders the summary shape
+    doesn't expose."""
     return (
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
         joinedload(AccessRequest.requester),
@@ -78,7 +82,7 @@ def list_access_requests(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchAccessRequestPaginationQuery, Query()],
 ) -> AccessRequestPagination:
-    query = db.query(AccessRequest).options(*_load_options()).order_by(AccessRequest.created_at.desc())
+    query = db.query(AccessRequest).options(*_summary_load_options()).order_by(AccessRequest.created_at.desc())
 
     # Honored search filters: status, requester_user_id, requested_group_id,
     # assignee_user_id, resolver_user_id. The frontend sends these from the
@@ -193,7 +197,7 @@ def list_access_requests(
 
 @router.get("/{access_request_id}", name="access_request_by_id")
 def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> AccessRequestDetail:
-    ar = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
+    ar = db.query(AccessRequest).options(*_detail_load_options()).filter(AccessRequest.id == access_request_id).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
     return AccessRequestDetail.model_validate(ar, from_attributes=True)
@@ -204,7 +208,7 @@ def post_access_request(
     body: CreateAccessRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> AccessRequestDetail:
+) -> AccessRequestSummary:
     requester = (
         db.query(OktaUser)
         .filter(OktaUser.deleted_at.is_(None))
@@ -250,8 +254,8 @@ def post_access_request(
         # Belt and suspenders — `is_managed` is the only path that returns
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
-    refreshed = db.query(AccessRequest).options(*_post_load_options()).filter(AccessRequest.id == ar.id).first()
-    return AccessRequestDetail.model_validate(refreshed, from_attributes=True)
+    refreshed = db.query(AccessRequest).options(*_summary_load_options()).filter(AccessRequest.id == ar.id).first()
+    return AccessRequestSummary.model_validate(refreshed, from_attributes=True)
 
 
 @router.put("/{access_request_id}", name="access_request_by_id_put")
@@ -260,7 +264,7 @@ def put_access_request(
     body: ResolveAccessRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> AccessRequestDetail:
+) -> AccessRequestSummary:
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
@@ -309,5 +313,7 @@ def put_access_request(
             notify_requester=ar.requester_user_id != current_user_id,
             current_user_id=current_user_id,
         ).execute()
-    refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
-    return AccessRequestDetail.model_validate(refreshed, from_attributes=True)
+    refreshed = (
+        db.query(AccessRequest).options(*_summary_load_options()).filter(AccessRequest.id == access_request_id).first()
+    )
+    return AccessRequestSummary.model_validate(refreshed, from_attributes=True)

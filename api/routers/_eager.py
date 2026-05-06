@@ -62,9 +62,18 @@ def role_group_map_options() -> tuple:
 
 
 def group_tag_map_options() -> tuple:
-    """Eager-load every relationship `OktaGroupTagMapDetail` reads."""
+    """Eager-load every relationship `OktaGroupTagMapDetail` reads.
+
+    `AppTagMapDetail.active_app` is hydrated here too because the same
+    schema is reused inside `TagDetail.active_app_tags` — the route-side
+    loaders for tag detail rely on this helper indirectly through the
+    forward-ref chain.
+    """
     return (
-        joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_tag),
+        joinedload(OktaGroupTagMap.active_app_tag_mapping).options(
+            joinedload(AppTagMap.active_tag),
+            joinedload(AppTagMap.active_app),
+        ),
         joinedload(OktaGroupTagMap.active_tag),
         selectinload(OktaGroupTagMap.active_group).options(*polymorphic_group_options()),
     )

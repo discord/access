@@ -23,6 +23,7 @@ from api.pagination import paginate
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     GroupDetail,
+    RoleGroupListItem,
     RoleMembersSummary,
     RolePagination,
     SearchRolePaginationQuery,
@@ -42,9 +43,13 @@ def list_roles(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRolePaginationQuery, Query()],
 ) -> RolePagination:
+    # Flask `RoleList.get()` `only=(id, type, name, description, created_at,
+    # updated_at)` — `RoleGroupListItem` matches that shape exactly. We
+    # deliberately don't reuse `_GROUP_LOAD_OPTIONS` here: those eager-loads
+    # populate fields the list shape doesn't expose, so each call would
+    # issue extra round trips for data that gets discarded.
     query = (
         db.query(RoleGroup)
-        .options(*_GROUP_LOAD_OPTIONS)
         .filter(RoleGroup.deleted_at.is_(None))
         .order_by(func.lower(RoleGroup.name))
     )

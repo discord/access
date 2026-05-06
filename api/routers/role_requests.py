@@ -36,14 +36,20 @@ from api.schemas import (
     ResolveRoleRequestBody,
     RoleRequestDetail,
     RoleRequestPagination,
+    RoleRequestSummary,
     SearchRoleRequestPaginationQuery,
 )
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 
 
-def _load_options() -> tuple:
-    """Eager-load every relationship `RoleRequestDetail` reads."""
+def _detail_load_options() -> tuple:
+    """Eager-load every relationship `RoleRequestDetail` reads.
+
+    `RoleRequest.requester_role.active_user_memberships` and
+    `RoleRequest.requested_group.active_group_tags` are populated here
+    because the React role-request detail page lists the role's current
+    members and any tags on the target group inline."""
     return (
         joinedload(RoleRequest.requester),
         joinedload(RoleRequest.resolver),
@@ -61,6 +67,21 @@ def _load_options() -> tuple:
     )
 
 
+def _summary_load_options() -> tuple:
+    """Slim eager-loads for list / POST / PUT (`RoleRequestSummary`).
+    Skips role-member and group-tag loaders that the summary shape
+    doesn't expose."""
+    return (
+        joinedload(RoleRequest.requester),
+        joinedload(RoleRequest.resolver),
+        joinedload(RoleRequest.active_resolver),
+        selectinload(RoleRequest.requester_role).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.active_requester_role).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.requested_group).options(*polymorphic_group_options()),
+        selectinload(RoleRequest.active_requested_group).options(*polymorphic_group_options()),
+    )
+
+
 @router.get("", name="role_requests")
 def list_role_requests(
     request: Request,
@@ -70,7 +91,7 @@ def list_role_requests(
 ) -> RoleRequestPagination:
     from api.auth.permissions import is_access_admin
 
-    query = db.query(RoleRequest).options(*_load_options()).order_by(RoleRequest.created_at.desc())
+    query = db.query(RoleRequest).options(*_summary_load_options()).order_by(RoleRequest.created_at.desc())
 
     if q_args.status:
         query = query.filter(RoleRequest.status == q_args.status)
@@ -316,7 +337,7 @@ def list_role_requests(
 
 @router.get("/{role_request_id}", name="role_request_by_id")
 def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleRequestDetail:
-    rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
+    rr = db.query(RoleRequest).options(*_detail_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
     return RoleRequestDetail.model_validate(rr, from_attributes=True)
@@ -327,7 +348,7 @@ def post_role_request(
     body: CreateRoleRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> RoleRequestDetail:
+) -> RoleRequestSummary:
     from api.auth import permissions as _perms
 
     requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
@@ -370,8 +391,8 @@ def post_role_request(
         request_reason=body.reason or "",
         request_ending_at=body.ending_at,
     ).execute()
-    refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == rr.id).first()
-    return RoleRequestDetail.model_validate(refreshed or rr, from_attributes=True)
+    refreshed = db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == rr.id).first()
+    return RoleRequestSummary.model_validate(refreshed or rr, from_attributes=True)
 
 
 @router.put("/{role_request_id}", name="role_request_by_id_put")
@@ -380,11 +401,11 @@ def put_role_request(
     body: ResolveRoleRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> RoleRequestDetail:
+) -> RoleRequestSummary:
     from api.auth import permissions as _perms
     from api.operations.constraints import CheckForReason
 
-    rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
+    rr = db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
 
@@ -427,5 +448,7 @@ def put_role_request(
             rejection_reason=body.reason or "",
             notify_requester=rr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
-    return RoleRequestDetail.model_validate(refreshed, from_attributes=True)
+    refreshed = (
+        db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == role_request_id).first()
+    )
+    return RoleRequestSummary.model_validate(refreshed, from_attributes=True)

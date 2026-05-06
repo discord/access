@@ -1376,3 +1376,64 @@ def test_put_group_members_accepts_well_formed_ids(
         },
     )
     assert rep.status_code == 200
+
+
+def test_app_group_app_ref_includes_lifecycle_plugin(
+    client: TestClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    """Flask's `AppGroupSchema.app = Nested(AppSchema, only=("id", "name",
+    "deleted_at", "app_group_lifecycle_plugin"))` emits the lifecycle plugin
+    id on every nested app reference. The FastAPI `AppIdRef` must include
+    `app_group_lifecycle_plugin` so the React app-detail / group-detail
+    pages can dispatch on the plugin."""
+    access_app.app_group_lifecycle_plugin = "noop"
+    db.session.add(access_app)
+    db.session.commit()
+    app_group.app_id = access_app.id
+    db.session.add(app_group)
+    db.session.commit()
+
+    # GET /api/groups/{app_group_id}
+    group_url = url_for("api-groups.group_by_id", group_id=app_group.id)
+    rep = client.get(group_url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["type"] == "app_group"
+    assert data["app"] is not None
+    assert data["app"].get("app_group_lifecycle_plugin") == "noop"
+
+    # GET /api/groups (list) — same field must appear on app-group rows.
+    rep = client.get(url_for("api-groups.groups"))
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    matched = next((r for r in rows if r["id"] == app_group.id), None)
+    assert matched is not None
+    assert matched["app"] is not None
+    assert matched["app"].get("app_group_lifecycle_plugin") == "noop"
+
+
+def test_role_list_excludes_role_association_mappings(
+    client: TestClient,
+    db: Db,
+    role_group: RoleGroup,
+    url_for: Any,
+) -> None:
+    """Flask `RoleList.get()` uses `only=(id, type, name, description,
+    created_at, updated_at)`. The FastAPI `/api/roles` list response must
+    not emit the bulky `active_role_associated_group_*_mappings` arrays
+    (those belong on the role-detail endpoint, not the list)."""
+    db.session.add(role_group)
+    db.session.commit()
+
+    rep = client.get(url_for("api-roles.roles"))
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    matched = next((r for r in rows if r["id"] == role_group.id), None)
+    assert matched is not None
+    assert "active_role_associated_group_member_mappings" not in matched
+    assert "active_role_associated_group_owner_mappings" not in matched
+    assert "active_group_tags" not in matched

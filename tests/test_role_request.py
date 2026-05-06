@@ -1406,6 +1406,66 @@ def test_role_request_list_filters_via_http(client: TestClient, db: Db, url_for:
     assert target_rr.id in found and other_rr.id not in found
 
 
+def test_get_role_request_detail_requested_group_for_app_group(
+    client: TestClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    tag: Tag,
+    url_for: Any,
+) -> None:
+    """Flask `RoleRequestResource.get()` `only=` retains
+    `requested_group.is_owner`, `requested_group.app`, and
+    `requested_group.active_group_tags` on an app-group requested group.
+    Mirrors the access-request rich-ref expectation for role requests."""
+    access_app.app_group_lifecycle_plugin = "noop"
+    db.session.add(user)
+    db.session.add(access_app)
+    db.session.add(role_group)
+    db.session.commit()
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+    db.session.add(tag)
+    db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
+    db.session.commit()
+    ModifyGroupUsers(
+        group=role_group,
+        members_to_add=[user.id],
+        owners_to_add=[user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    rr = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=app_group,
+        request_ownership=False,
+        request_reason="role-request app-group rich-ref test",
+    ).execute()
+    assert rr is not None
+
+    rep = client.get(url_for("api-role-requests.role_request_by_id", role_request_id=rr.id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    rg = data["requested_group"]
+    assert rg["type"] == "app_group"
+    assert "is_owner" in rg and rg["is_owner"] is False
+    assert rg["app"] is not None
+    assert rg["app"].get("id") == access_app.id
+    assert rg["app"].get("app_group_lifecycle_plugin") == "noop"
+    assert "active_group_tags" in rg
+    tag_ids = [
+        entry["active_tag"]["id"]
+        for entry in rg["active_group_tags"]
+        if entry.get("active_tag") is not None
+    ]
+    assert tag.id in tag_ids
+
+
 def test_put_role_request_pending_check_includes_resolved_at(
     client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:

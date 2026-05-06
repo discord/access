@@ -21,8 +21,11 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, 
 from api.access_config import get_access_config
 from api.config import settings
 from api.schemas.core_schemas import (
+    AppIdRef,
     GroupRef,
+    OktaGroupTagMapDetail,
     OktaUserSummary,
+    RoleGroupMapDetail,
     RoleRequestRequestedGroupRef,
     RoleRequestRequesterRoleRef,
 )
@@ -46,7 +49,90 @@ _TAG_DESC_MAX_LENGTH = 1024
 # --- Access requests --------------------------------------------------------
 
 
+# Discriminated-union refs for the *detail* `requested_group`. Each variant
+# matches the per-type Flask `only=` whitelist for `AccessRequestResource.get()`:
+# - OktaGroup: id/type/name/deleted_at + active_group_tags
+# - RoleGroup: id/type/name/deleted_at + active_group_tags +
+#   active_role_associated_group_member_mappings + active_role_associated_group_owner_mappings
+# - AppGroup: id/type/name/deleted_at + is_owner + app + active_group_tags
+class _AccessRequestOktaGroupRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    type: Literal["okta_group"] = "okta_group"
+    name: str
+    deleted_at: RFC822DatetimeOpt = None
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+
+
+class _AccessRequestRoleGroupRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    type: Literal["role_group"] = "role_group"
+    name: str
+    deleted_at: RFC822DatetimeOpt = None
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+    active_role_associated_group_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+    active_role_associated_group_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
+
+
+class _AccessRequestAppGroupRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    type: Literal["app_group"] = "app_group"
+    name: str
+    deleted_at: RFC822DatetimeOpt = None
+    is_owner: bool = False
+    app: Optional[AppIdRef] = None
+    active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+
+
+_RichRequestedGroupRef = Annotated[
+    Union[_AccessRequestOktaGroupRef, _AccessRequestRoleGroupRef, _AccessRequestAppGroupRef],
+    Field(discriminator="type"),
+]
+
+
 class AccessRequestDetail(BaseModel):
+    """Response for `GET /api/requests/{id}` only.
+
+    Flask `AccessRequestResource.get()` `only=` retains a richer
+    `requested_group` projection (group tags + role-association mappings on
+    role groups, plus `app`/`is_owner` on app groups). We split the detail
+    shape from the list/POST/PUT shape (`AccessRequestSummary`) because
+    SQLAlchemy `lazy="raise_on_sql"` won't let one Pydantic model
+    conditionally include the relationships at runtime — the eager-loads
+    differ per endpoint."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    requester_user_id: Optional[str] = None
+    requested_group_id: Optional[str] = None
+    request_ownership: bool = False
+    request_reason: Optional[str] = ""
+    request_ending_at: RFC822DatetimeOpt = None
+    status: str
+    resolver_user_id: Optional[str] = None
+    resolution_reason: Optional[str] = ""
+    resolved_at: RFC822DatetimeOpt = None
+    approval_ending_at: RFC822DatetimeOpt = None
+    created_at: RFC822Datetime
+    updated_at: RFC822Datetime
+    requester: Optional[OktaUserSummary] = None
+    active_requester: Optional[OktaUserSummary] = None
+    requested_group: Optional[_RichRequestedGroupRef] = None
+    active_requested_group: Optional[GroupRef] = None
+    resolver: Optional[OktaUserSummary] = None
+    active_resolver: Optional[OktaUserSummary] = None
+
+
+class AccessRequestSummary(BaseModel):
+    """Response for `GET /api/requests`, `POST /api/requests`, and
+    `PUT /api/requests/{id}`. Matches Flask's per-endpoint `only=` lists
+    via null-emission: scalar fields the frontend reads (resolution_reason,
+    request_reason, etc.) are emitted as `null` when absent. The
+    `requested_group` is the lightweight `GroupRef` — no group tags or
+    role-association mappings, which only the detail page renders."""
+
     model_config = ConfigDict(from_attributes=True)
     id: str
     requester_user_id: Optional[str] = None
@@ -93,6 +179,15 @@ class ResolveAccessRequestBody(BaseModel):
 
 
 class RoleRequestDetail(BaseModel):
+    """Response for `GET /api/role-requests/{id}` only.
+
+    Carries the rich `requester_role` / `requested_group` projections —
+    `requester_role.active_user_memberships` and the `requested_group`
+    `active_group_tags` (plus `is_owner` + `app` for app-group requested
+    groups) — that the React role-request detail page renders. List /
+    POST / PUT use `RoleRequestSummary` instead because their eager-load
+    chain is slimmer."""
+
     model_config = ConfigDict(from_attributes=True)
     id: str
     requester_user_id: Optional[str] = None
@@ -118,6 +213,36 @@ class RoleRequestDetail(BaseModel):
     # would surface that model-side defect as a 500.
     active_requester_role: Optional[GroupRef] = None
     requested_group: Optional[RoleRequestRequestedGroupRef] = None
+    active_requested_group: Optional[GroupRef] = None
+    resolver: Optional[OktaUserSummary] = None
+    active_resolver: Optional[OktaUserSummary] = None
+
+
+class RoleRequestSummary(BaseModel):
+    """Response for `GET /api/role-requests`, `POST /api/role-requests`,
+    and `PUT /api/role-requests/{id}`. Slim shape — no role-member /
+    group-tag eager-load on the embedded refs. The list / POST / PUT
+    pages don't render that data inline."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    requester_user_id: Optional[str] = None
+    requester_role_id: Optional[str] = None
+    requested_group_id: Optional[str] = None
+    request_ownership: bool = False
+    request_reason: Optional[str] = ""
+    request_ending_at: RFC822DatetimeOpt = None
+    status: str
+    resolver_user_id: Optional[str] = None
+    resolution_reason: Optional[str] = ""
+    resolved_at: RFC822DatetimeOpt = None
+    approval_ending_at: RFC822DatetimeOpt = None
+    created_at: RFC822Datetime
+    updated_at: RFC822Datetime
+    requester: Optional[OktaUserSummary] = None
+    requester_role: Optional[GroupRef] = None
+    active_requester_role: Optional[GroupRef] = None
+    requested_group: Optional[GroupRef] = None
     active_requested_group: Optional[GroupRef] = None
     resolver: Optional[OktaUserSummary] = None
     active_resolver: Optional[OktaUserSummary] = None
