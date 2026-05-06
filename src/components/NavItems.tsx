@@ -167,15 +167,15 @@ export default function NavItems(props: NavItemsProps) {
             Role-Based
           </ListSubheader>
           <ListItemLink
-            to="/expiring-roles?owner_id=@me"
-            displayText="Owned Groups"
-            displayIcon={<ExpiringOwnedByMe />}
+            to="/expiring-roles?role_owner_id=@me"
+            displayText="My Roles"
+            displayIcon={<ExpiringRolesOwnedByMe />}
             sx={{pl: 4}}
           />
           <ListItemLink
-            to="/expiring-roles?role_owner_id=@me"
-            displayText="Owned Roles"
-            displayIcon={<ExpiringRolesOwnedByMe />}
+            to="/expiring-roles?owner_id=@me"
+            displayText="My Groups"
+            displayIcon={<ExpiringOwnedByMe />}
             sx={{pl: 4}}
           />
           <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
@@ -190,7 +190,7 @@ export default function NavItems(props: NavItemsProps) {
           />
           <ListItemLink
             to="/expiring-groups?owner_id=@me"
-            displayText="Owned by Me"
+            displayText="My Groups"
             displayIcon={<ExpiringOwnedByMe />}
             sx={{pl: 4}}
           />
