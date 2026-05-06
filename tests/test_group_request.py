@@ -2127,3 +2127,74 @@ def test_post_group_request_validation_via_http(
         },
     )
     assert rep.status_code == 400
+
+
+def test_post_group_request_app_id_must_exist_unknown(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """`requested_app_id` that does not match any App row → 404 "App not found".
+    The router must verify the app exists before invoking
+    `CreateGroupRequest`."""
+    db.session.add(user)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+            "requested_app_id": "nonexistent-app-id",
+        },
+    )
+    assert rep.status_code == 404
+    assert "App not found" in rep.text
+
+
+def test_post_group_request_app_id_must_exist_deleted(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """`requested_app_id` pointing at a soft-deleted App → 404 (the resource
+    queries `App.deleted_at.is_(None)` before accepting the request)."""
+    db.session.add(user)
+    deleted_app = AppFactory.create(name="DeletedApp", deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_app)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+            "requested_app_id": deleted_app.id,
+        },
+    )
+    assert rep.status_code == 404
+    assert "App not found" in rep.text
+
+
+def test_post_group_request_tag_ids_must_be_undeleted(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """A soft-deleted tag id must not be accepted — the router filters
+    `Tag.deleted_at.is_(None)` before counting matches against the
+    requested tag list."""
+    from tests.factories import TagFactory
+
+    db.session.add(user)
+    deleted_tag = TagFactory.create(name="DeletedTag", deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_tag)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": [deleted_tag.id],
+        },
+    )
+    assert rep.status_code == 400
+    assert "tags not found" in rep.text

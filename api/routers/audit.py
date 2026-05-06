@@ -165,13 +165,44 @@ def _role_group_mapping_ref(rgm: Any) -> dict[str, Any] | None:
     }
 
 
+def _role_associated_mapping_for_audit(rgm: Any) -> dict[str, Any] | None:
+    """Mapping ref used inside `group.active_role_associated_group_*_mappings`
+    on the user-group audit endpoint. Surfaces the active group on the other
+    side of the role association so the React UI can render the "this role
+    pulls in these groups" rollup."""
+    if rgm is None:
+        return None
+    return {
+        "id": rgm.id,
+        "is_owner": rgm.is_owner,
+        "created_at": _rfc822(rgm.created_at) if rgm.created_at else None,
+        "ended_at": _rfc822(rgm.ended_at) if rgm.ended_at else None,
+        "active_group": _group_ref(getattr(rgm, "active_group", None)),
+    }
+
+
 def _access_request_ref(ar: Any) -> dict[str, Any] | None:
     if ar is None:
         return None
     return {"id": ar.id}
 
 
-def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
+def _serialize_user_group_member(
+    m: OktaUserGroupMember, include_role_associations: bool = False
+) -> dict[str, Any]:
+    g = getattr(m, "group", None)
+    group_ref = _group_ref(g)
+    if include_role_associations and group_ref is not None and isinstance(g, RoleGroup):
+        # `group.active_role_associated_group_*_mappings` is only surfaced
+        # when neither `user_id` nor `group_id` is set on the request.
+        member_mappings = getattr(g, "active_role_associated_group_member_mappings", None) or []
+        owner_mappings = getattr(g, "active_role_associated_group_owner_mappings", None) or []
+        group_ref["active_role_associated_group_member_mappings"] = [
+            _role_associated_mapping_for_audit(rgm) for rgm in member_mappings
+        ]
+        group_ref["active_role_associated_group_owner_mappings"] = [
+            _role_associated_mapping_for_audit(rgm) for rgm in owner_mappings
+        ]
     return {
         "id": m.id,
         "user_id": m.user_id,
@@ -185,7 +216,7 @@ def _serialize_user_group_member(m: OktaUserGroupMember) -> dict[str, Any]:
         "ended_at": _rfc822(m.ended_at) if m.ended_at else None,
         "user": _user_summary(getattr(m, "user", None)),
         "active_user": _user_summary(getattr(m, "active_user", None)),
-        "group": _group_ref(getattr(m, "group", None)),
+        "group": group_ref,
         "active_group": _group_ref(getattr(m, "active_group", None)),
         "role_group_mapping": _role_group_mapping_ref(getattr(m, "role_group_mapping", None)),
         "active_role_group_mapping": _role_group_mapping_ref(getattr(m, "active_role_group_mapping", None)),
@@ -232,6 +263,35 @@ def users_and_groups(
 
     group_alias = aliased(OktaGroup)
 
+    # `group.active_role_associated_group_*_mappings` is only surfaced on
+    # the response when neither `user_id` nor `group_id` is set; eager-load
+    # the relationships only in that case.
+    include_role_associations = user is None and group is None
+
+    group_load = selectinload(OktaUserGroupMember.group).options(
+        selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+        selectinload(OktaGroup.active_group_tags).options(
+            joinedload(OktaGroupTagMap.active_tag),
+            joinedload(OktaGroupTagMap.active_app_tag_mapping),
+        ),
+    )
+    if include_role_associations:
+        group_load = group_load.options(
+            selectinload(RoleGroup.active_role_associated_group_member_mappings).options(
+                selectinload(RoleGroupMap.active_group).options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    joinedload(AppGroup.app),
+                ),
+            ),
+            selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(
+                selectinload(RoleGroupMap.active_group).options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    joinedload(AppGroup.app),
+                ),
+            ),
+        )
+
     query = (
         db.query(OktaUserGroupMember)
         .options(
@@ -240,14 +300,7 @@ def users_and_groups(
             joinedload(OktaUserGroupMember.created_actor),
             joinedload(OktaUserGroupMember.ended_actor),
             joinedload(OktaUserGroupMember.access_request),
-            selectinload(OktaUserGroupMember.group).options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_tag),
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping),
-                ),
-            ),
+            group_load,
             selectinload(OktaUserGroupMember.active_group).options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                 joinedload(AppGroup.app),
@@ -325,6 +378,10 @@ def users_and_groups(
                     OktaUserGroupMember.group_id.in_(visible_app_groups),
                 )
             )
+        # When filtering by `owner_id`, exclude the owner's own memberships:
+        # the frontend's "expiring access" review page expects to see *other*
+        # users whose access the owner needs to renew, not the owner.
+        query = query.filter(OktaUserGroupMember.user_id != owner.id)
 
     if q_args.owner is not None:
         query = query.filter(OktaUserGroupMember.is_owner == q_args.owner)
@@ -365,39 +422,67 @@ def users_and_groups(
             )
         )
 
+    # Free-text `q` — narrow the column set based on which other filters
+    # are active so `?user_id=...&q=Alice` searches only group columns
+    # (the user is already pinned), not user columns. Symmetric for the
+    # group-pinned branch.
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(
-            _db.or_(
-                group_alias.name.ilike(like),
-                OktaUser.email.ilike(like),
-                OktaUser.first_name.ilike(like),
-                OktaUser.last_name.ilike(like),
-                OktaUser.display_name.ilike(like),
-            )
+        group_cols = (
+            group_alias.id.ilike(like),
+            group_alias.name.ilike(like),
+            group_alias.description.ilike(like),
         )
-
-    nulls_order = nullsfirst if q_args.order_desc else nullslast
-    if q_args.order_by == AuditOrderBy.moniker:
-        if user is not None:
-            ordering = (
-                nulls_order(getattr(group_alias.name, "desc" if q_args.order_desc else "asc")()),
-                nullslast(OktaUserGroupMember.created_at.asc()),
-            )
+        user_cols = (
+            OktaUser.id.ilike(like),
+            OktaUser.email.ilike(like),
+            OktaUser.first_name.ilike(like),
+            OktaUser.last_name.ilike(like),
+            OktaUser.display_name.ilike(like),
+            (OktaUser.first_name + " " + OktaUser.last_name).ilike(like),
+        )
+        if user is not None and group is None and owner is None:
+            query = query.filter(_db.or_(*group_cols))
+        elif group is not None and user is None and owner is None:
+            query = query.filter(_db.or_(*user_cols))
         else:
-            ordering = (
-                nulls_order(getattr(func.lower(OktaUser.email), "desc" if q_args.order_desc else "asc")()),
-                nullslast(OktaUserGroupMember.created_at.asc()),
-            )
-    else:
+            query = query.filter(_db.or_(*group_cols, *user_cols))
+
+    # Compound order_by — the tail tie-breaker keeps page boundaries stable
+    # when two rows share the primary sort value. Without it, paginated
+    # results can repeat or skip rows between requests.
+    nulls_order = nullsfirst if q_args.order_desc else nullslast
+
+    def _users_audit_ordering() -> tuple:
+        if q_args.order_by == AuditOrderBy.moniker:
+            primary = group_alias.name if user is not None else func.lower(OktaUser.email)
+            primary_dir = primary.desc() if q_args.order_desc else primary.asc()
+            return (nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
         col = getattr(OktaUserGroupMember, q_args.order_by.value)
-        ordering = (nulls_order(getattr(col, "desc" if q_args.order_desc else "asc")()),)
-    query = query.order_by(*ordering)
+        primary_dir = col.desc() if q_args.order_desc else col.asc()
+        tail = (group_alias.name if user is not None else func.lower(OktaUser.email)).asc()
+        return (nulls_order(primary_dir), tail)
+
+    query = query.order_by(*_users_audit_ordering())
+
+    # When `direct` is present and neither `user_id` nor `owner_id` is set,
+    # re-apply the order_by using the email/created_at compound shape so
+    # the unfiltered "direct only" listing comes back in user-alphabetical
+    # order rather than insertion order.
+    if q_args.direct is not None and user is None and owner is None:
+        if q_args.order_by == AuditOrderBy.moniker:
+            primary = func.lower(OktaUser.email)
+            primary_dir = primary.desc() if q_args.order_desc else primary.asc()
+            query = query.order_by(nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
+        else:
+            col = getattr(OktaUserGroupMember, q_args.order_by.value)
+            primary_dir = col.desc() if q_args.order_desc else col.asc()
+            query = query.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc())
 
     return paginate(
         request,
         query,
-        _serialize_user_group_member,
+        lambda m: _serialize_user_group_member(m, include_role_associations),
         extract=lambda: (q_args.page, q_args.per_page),
     )
 
@@ -586,30 +671,46 @@ def groups_and_roles(
             )
         )
 
+    # Free-text `q` — narrow the column set based on which other filter is
+    # active so a `?role_id=...&q=...` request searches only associated-
+    # group columns (the role is already pinned), and `?group_id=...&q=...`
+    # searches only role columns.
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(
-            _db.or_(
-                RoleGroup.id.ilike(like),
-                RoleGroup.name.ilike(like),
-                RoleGroup.description.ilike(like),
-                group_alias.id.ilike(like),
-                group_alias.name.ilike(like),
-                group_alias.description.ilike(like),
-            )
+        role_cols = (
+            RoleGroup.id.ilike(like),
+            RoleGroup.name.ilike(like),
+            RoleGroup.description.ilike(like),
         )
+        group_cols = (
+            group_alias.id.ilike(like),
+            group_alias.name.ilike(like),
+            group_alias.description.ilike(like),
+        )
+        if group is not None and role is None:
+            query = query.filter(_db.or_(*role_cols))
+        elif role is not None and group is None:
+            query = query.filter(_db.or_(*group_cols))
+        else:
+            query = query.filter(_db.or_(*role_cols, *group_cols))
 
+    # Compound order_by — the tail tie-breaker keeps page boundaries stable.
+    # Primary column depends on context: when `group_id` is pinned, the
+    # listing is ordered by role; otherwise it's ordered by the associated
+    # group.
     nulls_order = nullsfirst if q_args.order_desc else nullslast
-    if q_args.order_by == AuditOrderBy.moniker:
-        target = RoleGroup.name if role is None else group_alias.name
-        ordering = (
-            nulls_order(getattr(target, "desc" if q_args.order_desc else "asc")()),
-            nullslast(RoleGroupMap.created_at.asc()),
-        )
-    else:
+
+    def _groups_audit_ordering() -> tuple:
+        if q_args.order_by == AuditOrderBy.moniker:
+            primary = RoleGroup.name if role is None and group is not None else group_alias.name
+            primary_dir = primary.desc() if q_args.order_desc else primary.asc()
+            return (nulls_order(primary_dir), nullslast(RoleGroupMap.created_at.asc()))
         col = getattr(RoleGroupMap, q_args.order_by.value)
-        ordering = (nulls_order(getattr(col, "desc" if q_args.order_desc else "asc")()),)
-    query = query.order_by(*ordering)
+        primary_dir = col.desc() if q_args.order_desc else col.asc()
+        tail = (RoleGroup.name if role is None and group is not None else group_alias.name).asc()
+        return (nulls_order(primary_dir), tail)
+
+    query = query.order_by(*_groups_audit_ordering())
 
     return paginate(
         request,

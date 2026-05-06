@@ -452,6 +452,11 @@ UpdateGroupBody = Annotated[
 
 # --- Group/Role membership editor payloads ----------------------------------
 
+# Okta user / group ids are exactly 20 characters wide. Validating the
+# length per-element rejects malformed ids at the request boundary instead
+# of letting them leak into the operation layer.
+_OktaIdStr = Annotated[str, Field(min_length=20, max_length=20)]
+
 
 class GroupMember(BaseModel):
     """Used by GET/PUT /api/groups/{id}/members.
@@ -464,10 +469,10 @@ class GroupMember(BaseModel):
     model_config = ConfigDict(extra="ignore")
     members: list[str] = Field(default_factory=list)
     owners: list[str] = Field(default_factory=list)
-    members_to_add: list[str] = Field(default_factory=list)
-    members_to_remove: list[str] = Field(default_factory=list)
-    owners_to_add: list[str] = Field(default_factory=list)
-    owners_to_remove: list[str] = Field(default_factory=list)
+    members_to_add: list[_OktaIdStr]
+    members_to_remove: list[_OktaIdStr]
+    owners_to_add: list[_OktaIdStr]
+    owners_to_remove: list[_OktaIdStr]
     members_should_expire: list[int] = Field(default_factory=list)
     owners_should_expire: list[int] = Field(default_factory=list)
     users_added_ending_at: RFC822DatetimeOpt = None
@@ -484,10 +489,10 @@ class RoleMember(BaseModel):
     model_config = ConfigDict(extra="ignore")
     groups: list[Any] = Field(default_factory=list)
     owner_groups: list[Any] = Field(default_factory=list)
-    groups_to_add: list[str] = Field(default_factory=list)
-    groups_to_remove: list[str] = Field(default_factory=list)
-    owner_groups_to_add: list[str] = Field(default_factory=list)
-    owner_groups_to_remove: list[str] = Field(default_factory=list)
+    groups_to_add: list[_OktaIdStr]
+    groups_to_remove: list[_OktaIdStr]
+    owner_groups_to_add: list[_OktaIdStr]
+    owner_groups_to_remove: list[_OktaIdStr]
     groups_should_expire: list[int] = Field(default_factory=list)
     owner_groups_should_expire: list[int] = Field(default_factory=list)
     groups_added_ending_at: RFC822DatetimeOpt = None

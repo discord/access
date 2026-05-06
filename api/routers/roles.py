@@ -127,8 +127,6 @@ def put_role_members(
     from api.models import AppGroup, RoleGroupMap
     from api.operations.constraints import CheckForReason, CheckForSelfAdd
 
-    if body is None:
-        body = RoleMember()
     role = (
         db.query(RoleGroup)
         .filter(RoleGroup.deleted_at.is_(None))
@@ -137,6 +135,11 @@ def put_role_members(
     )
     if role is None:
         raise HTTPException(404, "Not Found")
+    # Body is `Optional` so the missing-role 404 above fires even when the
+    # client sends no body. After the 404 we still require a body for the
+    # actual mutation. Mirrors `groups.py` PUT members.
+    if body is None:
+        raise HTTPException(400, "Request body is required")
 
     # Authorization: should_expire requires can_manage_group on each affected group.
     if body.groups_should_expire or body.owner_groups_should_expire:

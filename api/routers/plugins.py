@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from api.auth.dependencies import CurrentUserId
 from api.plugins.app_group_lifecycle import (
+    PluginNotFoundError,
     get_app_group_lifecycle_plugin_app_config_properties,
     get_app_group_lifecycle_plugin_app_status_properties,
     get_app_group_lifecycle_plugin_group_config_properties,
@@ -20,9 +21,12 @@ router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 
 
 def _ensure_plugin(plugin_id: str) -> None:
+    # Raises `PluginNotFoundError`, which the exception handler at
+    # `api/exception_handlers.py:plugin_not_found_handler` serializes as
+    # `{"error": "Plugin '...' not found"}` with status 404.
     plugins = [p.id for p in get_app_group_lifecycle_plugins()]
     if plugin_id not in plugins:
-        raise HTTPException(404, f"Plugin '{plugin_id}' not found")
+        raise PluginNotFoundError(plugin_id)
 
 
 @router.get("/app-group-lifecycle", name="app_group_lifecycle_plugins")

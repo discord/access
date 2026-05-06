@@ -310,6 +310,29 @@ class TestPluginAPIEndpoints:
         response = client.get(url)
         assert response.status_code == 404
 
+    def test_plugin_not_found_returns_error_envelope(
+        self, client: TestClient, db: Db, url_for: Any
+    ) -> None:
+        """The plugin endpoints' 404 path must respond with
+        `{"error": "..."}` (the React client reads the `error` field).
+        The plugin router raises `PluginNotFoundError`, which the
+        exception handler in `api/exception_handlers.py` serializes with
+        the `error` envelope — distinct from the global `{"message": ...}`
+        shape used by every other HTTPException."""
+        for endpoint in (
+            "api-plugins.app_group_lifecycle_plugin_app_config_props",
+            "api-plugins.app_group_lifecycle_plugin_group_config_props",
+            "api-plugins.app_group_lifecycle_plugin_app_status_props",
+            "api-plugins.app_group_lifecycle_plugin_group_status_props",
+        ):
+            url = url_for(endpoint, plugin_id="does-not-exist")
+            response = client.get(url)
+            assert response.status_code == 404
+            body = response.json()
+            assert body == {"error": "Plugin 'does-not-exist' not found"}
+            assert "message" not in body
+            assert "detail" not in body
+
 
 class TestPluginConfigAuthorization:
     """Tests for plugin configuration authorization - positive cases (should succeed)."""

@@ -933,3 +933,58 @@ def test_post_access_request_403_for_deleted_user(
         json={"group_id": okta_group.id, "group_owner": False, "reason": "test"},
     )
     assert rep.status_code == 403
+
+
+def test_post_access_request_for_role_group_with_associated_groups(
+    app: FastAPI, client: TestClient, db: Db, url_for: Any
+) -> None:
+    """POST /api/requests for a RoleGroup that owns and is a member of
+    several AppGroups must succeed. Without the polymorphic + tag +
+    role-association eager-load on the response refetch, the operation
+    walks `active_role_associated_group_*_mappings` row-by-row and either
+    N+1's or, on `lazy="raise_on_sql"` relationships, blows up with 500.
+    """
+    from api.operations import ModifyRoleGroups
+    from tests.factories import AppFactory, AppGroupFactory, RoleGroupFactory
+
+    role = RoleGroupFactory.create(name="Role-WithAssociations")
+    test_app = AppFactory.create(name="AssocTestApp")
+    db.session.add(role)
+    db.session.add(test_app)
+    db.session.commit()
+
+    associated_app_groups = [
+        AppGroupFactory.create(
+            name=f"App-AssocTestApp-Member-{i}",
+            app_id=test_app.id,
+            is_owner=False,
+        )
+        for i in range(3)
+    ]
+    associated_owner_groups = [
+        AppGroupFactory.create(
+            name=f"App-AssocTestApp-OwnerSlot-{i}",
+            app_id=test_app.id,
+            is_owner=False,
+        )
+        for i in range(2)
+    ]
+    for ag in associated_app_groups + associated_owner_groups:
+        db.session.add(ag)
+    db.session.commit()
+
+    ModifyRoleGroups(
+        role_group=role,
+        groups_to_add=[g.id for g in associated_app_groups],
+        owner_groups_to_add=[g.id for g in associated_owner_groups],
+        sync_to_okta=False,
+    ).execute()
+
+    rep = client.post(
+        url_for("api-access-requests.access_requests_create"),
+        json={"group_id": role.id, "group_owner": False, "reason": "want role membership"},
+    )
+    assert rep.status_code == 201, rep.text
+    body = rep.json()
+    assert body["requested_group"]["id"] == role.id
+    assert body["status"] == AccessRequestStatus.PENDING

@@ -25,6 +25,7 @@ from api.models import (
 )
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from api.pagination import paginate
+from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.schemas import (
     AccessRequestDetail,
     CreateAccessRequestBody,
@@ -36,6 +37,29 @@ from api.schemas._serialize import dump_orm
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
 _adapter = TypeAdapter(AccessRequestDetail)
+
+
+# Eager-load options for the access-request POST response refetch — chains
+# the polymorphic group + tag + role-association loaders under
+# `AccessRequest.requested_group` so the response serialization (and any
+# plugin hook walking these relationships) doesn't N+1 row-by-row when the
+# requested group is a Role.
+def _post_load_options() -> tuple:
+    requested_group_load = selectinload(AccessRequest.requested_group).options(
+        selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+        selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
+        selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
+        selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
+    )
+    return (
+        joinedload(AccessRequest.requester),
+        joinedload(AccessRequest.active_requester),
+        requested_group_load,
+        selectinload(AccessRequest.active_requested_group),
+        joinedload(AccessRequest.resolver),
+        joinedload(AccessRequest.active_resolver),
+    )
 
 
 def _load_options() -> tuple:
@@ -139,7 +163,7 @@ def list_access_requests(
             )
 
     # Free-text search: id prefix, status, requester/resolver name+email,
-    # requested group name+description. Mirrors the 14-field Flask search.
+    # requested group name+description.
     if q_args.q:
         like = f"%{q_args.q}%"
         q_requester_alias = aliased(OktaUser)
@@ -229,7 +253,7 @@ def post_access_request(
         # Belt and suspenders — `is_managed` is the only path that returns
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
-    refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == ar.id).first()
+    refreshed = db.query(AccessRequest).options(*_post_load_options()).filter(AccessRequest.id == ar.id).first()
     return dump_orm(_adapter, refreshed)
 
 

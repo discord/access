@@ -1549,3 +1549,52 @@ def test_put_role_members_rejects_role_in_role(
     )
     assert rep.status_code == 400
     assert "Roles cannot be added to other Roles" in rep.text
+
+
+def test_put_role_members_rejects_short_group_id(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """Each group id must be exactly 20 characters wide. Pydantic enforces
+    the constraint at the request boundary."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": ["short"],
+            "groups_to_remove": [],
+            "owner_groups_to_add": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_role_members_rejects_missing_required_lists(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """`groups_to_add`, `groups_to_remove`, `owner_groups_to_add`, and
+    `owner_groups_to_remove` are required fields on the request body. The
+    Pydantic schema must reject a body that omits them entirely."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(role_url, json={})
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_role_members_missing_body_400(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """No body at all returns 400 (matches groups.py PUT members shape).
+    Regression guard for the dropped `RoleMember()` substitution path."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(role_url)
+    assert rep.status_code == 400

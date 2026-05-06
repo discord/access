@@ -7,7 +7,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import TypeAdapter
-from sqlalchemy import func
+from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 
@@ -56,7 +56,16 @@ def list_tags(
 
 @router.get("/{tag_id}", name="tag_by_id")
 def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
-    tag = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    # `nullsfirst(deleted_at.desc())` makes an active row beat a soft-deleted
+    # row that shares the same name. Without the order, `.first()` may return
+    # an old deleted tag and 404 on a name that still exists.
+    tag = (
+        db.query(Tag)
+        .options(*_TAG_LOAD_OPTIONS)
+        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
+        .order_by(nullsfirst(Tag.deleted_at.desc()))
+        .first()
+    )
     if tag is None:
         raise HTTPException(404, "Not Found")
     return dump_orm(_adapter, tag)

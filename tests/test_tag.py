@@ -471,3 +471,41 @@ def test_list_tags_response_is_summary_shape(
     assert "deleted_at" not in item
     expected_keys = {"id", "name", "description", "constraints", "enabled", "created_at", "updated_at"}
     assert set(item.keys()) == expected_keys
+
+
+def test_get_tag_prefers_active_over_deleted_with_same_name(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """When two tags share the same name (one soft-deleted, one active),
+    GET /api/tags/{name} must return the active one. The router uses
+    `nullsfirst(deleted_at.desc())` to enforce that ordering."""
+    deleted = TagFactory.create(name="DupName", description="old")
+    deleted.deleted_at = datetime.now(timezone.utc)
+    db.session.add(deleted)
+    active = TagFactory.create(name="DupName", description="new")
+    db.session.add(active)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id="DupName")
+    rep = client.get(tag_url)
+    assert rep.status_code == 200
+    body = rep.json()
+    assert body["id"] == active.id
+    assert body["deleted_at"] is None
+
+
+def test_get_tag_returns_deleted_when_no_active_match(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """If only a soft-deleted tag with that name exists, GET still returns
+    it (the `nullsfirst(deleted_at.desc())` ordering falls through to the
+    deleted row when no active row exists)."""
+    deleted = TagFactory.create(name="OnlyDeleted")
+    deleted.deleted_at = datetime.now(timezone.utc)
+    db.session.add(deleted)
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id="OnlyDeleted")
+    rep = client.get(tag_url)
+    assert rep.status_code == 200
+    assert rep.json()["id"] == deleted.id

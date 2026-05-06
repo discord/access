@@ -1318,3 +1318,61 @@ def test_cannot_convert_role_prefixed_group_to_non_role_type(
     # Keeping it as role_group is still allowed
     rep = client.put(group_url, json={"type": "role_group", "name": role_group.name, "description": "desc"})
     assert rep.status_code == 200
+
+
+def test_put_group_members_rejects_short_user_id(
+    client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """Each Okta user id must be exactly 20 characters wide. Pydantic
+    enforces the constraint at the request boundary so malformed ids
+    cannot leak into the operation layer."""
+    db.session.add(okta_group)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(
+        group_url,
+        json={
+            "members_to_add": ["short"],
+            "members_to_remove": [],
+            "owners_to_add": [],
+            "owners_to_remove": [],
+        },
+    )
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_group_members_rejects_missing_required_lists(
+    client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """`members_to_add`, `members_to_remove`, `owners_to_add`, and
+    `owners_to_remove` are required fields on the request body. The Pydantic
+    schema must reject a body that omits them entirely."""
+    db.session.add(okta_group)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(group_url, json={})
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_group_members_accepts_well_formed_ids(
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
+    """Sanity check: a 20-char id is accepted (regression guard for fix 1)."""
+    db.session.add(okta_group)
+    db.session.add(user)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(
+        group_url,
+        json={
+            "members_to_add": [],
+            "members_to_remove": [],
+            "owners_to_add": [],
+            "owners_to_remove": [],
+        },
+    )
+    assert rep.status_code == 200
