@@ -7,6 +7,7 @@ import ListItemButton from '@mui/material/ListItemButton';
 import Collapse from '@mui/material/Collapse';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
+import ListSubheader from '@mui/material/ListSubheader';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import UserIcon from '@mui/icons-material/Person';
@@ -53,6 +54,17 @@ function ListItemLink(props: ListItemLinkProps) {
     </ListItem>
   );
 }
+
+const subheaderSx = {
+  pl: 4,
+  lineHeight: '2rem',
+  fontSize: '0.7rem',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'text.secondary',
+};
+
 interface NavItemsProps {
   open: boolean;
 }
@@ -60,11 +72,9 @@ interface NavItemsProps {
 // Integration MUI Link with React Router Link
 // https://mui.com/material-ui/guides/routing/#link
 export default function NavItems(props: NavItemsProps) {
-  const [openRequests, setOpenRequests] = React.useState(false);
-  const [openRoleRequests, setOpenRoleRequests] = React.useState(false);
+  const [openAccessRequests, setOpenAccessRequests] = React.useState(false);
   const [openGroupRequests, setOpenGroupRequests] = React.useState(false);
-  const [openExpiringGroups, setOpenExpiringGroups] = React.useState(false);
-  const [openExpiringRoles, setOpenExpiringRoles] = React.useState(false);
+  const [openExpiringAccess, setOpenExpiringAccess] = React.useState(false);
 
   return (
     <List>
@@ -77,12 +87,15 @@ export default function NavItems(props: NavItemsProps) {
         to="/requests"
         displayText="Access Requests"
         displayIcon={<AccessRequestIcon />}
-        open={openRequests}
-        onClick={() => setOpenRequests(!openRequests)}
+        open={openAccessRequests}
+        onClick={() => setOpenAccessRequests(!openAccessRequests)}
         sx={{pt: 1}}
       />
-      <Collapse component="li" in={props.open && openRequests} timeout="auto" unmountOnExit>
+      <Collapse component="li" in={props.open && openAccessRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Individual
+          </ListSubheader>
           <ListItemLink
             to="/requests?requester_user_id=@me"
             displayText="From Me"
@@ -96,18 +109,9 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
           />
           <ListItemLink to="/requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
-        </List>
-      </Collapse>
-      <ListItemLink
-        to="/role-requests"
-        displayText="Role Requests"
-        displayIcon={<RoleRequestIcon />}
-        open={openRoleRequests}
-        onClick={() => setOpenRoleRequests(!openRoleRequests)}
-        sx={{pt: 1}}
-      />
-      <Collapse component="li" in={props.open && openRoleRequests} timeout="auto" unmountOnExit>
-        <List disablePadding>
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Role-Based
+          </ListSubheader>
           <ListItemLink
             to="/role-requests?requester_user_id=@me"
             displayText="From Me"
@@ -151,14 +155,17 @@ export default function NavItems(props: NavItemsProps) {
       <Divider />
       <ListItemLink
         to="/expiring-groups"
-        displayText="Expiring Groups"
+        displayText="Expiring Access"
         displayIcon={<ExpiringGroupsIcon />}
-        open={openExpiringGroups}
-        onClick={() => setOpenExpiringGroups(!openExpiringGroups)}
+        open={openExpiringAccess}
+        onClick={() => setOpenExpiringAccess(!openExpiringAccess)}
         sx={{pt: 1}}
       />
-      <Collapse component="li" in={props.open && openExpiringGroups} timeout="auto" unmountOnExit>
+      <Collapse component="li" in={props.open && openExpiringAccess} timeout="auto" unmountOnExit>
         <List disablePadding>
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Individual
+          </ListSubheader>
           <ListItemLink
             to="/expiring-groups?user_id=@me"
             displayText="My Access"
@@ -172,17 +179,9 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
           />
           <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
-        </List>
-      </Collapse>
-      <ListItemLink
-        to="/expiring-roles"
-        displayText="Expiring Roles"
-        displayIcon={<ExpiringRolesIcon />}
-        open={openExpiringRoles}
-        onClick={() => setOpenExpiringRoles(!openExpiringRoles)}
-      />
-      <Collapse component="li" in={props.open && openExpiringRoles} timeout="auto" unmountOnExit>
-        <List disablePadding>
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Role-Based
+          </ListSubheader>
           <ListItemLink
             to="/expiring-roles?owner_id=@me"
             displayText="Owned Groups"

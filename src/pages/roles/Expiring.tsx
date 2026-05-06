@@ -232,9 +232,9 @@ export default function ExpiringRoless() {
 
   return (
     <>
-      <ChangeTitle title="Expiring Roles" />
+      <ChangeTitle title="Expiring Role-Based Access" />
       <TableContainer component={Paper}>
-        <TableTopBar title="Expiring Roles">
+        <TableTopBar title="Expiring Role-Based Access">
           <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} />
           <Tooltip title="Show access that still needs review or all expiring access.">
             <ToggleButtonGroup size="small" exclusive value={filterNeedsReview} onChange={handleNeedsReviewOrAll}>
