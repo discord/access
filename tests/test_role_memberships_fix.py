@@ -1,15 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
-from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
 
 from api.integrity import verify_and_fix_role_memberships
+from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.services import okta
 
 
 def test_missing_user_from_group_membership(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -44,7 +44,7 @@ def test_missing_user_from_group_membership(
 
 
 def test_missing_user_from_group_membership_with_expiring_role_membership(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -99,7 +99,7 @@ def test_missing_user_from_group_membership_with_expiring_role_membership(
 
 
 def test_missing_user_from_group_membership_with_expiring_role_assignment(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -164,7 +164,7 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
 
 
 def test_missing_user_from_group_membership_with_both_expiring(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -227,7 +227,7 @@ def test_missing_user_from_group_membership_with_both_expiring(
 
 
 def test_extra_user_from_role_membership(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)
@@ -284,7 +284,7 @@ def test_extra_user_from_role_membership(
 
 
 def test_extra_user_from_role_membership_with_direct(
-    db: SQLAlchemy, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
+    db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
     db.session.add(role_group)

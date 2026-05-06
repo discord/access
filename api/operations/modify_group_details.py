@@ -1,4 +1,6 @@
-from flask import current_app, g, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy import func
 from sqlalchemy.orm import with_polymorphic
 
@@ -6,16 +8,24 @@ from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupDetails:
     """Update a group's name and/or description, sync to Okta, and fire lifecycle hooks."""
 
-    def __init__(self, *, group: OktaGroup, name: str | None = None, description: str | None = None):
+    def __init__(
+        self,
+        *,
+        group: OktaGroup,
+        name: str | None = None,
+        description: str | None = None,
+        current_user_id: str | None = None,
+    ):
         self.group = group
         self.name = name
         self.description = description
+        self.current_user_id = current_user_id
 
     def execute(self) -> OktaGroup:
         old_name = self.group.name
@@ -56,23 +66,27 @@ class ModifyGroupDetails:
                     )
                     db.session.commit()
                 except Exception:
-                    current_app.logger.exception(
+                    logging.getLogger("api").exception(
                         f"Failed to invoke group_updated hook for group {self.group.id} with plugin '{plugin_id}'"
                     )
                     db.session.rollback()
 
         # Audit logging, only if group name changed
         if old_name.lower() != self.group.name.lower():
-            current_app.logger.info(
+            _ctx = get_request_context()
+            email = (
+                getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+                if self.current_user_id is not None
+                else None
+            )
+            logging.getLogger("access.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.group_modify_name,
-                        "user_agent": request.headers.get("User-Agent"),
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        ),
-                        "current_user_id": g.current_user_id,
-                        "current_user_email": getattr(db.session.get(OktaUser, g.current_user_id), "email", None),
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
+                        "current_user_id": self.current_user_id,
+                        "current_user_email": email,
                         "group": self.group,
                         "old_group_name": old_name,
                     }

@@ -28,14 +28,14 @@ The Access service exists to help answer the following questions for each person
 
 ## Development Setup
 
-Access is a React and Typescript single-page application (SPA) with a Flask API that connects to the Okta API.
+Access is a React and Typescript single-page application (SPA) with a FastAPI backend that connects to the Okta API.
 
 You'll need an Okta API Token from an Okta user with the `Group Admin` and `Application Admin`
 Okta administrator roles granted as well as all Group permissions (ie. `Manage groups` checkbox checked)
 in a custom Admin role. If you want to manage Groups which grant Okta Admin permissions, then the Okta API
 Token will need to be created from an Okta user with the `Super Admin` Okta administrator role.
 
-### Flask
+### Backend
 
 Create a `.env` file in the repo root with the following variables:
 
@@ -48,48 +48,51 @@ CLIENT_ORIGIN_URL=http://localhost:3000
 VITE_API_SERVER_URL=
 ```
 
-> **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the Flask backend on port 6060.
+> **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the backend on port 6060.
 
-Next, run the following commands to set up your python virtual environment. Access can run on Python 3.11 and above:
+Create the Python virtual environment. Access can run on Python 3.11 and above:
 
 ```
 python3 -m venv venv
 . venv/bin/activate
-pip install -r requirements.txt
 ```
 
-Afterward, seed the DB:
+The included [Makefile](Makefile) wraps the rest. Install Python deps:
 
 ```
-flask db upgrade
-flask init <YOUR_OKTA_USER_EMAIL>
+make dev
 ```
 
-Finally, you can run the server:
+Seed the DB and create the built-in Access app:
 
 ```
-flask run
+make db-migrate
+make db-init email=<YOUR_OKTA_USER_EMAIL>
+```
+
+Run the API on port 6060:
+
+```
+make run-backend
 ```
 
 Go to [http://localhost:6060/api/users](http://localhost:6060/api/users) to view the API.
 
+`make run` boots the backend and the Vite dev server together. `make help` lists every target (`sync`, `notify`, `db-revision msg=…`, `pytest`, etc.).
+
 ### Node
 
-In a separate window, setup and run Node.js:
+In a separate window, set up and run the React frontend:
 
 ```
-npm install
-```
-
-```
-npm start
+make run-frontend
 ```
 
 Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
 
 #### Generating Typescript React Query API Client
 
-We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our Swagger API schema available at [http://localhost:6060/api/swagger.json](http://localhost:6060/api/swagger.json). We've modified the generated Swagger schema in [api/swagger.json](api/swagger.json), which is then used in [openapi-codegen.config.ts](openapi-codegen.config.ts) by the following commands:
+We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our OpenAPI schema, which FastAPI auto-publishes at [http://localhost:6060/api/openapi.json](http://localhost:6060/api/openapi.json) when running in development mode. The codegen config is in [openapi-codegen.config.ts](openapi-codegen.config.ts):
 
 ```
 npm install @openapi-codegen/cli
@@ -100,14 +103,19 @@ npx openapi-codegen gen api
 
 ## Tests
 
-We use tox to run our tests, which should be installed into the Python venv from 
-our `requirements.txt`.
+```
+make pytest          # run pytest
+make test            # run ruff + mypy + pytest
+```
 
-Invoke the tests using `tox -e test`.
+Under the hood this calls tox (`tox -e test`, etc.); the Makefile is just a thin wrapper.
 
 ## Linting
 
-Run `tox -e ruff` and `tox -e mypy` to run the linters.
+```
+make ruff
+make mypy
+```
 
 ## Production Setup
 
@@ -176,7 +184,7 @@ Create a `client_secrets.json` file containing your OIDC client secrets, that lo
 Then set the following variables in your `.env.production` file:
 ```
 # Generate a secure secret key using `python -c 'import secrets; print(secrets.token_hex())'`
-# this is used to encrypt Flask cookies
+# this is used to sign the OIDC session cookie
 SECRET_KEY=<YOUR_SECRET_KEY>
 # The path to your client_secrets.json file or if you prefer, inline the entire JSON string
 OIDC_CLIENT_SECRETS=./client_secrets.json or '{"secrets":..'
@@ -239,7 +247,7 @@ The `.env.production` file is where you configure the application.
 - `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
-- `SECRET_KEY`: Specifies the secret key used to encrypt flask cookies. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
+- `SECRET_KEY`: Specifies the secret key used to sign the OIDC session cookie. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
@@ -317,7 +325,7 @@ To override values on the back-end, modify these key-value pairs inside the `BAC
 
 The back-end config is loaded in [`api/access_config.py`](api/access_config.py).
 
-See [`api/views/schemas/core_schemas.py`](api/views/schemas/core_schemas.py) for details about how the pattern override
+See [`api/schemas/core_schemas.py`](api/schemas/core_schemas.py) for details about how the pattern override
 supplied here will be used.
 
 #### Database Setup
@@ -337,8 +345,8 @@ docker compose exec discord-access /bin/bash
 Then run the following commands inside the container:
 
 ```
-flask db upgrade
-flask init <YOUR_OKTA_USER_EMAIL>
+alembic upgrade head
+access init <YOUR_OKTA_USER_EMAIL>
 ```
 
 Visit [http://localhost:3000/](http://localhost:3000/) to view your running version of Access!
@@ -347,7 +355,7 @@ Visit [http://localhost:3000/](http://localhost:3000/) to view your running vers
 
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
 
-These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `flask sync` and `flask notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
+These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `access sync` and `access notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
 
 ## Plugins
 

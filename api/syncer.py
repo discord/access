@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import List
 
-from flask import current_app
+from api.config import settings
 from sqlalchemy.orm import (
     aliased,
     joinedload,
@@ -382,7 +382,7 @@ def sync_group_ownerships(act_as_authority: bool) -> None:
 
 def expire_access_requests() -> None:
     logger.info("Access request expiration started.")
-    MAX_ACCESS_REQUEST_AGE_SECONDS = current_app.config["MAX_ACCESS_REQUEST_AGE_SECONDS"]
+    MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
 
     older_than_max = (
         AccessRequest.query.filter(AccessRequest.status == AccessRequestStatus.PENDING)

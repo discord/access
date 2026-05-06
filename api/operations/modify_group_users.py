@@ -2,7 +2,9 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Dict, Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
@@ -24,7 +26,7 @@ from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupUsers:
@@ -168,16 +170,14 @@ class ModifyGroupUsers:
         if self.current_user_id is not None:
             email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
-        context = has_request_context()
+        _ctx = get_request_context()
 
-        current_app.logger.info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_modify_users,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "group": self.group,
@@ -408,7 +408,7 @@ class ModifyGroupUsers:
                         )
                         db.session.commit()
                     except Exception:
-                        current_app.logger.exception(
+                        logging.getLogger("api").exception(
                             f"Failed to invoke group_members_removed hook for group {group.id if group else None} with plugin '{plugin_id}'"
                         )
                         db.session.rollback()
@@ -621,7 +621,7 @@ class ModifyGroupUsers:
                         hook.group_members_added(session=db.session, group=group, members=members, plugin_id=plugin_id)
                         db.session.commit()
                     except Exception:
-                        current_app.logger.exception(
+                        logging.getLogger("api").exception(
                             f"Failed to invoke group_members_added hook for group {group.id if group else None} with plugin '{plugin_id}'"
                         )
                         db.session.rollback()

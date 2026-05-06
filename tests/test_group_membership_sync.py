@@ -2,11 +2,11 @@ from collections import namedtuple
 from datetime import datetime, timedelta
 from typing import Callable, Tuple
 
-from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember
+from api.extensions import Db
 from api.services import okta
 from api.services.okta_service import Group, User
 from api.syncer import sync_group_memberships
@@ -15,7 +15,7 @@ from tests.factories import GroupFactory, UserFactory
 MembershipDetails = namedtuple("MembershipDetails", ["expired_at", "db_pk"])
 
 
-def test_membership_sync(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_sync(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -30,7 +30,7 @@ def test_membership_sync(db: SQLAlchemy, mocker: MockerFixture) -> None:
     assert memberships is not None
 
 
-def test_membership_in_okta_not_in_db_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -51,7 +51,7 @@ def test_membership_in_okta_not_in_db_authoritative(db: SQLAlchemy, mocker: Mock
     assert len(members) == 0
 
 
-def test_membership_in_okta_not_in_db_not_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_okta_not_in_db_not_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -69,7 +69,7 @@ def test_membership_in_okta_not_in_db_not_authoritative(db: SQLAlchemy, mocker: 
     assert len(members) == 3
 
 
-def test_membership_in_db_not_in_okta_not_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_db_not_in_okta_not_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -107,7 +107,7 @@ def test_membership_in_db_not_in_okta_not_authoritative(db: SQLAlchemy, mocker: 
     assert members_rows[initial_okta_users[1].id].expired_at < non_expired_date
 
 
-def test_membership_in_db_not_in_okta_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -145,7 +145,7 @@ def test_membership_in_db_not_in_okta_authoritative(db: SQLAlchemy, mocker: Mock
     assert members_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
 
-def test_membership_in_both_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -188,7 +188,7 @@ def test_membership_in_both_authoritative(db: SQLAlchemy, mocker: MockerFixture)
     return
 
 
-def test_membership_in_both_non_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -234,7 +234,7 @@ def test_membership_in_both_non_authoritative(db: SQLAlchemy, mocker: MockerFixt
     return
 
 
-def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -262,7 +262,7 @@ def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: SQLAlch
     assert len(members) == 3
 
 
-def test_membership_through_multiple_groups_non_authoritative(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -301,7 +301,7 @@ def test_membership_through_multiple_groups_non_authoritative(db: SQLAlchemy, mo
     assert _get_group_membership(db, pk_2).expired_at == date_2
 
 
-def test_membership_sync_continues_after_group_failure(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_membership_sync_continues_after_group_failure(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
     _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
@@ -324,7 +324,7 @@ def test_membership_sync_continues_after_group_failure(db: SQLAlchemy, mocker: M
     assert len(failed_members) == 0
 
 
-def seed_db(db: SQLAlchemy, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
+def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
     with Session(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
@@ -334,7 +334,7 @@ def seed_db(db: SQLAlchemy, users: list[OktaUser], groups: list[OktaGroup]) -> T
 
 
 def run_sync(
-    db: SQLAlchemy,
+    db: Db,
     mocker: MockerFixture,
     okta_groups: list[OktaGroup],
     user_membership_func: Callable[[str], list[User]],
@@ -353,7 +353,7 @@ def run_sync(
         return session.query(OktaUserGroupMember).all()
 
 
-def _get_group_members(db: SQLAlchemy, group_id: str) -> dict[str, MembershipDetails]:
+def _get_group_members(db: Db, group_id: str) -> dict[str, MembershipDetails]:
     return {
         m.user_id: MembershipDetails(m.ended_at, m.id)
         for m in (
@@ -365,7 +365,7 @@ def _get_group_members(db: SQLAlchemy, group_id: str) -> dict[str, MembershipDet
     }
 
 
-def _get_group_membership(db: SQLAlchemy, membership_id: int) -> MembershipDetails:
+def _get_group_membership(db: Db, membership_id: int) -> MembershipDetails:
     membership = (
         db.session.query(OktaUserGroupMember)
         .filter(OktaUserGroupMember.id == membership_id)
@@ -376,7 +376,7 @@ def _get_group_membership(db: SQLAlchemy, membership_id: int) -> MembershipDetai
     return MembershipDetails(membership.ended_at, membership.id)
 
 
-def _add_group_membership_record(db: SQLAlchemy, user_id: str, group_id: str, ended_at: datetime) -> int:
+def _add_group_membership_record(db: Db, user_id: str, group_id: str, ended_at: datetime) -> int:
     membership = OktaUserGroupMember(user_id=user_id, group_id=group_id, ended_at=ended_at, is_owner=False)
     db.session.add(membership)
     db.session.commit()

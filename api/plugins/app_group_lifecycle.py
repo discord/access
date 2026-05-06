@@ -14,6 +14,17 @@ hookimpl = pluggy.HookimplMarker(app_group_lifecycle_plugin_name)
 
 _cached_app_group_lifecycle_hook: pluggy.HookRelay | None = None
 
+
+class PluginNotFoundError(Exception):
+    """Raised by plugin endpoints when the requested plugin id is not
+    registered. The exception handler in `api/exception_handlers.py`
+    serializes it as a 404 with an `{"error": "..."}` body — the wire
+    shape the React client consumes from these endpoints."""
+
+    def __init__(self, plugin_id: str) -> None:
+        self.plugin_id = plugin_id
+        super().__init__(f"Plugin '{plugin_id}' not found")
+
 logger = logging.getLogger(__name__)
 
 

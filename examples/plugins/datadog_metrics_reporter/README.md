@@ -15,13 +15,12 @@ RUN pip install -r ./metrics_reporter/requirements.txt && pip install ./metrics_
 # Reset working directory
 WORKDIR /app
 
-ENV FLASK_ENV production
-ENV FLASK_APP api.app:create_app
+ENV ENV production
 ENV SENTRY_RELEASE $SENTRY_RELEASE
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "api.wsgi:app"]
+CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "-k", "uvicorn.workers.UvicornWorker", "--access-logfile", "-", "api.asgi:app"]
 ```
 
 ## Build the Docker image, run and test
@@ -39,7 +38,7 @@ The following environment variables need to be configured for the Datadog metric
 
 ### Required Environment Variables
 
-- `FLASK_ENV`: Application environment (e.g., `production`, `staging`, `development`)
+- `ENV`: Application environment (e.g., `production`, `staging`, `development`)
   - Used to determine the environment tag for metrics
   - Maps to: `production` → `prd`, `staging` → `stg`, other → `dev`
 

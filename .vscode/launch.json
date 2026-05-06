@@ -5,13 +5,11 @@
       "name": "Access: Run Server",
       "type": "python",
       "request": "launch",
-      "module": "flask",
+      "module": "uvicorn",
       "env": {
-        "FLASK_APP": "api/app.py",
-        "FLASK_DEBUG": "1"
+        "ENV": "development"
       },
-      "args": ["run"],
-      "jinja": true,
+      "args": ["api.asgi:app", "--reload", "--host", "0.0.0.0", "--port", "6060"],
       "justMyCode": true
     }
   ]

@@ -1,11 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from flask import url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     App,
@@ -16,20 +15,21 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
-from api.authorization import AuthorizationHelpers
+from api.auth import permissions as AuthorizationHelpers
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import RoleGroupFactory
+from tests.factories import OktaUserFactory, RoleGroupFactory
 
 
 def test_get_role(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_by_id", role_id="randomid")
@@ -73,7 +73,7 @@ def test_get_role(
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == role_group_name
 
     app_url = url_for("api-roles.role_by_id", role_id=app_group_id)
@@ -85,7 +85,9 @@ def test_get_role(
     assert rep.status_code == 404
 
 
-def test_get_role_members(client: FlaskClient, db: SQLAlchemy, role_group: RoleGroup, okta_group: OktaGroup) -> None:
+def test_get_role_members(
+    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
     rep = client.get(role_url)
@@ -100,7 +102,7 @@ def test_get_role_members(client: FlaskClient, db: SQLAlchemy, role_group: RoleG
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
 
@@ -111,7 +113,7 @@ def test_get_role_members(client: FlaskClient, db: SQLAlchemy, role_group: RoleG
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 0
@@ -123,7 +125,7 @@ def test_get_role_members(client: FlaskClient, db: SQLAlchemy, role_group: RoleG
     rep = client.get(role_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 1
@@ -131,12 +133,13 @@ def test_get_role_members(client: FlaskClient, db: SQLAlchemy, role_group: RoleG
 
 
 def test_put_role_members(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
@@ -185,7 +188,7 @@ def test_put_role_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
     assert membership_access_request.status == AccessRequestStatus.PENDING
@@ -211,7 +214,7 @@ def test_put_role_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 0
@@ -240,7 +243,7 @@ def test_put_role_members(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 1
@@ -268,7 +271,7 @@ def test_put_role_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 1
     assert data["groups_owned_by_role"][0] == okta_group.id
@@ -295,7 +298,7 @@ def test_put_role_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
     assert membership_access_request.status == AccessRequestStatus.APPROVED
@@ -304,7 +307,7 @@ def test_put_role_members(
     assert ownership_access_request.approved_membership_id is not None
 
 
-def test_get_all_role(client: FlaskClient, db: SQLAlchemy) -> None:
+def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
     groups = RoleGroupFactory.create_batch(10)
 
@@ -314,26 +317,27 @@ def test_get_all_role(client: FlaskClient, db: SQLAlchemy) -> None:
     rep = client.get(groups_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for group in groups:
         assert any(u["id"] == group.id for u in results["results"])
 
-    rep = client.get(groups_url, query_string={"q": "r"})
+    rep = client.get(groups_url, params={"q": "r"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for group in groups:
         assert any(u["id"] == group.id for u in results["results"])
 
 
 def test_complex_role_modifications(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
     access_app: App,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
@@ -368,7 +372,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 0
@@ -392,7 +396,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 0
@@ -417,7 +421,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
@@ -443,7 +447,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
 
@@ -467,7 +471,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
@@ -494,7 +498,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
 
@@ -518,7 +522,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 0
@@ -543,7 +547,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -568,7 +572,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -594,7 +598,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -621,7 +625,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 0
@@ -646,7 +650,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -672,7 +676,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 0
@@ -697,7 +701,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -725,7 +729,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 1
     assert data["owners"][0] == user_id
@@ -750,7 +754,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -782,7 +786,7 @@ def test_complex_role_modifications(
     assert update_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["type"] == "app_group"
     assert data["name"] == app_group_name
     assert data["description"] == "new description app_group"
@@ -816,7 +820,7 @@ def test_complex_role_modifications(
     assert update_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["type"] == "role_group"
     assert data["name"] == role_group_name
     assert data["description"] == "new description role_group"
@@ -847,7 +851,7 @@ def test_complex_role_modifications(
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 2
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -928,7 +932,7 @@ def test_complex_role_modifications(
         == 1
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -962,7 +966,7 @@ def test_complex_role_modifications(
         == 3
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -997,7 +1001,7 @@ def test_complex_role_modifications(
         == 3
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -1033,7 +1037,7 @@ def test_complex_role_modifications(
         == 3
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -1077,7 +1081,7 @@ def test_complex_role_modifications(
         == 2
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -1111,7 +1115,7 @@ def test_complex_role_modifications(
         == 2
     )
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -1137,7 +1141,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -1163,7 +1167,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -1193,7 +1197,7 @@ def test_complex_role_modifications(
     assert update_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["type"] == "role_group"
     assert data["name"] == role_group_name
     assert data["description"] == "new description role_group"
@@ -1223,7 +1227,7 @@ def test_complex_role_modifications(
     assert update_group_spy.call_count == 1
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["type"] == "okta_group"
     assert data["name"] == okta_group_name
     assert data["description"] == "new description okta_group"
@@ -1249,7 +1253,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert data["groups_in_role"][0] == okta_group_id
     assert len(data["groups_owned_by_role"]) == 1
@@ -1275,7 +1279,7 @@ def test_complex_role_modifications(
     assert remove_owner_from_group_spy.call_count == 0
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user_id
     assert len(data["owners"]) == 1
@@ -1305,12 +1309,13 @@ def test_complex_role_modifications(
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: SQLAlchemy,
-    client: FlaskClient,
+    db: Db,
+    client: TestClient,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
@@ -1353,7 +1358,7 @@ def test_do_not_renew(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["groups_in_role"]) == 1
     assert okta_group.id in data["groups_in_role"]
     assert len(data["groups_owned_by_role"]) == 0
@@ -1376,11 +1381,7 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_role(
-    db: SQLAlchemy,
-    client: FlaskClient,
-    role_group: RoleGroup,
-    okta_group: OktaGroup,
-    user: OktaUser,
+    db: Db, client: TestClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     victim_role = RoleGroupFactory.create()
     victim_okta_group = OktaGroup(
@@ -1434,12 +1435,13 @@ def test_do_not_renew_scoped_to_route_role(
 
 
 def test_do_not_renew_requires_group_ownership(
-    db: SQLAlchemy,
-    client: FlaskClient,
+    db: Db,
+    client: TestClient,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(role_group)
     db.session.add(okta_group)
@@ -1479,3 +1481,120 @@ def test_do_not_renew_requires_group_ownership(
 
     db.session.refresh(role_group_map)
     assert role_group_map.should_expire is False
+
+
+def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> None:
+    """`?owner_id=<user>` and `?owner_id=@me` filter /api/roles to the
+    roles owned by that user. Flask had this; the FastAPI port previously
+    only honored `q`."""
+    from datetime import datetime, timedelta, timezone
+
+    from api.models import OktaUserGroupMember as _OUGM
+
+    owner = OktaUserFactory.create()
+    other = OktaUserFactory.create()
+    role_a = RoleGroupFactory.create()
+    role_b = RoleGroupFactory.create()
+    db.session.add_all([owner, other, role_a, role_b])
+    db.session.commit()
+    end = datetime.now(timezone.utc) + timedelta(days=30)
+    db.session.add(_OUGM(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end))
+    db.session.add(_OUGM(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end))
+    db.session.commit()
+
+    list_url = url_for("api-roles.roles")
+    rep = client.get(list_url, params={"owner_id": owner.id})
+    assert rep.status_code == 200
+    ids = [r["id"] for r in rep.json()["results"]]
+    assert role_a.id in ids
+    assert role_b.id not in ids
+
+
+def test_put_role_members_rejects_role_in_role(
+    client: TestClient,
+    db: Db,
+    role_group: RoleGroup,
+    url_for: Any,
+) -> None:
+    """Adding a RoleGroup as a member of another RoleGroup is rejected with 400."""
+    inner_role = RoleGroupFactory.create()
+    db.session.add(role_group)
+    db.session.add(inner_role)
+    db.session.commit()
+
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+
+    # As member
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": [inner_role.id],
+            "owner_groups_to_add": [],
+            "groups_to_remove": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    assert rep.status_code == 400
+    assert "Roles cannot be added to other Roles" in rep.text
+
+    # As owner
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": [],
+            "owner_groups_to_add": [inner_role.id],
+            "groups_to_remove": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    assert rep.status_code == 400
+    assert "Roles cannot be added to other Roles" in rep.text
+
+
+def test_put_role_members_rejects_short_group_id(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """Each group id must be exactly 20 characters wide. Pydantic enforces
+    the constraint at the request boundary."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(
+        role_url,
+        json={
+            "groups_to_add": ["short"],
+            "groups_to_remove": [],
+            "owner_groups_to_add": [],
+            "owner_groups_to_remove": [],
+        },
+    )
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_role_members_rejects_missing_required_lists(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """`groups_to_add`, `groups_to_remove`, `owner_groups_to_add`, and
+    `owner_groups_to_remove` are required fields on the request body. The
+    Pydantic schema must reject a body that omits them entirely."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(role_url, json={})
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_role_members_missing_body_400(
+    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
+    """No body at all returns 400 (matches groups.py PUT members shape).
+    Regression guard for the dropped `RoleMember()` substitution path."""
+    db.session.add(role_group)
+    db.session.commit()
+    role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
+    rep = client.put(role_url)
+    assert rep.status_code == 400

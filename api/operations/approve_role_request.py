@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
@@ -9,7 +11,7 @@ from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleG
 from api.operations.constraints import CheckForReason
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.plugins import get_notification_hook
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ApproveRoleRequest:
@@ -90,16 +92,14 @@ class ApproveRoleRequest:
             .first()
         )
 
-        context = has_request_context()
+        _ctx = get_request_context()
 
-        current_app.logger.info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.role_request_approve,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.approver_id,
                     "current_user_email": self.approver_email,
                     "group": group,

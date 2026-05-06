@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
+from api.config import settings
+from api.extensions import Db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -28,7 +29,7 @@ from api.operations import (
 )
 from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, get_notification_hook
 from api.services import okta
-from tests.factories import AccessRequestFactory, AppGroupFactory, OktaUserFactory
+from tests.factories import AccessRequestFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
@@ -36,13 +37,14 @@ ONE_DAY_IN_SECONDS = 24 * 60 * 60
 
 
 def test_get_access_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
@@ -81,14 +83,14 @@ def test_get_access_request(
     rep = client.get(access_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert data["status"] == okta_group_access_request.status
     assert data["request_reason"] == okta_group_access_request.request_reason
     assert data["request_ownership"] == okta_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -103,7 +105,7 @@ def test_get_access_request(
     rep = client.get(access_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert data["status"] == okta_group_access_request.status
@@ -119,14 +121,14 @@ def test_get_access_request(
     rep = client.get(access_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == role_group.name
     assert data["status"] == role_group_access_request.status
     assert data["request_reason"] == role_group_access_request.request_reason
     assert data["request_ownership"] == role_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -141,7 +143,7 @@ def test_get_access_request(
     rep = client.get(access_request_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == role_group.name
     assert data["status"] == role_group_access_request.status
@@ -150,17 +152,20 @@ def test_get_access_request(
 
 
 def test_put_access_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     access_request: AccessRequest,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
-    # test 404
+    # test 404 — PUT against a non-existent access_request_id with a valid
+    # body shape returns 404. (PUT with no body returns 400 because the
+    # ResolveAccessRequestBody schema rejects the missing `approved` field.)
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
-    rep = client.put(access_request_url)
+    rep = client.put(access_request_url, json={"approved": True})
     assert rep.status_code == 404
 
     db.session.add(user)
@@ -188,9 +193,9 @@ def test_put_access_request(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert access_request.status == AccessRequestStatus.APPROVED
@@ -221,9 +226,9 @@ def test_put_access_request(
     assert add_user_to_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert access_request.status == AccessRequestStatus.REJECTED
@@ -237,9 +242,9 @@ def test_put_access_request(
 
 
 def test_put_access_request_by_non_owner(
-    client: FlaskClient, app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser
+    client: TestClient, app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
-    access_owner = app.config["CURRENT_OKTA_USER_EMAIL"]
+    access_owner = settings.CURRENT_OKTA_USER_EMAIL
 
     db.session.add(user)
     db.session.add(okta_group)
@@ -269,7 +274,7 @@ def test_put_access_request_by_non_owner(
     assert access_request_by_non_owner.status == AccessRequestStatus.PENDING
 
     data: dict[str, Any] = {}
-    app.config["CURRENT_OKTA_USER_EMAIL"] = user.email
+    app.state.current_user_email = user.email
 
     access_request_url = url_for(
         "api-access-requests.access_request_by_id", access_request_id=access_request_by_owner.id
@@ -314,7 +319,7 @@ def test_put_access_request_by_non_owner(
     rep = client.put(access_request_url, json=data)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name
     assert data["status"] == AccessRequestStatus.REJECTED
@@ -329,7 +334,7 @@ def test_put_access_request_by_non_owner(
     assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
 
-def test_create_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, okta_group: OktaGroup) -> None:
+def test_create_access_request(app: FastAPI, client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any) -> None:
     # test bad data
     access_requests_url = url_for("api-access-requests.access_requests")
     data: dict[str, Any] = {}
@@ -348,9 +353,9 @@ def test_create_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, 
     rep = client.post(access_requests_url, json=data)
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     access_request = db.session.get(AccessRequest, data["id"])
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     assert data["requester"]["email"] == access_owner.email
     assert data["requested_group"]["name"] == okta_group.name
@@ -360,7 +365,38 @@ def test_create_access_request(app: Flask, client: FlaskClient, db: SQLAlchemy, 
     assert data["request_ownership"] == access_request.request_ownership
 
 
-def test_get_all_access_request(client: FlaskClient, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser) -> None:
+def test_create_access_request_with_rfc822_ending_at(
+    app: FastAPI, client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """Frontend sends ending_at as RFC822 (e.g. "Sun, 10 May 2026 19:09:02 -0700");
+    the router must parse the wire string into a datetime before it hits the
+    SQLAlchemy DateTime column."""
+    access_requests_url = url_for("api-access-requests.access_requests")
+    db.session.add(okta_group)
+    db.session.commit()
+
+    data = {
+        "group_id": okta_group.id,
+        "group_owner": False,
+        "reason": "test reason",
+        "ending_at": "Sun, 10 May 2026 19:09:02 -0700",
+    }
+    rep = client.post(access_requests_url, json=data)
+    assert rep.status_code == 201, rep.text
+
+    response_data = rep.json()
+    access_request = db.session.get(AccessRequest, response_data["id"])
+    assert access_request is not None
+    assert access_request.request_ending_at is not None
+    # 2026-05-10 19:09:02 -0700 normalizes to 2026-05-11 02:09:02 UTC.
+    assert access_request.request_ending_at.year == 2026
+    assert access_request.request_ending_at.month == 5
+    assert access_request.request_ending_at.day == 11
+
+
+def test_get_all_access_request(
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
     access_requests_url = url_for("api-access-requests.access_requests")
     db.session.add(user)
     db.session.add(okta_group)
@@ -373,20 +409,20 @@ def test_get_all_access_request(client: FlaskClient, db: SQLAlchemy, okta_group:
     rep = client.get(access_requests_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for access_request in access_requests:
         assert any(u["id"] == access_request.id for u in results["results"])
 
-    rep = client.get(access_requests_url, query_string={"q": "pend"})
+    rep = client.get(access_requests_url, params={"q": "pend"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for access_request in access_requests:
         assert any(u["id"] == access_request.id for u in results["results"])
 
 
 def test_create_access_request_notification(
-    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -409,7 +445,7 @@ def test_create_access_request_notification(
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
@@ -430,7 +466,7 @@ def test_create_access_request_notification(
 
 
 def test_create_app_access_request_notification(
-    app: Flask, db: SQLAlchemy, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     # test bad data
     app_owner_user = OktaUserFactory.create()
@@ -481,7 +517,7 @@ def test_create_app_access_request_notification(
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
@@ -509,8 +545,8 @@ def test_create_app_access_request_notification(
     assert kwargs["requester"] == user
 
 
-def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, db: SQLAlchemy) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
+    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     users = OktaUserFactory.build_batch(3)
     db.session.add_all(users)
@@ -540,9 +576,9 @@ def test_get_all_possible_request_approvers(app: Flask, mocker: MockerFixture, d
 
 
 def test_resolve_app_access_request_notification(
-    app: Flask, db: SQLAlchemy, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
+    app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()
@@ -638,7 +674,7 @@ def test_resolve_app_access_request_notification(
 
 
 def test_auto_resolve_create_access_request(
-    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -753,7 +789,7 @@ def test_auto_resolve_create_access_request(
 
 
 def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
-    app: Flask, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
+    app: FastAPI, db: Db, okta_group: OktaGroup, user: OktaUser, tag: Tag, mocker: MockerFixture
 ) -> None:
     db.session.add(user)
     db.session.add(okta_group)
@@ -807,3 +843,148 @@ def test_auto_resolve_create_access_request_with_time_limit_constraint_tag(
     assert user == kwargs["requester"]
     assert len(kwargs["group_tags"]) == 1
     assert tag in kwargs["group_tags"]
+
+
+def test_q_search_covers_all_fields_via_http(
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
+    """The `q` search must hit requester email+name, requested group
+    name+description, and the request id prefix. Previously only `status`
+    and `request_reason` were searched. Seed two requests with disjoint
+    requesters and groups so each search must *exclude* the other to pass
+    — a regression that returns everything would still match by ID but
+    fail the exclusion assertions."""
+    target_user = OktaUserFactory.create(
+        email="zelda-target@example.com", first_name="Zelda", last_name="Target"
+    )
+    other_user = OktaUserFactory.create(
+        email="other-noise@example.com", first_name="Other", last_name="Noise"
+    )
+    target_group = OktaGroupFactory.create(name="ZeldaTargetGroup", description="zd-desc")
+    other_group = OktaGroupFactory.create(name="OtherNoiseGroup", description="on-desc")
+    db.session.add_all([target_user, other_user, target_group, other_group])
+    db.session.commit()
+
+    target_ar = CreateAccessRequest(
+        requester_user=target_user,
+        requested_group=target_group,
+        request_ownership=False,
+        request_reason="dummy",
+    ).execute()
+    other_ar = CreateAccessRequest(
+        requester_user=other_user,
+        requested_group=other_group,
+        request_ownership=False,
+        request_reason="dummy",
+    ).execute()
+    assert target_ar is not None and other_ar is not None
+
+    requests_url = url_for("api-access-requests.access_requests")
+
+    def ids(rep: Any) -> list[str]:
+        return [r["id"] for r in rep.json()["results"]]
+
+    # Requester email substring.
+    rep = client.get(requests_url, params={"q": "zelda-target"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requester first/last name substring.
+    rep = client.get(requests_url, params={"q": "Zelda"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requested group name substring.
+    rep = client.get(requests_url, params={"q": "ZeldaTargetGroup"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # Requested group description substring.
+    rep = client.get(requests_url, params={"q": "zd-desc"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found and other_ar.id not in found
+
+    # AccessRequest id prefix.
+    rep = client.get(requests_url, params={"q": target_ar.id[:6]})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_ar.id in found
+
+
+def test_post_access_request_403_for_deleted_user(
+    client: TestClient, db: Db, okta_group: OktaGroup, mock_user: Any, url_for: Any
+) -> None:
+    """Flask returned 403 (not 404) when current_user_id resolves to a
+    soft-deleted user."""
+    from datetime import datetime, timezone
+
+    deleted_user = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_user)
+    db.session.add(okta_group)
+    db.session.commit()
+    mock_user(deleted_user.id)
+
+    rep = client.post(
+        url_for("api-access-requests.access_requests_create"),
+        json={"group_id": okta_group.id, "group_owner": False, "reason": "test"},
+    )
+    assert rep.status_code == 403
+
+
+def test_post_access_request_for_role_group_with_associated_groups(
+    app: FastAPI, client: TestClient, db: Db, url_for: Any
+) -> None:
+    """POST /api/requests for a RoleGroup that owns and is a member of
+    several AppGroups must succeed. Without the polymorphic + tag +
+    role-association eager-load on the response refetch, the operation
+    walks `active_role_associated_group_*_mappings` row-by-row and either
+    N+1's or, on `lazy="raise_on_sql"` relationships, blows up with 500.
+    """
+    from api.operations import ModifyRoleGroups
+    from tests.factories import AppFactory, AppGroupFactory, RoleGroupFactory
+
+    role = RoleGroupFactory.create(name="Role-WithAssociations")
+    test_app = AppFactory.create(name="AssocTestApp")
+    db.session.add(role)
+    db.session.add(test_app)
+    db.session.commit()
+
+    associated_app_groups = [
+        AppGroupFactory.create(
+            name=f"App-AssocTestApp-Member-{i}",
+            app_id=test_app.id,
+            is_owner=False,
+        )
+        for i in range(3)
+    ]
+    associated_owner_groups = [
+        AppGroupFactory.create(
+            name=f"App-AssocTestApp-OwnerSlot-{i}",
+            app_id=test_app.id,
+            is_owner=False,
+        )
+        for i in range(2)
+    ]
+    for ag in associated_app_groups + associated_owner_groups:
+        db.session.add(ag)
+    db.session.commit()
+
+    ModifyRoleGroups(
+        role_group=role,
+        groups_to_add=[g.id for g in associated_app_groups],
+        owner_groups_to_add=[g.id for g in associated_owner_groups],
+        sync_to_okta=False,
+    ).execute()
+
+    rep = client.post(
+        url_for("api-access-requests.access_requests_create"),
+        json={"group_id": role.id, "group_owner": False, "reason": "want role membership"},
+    )
+    assert rep.status_code == 201, rep.text
+    body = rep.json()
+    assert body["requested_group"]["id"] == role.id
+    assert body["status"] == AccessRequestStatus.PENDING

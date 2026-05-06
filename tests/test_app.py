@@ -2,12 +2,13 @@ from typing import Any, Protocol, cast
 
 import pytest
 from factory import Faker
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from okta.models.group import Group
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
+from api.config import settings
+from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
@@ -24,8 +25,37 @@ from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory
 
 
+def test_get_access_app_includes_owner_group(client: TestClient, db: Db, url_for: Any) -> None:
+    """The conftest seeds the built-in Access app + App-Access-Owners group.
+    Hitting /api/apps/Access must return the owner group under
+    active_owner_app_groups so the React /apps/Access page can render it."""
+    access_app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
+    rep = client.get(access_app_url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["name"] == App.ACCESS_APP_RESERVED_NAME
+    assert "active_owner_app_groups" in data
+    assert "active_non_owner_app_groups" in data
+    expected_owner_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
+        + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    owner_group_names = [g["name"] for g in data["active_owner_app_groups"]]
+    assert expected_owner_name in owner_group_names
+    # Each owner group should be type=app_group and is_owner=True
+    for g in data["active_owner_app_groups"]:
+        assert g["type"] == "app_group"
+        assert g["is_owner"] is True
+
+
 def test_get_app(
-    client: FlaskClient, db: SQLAlchemy, access_app: App, app_group: AppGroup, role_group: RoleGroup, user: OktaUser
+    client: TestClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
@@ -59,7 +89,7 @@ def test_get_app(
     rep = client.get(app_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == app_name
     assert data["description"] == app_description
 
@@ -73,7 +103,7 @@ def test_get_app(
 
 
 def test_put_app(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag
+    client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
 ) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
@@ -100,7 +130,7 @@ def test_put_app(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
@@ -118,7 +148,7 @@ def test_put_app(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
@@ -132,7 +162,7 @@ def test_put_app(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
@@ -156,7 +186,7 @@ def test_put_app(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
     assert data["description"] != "new description"
     assert data["id"] == builtin_access_app.id
@@ -174,7 +204,7 @@ def test_put_app(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
     assert data["description"] != "new description"
     assert data["id"] == builtin_access_app.id
@@ -187,7 +217,7 @@ def test_put_app(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
-def test_delete_app(client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, access_app: App, tag: Tag) -> None:
+def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="100000")
     rep = client.delete(app_url)
@@ -228,11 +258,12 @@ class FakerWithPyStr(Protocol):
 
 
 def test_create_app(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
+    url_for: Any,
 ) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
@@ -257,7 +288,7 @@ def test_create_app(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
@@ -275,12 +306,13 @@ def test_create_app(
 
 
 def test_create_app_with_initial_owners(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
     role_group: RoleGroup,
+    url_for: Any,
 ) -> None:
     db.session.add(role_group)
     db.session.add(user)
@@ -301,7 +333,7 @@ def test_create_app_with_initial_owners(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
@@ -331,10 +363,11 @@ def test_create_app_with_initial_owners(
 
 
 def test_create_app_with_additional_groups(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     # test bad data
     apps_url = url_for("api-apps.apps")
@@ -386,7 +419,7 @@ def test_create_app_with_additional_groups(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
@@ -406,11 +439,12 @@ def test_create_app_with_additional_groups(
 
 
 def test_create_app_with_name_collision(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     app_group: AppGroup,
+    url_for: Any,
 ) -> None:
     app = AppFactory.create()
     app.name = "Test-Staging"
@@ -437,7 +471,7 @@ def test_create_app_with_name_collision(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(App, data["id"]) is not None
     assert data["name"] == "Test"
 
@@ -450,7 +484,7 @@ def test_create_app_with_name_collision(
     assert len(app_groups) == 1
 
 
-def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
+def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
     apps = AppFactory.create_batch(10)
 
@@ -464,28 +498,29 @@ def test_get_all_app(client: FlaskClient, db: SQLAlchemy) -> None:
     rep = client.get(apps_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for app in apps:
         assert any(u["id"] == app.id for u in results["results"])
 
-    rep = client.get(apps_url, query_string={"q": "a"})
+    rep = client.get(apps_url, params={"q": "a"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for app in apps:
         assert any(u["id"] == app.id for u in results["results"])
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_app_with_and_without_description(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     """Test that apps work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -501,12 +536,12 @@ def test_create_app_with_and_without_description(
     if require_descriptions:
         # Should fail when REQUIRE_DESCRIPTIONS=True
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "required" in str(response_data).lower()
     else:
         # Should succeed with backwards compatibility
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "TestAppNoDesc"
         assert result["description"] == ""
 
@@ -516,12 +551,12 @@ def test_create_app_with_and_without_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed with empty description
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "TestAppEmptyDesc"
         assert result["description"] == ""
 
@@ -530,22 +565,17 @@ def test_create_app_with_and_without_description(
     rep = client.post(apps_url, json=data)
     assert rep.status_code == 201
 
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "TestAppWithDesc"
     assert result["description"] == "This has a description"
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_app_update_preserves_description(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
-    mocker: MockerFixture,
-    access_app: App,
-    app_group: AppGroup,
+    app: FastAPI, client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
 ) -> None:
     """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     # Set up the app with a description
     access_app.description = "Original description"
@@ -565,12 +595,12 @@ def test_partial_app_update_preserves_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed
         assert rep.status_code == 200
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "UpdatedWithEmpty"
         assert result["description"] == ""
 
@@ -585,7 +615,7 @@ def test_partial_app_update_preserves_description(
     data = {"name": "UpdatedName"}
     rep = client.put(app_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedName"
     assert result["description"] == "Original description"  # Description is preserved
 
@@ -593,17 +623,18 @@ def test_partial_app_update_preserves_description(
     data = {"name": "UpdatedName2", "description": "Updated description"}
     rep = client.put(app_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedName2"
     assert result["description"] == "Updated description"
 
 
 def test_create_app_fails_when_preexisting_owner_group_is_occupied(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(user)
     db.session.commit()
@@ -632,10 +663,11 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
 
 
 def test_create_app_succeeds_with_empty_preexisting_owner_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -655,17 +687,18 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
     rep = client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
 
 
 def test_create_app_succeeds_with_members_only_preexisting_owner_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     db.session.add(user)
     db.session.commit()
@@ -690,6 +723,93 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     rep = client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == "Payments"
     assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+
+
+def test_delete_reserved_access_app_blocked(client: TestClient, db: Db, url_for: Any) -> None:
+    """The built-in Access app underpins admin auth, so DELETE must refuse
+    it even for an admin caller."""
+    app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
+    rep = client.delete(app_url)
+    assert rep.status_code == 400
+    assert "cannot be deleted" in rep.text
+
+
+def test_put_app_logs_audit_on_rename(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    url_for: Any,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Flask emitted EventType.app_modify_name on rename; the FastAPI PUT
+    handler must continue to do so."""
+    mocker.patch.object(okta, "update_group")
+    db.session.add(access_app)
+    db.session.commit()
+    old_name = access_app.name
+
+    app_url = url_for("api-apps.app_by_id_put", app_id=access_app.id)
+    new_name = f"{old_name}Renamed"
+    with caplog.at_level("INFO", logger="access.audit"):
+        rep = client.put(app_url, json={"name": new_name})
+    assert rep.status_code == 200, rep.text
+
+    audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
+    assert any("APP_MODIFY_NAME" in m for m in audit_messages), audit_messages
+    assert any(old_name in m for m in audit_messages), audit_messages
+
+
+def test_post_app_validation_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """Body validation enforced at the HTTP layer (not just Pydantic-level).
+    The project's request_validation_handler converts 422 → 400 with the
+    `{"message": ...}` envelope."""
+    apps_url = url_for("api-apps.apps")
+
+    rep = client.post(apps_url, json={"name": ""})
+    assert rep.status_code == 400
+    assert "message" in rep.json()
+
+    rep = client.post(apps_url, json={"name": "MyApp", "description": "x" * 1025})
+    assert rep.status_code == 400
+
+    rep = client.post(
+        apps_url,
+        json={"name": "MyApp", "initial_additional_app_groups": [{"name": "wrong-prefix"}]},
+    )
+    assert rep.status_code == 400
+
+
+def test_post_app_require_descriptions_enforced_via_http(
+    client: TestClient,
+    db: Db,
+    url_for: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """REQUIRE_DESCRIPTIONS rejects missing/empty description from a real
+    client request, not just Pydantic.model_validate."""
+    monkeypatch.setattr(settings, "REQUIRE_DESCRIPTIONS", True)
+    apps_url = url_for("api-apps.apps")
+
+    rep = client.post(apps_url, json={"name": "DescRequired"})
+    assert rep.status_code == 400
+    rep = client.post(apps_url, json={"name": "DescRequired", "description": ""})
+    assert rep.status_code == 400
+
+
+def test_get_apps_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """`q` is honored end-to-end on /api/apps."""
+    a1 = AppFactory.create(name="ZelaPaymentsApp", description="Handles money flows")
+    a2 = AppFactory.create(name="LoggingApp", description="Stores logs")
+    db.session.add_all([a1, a2])
+    db.session.commit()
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.get(apps_url, params={"q": "ZelaPayments"})
+    assert rep.status_code == 200
+    names = [a["name"] for a in rep.json()["results"]]
+    assert "ZelaPaymentsApp" in names
+    assert "LoggingApp" not in names

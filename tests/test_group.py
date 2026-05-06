@@ -4,13 +4,14 @@ from unittest.mock import Mock
 
 import pytest
 from factory import Faker
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from okta.models.group import Group
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
-from api.authorization import AuthorizationHelpers
+from api.auth import permissions as AuthorizationHelpers
+from api.extensions import Db
+from api.config import settings
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -35,13 +36,14 @@ class FakerWithPyStr(Protocol):
 
 
 def test_get_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     access_app: App,
     app_group: AppGroup,
     role_group: RoleGroup,
     okta_group: OktaGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
@@ -72,25 +74,25 @@ def test_get_group(
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == okta_group.name
 
     group_url = url_for("api-groups.group_by_id", group_id=role_group.id)
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == role_group.name
 
     group_url = url_for("api-groups.group_by_id", group_id=app_group.id)
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert data["name"] == app_group.name
 
 
-def test_get_group_members(client: FlaskClient, db: SQLAlchemy, okta_group: OktaGroup, user: OktaUser) -> None:
+def test_get_group_members(client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
     # test 404
     group_url = url_for("api-groups.group_members_by_id", group_id="randomid")
     rep = client.get(group_url)
@@ -105,7 +107,7 @@ def test_get_group_members(client: FlaskClient, db: SQLAlchemy, okta_group: Okta
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
 
@@ -116,7 +118,7 @@ def test_get_group_members(client: FlaskClient, db: SQLAlchemy, okta_group: Okta
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 0
@@ -128,7 +130,7 @@ def test_get_group_members(client: FlaskClient, db: SQLAlchemy, okta_group: Okta
     rep = client.get(group_url)
     assert rep.status_code == 200
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 1
@@ -136,11 +138,14 @@ def test_get_group_members(client: FlaskClient, db: SQLAlchemy, okta_group: Okta
 
 
 def test_put_group(
-    client: FlaskClient, db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag
+    client: TestClient, db: Db, mocker: MockerFixture, okta_group: OktaGroup, access_app: App, tag: Tag, url_for: Any
 ) -> None:
-    # test 404
+    # test 404 — PUT against a non-existent group_id with a valid body shape
+    # returns 404. UpdateGroupBody is a discriminated union on `type`, so the
+    # body must include the discriminator for the schema to parse; missing or
+    # empty bodies fail validation with a 400 instead.
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
-    rep = client.put(group_url)
+    rep = client.put(group_url, json={"type": "okta_group"})
     assert rep.status_code == 404
 
     db.session.add(okta_group)
@@ -160,7 +165,9 @@ def test_put_group(
     # test update group
     update_group_spy = mocker.patch.object(okta, "update_group")
 
-    _update_group_type(client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1)
+    _update_group_type(
+        client, okta_group, update_group_spy, "okta_group", {"tags_to_add": [tag_id]}, 1, url_for=url_for
+    )
     _update_group_type(
         client,
         okta_group,
@@ -172,6 +179,7 @@ def test_put_group(
             "tags_to_remove": [tag_id],
         },
         1,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -183,8 +191,9 @@ def test_put_group(
             "tags_to_add": [tag_id],
             "tags_to_remove": [tag_id],
         },
+        url_for=url_for,
     )
-    _update_group_type(client, okta_group, update_group_spy, "okta_group")
+    _update_group_type(client, okta_group, update_group_spy, "okta_group", url_for=url_for)
     _update_group_type(
         client,
         okta_group,
@@ -196,6 +205,7 @@ def test_put_group(
             "tags_to_remove": [],
         },
         1,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -208,6 +218,7 @@ def test_put_group(
             "tags_to_add": [tag_id],
         },
         2,
+        url_for=url_for,
     )
     _update_group_type(
         client,
@@ -218,6 +229,7 @@ def test_put_group(
             "tags_to_add": [],
             "tags_to_remove": [tag_id],
         },
+        url_for=url_for,
     )
 
     # Updating the name of the built-in app owners group should fail
@@ -253,7 +265,7 @@ def test_put_group(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    ret_data = rep.get_json()
+    ret_data = rep.json()
     assert ret_data["type"] == "app_group"
     assert ret_data["name"] == builtin_access_owners_group_name
     assert ret_data["description"] != "new description"
@@ -272,7 +284,7 @@ def test_put_group(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    ret_data = rep.get_json()
+    ret_data = rep.json()
     assert ret_data["type"] == "app_group"
     assert ret_data["name"] == builtin_access_owners_group_name
     assert ret_data["description"] != "new description"
@@ -281,12 +293,13 @@ def test_put_group(
 
 
 def _update_group_type(
-    client: FlaskClient,
+    client: TestClient,
     okta_group: OktaGroup,
     update_group_spy: Mock,
     group_type: str,
     extra_data: Dict[str, Any] = {},
     expected_tags_count: int = 0,
+    url_for: Any = None,
 ) -> None:
     update_group_spy.reset_mock()
 
@@ -298,12 +311,13 @@ def _update_group_type(
     data.update(extra_data)
 
     group_id = okta_group.id
+    assert url_for is not None, "_update_group_type requires the url_for fixture"
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    ret_data = rep.get_json()
+    ret_data = rep.json()
     assert ret_data["type"] == group_type
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == f"new description {group_type}"
@@ -313,11 +327,12 @@ def _update_group_type(
 
 
 def test_put_app_group_rebind_authorization(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     app_group: AppGroup,
+    url_for: Any,
 ) -> None:
     source_app = AppFactory.create()
     target_app = AppFactory.create()
@@ -345,7 +360,7 @@ def test_put_app_group_rebind_authorization(
     target_app_name = target_app.name
     target_app_owner_group_id = target_app_owner_group.id
 
-    access_owner = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     ModifyGroupUsers(group=app_group, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
 
     mocker.patch.object(okta, "update_group")
@@ -366,7 +381,7 @@ def test_put_app_group_rebind_authorization(
     mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=True)
     rep = client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
-    assert rep.get_json()["app_id"] == target_app_id
+    assert rep.json()["app_id"] == target_app_id
 
     # Reset group back to source app for the next case
     group_obj = db.session.get(AppGroup, app_group_id)
@@ -379,18 +394,19 @@ def test_put_app_group_rebind_authorization(
     ModifyGroupUsers(group=target_app_owner_group_obj, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
     rep = client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
-    assert rep.get_json()["app_id"] == target_app_id
+    assert rep.json()["app_id"] == target_app_id
 
 
 def test_put_group_members(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     role_group: RoleGroup,
     access_app: App,
     app_group: AppGroup,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     group_url = url_for("api-groups.group_members_by_id", group_id="randomid")
@@ -467,7 +483,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
     assert membership_access_request.status == AccessRequestStatus.PENDING
@@ -493,7 +509,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 0
@@ -523,7 +539,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 1
@@ -552,7 +568,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 1
     assert data["owners"][0] == user.id
@@ -580,7 +596,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
 
@@ -607,7 +623,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 1
     assert data["owners"][0] == user.id
@@ -635,7 +651,7 @@ def test_put_group_members(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 1
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 1
@@ -648,14 +664,15 @@ def test_put_group_members(
 
 
 def test_delete_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
     tag: Tag,
     app_group: AppGroup,
     access_app: App,
     user: OktaUser,
+    url_for: Any,
 ) -> None:
     # test 404
     group_url = url_for("api-groups.group_by_id", group_id="randomid")
@@ -717,11 +734,12 @@ def test_delete_group(
 
 
 def test_create_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
+    url_for: Any,
 ) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
@@ -742,7 +760,7 @@ def test_create_group(
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(OktaGroup, data["id"]) is not None
     assert data["name"] == "Created"
     assert data["description"] == ""
@@ -751,12 +769,13 @@ def test_create_group(
 
 
 def test_create_app_group(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     tag: Tag,
     access_app: App,
+    url_for: Any,
 ) -> None:
     # test bad data
     groups_url = url_for("api-groups.groups")
@@ -782,7 +801,7 @@ def test_create_app_group(
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
 
-    data = rep.get_json()
+    data = rep.json()
     assert db.session.get(OktaGroup, data["id"]) is not None
     assert data["name"] == app_group_name
     assert data["description"] == ""
@@ -790,7 +809,7 @@ def test_create_app_group(
     assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
 
 
-def test_get_all_group(client: FlaskClient, db: SQLAlchemy, access_app: App) -> None:
+def test_get_all_group(client: TestClient, db: Db, access_app: App, url_for: Any) -> None:
     groups_url = url_for("api-groups.groups")
 
     db.session.add(access_app)
@@ -807,14 +826,14 @@ def test_get_all_group(client: FlaskClient, db: SQLAlchemy, access_app: App) -> 
     rep = client.get(groups_url)
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     for group in groups:
         assert any(u["id"] == group.id for u in results["results"])
 
-    rep = client.get(groups_url, query_string={"q": "App-"})
+    rep = client.get(groups_url, params={"q": "App-"})
     assert rep.status_code == 200
 
-    results = rep.get_json()
+    results = rep.json()
     assert len(results["results"]) == 4
     for group in app_groups:
         assert any(u["id"] == group.id for u in results["results"])
@@ -824,7 +843,7 @@ def test_get_all_group(client: FlaskClient, db: SQLAlchemy, access_app: App) -> 
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
 def test_do_not_renew(
-    db: SQLAlchemy, client: FlaskClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup
+    db: Db, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
     user2 = OktaUserFactory.create()
 
@@ -896,7 +915,7 @@ def test_do_not_renew(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
 
-    data = rep.get_json()
+    data = rep.json()
     assert len(data["members"]) == 2
     assert user.id in data["members"] and user2.id in data["members"]
     assert len(data["owners"]) == 0
@@ -934,11 +953,7 @@ def test_do_not_renew(
 
 
 def test_do_not_renew_scoped_to_route_group(
-    db: SQLAlchemy,
-    client: FlaskClient,
-    mocker: MockerFixture,
-    user: OktaUser,
-    okta_group: OktaGroup,
+    db: Db, client: TestClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
     victim_group = OktaGroup(id="victim-group-id", name="Victim-Group", type="okta_group")
     victim_user = OktaUserFactory.create()
@@ -991,15 +1006,16 @@ def test_do_not_renew_scoped_to_route_group(
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_create_groups_with_and_without_description(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
+    url_for: Any,
 ) -> None:
     """Test that groups work with or without descriptions based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     db.session.add(access_app)
     db.session.commit()
@@ -1016,12 +1032,12 @@ def test_create_groups_with_and_without_description(
     if require_descriptions:
         # Should fail when REQUIRE_DESCRIPTIONS=True
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "required" in str(response_data).lower()
     else:
         # Should succeed with backwards compatibility
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "TestGroupNoDesc"
         assert result["description"] == ""
 
@@ -1031,12 +1047,12 @@ def test_create_groups_with_and_without_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed with empty description
         assert rep.status_code == 201
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "TestGroupEmptyDesc"
         assert result["description"] == ""
 
@@ -1045,21 +1061,17 @@ def test_create_groups_with_and_without_description(
     rep = client.post(groups_url, json=data)
     assert rep.status_code == 201
 
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "Role-TestGroupWithDesc"
     assert result["description"] == "This has a description"
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
 def test_partial_group_update_preserves_description(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
-    mocker: MockerFixture,
-    okta_group: OktaGroup,
+    app: FastAPI, client: TestClient, db: Db, mocker: MockerFixture, okta_group: OktaGroup, url_for: Any
 ) -> None:
     """Test that group updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
-    require_descriptions = app.config.get("REQUIRE_DESCRIPTIONS", False)
+    require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     # Set up the group with a description
     okta_group.description = "Original description"
@@ -1076,12 +1088,12 @@ def test_partial_group_update_preserves_description(
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
-        response_data = rep.get_json()
+        response_data = rep.json()
         assert "description" in str(response_data).lower() or "characters" in str(response_data).lower()
     else:
         # Should succeed
         assert rep.status_code == 200
-        result = rep.get_json()
+        result = rep.json()
         assert result["name"] == "UpdatedWithEmpty"
         assert result["description"] == ""
 
@@ -1096,7 +1108,7 @@ def test_partial_group_update_preserves_description(
     data = {"type": "okta_group", "name": "UpdatedName"}
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedName"
     assert result["description"] == "Original description"
 
@@ -1104,16 +1116,17 @@ def test_partial_group_update_preserves_description(
     data = {"type": "okta_group", "name": "UpdatedName2", "description": "New description"}
     rep = client.put(group_url, json=data)
     assert rep.status_code == 200
-    result = rep.get_json()
+    result = rep.json()
     assert result["name"] == "UpdatedName2"
     assert result["description"] == "New description"
 
 
 def test_cannot_convert_app_prefixed_group_to_non_app_type(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1147,11 +1160,12 @@ def test_cannot_convert_app_prefixed_group_to_non_app_type(
 
 
 def test_cannot_create_group_with_reserved_app_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -1191,10 +1205,11 @@ def test_cannot_create_group_with_reserved_app_prefix(
 
 
 def test_cannot_rename_non_app_group_to_app_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     access_app: App,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1223,10 +1238,11 @@ def test_cannot_rename_non_app_group_to_app_prefix(
 
 
 def test_cannot_create_group_with_reserved_role_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
 ) -> None:
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -1250,9 +1266,10 @@ def test_cannot_create_group_with_reserved_role_prefix(
 
 
 def test_cannot_rename_non_role_group_to_role_prefix(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1279,9 +1296,10 @@ def test_cannot_rename_non_role_group_to_role_prefix(
 
 
 def test_cannot_convert_role_prefixed_group_to_non_role_type(
-    client: FlaskClient,
-    db: SQLAlchemy,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
+    url_for: Any,
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
@@ -1299,4 +1317,62 @@ def test_cannot_convert_role_prefixed_group_to_non_role_type(
 
     # Keeping it as role_group is still allowed
     rep = client.put(group_url, json={"type": "role_group", "name": role_group.name, "description": "desc"})
+    assert rep.status_code == 200
+
+
+def test_put_group_members_rejects_short_user_id(
+    client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """Each Okta user id must be exactly 20 characters wide. Pydantic
+    enforces the constraint at the request boundary so malformed ids
+    cannot leak into the operation layer."""
+    db.session.add(okta_group)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(
+        group_url,
+        json={
+            "members_to_add": ["short"],
+            "members_to_remove": [],
+            "owners_to_add": [],
+            "owners_to_remove": [],
+        },
+    )
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_group_members_rejects_missing_required_lists(
+    client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any
+) -> None:
+    """`members_to_add`, `members_to_remove`, `owners_to_add`, and
+    `owners_to_remove` are required fields on the request body. The Pydantic
+    schema must reject a body that omits them entirely."""
+    db.session.add(okta_group)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(group_url, json={})
+    # The project's exception handler maps Pydantic validation errors to 400
+    # (not the FastAPI default 422) — see `api/exception_handlers.py`.
+    assert rep.status_code == 400
+
+
+def test_put_group_members_accepts_well_formed_ids(
+    client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any
+) -> None:
+    """Sanity check: a 20-char id is accepted (regression guard for fix 1)."""
+    db.session.add(okta_group)
+    db.session.add(user)
+    db.session.commit()
+    group_url = url_for("api-groups.group_members_by_id_put", group_id=okta_group.id)
+    rep = client.put(
+        group_url,
+        json={
+            "members_to_add": [],
+            "members_to_remove": [],
+            "owners_to_add": [],
+            "owners_to_remove": [],
+        },
+    )
     assert rep.status_code == 200

@@ -12,12 +12,13 @@ This includes tests for:
 from typing import Any, Generator
 
 import pytest
-from flask import Flask, url_for
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from api.config import settings
+from api.extensions import Db
 from api.models import AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
@@ -197,7 +198,7 @@ class DummyPlugin:
 
 
 @pytest.fixture
-def test_plugin(app: Flask, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
+def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, None, None]:
     """Register the test plugin for testing."""
     import pluggy
 
@@ -225,7 +226,7 @@ def test_plugin(app: Flask, mocker: MockerFixture) -> Generator[DummyPlugin, Non
 class TestPluginRegistration:
     """Tests for plugin registration and discovery."""
 
-    def test_plugin_metadata(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_plugin_metadata(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test that plugin metadata is correctly retrieved."""
         plugins = get_app_group_lifecycle_plugins()
         test_plugin_meta = next((p for p in plugins if p.id == DummyPlugin.ID), None)
@@ -233,7 +234,7 @@ class TestPluginRegistration:
         assert test_plugin_meta.display_name == "Test Plugin"
         assert test_plugin_meta.description == "A test plugin for unit testing"
 
-    def test_get_plugin_config_properties(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_get_plugin_config_properties(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test retrieving plugin configuration properties."""
         app_props = get_app_group_lifecycle_plugin_app_config_properties(DummyPlugin.ID)
         assert "enabled" in app_props
@@ -245,72 +246,103 @@ class TestPluginRegistration:
 class TestPluginAPIEndpoints:
     """Tests for plugin-related API endpoints."""
 
-    def test_list_plugins(self, client: FlaskClient, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_list_plugins(self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any) -> None:
         """Test GET /api/plugins/app-group-lifecycle returns all plugins."""
         url = url_for("api-plugins.app_group_lifecycle_plugins")
         response = client.get(url)
         assert response.status_code == 200
 
-        data = response.get_json()
+        data = response.json()
         assert isinstance(data, list)
         plugin_ids = [p["id"] for p in data]
         assert DummyPlugin.ID in plugin_ids
 
-    def test_get_app_config_properties(self, client: FlaskClient, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_app_config_properties(
+        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_config_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
         assert response.status_code == 200
 
-        data = response.get_json()
+        data = response.json()
         assert "enabled" in data
         assert "category" in data
         assert data["enabled"]["required"] is True
 
-    def test_get_group_config_properties(self, client: FlaskClient, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_group_config_properties(
+        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_config_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
         assert response.status_code == 200
 
-        data = response.get_json()
+        data = response.json()
         assert "group_id" in data
         assert data["group_id"]["required"] is True
 
-    def test_get_app_status_properties(self, client: FlaskClient, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_app_status_properties(
+        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_status_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
         assert response.status_code == 200
 
-        data = response.get_json()
+        data = response.json()
         assert "last_sync" in data
 
-    def test_get_group_status_properties(self, client: FlaskClient, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_group_status_properties(
+        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_status_props", plugin_id=DummyPlugin.ID)
         response = client.get(url)
         assert response.status_code == 200
 
-        data = response.get_json()
+        data = response.json()
         assert "member_count" in data
 
-    def test_get_nonexistent_plugin(self, client: FlaskClient, db: SQLAlchemy) -> None:
+    def test_get_nonexistent_plugin(self, client: TestClient, db: Db, url_for: Any) -> None:
         """Test that requesting a non-existent plugin returns 404."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_config_props", plugin_id="nonexistent_plugin")
         response = client.get(url)
         assert response.status_code == 404
+
+    def test_plugin_not_found_returns_error_envelope(
+        self, client: TestClient, db: Db, url_for: Any
+    ) -> None:
+        """The plugin endpoints' 404 path must respond with
+        `{"error": "..."}` (the React client reads the `error` field).
+        The plugin router raises `PluginNotFoundError`, which the
+        exception handler in `api/exception_handlers.py` serializes with
+        the `error` envelope — distinct from the global `{"message": ...}`
+        shape used by every other HTTPException."""
+        for endpoint in (
+            "api-plugins.app_group_lifecycle_plugin_app_config_props",
+            "api-plugins.app_group_lifecycle_plugin_group_config_props",
+            "api-plugins.app_group_lifecycle_plugin_app_status_props",
+            "api-plugins.app_group_lifecycle_plugin_group_status_props",
+        ):
+            url = url_for(endpoint, plugin_id="does-not-exist")
+            response = client.get(url)
+            assert response.status_code == 404
+            body = response.json()
+            assert body == {"error": "Plugin 'does-not-exist' not found"}
+            assert "message" not in body
+            assert "detail" not in body
 
 
 class TestPluginConfigAuthorization:
     """Tests for plugin configuration authorization - positive cases (should succeed)."""
 
     def test_access_admin_can_configure_plugin_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that Access admins can configure plugins on apps."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
-        # No need to create a new user or modify app.config["CURRENT_OKTA_USER_EMAIL"]
+        # No need to create a new user or modify settings.CURRENT_OKTA_USER_EMAIL
         test_app = AppFactory.build(name="TestApp", description="Test App")
 
         db.session.add(test_app)
@@ -327,12 +359,12 @@ class TestPluginConfigAuthorization:
         response = client.put(url, json=data)
         assert response.status_code == 200
 
-        response_data = response.get_json()
+        response_data = response.json()
         assert response_data["app_group_lifecycle_plugin"] == DummyPlugin.ID
         assert response_data["plugin_data"][DummyPlugin.ID]["configuration"]["enabled"] is True
 
     def test_app_owner_cannot_configure_plugin_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that app owners (non-Access admins) cannot configure plugins on apps."""
         # Create app owner user
@@ -355,7 +387,7 @@ class TestPluginConfigAuthorization:
         db.session.commit()
 
         # Set current user to app owner
-        app.config["CURRENT_OKTA_USER_EMAIL"] = app_owner.email
+        app.state.current_user_email = app_owner.email
 
         # Try to configure plugin on the test app
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -369,7 +401,7 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 403
 
     def test_app_owner_cannot_modify_existing_plugin_config_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that app owners cannot modify existing plugin configuration."""
         # Create app owner
@@ -397,7 +429,7 @@ class TestPluginConfigAuthorization:
         db.session.commit()
 
         # Set current user to app owner
-        app.config["CURRENT_OKTA_USER_EMAIL"] = app_owner.email
+        app.state.current_user_email = app_owner.email
 
         # Try to modify plugin configuration
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -417,7 +449,7 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 403
 
     def test_access_admin_can_configure_plugin_at_group_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that Access admins can configure plugins on groups."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
@@ -450,7 +482,7 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 200
 
     def test_app_owner_can_configure_plugin_at_group_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that app owners can configure plugins on their app's groups."""
         # Create app owner
@@ -480,7 +512,7 @@ class TestPluginConfigAuthorization:
         db.session.commit()
 
         # Set current user
-        app.config["CURRENT_OKTA_USER_EMAIL"] = app_owner.email
+        app.state.current_user_email = app_owner.email
 
         # Mock Okta update_group call
         mocker.patch.object(okta, "update_group")
@@ -499,7 +531,7 @@ class TestPluginConfigAuthorization:
         assert response.status_code == 200
 
     def test_group_owner_cannot_configure_plugin_at_group_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that group owners (non-app owners) cannot configure plugins on groups."""
         # Create group owner (but not app owner)
@@ -523,7 +555,7 @@ class TestPluginConfigAuthorization:
         db.session.commit()
 
         # Set current user
-        app.config["CURRENT_OKTA_USER_EMAIL"] = group_owner.email
+        app.state.current_user_email = group_owner.email
 
         # Try to configure plugin on the group
         url = url_for("api-groups.group_by_id", group_id=test_group.id)
@@ -542,7 +574,7 @@ class TestPluginConfigAuthorization:
 class TestPluginHelperFunctions:
     """Tests for plugin helper functions like get_config_value, set_status_value, etc."""
 
-    def test_get_config_value(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting configuration values from plugin data."""
         test_app = AppFactory.build(
             name="TestApp7",
@@ -557,7 +589,7 @@ class TestPluginHelperFunctions:
         assert enabled is True
         assert category == "test_id_123"
 
-    def test_get_status_value(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_get_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting status values from plugin data."""
         test_app = AppFactory.build(
             name="TestApp8",
@@ -572,7 +604,7 @@ class TestPluginHelperFunctions:
         assert last_sync == "2025-01-15T10:30:00Z"
         assert sync_count == 42
 
-    def test_set_status_value(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_set_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting status values in plugin data."""
         test_app = AppFactory.build(name="TestApp9", plugin_data={})
         db.session.add(test_app)
@@ -591,7 +623,9 @@ class TestPluginHelperFunctions:
 class TestPluginValidation:
     """Tests for plugin configuration validation."""
 
-    def test_valid_app_config(self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_valid_app_config(
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
         """Test that valid app configuration is accepted."""
         test_app = AppFactory.build(name="TestApp10")
 
@@ -610,7 +644,7 @@ class TestPluginValidation:
         assert response.status_code == 200
 
     def test_invalid_app_config(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that invalid app configuration is rejected."""
         test_app = AppFactory.build(name="TestApp11")
@@ -635,10 +669,10 @@ class TestPluginValidation:
 
         response = client.put(url, json=data)
         assert response.status_code == 400
-        assert "enabled" in str(response.get_json())
+        assert "enabled" in str(response.json())
 
     def test_valid_group_config(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that valid group configuration is accepted."""
         test_app = AppFactory.build(name="TestApp12", app_group_lifecycle_plugin=DummyPlugin.ID)
@@ -668,7 +702,7 @@ class TestPluginValidation:
         assert response.status_code == 200
 
     def test_invalid_group_config(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that invalid group configuration is rejected."""
         test_app = AppFactory.build(name="TestApp13", app_group_lifecycle_plugin=DummyPlugin.ID)
@@ -699,13 +733,13 @@ class TestPluginValidation:
 
         response = client.put(url, json=data)
         assert response.status_code == 400
-        assert "group_id" in str(response.get_json())
+        assert "group_id" in str(response.json())
 
 
 class TestPluginDataRestore:
     """Tests for the restore_unchanged_app_lifecycle_plugin_data function."""
 
-    def test_restore_unchanged_app_data(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_restore_unchanged_app_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function merges configuration updates while preserving status."""
         # Create an app with existing plugin data (this simulates the OLD state before update)
         test_app = AppFactory.build(name="TestAppRestore1")
@@ -739,7 +773,7 @@ class TestPluginDataRestore:
         assert test_app.plugin_data[DummyPlugin.ID]["status"]["last_sync"] == "2025-01-01T00:00:00Z"
         assert test_app.plugin_data[DummyPlugin.ID]["status"]["sync_count"] == 10
 
-    def test_restore_unchanged_group_data(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_restore_unchanged_group_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function works with app groups."""
         test_app = AppFactory.build(name="TestAppRestore2", app_group_lifecycle_plugin=DummyPlugin.ID)
         test_group = AppGroupFactory.build(
@@ -770,7 +804,7 @@ class TestPluginDataRestore:
         # Check status was preserved from old data
         assert test_group.plugin_data[DummyPlugin.ID]["status"]["member_count"] == 5
 
-    def test_restore_ignores_non_plugin_data(self, db: SQLAlchemy, test_plugin: DummyPlugin) -> None:
+    def test_restore_ignores_non_plugin_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function only processes registered plugin IDs."""
         test_app = AppFactory.build(name="TestAppRestore3")
         db.session.add(test_app)
@@ -798,7 +832,7 @@ class TestPluginDataRestore:
 class TestPluginDirectFunctions:
     """Tests for direct function calls to plugin functions."""
 
-    def test_get_group_config_properties(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_get_group_config_properties(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test getting group-level configuration properties directly."""
         props = get_app_group_lifecycle_plugin_group_config_properties(DummyPlugin.ID)
 
@@ -806,7 +840,7 @@ class TestPluginDirectFunctions:
         assert props["group_id"].required is True
         assert props["group_id"].type == "text"
 
-    def test_validate_app_config_direct(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_validate_app_config_direct(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test validating app configuration directly."""
         # Valid configuration
         valid_config: dict[str, object] = {"enabled": True, "category": "test"}
@@ -822,7 +856,7 @@ class TestPluginDirectFunctions:
         errors = validate_app_group_lifecycle_plugin_app_config(plugin_data, DummyPlugin.ID)
         assert "enabled" in errors
 
-    def test_validate_group_config_direct(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_validate_group_config_direct(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test validating group configuration directly."""
         # Valid configuration
         valid_config: dict[str, object] = {"group_id": "external_123"}
@@ -838,7 +872,7 @@ class TestPluginDirectFunctions:
         errors = validate_app_group_lifecycle_plugin_group_config(plugin_data, DummyPlugin.ID)
         assert "group_id" in errors
 
-    def test_get_app_status_properties(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_get_app_status_properties(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test getting app-level status properties directly."""
         props = get_app_group_lifecycle_plugin_app_status_properties(DummyPlugin.ID)
 
@@ -846,7 +880,7 @@ class TestPluginDirectFunctions:
         assert props["last_sync"].type == "date"
         assert props["last_sync"].display_name == "Last Sync"
 
-    def test_get_group_status_properties(self, app: Flask, test_plugin: DummyPlugin) -> None:
+    def test_get_group_status_properties(self, app: FastAPI, test_plugin: DummyPlugin) -> None:
         """Test getting group-level status properties directly."""
         props = get_app_group_lifecycle_plugin_group_status_properties(DummyPlugin.ID)
 
@@ -859,7 +893,7 @@ class TestPluginGroupUpdatedHook:
     """Tests for the group_updated lifecycle hook fired via the group PUT endpoint."""
 
     def test_name_change_fires_hook(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that renaming an app group fires the group_updated hook with old name."""
         test_app = AppFactory.build(
@@ -898,7 +932,7 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_desc == "Same description"
 
     def test_description_change_fires_hook(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that changing an app group's description fires the group_updated hook."""
         test_app = AppFactory.build(
@@ -934,7 +968,7 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_desc == "Old description"
 
     def test_no_change_does_not_fire_hook(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that updating a group without changing name or description does not fire the hook."""
         test_app = AppFactory.build(
@@ -967,7 +1001,7 @@ class TestPluginGroupUpdatedHook:
         assert len(test_plugin.group_updated_calls) == 0
 
     def test_hook_not_fired_without_lifecycle_plugin(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_updated hook does not fire when the app has no lifecycle plugin configured."""
         test_app = AppFactory.build(
@@ -999,7 +1033,7 @@ class TestPluginGroupUpdatedHook:
         assert len(test_plugin.group_updated_calls) == 0
 
     def test_null_description_normalized(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that a group with NULL description is treated as empty string for comparison."""
         test_app = AppFactory.build(
@@ -1037,7 +1071,7 @@ class TestPluginGroupDeletedOnTypeChange:
     """Tests for the group_deleted hook fired when an AppGroup's type is changed to Group or Role."""
 
     def test_app_group_to_okta_group_fires_group_deleted(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an AppGroup to a plain Group fires the group_deleted hook."""
         test_app = AppFactory.build(
@@ -1066,13 +1100,13 @@ class TestPluginGroupDeletedOnTypeChange:
 
         response = client.put(url, json=data)
         assert response.status_code == 200
-        assert response.get_json()["type"] == "okta_group"
+        assert response.json()["type"] == "okta_group"
 
         assert len(test_plugin.group_deleted_calls) == 1
         assert test_plugin.group_deleted_calls[0] == group_id
 
     def test_app_group_to_role_group_fires_group_deleted(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an AppGroup to a Role fires the group_deleted hook."""
         test_app = AppFactory.build(
@@ -1101,13 +1135,13 @@ class TestPluginGroupDeletedOnTypeChange:
 
         response = client.put(url, json=data)
         assert response.status_code == 200
-        assert response.get_json()["type"] == "role_group"
+        assert response.json()["type"] == "role_group"
 
         assert len(test_plugin.group_deleted_calls) == 1
         assert test_plugin.group_deleted_calls[0] == group_id
 
     def test_no_hook_without_lifecycle_plugin(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_deleted hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
@@ -1142,7 +1176,7 @@ class TestPluginGroupCreatedOnTypeChange:
     """Tests for the group_created hook fired when a Group or Role is converted to an AppGroup."""
 
     def test_okta_group_to_app_group_fires_group_created(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an OktaGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
@@ -1168,13 +1202,13 @@ class TestPluginGroupCreatedOnTypeChange:
 
         response = client.put(url, json=data)
         assert response.status_code == 200
-        assert response.get_json()["type"] == "app_group"
+        assert response.json()["type"] == "app_group"
 
         assert len(test_plugin.group_created_calls) == 1
         assert test_plugin.group_created_calls[0] == group_id
 
     def test_role_group_to_app_group_fires_group_created(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting a RoleGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
@@ -1200,13 +1234,13 @@ class TestPluginGroupCreatedOnTypeChange:
 
         response = client.put(url, json=data)
         assert response.status_code == 200
-        assert response.get_json()["type"] == "app_group"
+        assert response.json()["type"] == "app_group"
 
         assert len(test_plugin.group_created_calls) == 1
         assert test_plugin.group_created_calls[0] == group_id
 
     def test_no_hook_without_lifecycle_plugin(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_created hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
@@ -1238,7 +1272,7 @@ class TestPluginMembershipHooks:
     """Tests for plugin lifecycle hooks when members are added/removed."""
 
     def test_direct_member_removed_loses_all_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a member is removed and loses all access to the group."""
         # Setup: Create an app group with the plugin enabled
@@ -1280,7 +1314,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
     def test_direct_member_removed_but_has_redundant_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when trying to remove direct access but user only has role-based access."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1328,7 +1362,7 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_removed_calls) == 0
 
     def test_direct_member_added_gains_first_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a member is added for the first time."""
         # Setup: Create an app group with the plugin enabled
@@ -1362,7 +1396,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
     def test_direct_member_added_but_already_has_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a member is added directly but already has access via a role."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1407,7 +1441,7 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_added_calls) == 0
 
     def test_role_member_removed_loses_all_access_to_associated_group(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is removed and loses all access to role-associated groups."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1455,7 +1489,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
     def test_role_member_removed_but_has_redundant_access_via_another_role(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is removed but still has access via another role."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1506,7 +1540,7 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_removed_calls) == 0
 
     def test_role_member_added_gains_first_access_to_associated_group(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is added and gains first access to role-associated groups."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1546,7 +1580,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
     def test_role_member_added_but_already_has_access_to_associated_group(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is added but already has access to role-associated groups."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1589,7 +1623,7 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_added_calls) == 0
 
     def test_role_removed_from_group_user_loses_all_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role is removed from a group and user loses all access."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1637,7 +1671,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
     def test_role_removed_from_group_user_has_redundant_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role is removed from a group but user has direct access."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1685,7 +1719,7 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_removed_calls) == 0
 
     def test_role_added_to_group_user_gains_first_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role is added to a group and user gains first access."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1729,7 +1763,7 @@ class TestPluginMembershipHooks:
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
     def test_role_added_to_group_user_already_has_access(
-        self, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, mocker: MockerFixture
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role is added to a group but user already has direct access."""
         from api.operations import ModifyGroupUsers, ModifyRoleGroups
@@ -1779,13 +1813,13 @@ class TestPluginAuditLogging:
     """Tests for plugin configuration audit logging."""
 
     def test_audit_log_plugin_assignment_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that assigning a plugin to an app creates an audit log entry."""
         import json
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 
@@ -1815,16 +1849,16 @@ class TestPluginAuditLogging:
         assert log_data["event_type"] == EventType.app_modify_plugin.value
         assert log_data["app"]["id"] == test_app.id
         assert log_data["old_app_group_lifecycle_plugin"] is None
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_configuration_change_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that changing app-level plugin configuration creates an audit log entry."""
         import json
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 
@@ -1862,16 +1896,16 @@ class TestPluginAuditLogging:
         assert log_data["app"]["id"] == test_app.id
         assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["category"] == "original"
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_removal_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that removing a plugin from an app creates an audit log entry."""
         import json
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 
@@ -1904,22 +1938,23 @@ class TestPluginAuditLogging:
         log_data = json.loads(plugin_logs[0].message)
         assert log_data["event_type"] == EventType.app_modify_plugin.value
         assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_audit_log_plugin_configuration_change_at_group_level(
         self,
-        client: FlaskClient,
-        db: SQLAlchemy,
-        app: Flask,
+        client: TestClient,
+        db: Db,
+        app: FastAPI,
         test_plugin: DummyPlugin,
         caplog: Any,
         mocker: MockerFixture,
+        url_for: Any,
     ) -> None:
         """Test that changing group-level plugin configuration creates an audit log entry."""
         import json
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 
@@ -1968,15 +2003,15 @@ class TestPluginAuditLogging:
         assert log_data["event_type"] == EventType.group_modify_plugin.value
         assert log_data["group"]["id"] == test_group.id
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["custom_tag"] == "original"
-        assert log_data["current_user_email"] == app.config["CURRENT_OKTA_USER_EMAIL"]
+        assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
     def test_no_audit_log_when_plugin_unchanged_at_app_level(
-        self, client: FlaskClient, db: SQLAlchemy, app: Flask, test_plugin: DummyPlugin, caplog: Any
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that no audit log is created when plugin configuration is unchanged."""
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 
@@ -2004,17 +2039,18 @@ class TestPluginAuditLogging:
 
     def test_no_audit_log_when_plugin_unchanged_at_group_level(
         self,
-        client: FlaskClient,
-        db: SQLAlchemy,
-        app: Flask,
+        client: TestClient,
+        db: Db,
+        app: FastAPI,
         test_plugin: DummyPlugin,
         caplog: Any,
         mocker: MockerFixture,
+        url_for: Any,
     ) -> None:
         """Test that no audit log is created when group plugin configuration is unchanged."""
         import logging
 
-        from api.views.schemas import EventType
+        from api.schemas import EventType
 
         caplog.set_level(logging.INFO)
 

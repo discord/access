@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
-from typing import cast, Protocol
+from typing import Any, cast, Protocol
 
 from factory import Faker
-from flask import Flask
-from flask.testing import FlaskClient
-from flask_sqlalchemy import SQLAlchemy
+from fastapi.testclient import TestClient
 from okta.models import Group
 from pytest_mock import MockerFixture
+from fastapi import FastAPI
 
+from api.config import settings
+from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
     AppGroup,
@@ -37,9 +38,9 @@ class FakerWithPyStr(Protocol):
 
 
 def test_create_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -62,9 +63,9 @@ def test_create_group_request(
 
 
 def test_create_app_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -89,9 +90,9 @@ def test_create_app_group_request(
 
 
 def test_create_role_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -110,9 +111,9 @@ def test_create_role_group_request(
 
 
 def test_create_group_request_with_tags(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
     tag: Tag,
 ) -> None:
@@ -134,9 +135,9 @@ def test_create_group_request_with_tags(
 
 
 def test_create_group_request_with_ownership_ending_at(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -168,9 +169,9 @@ def test_create_group_request_with_ownership_ending_at(
 
 
 def test_create_group_request_tag_limits_ownership_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 90 days
@@ -212,9 +213,9 @@ def test_create_group_request_tag_limits_ownership_time(
 
 
 def test_create_group_request_tag_reduces_requested_ownership_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 30 days
@@ -258,14 +259,14 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
 
 
 def test_approve_group_request_creates_group(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -314,14 +315,14 @@ def test_approve_group_request_creates_group(
 
 
 def test_approve_group_request_sets_owner_with_ending_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -377,14 +378,14 @@ def test_approve_group_request_sets_owner_with_ending_time(
 
 
 def test_approve_group_request_tag_limits_owner_ending_time(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -465,15 +466,15 @@ def test_approve_group_request_tag_limits_owner_ending_time(
 
 
 def test_approve_group_request_applies_tags(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
     tag: Tag,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(tag)
@@ -526,14 +527,14 @@ def test_approve_group_request_applies_tags(
 
 
 def test_approve_group_request_sets_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -568,14 +569,14 @@ def test_approve_group_request_sets_name(
 
 
 def test_approve_group_request_sets_type(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     app_obj = AppFactory.create()
 
     db.session.add(user)
@@ -667,9 +668,9 @@ def test_approve_group_request_sets_type(
 
 
 def test_app_owner_can_approve_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -732,9 +733,9 @@ def test_app_owner_can_approve_request(
 
 
 def test_app_owner_can_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     app_owner = OktaUserFactory.create()
@@ -790,9 +791,9 @@ def test_app_owner_can_reject_request(
 
 
 def test_wrong_app_owner_cannot_approve_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -869,12 +870,12 @@ def test_wrong_app_owner_cannot_approve_request(
 
 
 def test_admin_can_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(admin)
@@ -903,9 +904,9 @@ def test_admin_can_reject_request(
 
 
 def test_any_user_cannot_reject_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     other_user = OktaUserFactory.create()
@@ -937,9 +938,9 @@ def test_any_user_cannot_reject_request(
 
 
 def test_user_can_reject_own_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -968,9 +969,9 @@ def test_user_can_reject_own_request(
 
 
 def test_user_cannot_approve_own_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
@@ -1000,14 +1001,14 @@ def test_user_cannot_approve_own_request(
 
 
 def test_approver_can_modify_group_details(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == app.config["CURRENT_OKTA_USER_EMAIL"]).first()
+    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     tag = TagFactory.create(enabled=True)
     other_tag = TagFactory.create(enabled=True)
 
@@ -1070,9 +1071,9 @@ def test_approver_can_modify_group_details(
 
 
 def test_cannot_approve_already_resolved_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1124,9 +1125,9 @@ def test_cannot_approve_already_resolved_request(
 
 
 def test_cannot_approve_deleted_requester(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1171,9 +1172,9 @@ def test_cannot_approve_deleted_requester(
 
 
 def test_app_owner_auto_approves_own_app_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1249,9 +1250,9 @@ def test_app_owner_auto_approves_own_app_group_request(
 
 
 def test_app_owner_auto_approves_own_app_group_request_tagged(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
 ) -> None:
@@ -1353,9 +1354,9 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 
 
 def test_random_user_cannot_approve_group_request(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     user: OktaUser,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1395,9 +1396,9 @@ def test_random_user_cannot_approve_group_request(
 
 
 def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1470,9 +1471,9 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1542,9 +1543,9 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_role_group_via_resolved_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1614,9 +1615,9 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
 
 
 def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1687,9 +1688,9 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
 
 
 def test_cannot_approve_okta_group_with_reserved_app_owners_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1752,9 +1753,9 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
 
 
 def test_cannot_approve_role_group_with_reserved_app_owners_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1817,9 +1818,9 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
 
 
 def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1883,9 +1884,9 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
 
 
 def test_cannot_approve_app_group_request_with_owners_group_name(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -1955,9 +1956,9 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
 
 
 def test_cannot_approve_non_role_group_request_with_role_prefix(
-    app: Flask,
-    client: FlaskClient,
-    db: SQLAlchemy,
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
@@ -2004,3 +2005,196 @@ def test_cannot_approve_non_role_group_request_with_role_prefix(
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
     assert group_request.resolved_at is None
+
+
+def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+    """`status`, `requester_user_id`, `requested_group_type`,
+    `requested_app_id` and `q` each narrow /api/group-requests. Seed two
+    requests of different types/requesters/apps so each filter must
+    *exclude* the other to pass — a regression that returns everything
+    would still match by ID."""
+    from api.operations import CreateGroupRequest
+
+    target_user = OktaUserFactory.create()
+    other_user = OktaUserFactory.create()
+    target_app = AppFactory.create()
+    db.session.add_all([target_user, other_user, target_app])
+    db.session.commit()
+
+    target_gr = CreateGroupRequest(
+        requester_user=target_user,
+        requested_group_name="ZelaTargetOktaGroup",
+        requested_group_description="zela target desc",
+        requested_group_type="okta_group",
+        requested_app_id=None,
+        requested_group_tags=[],
+        requested_ownership_ending_at=None,
+        request_reason="please",
+    ).execute()
+    other_gr = CreateGroupRequest(
+        requester_user=other_user,
+        requested_group_name=f"App-{target_app.name}-OtherDistinctApp",
+        requested_group_description="distinct app group desc",
+        requested_group_type="app_group",
+        requested_app_id=target_app.id,
+        requested_group_tags=[],
+        requested_ownership_ending_at=None,
+        request_reason="please",
+    ).execute()
+    assert target_gr is not None and other_gr is not None
+
+    list_url = url_for("api-group-requests.group_requests")
+
+    def ids(rep: Any) -> list[str]:
+        return [r["id"] for r in rep.json()["results"]]
+
+    rep = client.get(list_url, params={"status": "PENDING"})
+    assert rep.status_code == 200
+    assert {target_gr.id, other_gr.id}.issubset(set(ids(rep)))
+
+    rep = client.get(list_url, params={"requester_user_id": target_user.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+    rep = client.get(list_url, params={"requested_group_type": "okta_group"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+    rep = client.get(list_url, params={"requested_app_id": target_app.id})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert other_gr.id in found and target_gr.id not in found
+
+    rep = client.get(list_url, params={"q": "ZelaTargetOktaGroup"})
+    assert rep.status_code == 200
+    found = ids(rep)
+    assert target_gr.id in found and other_gr.id not in found
+
+
+def test_post_group_request_validation_via_http(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """POST /api/group-requests pre-validates: deleted requester → 403,
+    unknown tag → 400, and `app_group` without `requested_app_id` → 400
+    (the Pydantic discriminator catches it before the handler runs)."""
+    from datetime import datetime, timezone
+
+    create_url = url_for("api-group-requests.group_requests_create")
+
+    # (a) Deleted requester → 403
+    deleted = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted)
+    db.session.commit()
+    mock_user(deleted.id)
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": [],
+        },
+    )
+    assert rep.status_code == 403
+    mock_user(None)  # restore default
+
+    # (b) Unknown tag → 400
+    db.session.add(user)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": ["tag-does-not-exist"],
+        },
+    )
+    assert rep.status_code == 400
+    assert "tags not found" in rep.text
+
+    # (c) app_group missing requested_app_id → 400 (Pydantic discriminator
+    # rejects the missing required field on _AppGroupRequestBody).
+    rep = client.post(
+        create_url,
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+        },
+    )
+    assert rep.status_code == 400
+
+
+def test_post_group_request_app_id_must_exist_unknown(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """`requested_app_id` that does not match any App row → 404 "App not found".
+    The router must verify the app exists before invoking
+    `CreateGroupRequest`."""
+    db.session.add(user)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+            "requested_app_id": "nonexistent-app-id",
+        },
+    )
+    assert rep.status_code == 404
+    assert "App not found" in rep.text
+
+
+def test_post_group_request_app_id_must_exist_deleted(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """`requested_app_id` pointing at a soft-deleted App → 404 (the resource
+    queries `App.deleted_at.is_(None)` before accepting the request)."""
+    db.session.add(user)
+    deleted_app = AppFactory.create(name="DeletedApp", deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_app)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+            "requested_app_id": deleted_app.id,
+        },
+    )
+    assert rep.status_code == 404
+    assert "App not found" in rep.text
+
+
+def test_post_group_request_tag_ids_must_be_undeleted(
+    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+) -> None:
+    """A soft-deleted tag id must not be accepted — the router filters
+    `Tag.deleted_at.is_(None)` before counting matches against the
+    requested tag list."""
+    from tests.factories import TagFactory
+
+    db.session.add(user)
+    deleted_tag = TagFactory.create(name="DeletedTag", deleted_at=datetime.now(timezone.utc))
+    db.session.add(deleted_tag)
+    db.session.commit()
+    mock_user(user.id)
+    rep = client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": "Foo",
+            "requested_group_description": "x",
+            "requested_group_type": "okta_group",
+            "requested_group_tags": [deleted_tag.id],
+        },
+    )
+    assert rep.status_code == 400
+    assert "tags not found" in rep.text
