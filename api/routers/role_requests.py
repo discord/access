@@ -32,6 +32,7 @@ from api.schemas import (
     CreateRoleRequestBody,
     ResolveRoleRequestBody,
     RoleRequestDetail,
+    RoleRequestPagination,
     SearchRoleRequestPaginationQuery,
 )
 from api.schemas._serialize import dump_orm
@@ -53,7 +54,7 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="role_requests")
+@router.get("", name="role_requests", response_model=RoleRequestPagination)
 def list_role_requests(
     request: Request,
     db: DbSession,
@@ -306,7 +307,7 @@ def list_role_requests(
     return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{role_request_id}", name="role_request_by_id")
+@router.get("/{role_request_id}", name="role_request_by_id", response_model=RoleRequestDetail)
 def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
@@ -314,7 +315,7 @@ def get_role_request(role_request_id: str, db: DbSession, current_user_id: Curre
     return dump_orm(_adapter, rr)
 
 
-@router.post("", name="role_requests_create", status_code=201)
+@router.post("", name="role_requests_create", status_code=201, response_model=RoleRequestDetail)
 def post_role_request(
     body: CreateRoleRequestBody,
     db: DbSession,
@@ -366,7 +367,7 @@ def post_role_request(
     return dump_orm(_adapter, refreshed or rr)
 
 
-@router.put("/{role_request_id}", name="role_request_by_id_put")
+@router.put("/{role_request_id}", name="role_request_by_id_put", response_model=RoleRequestDetail)
 def put_role_request(
     role_request_id: str,
     body: ResolveRoleRequestBody,

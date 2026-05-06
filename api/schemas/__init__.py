@@ -10,6 +10,7 @@ field.
 """
 
 from api.schemas.audit_logs import AuditLogSchema, EventType  # noqa: F401
+from api.schemas.audit_rows import AuditGroupRoleRow, AuditUserGroupRow  # noqa: F401
 from api.schemas.core_schemas import (  # noqa: F401
     AppDetail,
     AppGroupDetail,
@@ -18,7 +19,9 @@ from api.schemas.core_schemas import (  # noqa: F401
     AppIdRef,
     AppSummary,
     AppTagMapDetail,
+    ErrorMessage,
     GroupDetail,
+    GroupMembersSummary,
     GroupRef,
     GroupSummary,
     OktaGroupDetail,
@@ -32,11 +35,22 @@ from api.schemas.core_schemas import (  # noqa: F401
     RoleGroupMapDetail,
     RoleGroupRef,
     RoleGroupSummary,
+    RoleMembersSummary,
     TagDetail,
     TagListItem,
     TagSummary,
 )
 from api.schemas.delete_message import DeleteMessage  # noqa: F401
+from api.schemas.plugin_schemas import (  # noqa: F401
+    AppGroupLifecyclePluginAppConfig,
+    AppGroupLifecyclePluginAppStatus,
+    AppGroupLifecyclePluginGroupConfig,
+    AppGroupLifecyclePluginGroupStatus,
+    AppGroupLifecyclePlugins,
+    PluginConfigProp,
+    PluginInfo,
+    PluginStatusProp,
+)
 from api.schemas.pagination import (  # noqa: F401
     AccessRequestPagination,
     AppPagination,

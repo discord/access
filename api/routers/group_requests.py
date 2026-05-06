@@ -19,6 +19,7 @@ from api.pagination import paginate
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
+    GroupRequestPagination,
     ResolveGroupRequestBody,
     SearchGroupRequestPaginationQuery,
 )
@@ -39,7 +40,7 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="group_requests")
+@router.get("", name="group_requests", response_model=GroupRequestPagination)
 def list_group_requests(
     request: Request,
     db: DbSession,
@@ -150,7 +151,7 @@ def list_group_requests(
     return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{group_request_id}", name="group_request_by_id")
+@router.get("/{group_request_id}", name="group_request_by_id", response_model=GroupRequestDetail)
 def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
@@ -158,7 +159,7 @@ def get_group_request(group_request_id: str, db: DbSession, current_user_id: Cur
     return dump_orm(_adapter, gr)
 
 
-@router.post("", name="group_requests_create", status_code=201)
+@router.post("", name="group_requests_create", status_code=201, response_model=GroupRequestDetail)
 def post_group_request(
     body: CreateGroupRequestBody,
     db: DbSession,
@@ -237,7 +238,7 @@ def post_group_request(
     return dump_orm(_adapter, refreshed)
 
 
-@router.put("/{group_request_id}", name="group_request_by_id_put")
+@router.put("/{group_request_id}", name="group_request_by_id_put", response_model=GroupRequestDetail)
 def put_group_request(
     group_request_id: str,
     body: ResolveGroupRequestBody,

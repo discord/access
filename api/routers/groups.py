@@ -50,6 +50,8 @@ from api.schemas import (
     CreateGroupBody,
     DeleteMessage,
     GroupDetail,
+    GroupMembersSummary,
+    GroupPagination,
     GroupSummary,
     SearchGroupPaginationQuery,
     UpdateGroupBody,
@@ -94,7 +96,7 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
     )
 
 
-@router.get("", name="groups")
+@router.get("", name="groups", response_model=GroupPagination)
 def list_groups(
     request: Request,
     db: DbSession,
@@ -124,7 +126,7 @@ def list_groups(
     return paginate(request, query, _group_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{group_id}", name="group_by_id")
+@router.get("/{group_id}", name="group_by_id", response_model=GroupDetail)
 def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     group = _load_group_with_options(db, group_id)
     if group is None:
@@ -132,7 +134,7 @@ def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> d
     return dump_orm(_group_adapter, group)
 
 
-@router.post("", name="groups_create", status_code=201)
+@router.post("", name="groups_create", status_code=201, response_model=GroupDetail)
 def post_group(
     request: Request,
     body: CreateGroupBody,
@@ -190,7 +192,7 @@ def post_group(
     return dump_orm(_group_adapter, refreshed)
 
 
-@router.put("/{group_id}", name="group_by_id_put")
+@router.put("/{group_id}", name="group_by_id_put", response_model=GroupDetail)
 def put_group(
     group_id: str,
     request: Request,
@@ -375,7 +377,7 @@ def put_group(
     return dump_orm(_group_adapter, refreshed)
 
 
-@router.delete("/{group_id}", name="group_by_id_delete")
+@router.delete("/{group_id}", name="group_by_id_delete", response_model=DeleteMessage)
 def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     group = _load_group_with_options(db, group_id)
     if group is None:
@@ -399,7 +401,7 @@ def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUse
     return RedirectResponse(url=f"/api/audit/users?{urlencode(qp)}", status_code=307)
 
 
-@router.get("/{group_id}/members", name="group_members_by_id")
+@router.get("/{group_id}/members", name="group_members_by_id", response_model=GroupMembersSummary)
 def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     group = (
         db.query(OktaGroup)
@@ -429,7 +431,7 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
     }
 
 
-@router.put("/{group_id}/members", name="group_members_by_id_put")
+@router.put("/{group_id}/members", name="group_members_by_id_put", response_model=GroupMembersSummary)
 def put_group_members(
     group_id: str,
     db: DbSession,

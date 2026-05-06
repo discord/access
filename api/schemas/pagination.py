@@ -3,9 +3,23 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Generic, Optional, TypeVar
+from typing import Generic, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from api.schemas.audit_rows import AuditGroupRoleRow, AuditUserGroupRow
+from api.schemas.core_schemas import (
+    AppSummary,
+    GroupSummary,
+    OktaUserSummary,
+    RoleGroupSummary,
+    TagListItem,
+)
+from api.schemas.requests_schemas import (
+    AccessRequestDetail,
+    GroupRequestDetail,
+    RoleRequestDetail,
+)
 
 T = TypeVar("T")
 
@@ -92,60 +106,59 @@ class SearchGroupRoleAuditPaginationQuery(SearchAuditPaginationQuery):
 
 
 # --- Response envelope ------------------------------------------------------
+# Single generic envelope; named subclasses below give the OpenAPI codegen
+# clean component names (`UserPagination`, ...) instead of synthetic
+# `PaginationResponse_OktaUserSummary_` identifiers in the generated TS
+# client. The `paginate()` helper in `api/pagination.py` emits all seven
+# fields below.
 
 
 class PaginationResponse(BaseModel, Generic[T]):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     total: int
     pages: int
+    has_next: bool = False
+    has_prev: bool = False
     next: Optional[str] = None
     prev: Optional[str] = None
     results: list[T]
 
 
-# Concrete envelopes (Pydantic v2 generic instantiation)
-class _PageBase(BaseModel):
-    total: int
-    pages: int
-    next: Optional[str] = None
-    prev: Optional[str] = None
+class UserPagination(PaginationResponse[OktaUserSummary]):
+    pass
 
 
-class UserPagination(_PageBase):
-    results: list[Any]
+class GroupPagination(PaginationResponse[GroupSummary]):
+    pass
 
 
-class GroupPagination(_PageBase):
-    results: list[Any]
+class RolePagination(PaginationResponse[RoleGroupSummary]):
+    pass
 
 
-class RolePagination(_PageBase):
-    results: list[Any]
+class AppPagination(PaginationResponse[AppSummary]):
+    pass
 
 
-class AppPagination(_PageBase):
-    results: list[Any]
+class TagPagination(PaginationResponse[TagListItem]):
+    pass
 
 
-class TagPagination(_PageBase):
-    results: list[Any]
+class AccessRequestPagination(PaginationResponse[AccessRequestDetail]):
+    pass
 
 
-class AccessRequestPagination(_PageBase):
-    results: list[Any]
+class RoleRequestPagination(PaginationResponse[RoleRequestDetail]):
+    pass
 
 
-class RoleRequestPagination(_PageBase):
-    results: list[Any]
+class GroupRequestPagination(PaginationResponse[GroupRequestDetail]):
+    pass
 
 
-class GroupRequestPagination(_PageBase):
-    results: list[Any]
+class UserGroupAuditPagination(PaginationResponse[AuditUserGroupRow]):
+    pass
 
 
-class UserGroupAuditPagination(_PageBase):
-    results: list[Any]
-
-
-class GroupRoleAuditPagination(_PageBase):
-    results: list[Any]
+class GroupRoleAuditPagination(PaginationResponse[AuditGroupRoleRow]):
+    pass

@@ -34,8 +34,10 @@ from api.models import (
 from api.pagination import paginate
 from api.schemas import (
     AuditOrderBy,
+    GroupRoleAuditPagination,
     SearchGroupRoleAuditPaginationQuery,
     SearchUserGroupAuditPaginationQuery,
+    UserGroupAuditPagination,
 )
 from api.schemas.rfc822 import _rfc822
 
@@ -248,7 +250,7 @@ def _serialize_role_group_map(rgm: RoleGroupMap) -> dict[str, Any]:
 # --- Routes -----------------------------------------------------------------
 
 
-@router.get("/users", name="users_and_groups")
+@router.get("/users", name="users_and_groups", response_model=UserGroupAuditPagination)
 def users_and_groups(
     request: Request,
     db: DbSession,
@@ -487,7 +489,7 @@ def users_and_groups(
     )
 
 
-@router.get("/groups", name="groups_and_roles")
+@router.get("/groups", name="groups_and_roles", response_model=GroupRoleAuditPagination)
 def groups_and_roles(
     request: Request,
     db: DbSession,

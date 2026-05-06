@@ -31,6 +31,7 @@ from api.routers._eager import (
 )
 from api.schemas import (
     AppDetail,
+    AppPagination,
     AppSummary,
     CreateAppBody,
     DeleteMessage,
@@ -62,7 +63,7 @@ _adapter = TypeAdapter(AppDetail)
 _summary_adapter = TypeAdapter(AppSummary)
 
 
-@router.get("", name="apps")
+@router.get("", name="apps", response_model=AppPagination)
 def list_apps(
     request: Request,
     db: DbSession,
@@ -76,7 +77,7 @@ def list_apps(
     return paginate(request, query, _summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{app_id}", name="app_by_id")
+@router.get("/{app_id}", name="app_by_id", response_model=AppDetail)
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     app = db.query(App).options(*APP_LOAD_OPTIONS).filter(_db.or_(App.id == app_id, App.name == app_id)).first()
     if app is None:
@@ -84,7 +85,7 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[
     return dump_orm(_adapter, app)
 
 
-@router.post("", name="apps_create", status_code=201)
+@router.post("", name="apps_create", status_code=201, response_model=AppDetail)
 def post_app(
     body: CreateAppBody,
     db: DbSession,
@@ -181,7 +182,7 @@ def post_app(
     return dump_orm(_adapter, refreshed)
 
 
-@router.put("/{app_id}", name="app_by_id_put")
+@router.put("/{app_id}", name="app_by_id_put", response_model=AppDetail)
 def put_app(
     app_id: str,
     body: UpdateAppBody,
@@ -355,7 +356,7 @@ def put_app(
     return dump_orm(_adapter, refreshed)
 
 
-@router.delete("/{app_id}", name="app_by_id_delete")
+@router.delete("/{app_id}", name="app_by_id_delete", response_model=DeleteMessage)
 def delete_app(
     app_id: str,
     db: DbSession,

@@ -21,7 +21,13 @@ from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, Role
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
-from api.schemas import GroupDetail, GroupSummary, SearchRolePaginationQuery
+from api.schemas import (
+    GroupDetail,
+    GroupSummary,
+    RoleMembersSummary,
+    RolePagination,
+    SearchRolePaginationQuery,
+)
 from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import RoleMember
 
@@ -30,7 +36,7 @@ _role_adapter = TypeAdapter(GroupDetail)
 _role_summary_adapter = TypeAdapter(GroupSummary)
 
 
-@router.get("", name="roles")
+@router.get("", name="roles", response_model=RolePagination)
 def list_roles(
     request: Request,
     db: DbSession,
@@ -76,7 +82,7 @@ def list_roles(
     return paginate(request, query, _role_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{role_id}", name="role_by_id")
+@router.get("/{role_id}", name="role_by_id", response_model=GroupDetail)
 def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     role = (
         db.query(RoleGroup)
@@ -98,7 +104,7 @@ def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserI
     return RedirectResponse(url=f"/api/audit/groups?{urlencode(qp)}", status_code=307)
 
 
-@router.get("/{role_id}/members", name="role_members_by_id")
+@router.get("/{role_id}/members", name="role_members_by_id", response_model=RoleMembersSummary)
 def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
     if role is None:
@@ -115,7 +121,7 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
     }
 
 
-@router.put("/{role_id}/members", name="role_members_by_id_put")
+@router.put("/{role_id}/members", name="role_members_by_id_put", response_model=RoleMembersSummary)
 def put_role_members(
     role_id: str,
     db: DbSession,

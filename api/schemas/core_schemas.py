@@ -341,6 +341,33 @@ GroupRef = Annotated[
 ]
 
 
+# --- Members views (list-of-IDs response shapes) ----------------------------
+
+
+class GroupMembersSummary(BaseModel):
+    """Wire shape for `GET/PUT /api/groups/{id}/members`."""
+
+    members: list[str]
+    owners: list[str]
+
+
+class RoleMembersSummary(BaseModel):
+    """Wire shape for `GET/PUT /api/roles/{id}/members`."""
+
+    groups_in_role: list[str]
+    groups_owned_by_role: list[str]
+
+
+# --- Error envelope ---------------------------------------------------------
+
+
+class ErrorMessage(BaseModel):
+    """Wire shape emitted by `api/exception_handlers.py`. Declared here so
+    routes can advertise it via `responses={...}` for OpenAPI codegen."""
+
+    message: str
+
+
 # Manage forward refs after all classes are defined
 OktaUserDetail.model_rebuild()
 AppDetail.model_rebuild()

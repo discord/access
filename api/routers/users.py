@@ -30,7 +30,12 @@ from api.models import (
 )
 from api.pagination import paginate
 from api.routers._eager import user_group_member_options
-from api.schemas import OktaUserDetail, OktaUserSummary, SearchUserPaginationQuery
+from api.schemas import (
+    OktaUserDetail,
+    OktaUserSummary,
+    SearchUserPaginationQuery,
+    UserPagination,
+)
 from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -40,7 +45,7 @@ _user_adapter = TypeAdapter(OktaUserDetail)
 _user_summary_adapter = TypeAdapter(OktaUserSummary)
 
 
-@router.get("", name="users")
+@router.get("", name="users", response_model=UserPagination)
 def list_users(
     request: Request,
     db: DbSession,
@@ -99,7 +104,7 @@ def list_users(
     return paginate(request, query, _user_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{user_id}", name="user_by_id")
+@router.get("/{user_id}", name="user_by_id", response_model=OktaUserDetail)
 def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     if user_id == "@me":
         user_id = current_user_id

@@ -28,6 +28,7 @@ from api.pagination import paginate
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.schemas import (
     AccessRequestDetail,
+    AccessRequestPagination,
     CreateAccessRequestBody,
     ResolveAccessRequestBody,
     SearchAccessRequestPaginationQuery,
@@ -74,7 +75,7 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="access_requests")
+@router.get("", name="access_requests", response_model=AccessRequestPagination)
 def list_access_requests(
     request: Request,
     db: DbSession,
@@ -194,7 +195,7 @@ def list_access_requests(
     return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{access_request_id}", name="access_request_by_id")
+@router.get("/{access_request_id}", name="access_request_by_id", response_model=AccessRequestDetail)
 def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     ar = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
     if ar is None:
@@ -202,7 +203,7 @@ def get_access_request(access_request_id: str, db: DbSession, current_user_id: C
     return dump_orm(_adapter, ar)
 
 
-@router.post("", name="access_requests_create", status_code=201)
+@router.post("", name="access_requests_create", status_code=201, response_model=AccessRequestDetail)
 def post_access_request(
     body: CreateAccessRequestBody,
     db: DbSession,
@@ -257,7 +258,7 @@ def post_access_request(
     return dump_orm(_adapter, refreshed)
 
 
-@router.put("/{access_request_id}", name="access_request_by_id_put")
+@router.put("/{access_request_id}", name="access_request_by_id_put", response_model=AccessRequestDetail)
 def put_access_request(
     access_request_id: str,
     body: ResolveAccessRequestBody,

@@ -28,6 +28,7 @@ from api.schemas import (
     SearchTagPaginationQuery,
     TagDetail,
     TagListItem,
+    TagPagination,
     UpdateTagBody,
 )
 from api.schemas._serialize import dump_orm
@@ -40,7 +41,7 @@ _adapter = TypeAdapter(TagDetail)
 _list_adapter = TypeAdapter(TagListItem)
 
 
-@router.get("", name="tags")
+@router.get("", name="tags", response_model=TagPagination)
 def list_tags(
     request: Request,
     db: DbSession,
@@ -54,7 +55,7 @@ def list_tags(
     return paginate(request, query, _list_adapter, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{tag_id}", name="tag_by_id")
+@router.get("/{tag_id}", name="tag_by_id", response_model=TagDetail)
 def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
     # `nullsfirst(deleted_at.desc())` makes an active row beat a soft-deleted
     # row that shares the same name. Without the order, `.first()` may return
@@ -71,7 +72,7 @@ def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[
     return dump_orm(_adapter, tag)
 
 
-@router.post("", name="tags_create", status_code=201)
+@router.post("", name="tags_create", status_code=201, response_model=TagDetail)
 def post_tag(
     body: CreateTagBody,
     db: DbSession,
@@ -98,7 +99,7 @@ def post_tag(
     return dump_orm(_adapter, refreshed or created)
 
 
-@router.put("/{tag_id}", name="tag_by_id_put")
+@router.put("/{tag_id}", name="tag_by_id_put", response_model=TagDetail)
 def put_tag(
     tag_id: str,
     body: UpdateTagBody,
@@ -183,7 +184,7 @@ def put_tag(
     return dump_orm(_adapter, refreshed or tag)
 
 
-@router.delete("/{tag_id}", name="tag_by_id_delete")
+@router.delete("/{tag_id}", name="tag_by_id_delete", response_model=DeleteMessage)
 def delete_tag(
     tag_id: str,
     db: DbSession,
