@@ -52,11 +52,9 @@ from api.schemas import (
     GroupDetail,
     GroupMembersSummary,
     GroupPagination,
-    GroupSummary,
     SearchGroupPaginationQuery,
     UpdateGroupBody,
 )
-from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import (
     GroupMember,
     _AppGroupCreateBody,
@@ -82,8 +80,11 @@ DEFAULT_LOAD_OPTIONS = (
     selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
 )
 
-_group_adapter = TypeAdapter(GroupDetail)
-_group_summary_adapter = TypeAdapter(GroupSummary)
+# `GroupDetail` is a discriminated union (`Annotated[Union[...], Field(discriminator="type")]`),
+# so `model_validate(...)` isn't available — we go through a `TypeAdapter`. The
+# adapter is cached at module level since constructing it is non-trivial and
+# every detail-shaped response goes through it.
+_group_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
 def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
@@ -96,13 +97,13 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
     )
 
 
-@router.get("", name="groups", response_model=GroupPagination)
+@router.get("", name="groups")
 def list_groups(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> GroupPagination:
     query = (
         db.query(OktaGroup)
         .options(
@@ -123,24 +124,24 @@ def list_groups(
     if q_args.managed is not None:
         query = query.filter(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(request, query, _group_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, GroupPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{group_id}", name="group_by_id", response_model=GroupDetail)
-def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{group_id}", name="group_by_id")
+def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return dump_orm(_group_adapter, group)
+    return _group_adapter.validate_python(group, from_attributes=True)
 
 
-@router.post("", name="groups_create", status_code=201, response_model=GroupDetail)
+@router.post("", name="groups_create", status_code=201)
 def post_group(
     request: Request,
     body: CreateGroupBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> GroupDetail:
     """Create a new group. Body is the polymorphic group input + tags_to_add."""
     description = body.description or ""
 
@@ -189,17 +190,17 @@ def post_group(
 
     created = CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
     refreshed = _load_group_with_options(db, created.id)
-    return dump_orm(_group_adapter, refreshed)
+    return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
-@router.put("/{group_id}", name="group_by_id_put", response_model=GroupDetail)
+@router.put("/{group_id}", name="group_by_id_put")
 def put_group(
     group_id: str,
     request: Request,
     body: UpdateGroupBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> GroupDetail:
     from api.plugins.app_group_lifecycle import (
         get_app_group_lifecycle_plugin_to_invoke,
         validate_app_group_lifecycle_plugin_group_config,
@@ -286,7 +287,7 @@ def put_group(
                 current_user_id=current_user_id,
             ).execute()
             refreshed = _load_group_with_options(db, group.id)
-            return dump_orm(_group_adapter, refreshed)
+            return _group_adapter.validate_python(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
 
     # Block renaming to a reserved prefix unless the final group type matches.
@@ -374,11 +375,11 @@ def put_group(
             )
         )
 
-    return dump_orm(_group_adapter, refreshed)
+    return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
-@router.delete("/{group_id}", name="group_by_id_delete", response_model=DeleteMessage)
-def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.delete("/{group_id}", name="group_by_id_delete")
+def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> DeleteMessage:
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
@@ -389,7 +390,7 @@ def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -
     if type(group) is AppGroup and group.is_owner:
         raise HTTPException(400, "Application owner groups cannot be deleted without first deleting the application")
     DeleteGroup(group=group, current_user_id=current_user_id).execute()
-    return DeleteMessage(deleted=True).model_dump()
+    return DeleteMessage(deleted=True)
 
 
 @router.get("/{group_id}/audit", name="group_audit_by_id")
@@ -401,8 +402,8 @@ def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUse
     return RedirectResponse(url=f"/api/audit/users?{urlencode(qp)}", status_code=307)
 
 
-@router.get("/{group_id}/members", name="group_members_by_id", response_model=GroupMembersSummary)
-def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{group_id}/members", name="group_members_by_id")
+def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupMembersSummary:
     group = (
         db.query(OktaGroup)
         .filter(OktaGroup.deleted_at.is_(None))
@@ -425,19 +426,19 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
         .group_by(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
     )
     rows = base_query.all()
-    return {
-        "members": [r.user_id for r in rows if not r.is_owner],
-        "owners": [r.user_id for r in rows if r.is_owner],
-    }
+    return GroupMembersSummary(
+        members=[r.user_id for r in rows if not r.is_owner],
+        owners=[r.user_id for r in rows if r.is_owner],
+    )
 
 
-@router.put("/{group_id}/members", name="group_members_by_id_put", response_model=GroupMembersSummary)
+@router.put("/{group_id}/members", name="group_members_by_id_put")
 def put_group_members(
     group_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
     body: GroupMember | None = None,
-) -> dict[str, Any]:
+) -> GroupMembersSummary:
     group = (
         db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
         .filter(OktaGroup.deleted_at.is_(None))

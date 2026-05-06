@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import selectinload
 from starlette.requests import Request
@@ -27,36 +26,32 @@ from api.schemas import (
     EventType,
     SearchTagPaginationQuery,
     TagDetail,
-    TagListItem,
     TagPagination,
     UpdateTagBody,
 )
-from api.schemas._serialize import dump_orm
 
 _TAG_LOAD_OPTIONS = (selectinload(Tag.active_group_tags).options(*group_tag_map_options()),)
 
 
 router = APIRouter(prefix="/api/tags", tags=["tags"])
-_adapter = TypeAdapter(TagDetail)
-_list_adapter = TypeAdapter(TagListItem)
 
 
-@router.get("", name="tags", response_model=TagPagination)
+@router.get("", name="tags")
 def list_tags(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchTagPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> TagPagination:
     query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(_db.or_(Tag.name.ilike(like), Tag.description.ilike(like)))
-    return paginate(request, query, _list_adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, TagPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{tag_id}", name="tag_by_id", response_model=TagDetail)
-def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{tag_id}", name="tag_by_id")
+def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> TagDetail:
     # `nullsfirst(deleted_at.desc())` makes an active row beat a soft-deleted
     # row that shares the same name. Without the order, `.first()` may return
     # an old deleted tag and 404 on a name that still exists.
@@ -69,16 +64,16 @@ def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[
     )
     if tag is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_adapter, tag)
+    return TagDetail.model_validate(tag, from_attributes=True)
 
 
-@router.post("", name="tags_create", status_code=201, response_model=TagDetail)
+@router.post("", name="tags_create", status_code=201)
 def post_tag(
     body: CreateTagBody,
     db: DbSession,
     current_user_id: CurrentUserId,
     _admin: str = Depends(require_access_admin),
-) -> dict[str, Any]:
+) -> TagDetail:
     # Reject duplicates by name. Without this, CreateTag.execute() silently
     # returns the existing tag and the endpoint replies 201 with the wrong
     # row, which clients don't expect.
@@ -96,17 +91,17 @@ def post_tag(
     )
     created = CreateTag(tag=tag, current_user_id=current_user_id).execute()
     refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == created.id).first()
-    return dump_orm(_adapter, refreshed or created)
+    return TagDetail.model_validate(refreshed or created, from_attributes=True)
 
 
-@router.put("/{tag_id}", name="tag_by_id_put", response_model=TagDetail)
+@router.put("/{tag_id}", name="tag_by_id_put")
 def put_tag(
     tag_id: str,
     body: UpdateTagBody,
     db: DbSession,
     current_user_id: CurrentUserId,
     _admin: str = Depends(require_access_admin),
-) -> dict[str, Any]:
+) -> TagDetail:
     from sqlalchemy.orm import selectinload
 
     from api.operations import ModifyGroupsTimeLimit
@@ -181,16 +176,16 @@ def put_tag(
         )
     )
 
-    return dump_orm(_adapter, refreshed or tag)
+    return TagDetail.model_validate(refreshed or tag, from_attributes=True)
 
 
-@router.delete("/{tag_id}", name="tag_by_id_delete", response_model=DeleteMessage)
+@router.delete("/{tag_id}", name="tag_by_id_delete")
 def delete_tag(
     tag_id: str,
     db: DbSession,
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
-) -> dict[str, Any]:
+) -> DeleteMessage:
     tag = (
         db.query(Tag)
         .filter(Tag.deleted_at.is_(None))
@@ -200,4 +195,4 @@ def delete_tag(
     if tag is None:
         raise HTTPException(404, "Not Found")
     DeleteTag(tag=tag, current_user_id=current_user_id).execute()
-    return DeleteMessage(deleted=True).model_dump()
+    return DeleteMessage(deleted=True)

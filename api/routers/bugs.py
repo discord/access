@@ -12,7 +12,6 @@ project. See:
 from __future__ import annotations
 
 import logging
-from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -27,8 +26,8 @@ router = APIRouter(prefix="/api/bugs", tags=["bugs"])
 _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"
 
 
-@router.post("/sentry", name="sentry_bug", response_model=dict[str, str])
-async def post_sentry(request: Request) -> dict[str, Any]:
+@router.post("/sentry", name="sentry_bug")
+async def post_sentry(request: Request) -> dict[str, str]:
     """Forwards a Sentry envelope to the configured DSN's tunnel endpoint."""
     if settings.ENV in ("development", "test") or not settings.REACT_SENTRY_DSN:
         return {}

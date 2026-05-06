@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import TypeAdapter
 from sqlalchemy import String, cast
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
@@ -23,11 +22,9 @@ from api.schemas import (
     ResolveGroupRequestBody,
     SearchGroupRequestPaginationQuery,
 )
-from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
 router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
-_adapter = TypeAdapter(GroupRequestDetail)
 
 
 def _load_options() -> tuple:
@@ -40,13 +37,13 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="group_requests", response_model=GroupRequestPagination)
+@router.get("", name="group_requests")
 def list_group_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupRequestPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> GroupRequestPagination:
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
@@ -148,23 +145,23 @@ def list_group_requests(
             )
         )
 
-    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, GroupRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{group_request_id}", name="group_request_by_id", response_model=GroupRequestDetail)
-def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{group_request_id}", name="group_request_by_id")
+def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupRequestDetail:
     gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_adapter, gr)
+    return GroupRequestDetail.model_validate(gr, from_attributes=True)
 
 
-@router.post("", name="group_requests_create", status_code=201, response_model=GroupRequestDetail)
+@router.post("", name="group_requests_create", status_code=201)
 def post_group_request(
     body: CreateGroupRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> GroupRequestDetail:
     # Soft-deleted requesters cannot create new requests; Flask returned 403
     # here, not 404.
     requester = (
@@ -235,16 +232,16 @@ def post_group_request(
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
     refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == gr.id).first()
-    return dump_orm(_adapter, refreshed)
+    return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
 
 
-@router.put("/{group_request_id}", name="group_request_by_id_put", response_model=GroupRequestDetail)
+@router.put("/{group_request_id}", name="group_request_by_id_put")
 def put_group_request(
     group_request_id: str,
     body: ResolveGroupRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> GroupRequestDetail:
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
@@ -299,4 +296,4 @@ def put_group_request(
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
     refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
-    return dump_orm(_adapter, refreshed)
+    return GroupRequestDetail.model_validate(refreshed, from_attributes=True)

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from starlette.requests import Request
@@ -32,13 +31,11 @@ from api.routers._eager import (
 from api.schemas import (
     AppDetail,
     AppPagination,
-    AppSummary,
     CreateAppBody,
     DeleteMessage,
     SearchAppPaginationQuery,
     UpdateAppBody,
 )
-from api.schemas._serialize import dump_orm
 
 
 # Eager-load options for an `App` response so the `active_owner_app_groups`
@@ -59,38 +56,36 @@ APP_LOAD_OPTIONS = (
 
 
 router = APIRouter(prefix="/api/apps", tags=["apps"])
-_adapter = TypeAdapter(AppDetail)
-_summary_adapter = TypeAdapter(AppSummary)
 
 
-@router.get("", name="apps", response_model=AppPagination)
+@router.get("", name="apps")
 def list_apps(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchAppPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> AppPagination:
     query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(_db.or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(request, query, _summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, AppPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{app_id}", name="app_by_id", response_model=AppDetail)
-def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{app_id}", name="app_by_id")
+def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDetail:
     app = db.query(App).options(*APP_LOAD_OPTIONS).filter(_db.or_(App.id == app_id, App.name == app_id)).first()
     if app is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_adapter, app)
+    return AppDetail.model_validate(app, from_attributes=True)
 
 
-@router.post("", name="apps_create", status_code=201, response_model=AppDetail)
+@router.post("", name="apps_create", status_code=201)
 def post_app(
     body: CreateAppBody,
     db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
-) -> dict[str, Any]:
+) -> AppDetail:
     from api.models import AppGroup as _AppGroup, OktaUser, RoleGroup
     from api.operations import CreateApp
 
@@ -179,17 +174,17 @@ def post_app(
         current_user_id=current_user_id,
     ).execute()
     refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == created.id).first()
-    return dump_orm(_adapter, refreshed)
+    return AppDetail.model_validate(refreshed, from_attributes=True)
 
 
-@router.put("/{app_id}", name="app_by_id_put", response_model=AppDetail)
+@router.put("/{app_id}", name="app_by_id_put")
 def put_app(
     app_id: str,
     body: UpdateAppBody,
     db: DbSession,
     current_user_id: CurrentUserId,
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
-) -> dict[str, Any]:
+) -> AppDetail:
     import copy
 
     from api.auth.permissions import is_access_admin
@@ -261,7 +256,7 @@ def put_app(
                 current_user_id=current_user_id,
             ).execute()
             refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
-            return dump_orm(_adapter, refreshed)
+            return AppDetail.model_validate(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
     old_app_name = app_obj.name
@@ -353,16 +348,16 @@ def put_app(
                     }
                 )
             )
-    return dump_orm(_adapter, refreshed)
+    return AppDetail.model_validate(refreshed, from_attributes=True)
 
 
-@router.delete("/{app_id}", name="app_by_id_delete", response_model=DeleteMessage)
+@router.delete("/{app_id}", name="app_by_id_delete")
 def delete_app(
     app_id: str,
     db: DbSession,
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
-) -> dict[str, Any]:
+) -> DeleteMessage:
     from api.operations import DeleteApp
 
     # The reserved Access app underpins admin auth — deleting it would brick
@@ -371,4 +366,4 @@ def delete_app(
         raise HTTPException(400, "The Access Application cannot be deleted")
 
     DeleteApp(app=app_obj, current_user_id=current_user_id).execute()
-    return DeleteMessage(deleted=True).model_dump()
+    return DeleteMessage(deleted=True)

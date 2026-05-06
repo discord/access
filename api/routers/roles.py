@@ -23,26 +23,25 @@ from api.pagination import paginate
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     GroupDetail,
-    GroupSummary,
     RoleMembersSummary,
     RolePagination,
     SearchRolePaginationQuery,
 )
-from api.schemas._serialize import dump_orm
 from api.schemas.requests_schemas import RoleMember
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
-_role_adapter = TypeAdapter(GroupDetail)
-_role_summary_adapter = TypeAdapter(GroupSummary)
+# `GroupDetail` is a discriminated union — see the same comment in
+# `api/routers/groups.py`.
+_role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
-@router.get("", name="roles", response_model=RolePagination)
+@router.get("", name="roles")
 def list_roles(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRolePaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> RolePagination:
     query = (
         db.query(RoleGroup)
         .options(*_GROUP_LOAD_OPTIONS)
@@ -79,11 +78,11 @@ def list_roles(
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(_db.or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-    return paginate(request, query, _role_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, RolePagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{role_id}", name="role_by_id", response_model=GroupDetail)
-def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{role_id}", name="role_by_id")
+def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
     role = (
         db.query(RoleGroup)
         .options(*_GROUP_LOAD_OPTIONS)
@@ -92,7 +91,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
     )
     if role is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_role_adapter, role)
+    return _role_adapter.validate_python(role, from_attributes=True)
 
 
 @router.get("/{role_id}/audit", name="role_audit_by_id")
@@ -104,8 +103,8 @@ def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserI
     return RedirectResponse(url=f"/api/audit/groups?{urlencode(qp)}", status_code=307)
 
 
-@router.get("/{role_id}/members", name="role_members_by_id", response_model=RoleMembersSummary)
-def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{role_id}/members", name="role_members_by_id")
+def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleMembersSummary:
     role = db.query(RoleGroup).filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id)).first()
     if role is None:
         raise HTTPException(404, "Not Found")
@@ -115,19 +114,19 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
         .filter(_db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > _db.func.now()))
         .all()
     )
-    return {
-        "groups_in_role": [m.group_id for m in mappings if not m.is_owner],
-        "groups_owned_by_role": [m.group_id for m in mappings if m.is_owner],
-    }
+    return RoleMembersSummary(
+        groups_in_role=[m.group_id for m in mappings if not m.is_owner],
+        groups_owned_by_role=[m.group_id for m in mappings if m.is_owner],
+    )
 
 
-@router.put("/{role_id}/members", name="role_members_by_id_put", response_model=RoleMembersSummary)
+@router.put("/{role_id}/members", name="role_members_by_id_put")
 def put_role_members(
     role_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
     body: RoleMember | None = None,
-) -> dict[str, Any]:
+) -> RoleMembersSummary:
     from sqlalchemy.orm import with_polymorphic
 
     from api.models import AppGroup, RoleGroupMap

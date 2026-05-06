@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import TypeAdapter
 from sqlalchemy import String, cast
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
@@ -35,10 +34,7 @@ from api.schemas import (
     RoleRequestPagination,
     SearchRoleRequestPaginationQuery,
 )
-from api.schemas._serialize import dump_orm
-
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
-_adapter = TypeAdapter(RoleRequestDetail)
 
 
 def _load_options() -> tuple:
@@ -54,13 +50,13 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="role_requests", response_model=RoleRequestPagination)
+@router.get("", name="role_requests")
 def list_role_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRoleRequestPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> RoleRequestPagination:
     from api.auth.permissions import is_access_admin
 
     query = db.query(RoleRequest).options(*_load_options()).order_by(RoleRequest.created_at.desc())
@@ -304,23 +300,23 @@ def list_role_requests(
             )
         )
 
-    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, RoleRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{role_request_id}", name="role_request_by_id", response_model=RoleRequestDetail)
-def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{role_request_id}", name="role_request_by_id")
+def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleRequestDetail:
     rr = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_adapter, rr)
+    return RoleRequestDetail.model_validate(rr, from_attributes=True)
 
 
-@router.post("", name="role_requests_create", status_code=201, response_model=RoleRequestDetail)
+@router.post("", name="role_requests_create", status_code=201)
 def post_role_request(
     body: CreateRoleRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> RoleRequestDetail:
     from api.auth import permissions as _perms
 
     requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
@@ -364,16 +360,16 @@ def post_role_request(
         request_ending_at=body.ending_at,
     ).execute()
     refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == rr.id).first()
-    return dump_orm(_adapter, refreshed or rr)
+    return RoleRequestDetail.model_validate(refreshed or rr, from_attributes=True)
 
 
-@router.put("/{role_request_id}", name="role_request_by_id_put", response_model=RoleRequestDetail)
+@router.put("/{role_request_id}", name="role_request_by_id_put")
 def put_role_request(
     role_request_id: str,
     body: ResolveRoleRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> RoleRequestDetail:
     from api.auth import permissions as _perms
     from api.operations.constraints import CheckForReason
 
@@ -421,4 +417,4 @@ def put_role_request(
             notify_requester=rr.requester_user_id != current_user_id,
         ).execute()
     refreshed = db.query(RoleRequest).options(*_load_options()).filter(RoleRequest.id == role_request_id).first()
-    return dump_orm(_adapter, refreshed)
+    return RoleRequestDetail.model_validate(refreshed, from_attributes=True)

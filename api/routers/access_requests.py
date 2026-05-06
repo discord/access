@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import TypeAdapter
 from sqlalchemy import String, cast
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
@@ -33,11 +32,8 @@ from api.schemas import (
     ResolveAccessRequestBody,
     SearchAccessRequestPaginationQuery,
 )
-from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
-
-_adapter = TypeAdapter(AccessRequestDetail)
 
 
 # Eager-load options for the access-request POST response refetch — chains
@@ -75,13 +71,13 @@ def _load_options() -> tuple:
     )
 
 
-@router.get("", name="access_requests", response_model=AccessRequestPagination)
+@router.get("", name="access_requests")
 def list_access_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchAccessRequestPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> AccessRequestPagination:
     query = db.query(AccessRequest).options(*_load_options()).order_by(AccessRequest.created_at.desc())
 
     # Honored search filters: status, requester_user_id, requested_group_id,
@@ -192,23 +188,23 @@ def list_access_requests(
                 )
             )
         )
-    return paginate(request, query, _adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, AccessRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{access_request_id}", name="access_request_by_id", response_model=AccessRequestDetail)
-def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{access_request_id}", name="access_request_by_id")
+def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> AccessRequestDetail:
     ar = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
-    return dump_orm(_adapter, ar)
+    return AccessRequestDetail.model_validate(ar, from_attributes=True)
 
 
-@router.post("", name="access_requests_create", status_code=201, response_model=AccessRequestDetail)
+@router.post("", name="access_requests_create", status_code=201)
 def post_access_request(
     body: CreateAccessRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> AccessRequestDetail:
     requester = (
         db.query(OktaUser)
         .filter(OktaUser.deleted_at.is_(None))
@@ -255,16 +251,16 @@ def post_access_request(
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
     refreshed = db.query(AccessRequest).options(*_post_load_options()).filter(AccessRequest.id == ar.id).first()
-    return dump_orm(_adapter, refreshed)
+    return AccessRequestDetail.model_validate(refreshed, from_attributes=True)
 
 
-@router.put("/{access_request_id}", name="access_request_by_id_put", response_model=AccessRequestDetail)
+@router.put("/{access_request_id}", name="access_request_by_id_put")
 def put_access_request(
     access_request_id: str,
     body: ResolveAccessRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
-) -> dict[str, Any]:
+) -> AccessRequestDetail:
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
@@ -314,4 +310,4 @@ def put_access_request(
             current_user_id=current_user_id,
         ).execute()
     refreshed = db.query(AccessRequest).options(*_load_options()).filter(AccessRequest.id == access_request_id).first()
-    return dump_orm(_adapter, refreshed)
+    return AccessRequestDetail.model_validate(refreshed, from_attributes=True)

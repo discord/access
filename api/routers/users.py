@@ -8,11 +8,10 @@ GET /api/users/{user_id}/audit         redirects to /api/audit/users
 from __future__ import annotations
 
 import re
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
@@ -32,26 +31,22 @@ from api.pagination import paginate
 from api.routers._eager import user_group_member_options
 from api.schemas import (
     OktaUserDetail,
-    OktaUserSummary,
     SearchUserPaginationQuery,
     UserPagination,
 )
-from api.schemas._serialize import dump_orm
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
-_user_adapter = TypeAdapter(OktaUserDetail)
-_user_summary_adapter = TypeAdapter(OktaUserSummary)
 
 
-@router.get("", name="users", response_model=UserPagination)
+@router.get("", name="users")
 def list_users(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchUserPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> UserPagination:
     query = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).order_by(func.lower(OktaUser.email))
 
     if q_args.q:
@@ -101,11 +96,11 @@ def list_users(
                 )
             )
 
-    return paginate(request, query, _user_summary_adapter, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(request, query, UserPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
-@router.get("/{user_id}", name="user_by_id", response_model=OktaUserDetail)
-def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dict[str, Any]:
+@router.get("/{user_id}", name="user_by_id")
+def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> OktaUserDetail:
     if user_id == "@me":
         user_id = current_user_id
 
@@ -124,7 +119,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> dic
     )
     if user is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return dump_orm(_user_adapter, user)
+    return OktaUserDetail.model_validate(user, from_attributes=True)
 
 
 @router.get("/{user_id}/audit", name="user_audit_by_id")

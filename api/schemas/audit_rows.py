@@ -1,18 +1,20 @@
 """Pydantic response schemas for the audit endpoints.
 
-The audit router (`api/routers/audit.py`) does not use `dump_orm` — it builds
-each row dict by hand via `_serialize_user_group_member` and
-`_serialize_role_group_map`. The schemas below mirror those dicts exactly so
-`response_model=...` validates the same wire shape the React frontend already
-consumes.
+The audit router (`api/routers/audit.py`) builds each row by hand via
+`_audit_user_group_row` and `_audit_group_role_row`, calling these schemas
+directly to construct nested Pydantic instances. The schemas below mirror
+the dicts the legacy Marshmallow audit projections emitted exactly, so the
+React frontend that drives the Expiring access / Expiring roles pages sees
+the same JSON shape.
 
-Key design point: the audit emitters in `audit.py` (`_group_ref`,
-`_role_group_ref`, `_user_summary`, `_role_group_mapping_ref`,
-`_role_associated_mapping_for_audit`) produce *different* projections than the
-`GroupRef`/`RoleGroupRef`/`OktaUserSummary` shapes from `core_schemas.py` —
-fewer fields, no `description`, `is_owner` always present (null for
-non-AppGroup), etc. Reusing the core_schemas refs would silently change the
-wire shape. The audit-specific refs below mirror each `_*_ref()` exactly.
+Key design point: the audit row helpers in `audit.py` (`_group_ref_for_audit`,
+`_role_group_ref_for_audit`, `_user_summary_for_audit`,
+`_role_group_mapping_for_audit`, `_role_associated_mapping_for_audit`)
+produce *different* projections than the `GroupRef`/`RoleGroupRef`/
+`OktaUserSummary` shapes from `core_schemas.py` — fewer fields, no
+`description`, `is_owner` always present (null for non-AppGroup), etc.
+Reusing the core_schemas refs would silently change the wire shape. The
+audit-specific refs below mirror each row helper exactly.
 
 Wire-shape gotcha: a few keys inside `_GroupRefForAudit` are emitted
 *conditionally* by the audit serializer — `app` only when the row is an

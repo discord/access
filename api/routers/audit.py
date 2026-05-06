@@ -39,7 +39,17 @@ from api.schemas import (
     SearchUserGroupAuditPaginationQuery,
     UserGroupAuditPagination,
 )
-from api.schemas.rfc822 import _rfc822
+from api.schemas.audit_rows import (
+    AuditGroupRoleRow,
+    AuditUserGroupRow,
+    _AccessRequestRef,
+    _AppRefForAudit,
+    _GroupRefForAudit,
+    _RoleAssociatedMappingForAudit,
+    _RoleGroupMappingForAudit,
+    _RoleGroupRefForAudit,
+    _UserSummaryForAudit,
+)
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -103,160 +113,145 @@ def _resolve_role(db: DbSession, value: str | None) -> RoleGroup | None:
 
 
 # --- Serializers ------------------------------------------------------------
+# Each `_*_for_audit` helper builds a Pydantic instance from an ORM row.
+# `model_validate(..., from_attributes=True)` is sufficient for the simple
+# refs (their fields line up with ORM attribute names); the polymorphic
+# group ref is constructed by hand to thread the conditional
+# `active_role_associated_group_*_mappings` keys.
 
 
-def _user_summary(u: Any) -> dict[str, Any] | None:
+def _user_summary_for_audit(u: Any) -> _UserSummaryForAudit | None:
     if u is None:
         return None
-    return {
-        "id": u.id,
-        "email": u.email,
-        "first_name": getattr(u, "first_name", None),
-        "last_name": getattr(u, "last_name", None),
-        "display_name": getattr(u, "display_name", None),
-        "deleted_at": _rfc822(u.deleted_at) if getattr(u, "deleted_at", None) else None,
-        "created_at": _rfc822(u.created_at) if getattr(u, "created_at", None) else None,
-    }
+    return _UserSummaryForAudit.model_validate(u, from_attributes=True)
 
 
-def _app_ref(a: Any) -> dict[str, Any] | None:
+def _app_ref_for_audit(a: Any) -> _AppRefForAudit | None:
     if a is None:
         return None
-    return {
-        "id": a.id,
-        "name": getattr(a, "name", None),
-        "deleted_at": _rfc822(a.deleted_at) if getattr(a, "deleted_at", None) else None,
-    }
+    return _AppRefForAudit.model_validate(a, from_attributes=True)
 
 
-def _group_ref(g: Any) -> dict[str, Any] | None:
-    if g is None:
-        return None
-    out: dict[str, Any] = {
-        "id": g.id,
-        "type": g.type,
-        "name": g.name,
-        "is_owner": getattr(g, "is_owner", None),
-        "is_managed": getattr(g, "is_managed", None),
-        "deleted_at": _rfc822(g.deleted_at) if getattr(g, "deleted_at", None) else None,
-    }
-    if isinstance(g, AppGroup):
-        out["app"] = _app_ref(getattr(g, "app", None))
-    return out
-
-
-def _role_group_ref(r: Any) -> dict[str, Any] | None:
+def _role_group_ref_for_audit(r: Any) -> _RoleGroupRefForAudit | None:
     if r is None:
         return None
-    return {
-        "id": r.id,
-        "type": r.type,
-        "name": r.name,
-        "is_managed": getattr(r, "is_managed", None),
-        "deleted_at": _rfc822(r.deleted_at) if getattr(r, "deleted_at", None) else None,
-    }
+    return _RoleGroupRefForAudit.model_validate(r, from_attributes=True)
 
 
-def _role_group_mapping_ref(rgm: Any) -> dict[str, Any] | None:
+def _role_group_mapping_for_audit(rgm: Any) -> _RoleGroupMappingForAudit | None:
     if rgm is None:
         return None
-    return {
-        "created_at": _rfc822(rgm.created_at) if rgm.created_at else None,
-        "ended_at": _rfc822(rgm.ended_at) if rgm.ended_at else None,
-        "role_group": _role_group_ref(getattr(rgm, "role_group", None)),
-    }
+    return _RoleGroupMappingForAudit(
+        created_at=rgm.created_at,
+        ended_at=rgm.ended_at,
+        role_group=_role_group_ref_for_audit(getattr(rgm, "role_group", None)),
+    )
 
 
-def _role_associated_mapping_for_audit(rgm: Any) -> dict[str, Any] | None:
+def _role_associated_mapping_for_audit(rgm: Any) -> _RoleAssociatedMappingForAudit | None:
     """Mapping ref used inside `group.active_role_associated_group_*_mappings`
     on the user-group audit endpoint. Surfaces the active group on the other
     side of the role association so the React UI can render the "this role
     pulls in these groups" rollup."""
     if rgm is None:
         return None
-    return {
-        "id": rgm.id,
-        "is_owner": rgm.is_owner,
-        "created_at": _rfc822(rgm.created_at) if rgm.created_at else None,
-        "ended_at": _rfc822(rgm.ended_at) if rgm.ended_at else None,
-        "active_group": _group_ref(getattr(rgm, "active_group", None)),
-    }
+    return _RoleAssociatedMappingForAudit(
+        id=rgm.id,
+        is_owner=rgm.is_owner,
+        created_at=rgm.created_at,
+        ended_at=rgm.ended_at,
+        active_group=_group_ref_for_audit(getattr(rgm, "active_group", None), include_role_associations=False),
+    )
 
 
-def _access_request_ref(ar: Any) -> dict[str, Any] | None:
+def _group_ref_for_audit(g: Any, include_role_associations: bool) -> _GroupRefForAudit | None:
+    """Build the audit-row group ref. `include_role_associations` is the
+    `user_id is None and group_id is None` condition from the user-group
+    audit endpoint — when true and `g` is a `RoleGroup`, this populates the
+    `active_role_associated_group_*_mappings` lists. When false the
+    `_GroupRefForAudit.@model_serializer` drops those keys from the wire
+    output entirely (matching the legacy absent-vs-null behavior)."""
+    if g is None:
+        return None
+    member_mappings: list[_RoleAssociatedMappingForAudit] | None = None
+    owner_mappings: list[_RoleAssociatedMappingForAudit] | None = None
+    if include_role_associations and isinstance(g, RoleGroup):
+        m_raw = getattr(g, "active_role_associated_group_member_mappings", None) or []
+        o_raw = getattr(g, "active_role_associated_group_owner_mappings", None) or []
+        member_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in m_raw) if r is not None]
+        owner_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in o_raw) if r is not None]
+    return _GroupRefForAudit(
+        id=g.id,
+        type=g.type,
+        name=g.name,
+        is_owner=getattr(g, "is_owner", None),
+        is_managed=getattr(g, "is_managed", None),
+        deleted_at=g.deleted_at,
+        app=_app_ref_for_audit(getattr(g, "app", None)) if isinstance(g, AppGroup) else None,
+        active_role_associated_group_member_mappings=member_mappings,
+        active_role_associated_group_owner_mappings=owner_mappings,
+    )
+
+
+def _access_request_ref_for_audit(ar: Any) -> _AccessRequestRef | None:
     if ar is None:
         return None
-    return {"id": ar.id}
+    return _AccessRequestRef.model_validate(ar, from_attributes=True)
 
 
-def _serialize_user_group_member(
-    m: OktaUserGroupMember, include_role_associations: bool = False
-) -> dict[str, Any]:
-    g = getattr(m, "group", None)
-    group_ref = _group_ref(g)
-    if include_role_associations and group_ref is not None and isinstance(g, RoleGroup):
-        # `group.active_role_associated_group_*_mappings` is only surfaced
-        # when neither `user_id` nor `group_id` is set on the request.
-        member_mappings = getattr(g, "active_role_associated_group_member_mappings", None) or []
-        owner_mappings = getattr(g, "active_role_associated_group_owner_mappings", None) or []
-        group_ref["active_role_associated_group_member_mappings"] = [
-            _role_associated_mapping_for_audit(rgm) for rgm in member_mappings
-        ]
-        group_ref["active_role_associated_group_owner_mappings"] = [
-            _role_associated_mapping_for_audit(rgm) for rgm in owner_mappings
-        ]
-    return {
-        "id": m.id,
-        "user_id": m.user_id,
-        "group_id": m.group_id,
-        "role_group_map_id": getattr(m, "role_group_map_id", None),
-        "is_owner": m.is_owner,
-        "should_expire": getattr(m, "should_expire", None),
-        "created_reason": m.created_reason or "",
-        "created_at": _rfc822(m.created_at) if m.created_at else None,
-        "updated_at": _rfc822(m.updated_at) if getattr(m, "updated_at", None) else None,
-        "ended_at": _rfc822(m.ended_at) if m.ended_at else None,
-        "user": _user_summary(getattr(m, "user", None)),
-        "active_user": _user_summary(getattr(m, "active_user", None)),
-        "group": group_ref,
-        "active_group": _group_ref(getattr(m, "active_group", None)),
-        "role_group_mapping": _role_group_mapping_ref(getattr(m, "role_group_mapping", None)),
-        "active_role_group_mapping": _role_group_mapping_ref(getattr(m, "active_role_group_mapping", None)),
-        "access_request": _access_request_ref(getattr(m, "access_request", None)),
-        "created_actor": _user_summary(getattr(m, "created_actor", None)),
-        "ended_actor": _user_summary(getattr(m, "ended_actor", None)),
-    }
+def _audit_user_group_row(m: OktaUserGroupMember, include_role_associations: bool) -> AuditUserGroupRow:
+    return AuditUserGroupRow(
+        id=m.id,
+        user_id=m.user_id,
+        group_id=m.group_id,
+        role_group_map_id=getattr(m, "role_group_map_id", None),
+        is_owner=m.is_owner,
+        should_expire=getattr(m, "should_expire", None),
+        created_reason=m.created_reason or "",
+        created_at=m.created_at,
+        updated_at=getattr(m, "updated_at", None),
+        ended_at=m.ended_at,
+        user=_user_summary_for_audit(getattr(m, "user", None)),
+        active_user=_user_summary_for_audit(getattr(m, "active_user", None)),
+        group=_group_ref_for_audit(getattr(m, "group", None), include_role_associations),
+        active_group=_group_ref_for_audit(getattr(m, "active_group", None), include_role_associations=False),
+        role_group_mapping=_role_group_mapping_for_audit(getattr(m, "role_group_mapping", None)),
+        active_role_group_mapping=_role_group_mapping_for_audit(getattr(m, "active_role_group_mapping", None)),
+        access_request=_access_request_ref_for_audit(getattr(m, "access_request", None)),
+        created_actor=_user_summary_for_audit(getattr(m, "created_actor", None)),
+        ended_actor=_user_summary_for_audit(getattr(m, "ended_actor", None)),
+    )
 
 
-def _serialize_role_group_map(rgm: RoleGroupMap) -> dict[str, Any]:
-    return {
-        "id": rgm.id,
-        "role_group_id": rgm.role_group_id,
-        "group_id": rgm.group_id,
-        "is_owner": rgm.is_owner,
-        "should_expire": getattr(rgm, "should_expire", None),
-        "created_reason": getattr(rgm, "created_reason", "") or "",
-        "created_at": _rfc822(rgm.created_at) if rgm.created_at else None,
-        "ended_at": _rfc822(rgm.ended_at) if rgm.ended_at else None,
-        "group": _group_ref(getattr(rgm, "group", None)),
-        "active_group": _group_ref(getattr(rgm, "active_group", None)),
-        "role_group": _role_group_ref(getattr(rgm, "role_group", None)),
-        "active_role_group": _role_group_ref(getattr(rgm, "active_role_group", None)),
-        "created_actor": _user_summary(getattr(rgm, "created_actor", None)),
-        "ended_actor": _user_summary(getattr(rgm, "ended_actor", None)),
-    }
+def _audit_group_role_row(rgm: RoleGroupMap) -> AuditGroupRoleRow:
+    return AuditGroupRoleRow(
+        id=rgm.id,
+        role_group_id=rgm.role_group_id,
+        group_id=rgm.group_id,
+        is_owner=rgm.is_owner,
+        should_expire=getattr(rgm, "should_expire", None),
+        created_reason=getattr(rgm, "created_reason", "") or "",
+        created_at=rgm.created_at,
+        ended_at=rgm.ended_at,
+        group=_group_ref_for_audit(getattr(rgm, "group", None), include_role_associations=False),
+        active_group=_group_ref_for_audit(getattr(rgm, "active_group", None), include_role_associations=False),
+        role_group=_role_group_ref_for_audit(getattr(rgm, "role_group", None)),
+        active_role_group=_role_group_ref_for_audit(getattr(rgm, "active_role_group", None)),
+        created_actor=_user_summary_for_audit(getattr(rgm, "created_actor", None)),
+        ended_actor=_user_summary_for_audit(getattr(rgm, "ended_actor", None)),
+    )
 
 
 # --- Routes -----------------------------------------------------------------
 
 
-@router.get("/users", name="users_and_groups", response_model=UserGroupAuditPagination)
+@router.get("/users", name="users_and_groups")
 def users_and_groups(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchUserGroupAuditPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> UserGroupAuditPagination:
     user_id = _resolve_me(q_args.user_id, current_user_id)
     owner_id = _resolve_me(q_args.owner_id, current_user_id)
     user = _resolve_user(db, user_id)
@@ -484,18 +479,19 @@ def users_and_groups(
     return paginate(
         request,
         query,
-        lambda m: _serialize_user_group_member(m, include_role_associations),
+        UserGroupAuditPagination,
+        item_factory=lambda m: _audit_user_group_row(m, include_role_associations),
         extract=lambda: (q_args.page, q_args.per_page),
     )
 
 
-@router.get("/groups", name="groups_and_roles", response_model=GroupRoleAuditPagination)
+@router.get("/groups", name="groups_and_roles")
 def groups_and_roles(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupRoleAuditPaginationQuery, Query()],
-) -> dict[str, Any]:
+) -> GroupRoleAuditPagination:
     from api.auth.permissions import is_access_admin
 
     role_id = _resolve_me(q_args.role_id, current_user_id)
@@ -717,6 +713,7 @@ def groups_and_roles(
     return paginate(
         request,
         query,
-        _serialize_role_group_map,
+        GroupRoleAuditPagination,
+        item_factory=_audit_group_role_row,
         extract=lambda: (q_args.page, q_args.per_page),
     )
