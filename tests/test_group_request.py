@@ -2198,3 +2198,56 @@ def test_post_group_request_tag_ids_must_be_undeleted(
     )
     assert rep.status_code == 400
     assert "tags not found" in rep.text
+
+
+def test_put_group_request_ignores_unknown_reason_alias_via_http(
+    client: TestClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    """PUT /api/group-requests/{id} only reads `resolution_reason` from the
+    body — an undocumented `reason` key must be silently dropped, leaving
+    the persisted resolution_reason empty."""
+    db.session.add(user)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="ResolveAliasOktaGroup",
+        requested_group_description="alias drop test",
+        requested_group_type="okta_group",
+        request_reason="please",
+    ).execute()
+    assert group_request is not None
+
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    rep = client.put(resolve_url, json={"approved": False, "reason": "should be dropped"})
+    assert rep.status_code == 200
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.REJECTED
+    assert group_request.resolution_reason == ""
+
+
+def test_put_group_request_persists_resolution_reason_via_http(
+    client: TestClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
+    """PUT /api/group-requests/{id} stores the body's `resolution_reason`
+    verbatim on the resolved request."""
+    db.session.add(user)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="ResolveResolutionReasonOktaGroup",
+        requested_group_description="resolution_reason test",
+        requested_group_type="okta_group",
+        request_reason="please",
+    ).execute()
+    assert group_request is not None
+
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    rep = client.put(resolve_url, json={"approved": False, "resolution_reason": "duplicate work"})
+    assert rep.status_code == 200
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.REJECTED
+    assert group_request.resolution_reason == "duplicate work"
