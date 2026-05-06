@@ -62,16 +62,16 @@ const STAT_CONFIGS: StatConfig[] = [
   {
     id: 'role-requests',
     Icon: RoleRequestIcon,
-    label: 'Pending role requests',
-    singularLabel: 'Pending role request',
+    label: 'Pending role-based access requests',
+    singularLabel: 'Pending role-based access request',
     path: '/role-requests?assignee_user_id=@me',
     color: '#0EA5E9',
   },
   {
     id: 'access-requests',
     Icon: AccessRequestIcon,
-    label: 'Pending access requests',
-    singularLabel: 'Pending access request',
+    label: 'Pending individual access requests',
+    singularLabel: 'Pending individual access request',
     path: '/requests?assignee_user_id=@me',
     color: '#0EA5E9',
   },
@@ -119,7 +119,7 @@ const STAT_CONFIGS: StatConfig[] = [
   {
     id: 'make-role-request',
     Icon: RoleRequestIcon,
-    label: 'New role request',
+    label: 'New role-based request',
     isAction: true,
   },
   {
@@ -159,8 +159,8 @@ const guide: Record<string, Record<string, string>> = {
   general: {
     [`What is ${appName}?`]: `${appName} is a tool for managing who in your organization has access to different resources. It expands upon the feature set provided by Okta and was created to be transparent and discoverable and to enable employees to view and manage their own access.`,
     'Users, Groups, Roles, Apps': `Users are people in your organization. This may include, but is not limited to, employees and contractors. Users may be a member or owner of a group. \n\nThere are three types of groups in ${appName} with different features, namely 'vanilla' standalone groups, app groups, and roles, all of which map to Okta groups. \n\nRoles may be added as members or owners of app groups and standalone groups. When this happens, all members of the role are added as a member or owner of the group. \n\nApps are resources, such as third-party SaaS applications (eg. GitHub), or first-party services, like an internal administrator dashboard. Any app that is compatible with Okta can be an app within ${appName}. App groups can be tied to specific permissions associated with an app.`,
-    'Access Requests': `Users can create access requests to join a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Access Requests' tab displays all access requests in your organization as well as your own requests and requests assigned to you. Access requests may also be created from that page with the Create Request button and dialog.`,
-    'Role Requests': `Role owners can create role requests to ask that their roles are added to a group. Role requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Role Requests' tab displays all role requests in your organization as well as your own requests and requests assigned to you. Role requests may also be created from that page with the Create Request button and dialog.`,
+    'Individual Access Requests': `Users can create access requests to join a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Access Requests' nav section (under 'Individual') displays all individual access requests in your organization as well as your own requests and requests assigned to you. Access requests may also be created from that page with the Create Request button and dialog.`,
+    'Role-Based Access Requests': `Role owners can create role-based access requests to ask that their roles are added to a group. Access requests must be approved by a group owner, an app owner (if it's an app group), or ${appName} administrator. The 'Access Requests' nav section (under 'Role-Based') displays all role-based access requests in your organization as well as your own requests and requests assigned to you. Role-based access requests may also be created from that page with the Create Request button and dialog.`,
     'Group Requests': `All users can create group requests to ask that a group is created. Group requests must be approved by an app owner (if it's an app group) or ${appName} administrator. The 'Group Requests' tab displays all group requests in your organization as well as your own requests and requests assigned to you. Group requests may also be created from that page with the Create Request button and dialog.`,
     'Audit Pages':
       "Every user, group, and role has a corresponding audit page, which shows the access history for the entity. It can be viewed by clicking the clock-arrow icon next to the user/role/group name on the entity's page. Roles additionally have a 'Role audit' page that can be viewed by clicking the icon below the clock-arrow icon on a role page (it's similar to a Celtic knot). It displays the role's membership and ownership history.",
@@ -181,7 +181,7 @@ const guide: Record<string, Record<string, string>> = {
     'View your access history':
       'From your user page, click the clock-arrow icon to the right of your name to navigate to your user audit page. There, you can see your ownership and membership history as well as additional details like who added or removed you from a group.',
     'View your expiring access':
-      "Under the 'Expiring Groups' tab, select 'My Access' from the dropdown menu. On this page, you can see all of your access that is expiring soon, filter between active and inactive access, and look at your access within a specific timeframe (including in the past).",
+      "Under the 'Expiring Access' tab, navigate to 'Individual' > 'My Access'. On this page, you can see all of your access that is expiring soon, filter between active and inactive access, and look at your access within a specific timeframe (including in the past).",
     'Viewing tags':
       "A list of existing tags can be viewed by clicking the 'Tags' button at the top of the 'Groups' and 'Apps' pages. To view the details of a tag, click on the row you are interested in to see which groups the tag is applied to and any constraints it enforces.\n\nYou can also navigate to a tag's page by clicking on the tag on the page for an app or group that has the tag applied.",
     'Creating a group creation request':
@@ -192,16 +192,16 @@ const guide: Record<string, Record<string, string>> = {
       'Generally, a role should be made up of individuals who share a job function and would likely need the same permissions for the same resources. As a result, role owners are typically people-leads since those are the people who have the most context about job functions.\n\nOn the other hand, standalone groups and app groups typically correspond to permissions associated with accessing data or a service. The owners of these groups should therefore usually be subject-matter experts (for example, system owners) for that group or app since they are the ones who have the most context on which permissions certain groups of employees need.',
     'What can group owners do?':
       'Group owners are responsible for managing groups. They are able to change the group name and description, add additional owners, and manage group memberships. They can also delete groups.',
-    'Responding to an access or role request':
-      "If your organization has the notification system set up, you will receive a notification when someone requests access to a group you own for themselves or on behalf of a role they own. Otherwise, you can see access and role requests for groups you own under 'Access Requests' > 'Assigned to Me' or 'Role Requests' > 'Assigned to Me'. \n\nFrom there, you can click 'View' to see the details of the access or role request, historical access, set an amount of time for access, provide a reason for approving or denying the request, and then either approve or reject the request.",
-    'Creating a role request':
-      "You can create role requests for membership or ownership of groups from the 'Role Requests' page. Click the 'Create Request' button at the top of the page to open the request creating dialog. From there, you can select the role for which you'd like to make the request (only roles you own will be shown), the group, the duration, and whether you'd like to request membership or ownership, and provide a reason for the request. After submitting, the group owner(s) will be notified to approve or deny the request.",
+    'Responding to an access request':
+      "If your organization has the notification system set up, you will receive a notification when someone requests access to a group you own for themselves or on behalf of a role they own. Otherwise, you can see individual access requests for groups you own under 'Access Requests' > 'Individual' > 'Assigned to Me' and role-based access requests under 'Access Requests' > 'Role-Based' > 'Assigned to Me'. \n\nFrom there, you can click 'View' to see the details of the access request, historical access, set an amount of time for access, provide a reason for approving or denying the request, and then either approve or reject the request.",
+    'Creating a role-based request':
+      "You can create role-based access requests for membership or ownership of groups from the 'Access Requests' > 'Role-Based' page. Click the 'Create Request' button at the top of the page to open the request creating dialog. From there, you can select the role for which you'd like to make the request (only roles you own will be shown), the group, the duration, and whether you'd like to request membership or ownership, and provide a reason for the request. After submitting, the group owner(s) will be notified to approve or deny the request.",
     'Managing a group':
       "Group owners are able to edit the group's name and description by clicking the pencil icon to the right of the group's name on its group page. Owners may also delete the group by selecting the garbage can icon to the right of the group name.\n\nGroup owners are also responsible for managing access to the group. This can be accomplished by approving access requests made for the group and by adding users or roles as owners and members from the group's page. With all groups, it is possible to grant temporary access, which will automatically expire after the set time.",
     'Managing expiring access for groups you own':
-      "To view the users whose access is expiring soon for groups you own, navigate to 'Expiring Groups' > 'Owned by Me'. There are filters available to see access that expires during a specific time period, only active or inactive access, and access that has not been reviewed yet or all expring access.\n\nThe 'Bulk Renew' button at the top of the page opens the bulk renewal dialog. Here, you can provide a reason for renewing the access, set an amount of time for the renewal, and select whether or not you would like to renew access for each user. If your organization has notifications enabled, any access that is marked to allow expiration (ie. not renewing the access) will be omitted from subsequent expiring access notifications.\n\nTo view the roles that will be losing access to groups you own soon, navigate to 'Expiring Roles' > 'Owned Groups'. This page also has a bulk renewal dialog that functions in the same way as the one for renewing individual access.",
+      "To view the users whose access is expiring soon for groups you own, navigate to 'Expiring Access' > 'Individual' > 'Owned by Me'. There are filters available to see access that expires during a specific time period, only active or inactive access, and access that has not been reviewed yet or all expring access.\n\nThe 'Bulk Renew' button at the top of the page opens the bulk renewal dialog. Here, you can provide a reason for renewing the access, set an amount of time for the renewal, and select whether or not you would like to renew access for each user. If your organization has notifications enabled, any access that is marked to allow expiration (ie. not renewing the access) will be omitted from subsequent expiring access notifications.\n\nTo view the roles that will be losing access to groups you own soon, navigate to 'Expiring Access' > 'Role-Based' > 'Owned Groups'. This page also has a bulk renewal dialog that functions in the same way as the one for renewing individual access.",
     'Managing expiring access for roles you own':
-      "To view access that is expiring for roles that you own, navigate to 'Expiring Roles' > 'Owned Roles.' From there, you can see the access that will be expiring soon for roles you own and create a role request on behalf of the role if continued access is still needed.",
+      "To view access that is expiring for roles that you own, navigate to 'Expiring Access' > 'Role-Based' > 'Owned Roles.' From there, you can see the access that will be expiring soon for roles you own and create an access request on behalf of the role if continued access is still needed.",
     'Blocked roles': `If a group is marked with a tag that has the 'Owner can't renew their own access' constraint enabled, you may be blocked from renewing a role's access to a group you own. This is generally due to you being both an owner and member of the role in question. To renew this role's access to the group, have either another group owner renew the role's access who is not a member of the role or have an ${appName} admin renew the role.`,
     'Group tags': `Group/role owners are able to apply existing tags to groups they own. If these tags are applied, any enabled tag constraints will be applied to the group. Only ${appName} administrators are able to remove tags.`,
   },
@@ -229,7 +229,7 @@ const guide: Record<string, Record<string, string>> = {
   },
   faq: {
     'I need to add a role as a member or owner of a group I do not own':
-      "In the menu bar, there is a tab called 'Role Requests.' From there, if you own at least one role, you can click the 'Create Request' button to create a request for your role to be added to a group. If your organization has notifications enabled, a notification will be sent to the group owner(s) about the role request. If you do not own any roles, you will not be able to create a role request and you will need to reach out to the role owner.",
+      "In the menu bar, click 'Access Requests' and navigate to the 'Role-Based' section. From there, if you own at least one role, you can click the 'Create Request' button to create a request for your role to be added to a group. If your organization has notifications enabled, a notification will be sent to the group owner(s) about the access request. If you do not own any roles, you will not be able to create a role-based access request and you will need to reach out to the role owner.",
     'I need to create a new group/role': `If you are an ${appName} admin, please click [[admin--creating-a-group|here]] to see the 'Admins' user guide for step-by-step instructions.\n\nIf you are not an ${appName} admin, please see the instructions [[users--creating-a-group-creation-request|here]].`,
     'I need to create a new app': `If you are an ${appName} admin, please click [[admin--creating-an-app|here]] to see step-by-step instructions.\n\nIf you are not an ${appName} admin, please reach out to one for app creation. At this moment, there is not a way to request that an app is created through ${appName}.`,
     'I want to set my up my group to enforce a constraint (like a maximum membership duration)': `Tags can be used to enforce a variety of constraints, including enforcing a maximum membership duration. If a tag exists that has the constraint you are looking for enabled, you can apply it to any group you own from the dialog that is opened by clicking the pencil icon next to the group's name. If a tag does not exist, reach out to an ${appName} admin to create the tag for you.`,
