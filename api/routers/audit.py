@@ -11,7 +11,7 @@ Expiring roles pages and the per-user / per-group audit views.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -43,6 +43,15 @@ router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 
 # --- Resolution helpers -----------------------------------------------------
+
+
+def _unix_to_utc_naive(ts: int) -> datetime:
+    """Unix timestamp → naive UTC datetime, matching how `ended_at` is stored.
+
+    Bare `datetime.fromtimestamp(ts)` returns naive *local* time, so comparing
+    it against a naive-UTC column drifts by the server's UTC offset.
+    """
+    return datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
 
 
 def _resolve_me(value: str | None, current_user_id: str) -> str | None:
@@ -351,8 +360,8 @@ def users_and_groups(
         query = query.filter(
             _db.and_(
                 OktaUserGroupMember.ended_at.is_not(None),
-                OktaUserGroupMember.ended_at > datetime.fromtimestamp(q_args.start_date),
-                OktaUserGroupMember.ended_at < datetime.fromtimestamp(q_args.end_date),
+                OktaUserGroupMember.ended_at > _unix_to_utc_naive(q_args.start_date),
+                OktaUserGroupMember.ended_at < _unix_to_utc_naive(q_args.end_date),
             )
         )
 
@@ -572,8 +581,8 @@ def groups_and_roles(
         query = query.filter(
             _db.and_(
                 RoleGroupMap.ended_at.is_not(None),
-                RoleGroupMap.ended_at > datetime.fromtimestamp(q_args.start_date),
-                RoleGroupMap.ended_at < datetime.fromtimestamp(q_args.end_date),
+                RoleGroupMap.ended_at > _unix_to_utc_naive(q_args.start_date),
+                RoleGroupMap.ended_at < _unix_to_utc_naive(q_args.end_date),
             )
         )
 
