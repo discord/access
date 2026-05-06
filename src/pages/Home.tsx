@@ -112,19 +112,19 @@ const STAT_CONFIGS: StatConfig[] = [
   {
     id: 'make-access-request',
     Icon: AccessRequestIcon,
-    label: 'New access request',
+    label: 'Request individual access',
     isAction: true,
   },
   {
     id: 'make-role-request',
     Icon: RoleRequestIcon,
-    label: 'New role-based request',
+    label: 'Request role-based access',
     isAction: true,
   },
   {
     id: 'make-group-request',
     Icon: GroupRequestIcon,
-    label: 'New group request',
+    label: 'Request a new group',
     isAction: true,
   },
   {
