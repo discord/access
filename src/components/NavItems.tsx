@@ -84,7 +84,7 @@ export default function NavItems(props: NavItemsProps) {
       <ListItemLink to="/apps" displayText="Apps" displayIcon={<AppIcon />} sx={{pb: 1}} />
       <Divider />
       <ListItemLink
-        to="/requests"
+        to="/role-requests"
         displayText="Access Requests"
         displayIcon={<AccessRequestIcon />}
         open={openAccessRequests}
@@ -93,22 +93,6 @@ export default function NavItems(props: NavItemsProps) {
       />
       <Collapse component="li" in={props.open && openAccessRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
-          <ListSubheader disableSticky sx={subheaderSx}>
-            Individual
-          </ListSubheader>
-          <ListItemLink
-            to="/requests?requester_user_id=@me"
-            displayText="From Me"
-            displayIcon={<RequestFromMe />}
-            sx={{pl: 4}}
-          />
-          <ListItemLink
-            to="/requests?assignee_user_id=@me"
-            displayText="Assigned to Me"
-            displayIcon={<RequestToMe />}
-            sx={{pl: 4}}
-          />
-          <ListItemLink to="/requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
           <ListSubheader disableSticky sx={subheaderSx}>
             Role-Based
           </ListSubheader>
@@ -125,6 +109,22 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
           />
           <ListItemLink to="/role-requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Individual
+          </ListSubheader>
+          <ListItemLink
+            to="/requests?requester_user_id=@me"
+            displayText="From Me"
+            displayIcon={<RequestFromMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink
+            to="/requests?assignee_user_id=@me"
+            displayText="Assigned to Me"
+            displayIcon={<RequestToMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/requests" displayText="All" displayIcon={<RequestAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
       <ListItemLink
@@ -154,7 +154,7 @@ export default function NavItems(props: NavItemsProps) {
       </Collapse>
       <Divider />
       <ListItemLink
-        to="/expiring-groups"
+        to="/expiring-roles"
         displayText="Expiring Access"
         displayIcon={<ExpiringGroupsIcon />}
         open={openExpiringAccess}
@@ -163,22 +163,6 @@ export default function NavItems(props: NavItemsProps) {
       />
       <Collapse component="li" in={props.open && openExpiringAccess} timeout="auto" unmountOnExit>
         <List disablePadding>
-          <ListSubheader disableSticky sx={subheaderSx}>
-            Individual
-          </ListSubheader>
-          <ListItemLink
-            to="/expiring-groups?user_id=@me"
-            displayText="My Access"
-            displayIcon={<ExpiringMyAccess />}
-            sx={{pl: 4}}
-          />
-          <ListItemLink
-            to="/expiring-groups?owner_id=@me"
-            displayText="Owned by Me"
-            displayIcon={<ExpiringOwnedByMe />}
-            sx={{pl: 4}}
-          />
-          <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
           <ListSubheader disableSticky sx={subheaderSx}>
             Role-Based
           </ListSubheader>
@@ -195,6 +179,22 @@ export default function NavItems(props: NavItemsProps) {
             sx={{pl: 4}}
           />
           <ListItemLink to="/expiring-roles" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Individual
+          </ListSubheader>
+          <ListItemLink
+            to="/expiring-groups?user_id=@me"
+            displayText="My Access"
+            displayIcon={<ExpiringMyAccess />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink
+            to="/expiring-groups?owner_id=@me"
+            displayText="Owned by Me"
+            displayIcon={<ExpiringOwnedByMe />}
+            sx={{pl: 4}}
+          />
+          <ListItemLink to="/expiring-groups" displayText="All" displayIcon={<ExpiringAll />} sx={{pl: 4}} />
         </List>
       </Collapse>
     </List>
