@@ -530,3 +530,30 @@ def test_get_tag_detail_includes_active_app_tags(
     assert isinstance(data["active_app_tags"], list)
     app_ids = [entry["active_app"]["id"] for entry in data["active_app_tags"] if entry.get("active_app") is not None]
     assert access_app.id in app_ids
+
+
+def test_get_tag_detail_active_group_tags_carries_group_description(
+    client: TestClient,
+    db: Db,
+    tag: Tag,
+    okta_group: OktaGroup,
+    url_for: Any,
+) -> None:
+    """The tag-detail response surfaces the description of each linked group."""
+    okta_group.description = "tag-detail-description-fixture"
+    db.session.add(okta_group)
+    db.session.add(tag)
+    db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+
+    tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
+    rep = client.get(tag_url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    descriptions = [
+        entry["active_group"]["description"]
+        for entry in data["active_group_tags"]
+        if entry.get("active_group") is not None
+    ]
+    assert "tag-detail-description-fixture" in descriptions

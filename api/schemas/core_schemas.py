@@ -216,6 +216,7 @@ class _GroupRefForMembership(BaseModel):
     id: str
     type: str
     name: str
+    description: Optional[str] = None
     is_owner: Optional[bool] = None
     is_managed: Optional[bool] = None
     deleted_at: RFC822DatetimeOpt = None

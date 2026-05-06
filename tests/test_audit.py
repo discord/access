@@ -94,6 +94,33 @@ def test_group_audit_returns_nested_role_and_group(
     assert row["group"]["name"] == okta_group.name
 
 
+def test_user_audit_row_includes_group_active_group_tags(
+    client: TestClient,
+    db: Db,
+    user: OktaUser,
+    okta_group: OktaGroup,
+    tag: Tag,
+    url_for: Any,
+) -> None:
+    """Audit rows carry the active tag mappings on the embedded group payload."""
+    db.session.add(user)
+    db.session.add(okta_group)
+    db.session.add(tag)
+    db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    db.session.commit()
+    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+    rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    assert len(rows) >= 1
+    group_payload = rows[0]["group"]
+    assert "active_group_tags" in group_payload
+    tag_ids = [t["active_tag"]["id"] for t in group_payload["active_group_tags"] if t.get("active_tag")]
+    assert tag.id in tag_ids
+
+
 def test_get_user_audit(
     client: TestClient,
     db: Db,

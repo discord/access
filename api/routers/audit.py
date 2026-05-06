@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, nullsfirst, nullslast
+from sqlalchemy import func, inspect as sa_inspect, nullsfirst, nullslast
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
@@ -24,6 +24,7 @@ from api.database import DbSession
 from api.extensions import db as _db
 from api.models import (
     AppGroup,
+    AppTagMap,
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,
@@ -50,6 +51,7 @@ from api.schemas.audit_rows import (
     _RoleGroupRefForAudit,
     _UserSummaryForAudit,
 )
+from api.schemas.core_schemas import AppSummary, AppTagMapDetail, OktaGroupTagMapDetail, TagSummary
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
 
@@ -180,6 +182,34 @@ def _group_ref_for_audit(g: Any, include_role_associations: bool) -> _GroupRefFo
         o_raw = getattr(g, "active_role_associated_group_owner_mappings", None) or []
         member_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in m_raw) if r is not None]
         owner_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in o_raw) if r is not None]
+    # `active_group_tags` is `lazy="select"`. Reading it on an unwarmed instance
+    # would fire one SELECT per row. Only emit the tag rows when the relationship
+    # has been eager-loaded; otherwise leave the list empty. The OktaGroupTagMap
+    # rows back-reference the parent group (a self-loop) and the AppTagMap rows
+    # carry `lazy="raise_on_sql"` relationships that aren't warmed in this scope,
+    # so build both models by hand and skip the fields that would touch them.
+    state = sa_inspect(g)
+    active_group_tags: list[OktaGroupTagMapDetail] = []
+    if state is not None and "active_group_tags" not in state.unloaded:
+        for row in getattr(g, "active_group_tags", None) or []:
+            active_tag = getattr(row, "active_tag", None)
+            active_app_tag_mapping = getattr(row, "active_app_tag_mapping", None)
+            atm_payload: AppTagMapDetail | None = None
+            if active_app_tag_mapping is not None:
+                active_app = getattr(active_app_tag_mapping, "active_app", None)
+                atm_payload = AppTagMapDetail(
+                    created_at=active_app_tag_mapping.created_at,
+                    ended_at=active_app_tag_mapping.ended_at,
+                    active_app=AppSummary.model_validate(active_app, from_attributes=True) if active_app else None,
+                )
+            active_group_tags.append(
+                OktaGroupTagMapDetail(
+                    created_at=row.created_at,
+                    ended_at=row.ended_at,
+                    active_tag=TagSummary.model_validate(active_tag, from_attributes=True) if active_tag else None,
+                    active_app_tag_mapping=atm_payload,
+                )
+            )
     return _GroupRefForAudit(
         id=g.id,
         type=g.type,
@@ -188,6 +218,7 @@ def _group_ref_for_audit(g: Any, include_role_associations: bool) -> _GroupRefFo
         is_managed=getattr(g, "is_managed", None),
         deleted_at=g.deleted_at,
         app=_app_ref_for_audit(getattr(g, "app", None)) if isinstance(g, AppGroup) else None,
+        active_group_tags=active_group_tags,
         active_role_associated_group_member_mappings=member_mappings,
         active_role_associated_group_owner_mappings=owner_mappings,
     )
@@ -270,7 +301,7 @@ def users_and_groups(
         joinedload(AppGroup.app),
         selectinload(OktaGroup.active_group_tags).options(
             joinedload(OktaGroupTagMap.active_tag),
-            joinedload(OktaGroupTagMap.active_app_tag_mapping),
+            joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_app),
         ),
     )
     if include_role_associations:
@@ -516,7 +547,7 @@ def groups_and_roles(
                 joinedload(AppGroup.app),
                 selectinload(OktaGroup.active_group_tags).options(
                     joinedload(OktaGroupTagMap.active_tag),
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                    joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_app),
                 ),
             ),
             selectinload(RoleGroupMap.active_group).options(
