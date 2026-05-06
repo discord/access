@@ -854,12 +854,8 @@ def test_q_search_covers_all_fields_via_http(
     requesters and groups so each search must *exclude* the other to pass
     — a regression that returns everything would still match by ID but
     fail the exclusion assertions."""
-    target_user = OktaUserFactory.create(
-        email="zelda-target@example.com", first_name="Zelda", last_name="Target"
-    )
-    other_user = OktaUserFactory.create(
-        email="other-noise@example.com", first_name="Other", last_name="Noise"
-    )
+    target_user = OktaUserFactory.create(email="zelda-target@example.com", first_name="Zelda", last_name="Target")
+    other_user = OktaUserFactory.create(email="other-noise@example.com", first_name="Other", last_name="Noise")
     target_group = OktaGroupFactory.create(name="ZeldaTargetGroup", description="zd-desc")
     other_group = OktaGroupFactory.create(name="OtherNoiseGroup", description="on-desc")
     db.session.add_all([target_user, other_user, target_group, other_group])
@@ -1099,9 +1095,5 @@ def test_get_access_request_detail_requested_group_for_app_group(
     # at the same time, on the embedded path).
     assert rg["app"].get("app_group_lifecycle_plugin") == "noop"
     assert "active_group_tags" in rg
-    tag_ids = [
-        entry["active_tag"]["id"]
-        for entry in rg["active_group_tags"]
-        if entry.get("active_tag") is not None
-    ]
+    tag_ids = [entry["active_tag"]["id"] for entry in rg["active_group_tags"] if entry.get("active_tag") is not None]
     assert tag.id in tag_ids

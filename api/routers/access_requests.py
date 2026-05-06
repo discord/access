@@ -209,12 +209,7 @@ def post_access_request(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> AccessRequestSummary:
-    requester = (
-        db.query(OktaUser)
-        .filter(OktaUser.deleted_at.is_(None))
-        .filter(OktaUser.id == current_user_id)
-        .first()
-    )
+    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
     group = db.query(OktaGroup).filter(OktaGroup.id == body.group_id).filter(OktaGroup.deleted_at.is_(None)).first()

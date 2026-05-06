@@ -23,7 +23,6 @@ from api.pagination import paginate
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     GroupDetail,
-    RoleGroupListItem,
     RoleMembersSummary,
     RolePagination,
     SearchRolePaginationQuery,
@@ -48,11 +47,7 @@ def list_roles(
     # deliberately don't reuse `_GROUP_LOAD_OPTIONS` here: those eager-loads
     # populate fields the list shape doesn't expose, so each call would
     # issue extra round trips for data that gets discarded.
-    query = (
-        db.query(RoleGroup)
-        .filter(RoleGroup.deleted_at.is_(None))
-        .order_by(func.lower(RoleGroup.name))
-    )
+    query = db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
 
     # Filter to roles owned by `owner_id` (id or email; supports `@me`).
     if q_args.owner_id:

@@ -323,9 +323,7 @@ def test_post_tag_validation_via_http(client: TestClient, db: Db, url_for: Any) 
     rep = client.post(tags_url, json={"name": "good", "constraints": {"not_a_real_constraint": True}})
     assert rep.status_code == 400
 
-    rep = client.post(
-        tags_url, json={"name": "good", "constraints": {"disallow_self_add_ownership": "not-bool"}}
-    )
+    rep = client.post(tags_url, json={"name": "good", "constraints": {"disallow_self_add_ownership": "not-bool"}})
     assert rep.status_code == 400
 
 
@@ -473,9 +471,7 @@ def test_list_tags_response_is_summary_shape(
     assert set(item.keys()) == expected_keys
 
 
-def test_get_tag_prefers_active_over_deleted_with_same_name(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_get_tag_prefers_active_over_deleted_with_same_name(client: TestClient, db: Db, url_for: Any) -> None:
     """When two tags share the same name (one soft-deleted, one active),
     GET /api/tags/{name} must return the active one. The router uses
     `nullsfirst(deleted_at.desc())` to enforce that ordering."""
@@ -494,9 +490,7 @@ def test_get_tag_prefers_active_over_deleted_with_same_name(
     assert body["deleted_at"] is None
 
 
-def test_get_tag_returns_deleted_when_no_active_match(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_get_tag_returns_deleted_when_no_active_match(client: TestClient, db: Db, url_for: Any) -> None:
     """If only a soft-deleted tag with that name exists, GET still returns
     it (the `nullsfirst(deleted_at.desc())` ordering falls through to the
     deleted row when no active row exists)."""
@@ -534,9 +528,5 @@ def test_get_tag_detail_includes_active_app_tags(
     data = rep.json()
     assert "active_app_tags" in data
     assert isinstance(data["active_app_tags"], list)
-    app_ids = [
-        entry["active_app"]["id"]
-        for entry in data["active_app_tags"]
-        if entry.get("active_app") is not None
-    ]
+    app_ids = [entry["active_app"]["id"] for entry in data["active_app_tags"] if entry.get("active_app") is not None]
     assert access_app.id in app_ids

@@ -112,12 +112,7 @@ def put_tag(
 
     from api.operations import ModifyGroupsTimeLimit
 
-    tag = (
-        db.query(Tag)
-        .filter(Tag.deleted_at.is_(None))
-        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
-        .first()
-    )
+    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     payload = body.model_dump(exclude_unset=True)
@@ -192,12 +187,7 @@ def delete_tag(
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> DeleteMessage:
-    tag = (
-        db.query(Tag)
-        .filter(Tag.deleted_at.is_(None))
-        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
-        .first()
-    )
+    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     DeleteTag(tag=tag, current_user_id=current_user_id).execute()

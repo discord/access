@@ -164,12 +164,7 @@ def post_group_request(
 ) -> GroupRequestDetail:
     # Soft-deleted requesters cannot create new requests; Flask returned 403
     # here, not 404.
-    requester = (
-        db.query(OktaUser)
-        .filter(OktaUser.deleted_at.is_(None))
-        .filter(OktaUser.id == current_user_id)
-        .first()
-    )
+    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
@@ -179,23 +174,13 @@ def post_group_request(
     if body.requested_group_type == "app_group":
         if requested_app_id is None:
             raise HTTPException(400, "app_id is required for app group requests")
-        app = (
-            db.query(App)
-            .filter(App.deleted_at.is_(None))
-            .filter(App.id == requested_app_id)
-            .first()
-        )
+        app = db.query(App).filter(App.deleted_at.is_(None)).filter(App.id == requested_app_id).first()
         if app is None:
             raise HTTPException(404, "App not found")
 
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
-        tags = (
-            db.query(Tag)
-            .filter(Tag.deleted_at.is_(None))
-            .filter(Tag.id.in_(body.requested_group_tags))
-            .all()
-        )
+        tags = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(body.requested_group_tags)).all()
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
 

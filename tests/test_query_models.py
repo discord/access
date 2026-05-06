@@ -48,7 +48,9 @@ def test_audit_order_by_rejects_unknown_value() -> None:
 # --- Boolean coercion on `managed` ----------------------------------------
 
 
-@pytest.mark.parametrize("value,expected", [("true", True), ("True", True), ("1", True), ("false", False), ("0", False)])
+@pytest.mark.parametrize(
+    "value,expected", [("true", True), ("True", True), ("1", True), ("false", False), ("0", False)]
+)
 def test_search_groups_managed_accepts_truthy_strings(value: str, expected: bool) -> None:
     m = SearchGroupPaginationQuery(managed=value)  # type: ignore[arg-type]
     assert m.managed is expected

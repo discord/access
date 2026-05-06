@@ -190,9 +190,7 @@ def test_user_email_uniqueness(client: TestClient, db: Db) -> None:
     db.session.commit()  # This should not raise an exception
 
 
-def test_user_summary_includes_timestamps(
-    client: TestClient, db: Db, user: OktaUser, url_for: Any
-) -> None:
+def test_user_summary_includes_timestamps(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     """`OktaUserSummary` exposes `created_at` and `updated_at` so the
     React user list can sort by creation time. Flask's Marshmallow
     UserList included these in `only=(...)`; the FastAPI summary
@@ -210,9 +208,7 @@ def test_user_summary_includes_timestamps(
     assert sample["created_at"] is not None
 
 
-def test_get_user_manager_includes_profile(
-    client: TestClient, db: Db, user: OktaUser, url_for: Any
-) -> None:
+def test_get_user_manager_includes_profile(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     """Flask's nested manager schema retained `profile` (filtered to
     `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The FastAPI `OktaUserDetail.manager`
     must expose the same dict so the React user-detail page can render the

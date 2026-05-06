@@ -48,7 +48,10 @@ def list_plugins(current_user_id: CurrentUserId) -> AppGroupLifecyclePlugins:
 def app_config_props(plugin_id: str, current_user_id: CurrentUserId) -> AppGroupLifecyclePluginAppConfig:
     _ensure_plugin(plugin_id)
     return AppGroupLifecyclePluginAppConfig.model_validate(
-        {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_config_properties(plugin_id).items()}
+        {
+            name: asdict(schema)
+            for name, schema in get_app_group_lifecycle_plugin_app_config_properties(plugin_id).items()
+        }
     )
 
 
@@ -73,7 +76,10 @@ def group_config_props(plugin_id: str, current_user_id: CurrentUserId) -> AppGro
 def app_status_props(plugin_id: str, current_user_id: CurrentUserId) -> AppGroupLifecyclePluginAppStatus:
     _ensure_plugin(plugin_id)
     return AppGroupLifecyclePluginAppStatus.model_validate(
-        {name: asdict(schema) for name, schema in get_app_group_lifecycle_plugin_app_status_properties(plugin_id).items()}
+        {
+            name: asdict(schema)
+            for name, schema in get_app_group_lifecycle_plugin_app_status_properties(plugin_id).items()
+        }
     )
 
 

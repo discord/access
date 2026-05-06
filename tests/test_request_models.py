@@ -107,15 +107,11 @@ def test_create_tag_body_rejects_unknown_constraint() -> None:
 def test_create_tag_body_rejects_invalid_constraint_value() -> None:
     # `disallow_self_add_*` constraints expect a bool — passing a string fails.
     with pytest.raises(ValidationError):
-        CreateTagBody.model_validate(
-            {"name": "tag", "constraints": {"disallow_self_add_ownership": "not-a-bool"}}
-        )
+        CreateTagBody.model_validate({"name": "tag", "constraints": {"disallow_self_add_ownership": "not-a-bool"}})
 
 
 def test_create_tag_body_accepts_known_constraint() -> None:
-    body = CreateTagBody.model_validate(
-        {"name": "tag", "constraints": {"disallow_self_add_ownership": True}}
-    )
+    body = CreateTagBody.model_validate({"name": "tag", "constraints": {"disallow_self_add_ownership": True}})
     assert body.constraints == {"disallow_self_add_ownership": True}
 
 

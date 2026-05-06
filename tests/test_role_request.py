@@ -1458,11 +1458,7 @@ def test_get_role_request_detail_requested_group_for_app_group(
     assert rg["app"].get("id") == access_app.id
     assert rg["app"].get("app_group_lifecycle_plugin") == "noop"
     assert "active_group_tags" in rg
-    tag_ids = [
-        entry["active_tag"]["id"]
-        for entry in rg["active_group_tags"]
-        if entry.get("active_tag") is not None
-    ]
+    tag_ids = [entry["active_tag"]["id"] for entry in rg["active_group_tags"] if entry.get("active_tag") is not None]
     assert tag.id in tag_ids
 
 

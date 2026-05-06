@@ -25,6 +25,7 @@ class PluginNotFoundError(Exception):
         self.plugin_id = plugin_id
         super().__init__(f"Plugin '{plugin_id}' not found")
 
+
 logger = logging.getLogger(__name__)
 
 

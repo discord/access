@@ -26,10 +26,16 @@ T = TypeVar("T")
 
 class SearchPaginationQuery(BaseModel):
     """Base for any list endpoint. `per_page=-1` is the legacy "all rows"
-    sentinel — the pagination helper clamps it to MAX_PER_PAGE."""
+    sentinel — the pagination helper clamps it to MAX_PER_PAGE.
 
-    page: int = Field(0, ge=0)
-    per_page: int = Field(50, ge=-1)
+    `default=` is used explicitly on `page`/`per_page` so mypy without the
+    pydantic plugin treats them as optional kwargs. Otherwise mypy sees
+    `page: int = Field(0, ge=0)` as `page: int = FieldInfo(...)` and flags
+    every test-side invocation of `SearchPaginationQuery()` as missing
+    required args."""
+
+    page: int = Field(default=0, ge=0)
+    per_page: int = Field(default=50, ge=-1)
     q: Optional[str] = None
 
 

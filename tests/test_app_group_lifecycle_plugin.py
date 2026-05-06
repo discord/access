@@ -310,9 +310,7 @@ class TestPluginAPIEndpoints:
         response = client.get(url)
         assert response.status_code == 404
 
-    def test_plugin_not_found_returns_error_envelope(
-        self, client: TestClient, db: Db, url_for: Any
-    ) -> None:
+    def test_plugin_not_found_returns_error_envelope(self, client: TestClient, db: Db, url_for: Any) -> None:
         """The plugin endpoints' 404 path must respond with
         `{"error": "..."}` (the React client reads the `error` field).
         The plugin router raises `PluginNotFoundError`, which the
