@@ -18,7 +18,6 @@ setup(
         "cachetools",
         "authlib",
         "itsdangerous",
-        "python-dotenv",
         "click",
     ],
     entry_points={

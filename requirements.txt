@@ -1,11 +1,9 @@
 # FastAPI
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
 gunicorn==23.0.0
-python-multipart==0.0.20
 itsdangerous==2.2.0
 click==8.1.7
-python-dotenv==1.2.2
 python-dateutil==2.9.0.post0
 
 # Pydantic
@@ -14,7 +12,7 @@ pydantic-settings>=2.6,<3
 
 # Database
 SQLAlchemy==2.0.36
-alembic==1.14.0
+alembic==1.18.4
 sqlalchemy-json==0.7.0
 cloud-sql-python-connector==1.14.0
 pg8000==1.31.5
@@ -24,12 +22,12 @@ httpx==0.28.1
 requests==2.33.0
 
 # Security / auth
-PyJWT[crypto]==2.12.0
-cachetools==5.5.0
-authlib==1.6.11
+PyJWT[crypto]==2.12.1
+cachetools==7.1.1
+authlib==1.7.2
 
 # Error Reporting
-sentry-sdk[starlette,fastapi]==2.19.0
+sentry-sdk[starlette,fastapi]==2.59.0
 
 # Okta
 okta==2.9.8
@@ -43,7 +41,6 @@ tox==4.23.2
 ruff==0.8.0
 # Typing
 mypy==1.13.0
-types-google-cloud-ndb==2.3.0.20250317
 types-python-dateutil==2.9.0.20250822
 types-requests==2.32.0.20241016
-types-cachetools==5.5.0.20240820
+types-cachetools==7.0.0.20260503
