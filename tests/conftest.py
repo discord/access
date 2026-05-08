@@ -18,7 +18,6 @@ from typing import Any, Callable, Generator
 from urllib.parse import urlencode
 
 import pytest
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pytest_factoryboy import register
@@ -53,7 +52,6 @@ register(TagFactory, "tag")
 
 @pytest.fixture(scope="session")
 def app(request: pytest.FixtureRequest) -> FastAPI:
-    load_dotenv(".testenv")
     fastapi_app = create_app(testing=True)
     require_descriptions = getattr(request, "param", False)
     settings.REQUIRE_DESCRIPTIONS = require_descriptions
