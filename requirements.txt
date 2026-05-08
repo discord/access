@@ -1,7 +1,7 @@
 # FastAPI
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
-gunicorn==23.0.0
+gunicorn==26.0.0
 python-multipart==0.0.20
 itsdangerous==2.2.0
 click==8.1.7
@@ -25,14 +25,14 @@ requests==2.33.0
 
 # Security / auth
 PyJWT[crypto]==2.12.0
-cachetools==5.5.0
+cachetools==7.1.1
 authlib==1.6.11
 
 # Error Reporting
 sentry-sdk[starlette,fastapi]==2.19.0
 
 # Okta
-okta==2.9.8
+okta==3.4.2
 
 # Plugins
 pluggy==1.5.0
@@ -42,8 +42,8 @@ tox==4.23.2
 # Lint
 ruff==0.8.0
 # Typing
-mypy==1.13.0
+mypy==2.0.0
 types-google-cloud-ndb==2.3.0.20250317
 types-python-dateutil==2.9.0.20250822
 types-requests==2.32.0.20241016
-types-cachetools==5.5.0.20240820
+types-cachetools==7.0.0.20260503
