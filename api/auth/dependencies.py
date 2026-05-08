@@ -49,7 +49,7 @@ def _dev_user_email(request: Request) -> str:
 class OIDCRedirectRequired(Exception):
     """Raised when OIDC is configured but the request has no session.
 
-    Caught by an exception handler that emits a 307 to `/api/oidc/login`
+    Caught by an exception handler that emits a 307 to `/oidc/login`
     so the browser can complete the auth flow before retrying the
     original path."""
 
@@ -127,7 +127,7 @@ CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
 # `CurrentUser` when they need the user-id *value*; this dependency is
 # the safety net if a route forgets the declaration. The catch-all SPA
 # route in `api.app` is also gated by it — static assets aren't exempt.
-AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/api/oidc/")
+AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/oidc/")
 
 
 def require_authenticated(request: Request, db: DbSession) -> None:

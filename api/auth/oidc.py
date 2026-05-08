@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any, Optional
-from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 from authlib.integrations.starlette_client import OAuth
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -65,10 +65,21 @@ def register_oidc(app: FastAPI) -> None:
 _router = APIRouter(prefix="/oidc", tags=["oidc"])
 
 
+def _is_safe_next(next_url: Optional[str]) -> bool:
+    # Reject absolute URLs and protocol-relative paths so `next` cannot bounce
+    # the post-auth redirect to a third-party host.
+    if not next_url or not next_url.startswith("/"):
+        return False
+    if next_url.startswith("//") or next_url.startswith("/\\"):
+        return False
+    parsed = urlparse(next_url)
+    return not parsed.scheme and not parsed.netloc
+
+
 @_router.get("/login", name="oidc_login")
 async def login(request: Request, next: Optional[str] = None) -> RedirectResponse:
     redirect_uri = settings.OIDC_OVERWRITE_REDIRECT_URI or str(request.url_for("oidc_authorize"))
-    if next:
+    if _is_safe_next(next):
         request.session["oidc_next"] = next
     return await oauth.oidc.authorize_redirect(request, redirect_uri)
 
@@ -90,11 +101,8 @@ async def authorize(request: Request) -> RedirectResponse:
 
 @_router.get("/logout", name="oidc_logout")
 async def logout(request: Request) -> RedirectResponse:
-    request.session.pop("userinfo", None)
-    # Optionally redirect to the IdP's end_session endpoint if configured.
-    metadata = await oauth.oidc.load_server_metadata()
-    end_session = metadata.get("end_session_endpoint")
-    if end_session:
-        params = {"post_logout_redirect_uri": str(request.url_for("spa", path="") or "/")}
-        return RedirectResponse(url=f"{end_session}?{urlencode(params)}")
+    # Clear the local session only. The user remains signed in to the IdP;
+    # a true SSO logout would need `id_token_hint` plus a registered
+    # `post_logout_redirect_uri`, which is out of scope here.
+    request.session.clear()
     return RedirectResponse(url="/")

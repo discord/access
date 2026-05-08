@@ -149,7 +149,15 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         from starlette.middleware.sessions import SessionMiddleware
         from api.auth.oidc import register_oidc
 
-        app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+        # HttpOnly is set by SessionMiddleware unconditionally; we add Secure
+        # outside dev and pin SameSite to lax so the IdP redirect to
+        # /oidc/authorize can still read the session.
+        app.add_middleware(
+            SessionMiddleware,
+            secret_key=settings.SECRET_KEY,
+            https_only=settings.ENV != "development",
+            same_site="lax",
+        )
         register_oidc(app)
     elif settings.ENV not in ("development", "test"):
         if not settings.CLOUDFLARE_TEAM_DOMAIN:

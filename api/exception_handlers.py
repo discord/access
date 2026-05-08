@@ -69,7 +69,7 @@ async def pydantic_validation_handler(request: Request, exc: ValidationError) ->
 
 async def oidc_redirect_handler(request: Request, exc: OIDCRedirectRequired) -> RedirectResponse:
     query = urlencode({"next": exc.next_path})
-    return RedirectResponse(url=f"/api/oidc/login?{query}", status_code=307)
+    return RedirectResponse(url=f"/oidc/login?{query}", status_code=307)
 
 
 async def plugin_not_found_handler(request: Request, exc: PluginNotFoundError) -> JSONResponse:
