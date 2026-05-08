@@ -1,0 +1,12 @@
+# Files to copy from the main checkout into new git worktrees.
+# Uses .gitignore syntax. Only paths that match a pattern AND are gitignored
+# are copied; tracked files are skipped automatically.
+# See: https://code.claude.com/docs/en/worktrees#copy-gitignored-files-into-worktrees
+
+# Local environment / secrets (Makefile requires .env to run).
+.env
+
+# Local config overrides (see bottom of .gitignore).
+config/config.override.json
+config/config.development.json
+config/config.test.json
