@@ -1,7 +1,6 @@
 import time
 from typing import Optional
 
-from flask_sqlalchemy import SQLAlchemy
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.group_rule_conditions import GroupRuleConditions as OktaGroupRuleConditionsType
 from okta.models.group_rule_expression import GroupRuleExpression as OktaGroupRuleExpressionType
@@ -9,13 +8,14 @@ from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from api.models import OktaGroup
+from api.extensions import Db
 from api.services import okta
 from api.services.okta_service import Group
 from api.syncer import sync_groups
 from tests.factories import GroupFactory
 
 
-def test_group_sync_no_changes(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_group_sync_no_changes(db: Db, mocker: MockerFixture) -> None:
     initial_groups_in_okta = GroupFactory.create_batch(3)
 
     initial_db_groups = seed_db(db, initial_groups_in_okta)
@@ -31,7 +31,7 @@ def test_group_sync_no_changes(db: SQLAlchemy, mocker: MockerFixture) -> None:
         )
 
 
-def test_group_sync_missing_group_in_okta(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_group_sync_missing_group_in_okta(db: Db, mocker: MockerFixture) -> None:
     groups_in_okta = GroupFactory.create_batch(3)
 
     initial_db_groups = seed_db(db, groups_in_okta)
@@ -64,7 +64,7 @@ def test_group_sync_missing_group_in_okta(db: SQLAlchemy, mocker: MockerFixture)
     assert deleted_at == removed_group_db_entry.deleted_at
 
 
-def test_group_sync_missing_group_in_db(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_group_sync_missing_group_in_db(db: Db, mocker: MockerFixture) -> None:
     groups_in_okta = GroupFactory.create_batch(3)
 
     initial_db_groups = seed_db(db, groups_in_okta)
@@ -88,7 +88,7 @@ def test_group_sync_missing_group_in_db(db: SQLAlchemy, mocker: MockerFixture) -
     assert get_group_by_id(new_db_groups, new_group_in_okta.id) is not None
 
 
-def test_group_sync_deleted_in_db_exists_in_okta(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_group_sync_deleted_in_db_exists_in_okta(db: Db, mocker: MockerFixture) -> None:
     groups_in_okta = GroupFactory.create_batch(3)
 
     seed_db(db, groups_in_okta)
@@ -127,7 +127,7 @@ def test_group_sync_deleted_in_db_exists_in_okta(db: SQLAlchemy, mocker: MockerF
     assert removed_group_entry.deleted_at is None
 
 
-def test_group_sync_externally_managed_group_in_okta(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_group_sync_externally_managed_group_in_okta(db: Db, mocker: MockerFixture) -> None:
     groups_in_okta = GroupFactory.create_batch(3)
 
     seed_db(db, groups_in_okta)
@@ -162,16 +162,14 @@ def test_group_sync_externally_managed_group_in_okta(db: SQLAlchemy, mocker: Moc
     assert external_group_entry.externally_managed_data == {"Test": 'user.department equals "Test"'}
 
 
-def seed_db(db: SQLAlchemy, groups: list[OktaGroup]) -> list[OktaGroup]:
+def seed_db(db: Db, groups: list[OktaGroup]) -> list[OktaGroup]:
     with Session(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.commit()
         return session.query(OktaGroup).all()
 
 
-def run_sync(
-    db: SQLAlchemy, mocker: MockerFixture, okta_groups: list[OktaGroup], act_as_authority: bool
-) -> list[OktaGroup]:
+def run_sync(db: Db, mocker: MockerFixture, okta_groups: list[OktaGroup], act_as_authority: bool) -> list[OktaGroup]:
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value={})
         mocker.patch.object(okta, "list_groups", return_value=[Group(g) for g in okta_groups])

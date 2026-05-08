@@ -1,10 +1,10 @@
 from typing import List
 
-from flask_sqlalchemy import SQLAlchemy
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
 from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
+from api.extensions import Db
 from api.operations import CreateAccessRequest
 from api.services import okta
 from api.services.okta_service import User, UserSchema
@@ -12,7 +12,7 @@ from api.syncer import sync_users
 from tests.factories import UserFactory, UserSchemaFactory
 
 
-def test_user_sync_no_changes(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_user_sync_no_changes(db: Db, mocker: MockerFixture) -> None:
     initial_users_in_okta = UserFactory.create_batch(3)
 
     initial_db_users = seed_db(db, initial_users_in_okta)
@@ -26,7 +26,7 @@ def test_user_sync_no_changes(db: SQLAlchemy, mocker: MockerFixture) -> None:
         )
 
 
-def test_user_sync_updates_fields(db: SQLAlchemy, mocker: MockerFixture) -> None:
+def test_user_sync_updates_fields(db: Db, mocker: MockerFixture) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
     _ = seed_db(db, initial_users_in_okta)
@@ -39,7 +39,7 @@ def test_user_sync_updates_fields(db: SQLAlchemy, mocker: MockerFixture) -> None
 
 
 def test_user_sync_updates_deleted_user(
-    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+    db: Db, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
 ) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
@@ -105,7 +105,7 @@ def test_user_sync_updates_deleted_user(
 
 
 def test_user_sync_deletes_disappearing_user(
-    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+    db: Db, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
 ) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
@@ -170,7 +170,7 @@ def test_user_sync_deletes_disappearing_user(
 
 
 def test_user_sync_ends_memberships_for_previously_deleted_user(
-    db: SQLAlchemy, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
+    db: Db, mocker: MockerFixture, okta_group: OktaGroup, role_group: RoleGroup
 ) -> None:
     initial_users_in_okta = UserFactory.create_batch(1)
 
@@ -228,14 +228,14 @@ def test_user_sync_ends_memberships_for_previously_deleted_user(
     assert delete_ownership_spy.call_count == 1
 
 
-def seed_db(db: SQLAlchemy, users: List[User]) -> List[OktaUser]:
+def seed_db(db: Db, users: List[User]) -> List[OktaUser]:
     with Session(db.engine) as session:
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
         session.commit()
         return session.query(OktaUser).all()
 
 
-def run_sync(db: SQLAlchemy, mocker: MockerFixture, okta_users: List[User]) -> List[OktaUser]:
+def run_sync(db: Db, mocker: MockerFixture, okta_users: List[User]) -> List[OktaUser]:
     schema = UserSchemaFactory.create()
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_users", return_value=[User(u) for u in okta_users])

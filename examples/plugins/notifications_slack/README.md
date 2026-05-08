@@ -14,13 +14,12 @@ RUN pip install -r ./notifications_slack/requirements.txt && pip install ./notif
 # Reset working directory
 WORKDIR /app
 
-ENV FLASK_ENV production
-ENV FLASK_APP api.app:create_app
+ENV ENV production
 ENV SENTRY_RELEASE $SENTRY_RELEASE
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "--access-logfile", "-", "api.wsgi:app"]
+CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "-k", "uvicorn.workers.UvicornWorker", "--access-logfile", "-", "api.asgi:app"]
 ```
 
 ## Build the Docker image, run and test

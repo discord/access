@@ -15,12 +15,12 @@ spec:
         spec:
           containers:
             - command:
-                - flask
+                - access
                 - sync
               # Enable this flag when you want Access to be the source-of-truth for group memberships overwriting Okta Admin membership changes
               # - --sync-group-memberships-authoritatively
               env: # See "Production Setup" in the README for more details on configuring these environment variables
-                - name: FLASK_ENV
+                - name: ENV
                   value: production
                 - name: OKTA_DOMAIN
                   value: mydomain.okta.com # Replace with your Okta domain

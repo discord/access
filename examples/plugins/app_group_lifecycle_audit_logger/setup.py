@@ -14,7 +14,6 @@ setup(
     packages=["app_group_lifecycle_audit_logger"],
     package_dir={"app_group_lifecycle_audit_logger": "."},
     install_requires=[
-        "Flask",
         "SQLAlchemy",
     ],
     # Register the plugin with the app group lifecycle plugin system

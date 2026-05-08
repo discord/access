@@ -1,6 +1,8 @@
 from typing import Optional, TypedDict, TypeVar
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
@@ -8,7 +10,7 @@ from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 T = TypeVar("T", bound=OktaGroup)
 
@@ -100,7 +102,7 @@ class CreateGroup:
                 hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
                 db.session.commit()
             except Exception:
-                current_app.logger.exception(
+                logging.getLogger("api").exception(
                     f"Failed to invoke group_created hook for group {self.group.id} with plugin '{plugin_id}'"
                 )
                 db.session.rollback()
@@ -118,16 +120,14 @@ class CreateGroup:
             .first()
         )
 
-        context = has_request_context()
+        _ctx = get_request_context()
 
-        current_app.logger.info(
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_create,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.current_user_id,
                     "current_user_email": email,
                     "group": group,

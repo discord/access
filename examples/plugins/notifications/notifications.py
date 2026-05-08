@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_base_url() -> str:
-    env = os.environ.get("FLASK_ENV", "development")
+    env = os.environ.get("ENV", "development")
     if env == "production":
         return "https://example.com"
     else:

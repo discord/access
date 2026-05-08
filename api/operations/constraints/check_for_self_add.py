@@ -5,7 +5,7 @@ from sqlalchemy.orm import (
     selectinload,
 )
 
-from api.authorization import AuthorizationHelpers
+from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import coalesce_constraints
@@ -51,7 +51,7 @@ class CheckForSelfAdd:
         self.owners_to_add = owners_to_add
 
     def execute_for_group(self) -> Tuple[bool, str]:
-        if self.current_user is None or AuthorizationHelpers.is_access_admin(self.current_user.id):
+        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
             return True, ""
 
         if len(self.owners_to_add) > 0 and self.current_user.id in self.owners_to_add:
@@ -109,7 +109,7 @@ class CheckForSelfAdd:
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
-        if self.current_user is None or AuthorizationHelpers.is_access_admin(self.current_user.id):
+        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
             return True, ""
 
         if type(self.group) is not RoleGroup:

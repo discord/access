@@ -1,13 +1,15 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.plugins import get_notification_hook
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class RejectGroupRequest:
@@ -81,15 +83,13 @@ class RejectGroupRequest:
 
         # Audit logging
         email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None) if self.rejecter_id else None
-        context = has_request_context()
-        current_app.logger.info(
+        _ctx = get_request_context()
+        logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
                     "event_type": EventType.group_request_reject,
-                    "user_agent": request.headers.get("User-Agent") if context else None,
-                    "ip": request.headers.get("X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr))
-                    if context
-                    else None,
+                    "user_agent": _ctx.user_agent if _ctx else None,
+                    "ip": _ctx.ip if _ctx else None,
                     "current_user_id": self.rejecter_id,
                     "current_user_email": email,
                     "group_request": self.group_request,

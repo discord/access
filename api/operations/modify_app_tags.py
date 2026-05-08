@@ -1,11 +1,13 @@
 from typing import Optional
 
-from flask import current_app, has_request_context, request
+import logging
+
+from api.context import get_request_context
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroupTagMap, OktaUser, Tag
 from api.operations import ModifyGroupsTimeLimit
-from api.views.schemas import AuditLogSchema, EventType
+from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyAppTags:
@@ -133,17 +135,13 @@ class ModifyAppTags:
             if self.current_user_id is not None:
                 email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
-            context = has_request_context()
-            current_app.logger.info(
+            _ctx = get_request_context()
+            logging.getLogger("access.audit").info(
                 AuditLogSchema().dumps(
                     {
                         "event_type": EventType.app_modify_tags,
-                        "user_agent": request.headers.get("User-Agent") if context else None,
-                        "ip": request.headers.get(
-                            "X-Forwarded-For", request.headers.get("X-Real-IP", request.remote_addr)
-                        )
-                        if context
-                        else None,
+                        "user_agent": _ctx.user_agent if _ctx else None,
+                        "ip": _ctx.ip if _ctx else None,
                         "current_user_id": self.current_user_id,
                         "current_user_email": email,
                         "app": self.app,
