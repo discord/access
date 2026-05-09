@@ -29,9 +29,19 @@ def _with_app_context(func: F) -> F:
 
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
+        from api.app import _configure_logging, _configure_okta, _configure_sentry
         from api.database import build_engine
         from api.extensions import _session_scope, db
         from api.plugins import load_plugins
+
+        # Mirror create_app()'s bootstrap so CLI runs get the same
+        # token-redacting log filter, Sentry wiring, and OktaService
+        # initialization. Without _configure_okta() in particular, the
+        # module-level `okta` singleton is missing `okta_client` and any
+        # command that touches Okta (sync, notify) raises AttributeError.
+        _configure_logging()
+        _configure_sentry()
+        _configure_okta()
 
         if db._engine is None:
             db.init_app(engine=build_engine())
