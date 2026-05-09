@@ -68,7 +68,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             return ""
         user = _lookup_user_by_email(db, email)
         request.state.current_user_id = user.id
-        if settings.FLASK_SENTRY_DSN:
+        if settings.FASTAPI_SENTRY_DSN:
             set_user({"id": user.id})
         return user.id
 
@@ -80,7 +80,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
         if "email" in payload:
             user = _lookup_user_by_email(db, payload["email"])
             request.state.current_user_id = user.id
-            if settings.FLASK_SENTRY_DSN:
+            if settings.FASTAPI_SENTRY_DSN:
                 set_user({"id": user.id})
             return user.id
         elif "common_name" in payload:
@@ -100,7 +100,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             raise OIDCRedirectRequired(next_path=request.url.path)
         user = _lookup_user_by_email(db, userinfo["email"])
         request.state.current_user_id = user.id
-        if settings.FLASK_SENTRY_DSN:
+        if settings.FASTAPI_SENTRY_DSN:
             set_user({"id": user.id})
         return user.id
 

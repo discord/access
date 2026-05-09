@@ -41,7 +41,7 @@ def _configure_logging() -> None:
 def _configure_sentry() -> None:
     if settings.ENV in ("development", "test"):
         return
-    if not settings.FLASK_SENTRY_DSN:
+    if not settings.FASTAPI_SENTRY_DSN:
         return
     import sentry_sdk
     from fastapi import HTTPException
@@ -56,7 +56,7 @@ def _configure_sentry() -> None:
     sentry_profile_env_var = environ.get("ENABLE_SENTRY_PROFILER", "0")
     logger.info(f"ENABLE_SENTRY_PROFILER: {sentry_profile_env_var}")
     sentry_sdk.init(
-        dsn=settings.FLASK_SENTRY_DSN,
+        dsn=settings.FASTAPI_SENTRY_DSN,
         integrations=[StarletteIntegration(), FastApiIntegration()],
         environment=settings.ENV,
         traces_sample_rate=0.1,

@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Access"
 
     # Sentry
-    FLASK_SENTRY_DSN: Optional[str] = None
+    FASTAPI_SENTRY_DSN: Optional[str] = None
     REACT_SENTRY_DSN: Optional[str] = None
 
     # Behavior toggles
@@ -195,6 +195,6 @@ SECRET_KEY = settings.SECRET_KEY
 APP_CREATOR_ID = settings.APP_CREATOR_ID
 APP_VERSION = settings.APP_VERSION
 APP_NAME = settings.APP_NAME
-FLASK_SENTRY_DSN = settings.FLASK_SENTRY_DSN
+FASTAPI_SENTRY_DSN = settings.FASTAPI_SENTRY_DSN
 REACT_SENTRY_DSN = settings.REACT_SENTRY_DSN
 REQUIRE_DESCRIPTIONS = settings.REQUIRE_DESCRIPTIONS

@@ -127,7 +127,7 @@ OKTA_API_TOKEN=<YOUR_OKTA_API_TOKEN>
 DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://postgres:postgres@localhost:5432/access"
 CLIENT_ORIGIN_URL=http://localhost:3000
 VITE_API_SERVER_URL=""
-FLASK_SENTRY_DSN=https://<key>@sentry.io/<project>
+FASTAPI_SENTRY_DSN=https://<key>@sentry.io/<project>
 REACT_SENTRY_DSN=https://<key>@sentry.io/<project>
 ```
 
@@ -243,7 +243,7 @@ The `.env.production` file is where you configure the application.
 - `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`.
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL used by plugins (e.g. for building notification URLs).
 - `VITE_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
-- `FLASK_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
+- `FASTAPI_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `REACT_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
 - `CLOUDFLARE_TEAM_DOMAIN`: Specifies the Team Domain used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
