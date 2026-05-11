@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +46,20 @@ def _validate_override_config(config: dict[str, Any]) -> None:
         )
 
 
-def _merge_override_config(config: dict[str, Any], top_level_dir: str) -> None:
-    access_config_file = os.getenv("ACCESS_CONFIG_FILE")
-    if access_config_file:
-        override_config_path = os.path.join(top_level_dir, "config", access_config_file)
-        if os.path.exists(override_config_path):
-            logger.debug(f"Loading access config override from {override_config_path}")
-            with open(override_config_path, "r") as f:
-                override_config = json.load(f).get(BACKEND, {})
-                _validate_override_config(override_config)
-                config.update(override_config)
-        else:
-            raise ConfigFileNotFoundError(str(override_config_path))
+def _merge_override_config(config: dict[str, Any], config_dir: str, override_filename: str) -> None:
+    override_config_path = os.path.join(config_dir, override_filename)
+    if os.path.exists(override_config_path):
+        logger.debug(f"Loading access config override from {override_config_path}")
+        with open(override_config_path, "r") as f:
+            override_config = json.load(f).get(BACKEND, {})
+            _validate_override_config(override_config)
+            config.update(override_config)
+    else:
+        raise ConfigFileNotFoundError(str(override_config_path))
 
 
-def _load_default_config(top_level_dir: str) -> dict[str, Any]:
-    default_config_path = os.path.join(top_level_dir, "config", "config.default.json")
+def _load_default_config(config_dir: str) -> dict[str, Any]:
+    default_config_path = os.path.join(config_dir, "config.default.json")
     if not os.path.exists(default_config_path):
         raise ConfigFileNotFoundError(str(default_config_path))
     with open(default_config_path, "r") as f:
@@ -69,10 +67,29 @@ def _load_default_config(top_level_dir: str) -> dict[str, Any]:
     return config
 
 
+def _resolve_config_paths() -> Tuple[str, Optional[str]]:
+    """Resolve the directory holding config.default.json and an optional override filename.
+
+    ACCESS_CONFIG_FILE accepts either of two shapes:
+      - bare filename (e.g. "config.production.json"): existing behavior --
+        looked up inside the package's bundled `config/` dir.
+      - absolute path (e.g. "/etc/access/config.production.json"): the
+        containing directory becomes the lookup dir for BOTH the default
+        and the override, so operators can mount a ConfigMap (or any
+        other directory) without rebuilding the image.
+    """
+    bundled_config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config")
+    access_config_file = os.getenv("ACCESS_CONFIG_FILE")
+    if access_config_file and os.path.isabs(access_config_file):
+        return os.path.dirname(access_config_file), os.path.basename(access_config_file)
+    return bundled_config_dir, access_config_file
+
+
 def _load_access_config() -> AccessConfig:
-    top_level_dir = os.path.dirname(os.path.dirname(__file__))
-    config = _load_default_config(top_level_dir)
-    _merge_override_config(config, top_level_dir)
+    config_dir, override_filename = _resolve_config_paths()
+    config = _load_default_config(config_dir)
+    if override_filename:
+        _merge_override_config(config, config_dir, override_filename)
 
     name_pattern = _get_config_value(config, NAME_VALIDATION_PATTERN)
     name_validation_error = _get_config_value(config, NAME_VALIDATION_ERROR)
