@@ -15,6 +15,7 @@ from api.access_config import (
     _get_config_value,
     BACKEND,
     _merge_override_config,
+    _resolve_config_paths,
     NAME_VALIDATION_PATTERN,
     NAME_VALIDATION_ERROR,
     ConfigValidationError,
@@ -37,7 +38,7 @@ def mock_load_default_config() -> Generator[Any, Any, Any]:
 @pytest.fixture
 def mock_merge_override_config() -> Generator[Any, Any, Any]:
     with patch("api.access_config._merge_override_config") as mock_merge:
-        mock_merge.side_effect = lambda config, _: config.update(
+        mock_merge.side_effect = lambda config, _config_dir, _filename: config.update(
             {
                 NAME_VALIDATION_PATTERN: "override_name_pattern",
                 NAME_VALIDATION_ERROR: "override_name_error",
@@ -53,7 +54,14 @@ def test_load_config_default(mock_load_default_config: None) -> None:
     assert config.name_validation_error == "name_error"
 
 
-def test_load_config_with_override(mock_load_default_config: None, mock_merge_override_config: None) -> None:
+def test_load_config_with_override(
+    mock_load_default_config: None,
+    mock_merge_override_config: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # _load_access_config only calls _merge_override_config when an override
+    # is requested; ACCESS_CONFIG_FILE is how a caller asks for one.
+    monkeypatch.setenv("ACCESS_CONFIG_FILE", "override.json")
     config = _load_access_config()
     assert isinstance(config, AccessConfig)
     assert config.name_pattern == "override_name_pattern"
@@ -61,10 +69,7 @@ def test_load_config_with_override(mock_load_default_config: None, mock_merge_ov
 
 
 def test_load_default_config() -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir)
-
+    with tempfile.TemporaryDirectory() as config_dir:
         config_file_path = os.path.join(config_dir, "config.default.json")
         with open(config_file_path, "w") as config_file:
             json.dump(
@@ -77,16 +82,13 @@ def test_load_default_config() -> None:
                 config_file,
             )
 
-        config = _load_default_config(temp_dir)
+        config = _load_default_config(config_dir)
         assert config[NAME_VALIDATION_PATTERN] == "name_pattern"
         assert config[NAME_VALIDATION_ERROR] == "name_error"
 
 
-def test_merge_override_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir)
-
+def test_merge_override_config() -> None:
+    with tempfile.TemporaryDirectory() as config_dir:
         filename = "override_config1.json"
         override_config_path = os.path.join(config_dir, filename)
         override_config = {
@@ -98,15 +100,12 @@ def test_merge_override_config(monkeypatch: pytest.MonkeyPatch) -> None:
         with open(override_config_path, "w") as config_file:
             json.dump(override_config, config_file)
 
-        # Mock the ACCESS_CONFIG_FILE environment variable
-        monkeypatch.setenv("ACCESS_CONFIG_FILE", filename)
-
         config = {
             NAME_VALIDATION_PATTERN: "group_pattern",
             NAME_VALIDATION_ERROR: "name_error",
         }
 
-        _merge_override_config(config, temp_dir)
+        _merge_override_config(config, config_dir, filename)
 
         assert config[NAME_VALIDATION_PATTERN] == "override_name_pattern"
         assert config[NAME_VALIDATION_ERROR] == "override_name_error"
@@ -117,13 +116,8 @@ def test_load_default_config_file_not_found() -> None:
         _load_default_config("/non/existent/path")
 
 
-def test_merge_override_config_ignores_frontend_override(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        config_dir = os.path.join(temp_dir, "config")
-        os.makedirs(config_dir)
-
+def test_merge_override_config_ignores_frontend_override() -> None:
+    with tempfile.TemporaryDirectory() as config_dir:
         filename = "override_config2.json"
         override_config_path = os.path.join(config_dir, filename)
         override_config = {
@@ -137,19 +131,42 @@ def test_merge_override_config_ignores_frontend_override(
         with open(override_config_path, "w") as config_file:
             json.dump(override_config, config_file)
 
-        # Mock the ACCESS_CONFIG_FILE environment variable
-        monkeypatch.setenv("ACCESS_CONFIG_FILE", filename)
-
         config = {
             NAME_VALIDATION_PATTERN: "name_pattern",
             NAME_VALIDATION_ERROR: "name_error",
         }
-        _merge_override_config(config, temp_dir)
+        _merge_override_config(config, config_dir, filename)
         # no overrides from FRONTEND keys!
         assert config[NAME_VALIDATION_PATTERN] == "name_pattern"
         assert config[NAME_VALIDATION_ERROR] == "name_error"
         # extra key from FRONTEND not there either
         assert "FOO" not in config
+
+
+def test_resolve_config_paths_bare_filename_uses_bundled_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACCESS_CONFIG_FILE", "config.production.json")
+    config_dir, override_filename = _resolve_config_paths()
+    # Bare filenames keep existing semantics: the bundled config dir is used.
+    assert os.path.basename(config_dir) == "config"
+    assert override_filename == "config.production.json"
+
+
+def test_resolve_config_paths_absolute_path_overrides_dir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACCESS_CONFIG_FILE", "/etc/access-config/config.production.json")
+    config_dir, override_filename = _resolve_config_paths()
+    assert config_dir == "/etc/access-config"
+    assert override_filename == "config.production.json"
+
+
+def test_resolve_config_paths_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ACCESS_CONFIG_FILE", raising=False)
+    config_dir, override_filename = _resolve_config_paths()
+    assert os.path.basename(config_dir) == "config"
+    assert override_filename is None
 
 
 def test_get_config_value_raises_undefined_config_key_error() -> None:
