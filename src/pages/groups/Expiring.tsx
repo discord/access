@@ -224,9 +224,9 @@ export default function ExpiringGroups() {
 
   return (
     <>
-      <ChangeTitle title="Expiring Groups" />
+      <ChangeTitle title="Expiring Individual Access" />
       <TableContainer component={Paper}>
-        <TableTopBar title="Expiring Groups">
+        <TableTopBar title="Expiring Individual Access">
           <BulkRenewal
             rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
             ownAccess={userId == '@me' || userId == currentUser.id}
