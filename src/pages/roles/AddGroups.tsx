@@ -405,7 +405,7 @@ export default function AddGroups(props: AddGroupsProps) {
   );
   const isRoleOwnerWithGroups = isGroupOwner(props.currentUser, props.group.id ?? '') && ownsAtLeastOneNonRoleGroup;
 
-  if (props.group.deleted_at != null || !(isAccessAdmin(props.currentUser) || isRoleOwnerWithGroups)) {
+  if (props.group.deleted_at != null || !isAccessAdmin(props.currentUser) || !isRoleOwnerWithGroups) {
     return null;
   }
 
