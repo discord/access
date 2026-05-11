@@ -43,9 +43,14 @@ COPY --from=build-step /app/build ./build
 RUN mkdir ./api && mkdir ./migrations
 COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
-COPY alembic.ini ./
+COPY alembic.ini setup.py ./
 COPY ./config ./config
 RUN pip install -r ./api/requirements.txt
+# Install the project itself so the `access` console script declared in
+# setup.py (entry_points -> api.manage:cli) is available on PATH for
+# CronJobs and other CLI invocations. --no-deps keeps the pinned
+# versions from requirements.txt authoritative.
+RUN pip install --no-deps .
 
 # Build an image that includes the optional sentry release push build step
 FROM false AS true
