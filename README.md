@@ -249,6 +249,8 @@ The `.env.production` file is where you configure the application.
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `SECRET_KEY`: Specifies the secret key used to sign the OIDC session cookie. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+- `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
+- `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all` (read-only). Only relevant when `ENABLE_MCP=true`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -356,6 +358,96 @@ Visit [http://localhost:3000/](http://localhost:3000/) to view your running vers
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
 
 These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `access sync` and `access notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
+
+## MCP Server (optional)
+
+Access can embed a [Model Context Protocol](https://modelcontextprotocol.io/) server alongside the REST API so that MCP-compatible LLM clients (Claude Code, Claude.ai, Cursor, Zed, self-hosted models, …) can browse groups, roles, apps, and requests, and file access requests on the authenticated user's behalf. The feature is **off by default** — operators who don't run LLM tooling pay nothing at runtime.
+
+### Enabling
+
+Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the FastMCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
+
+`mcp[cli]` is pinned in [`requirements.txt`](requirements.txt) and imported unconditionally; only the runtime wiring is gated by the flag.
+
+### Tool surface (v1)
+
+21 tools and one prompt. Reads (`list_*` / `get_*`) cover groups, roles, apps, users, tags, audit entries, group memberships, and all three request types. Writes are limited to filing **pending** requests — approval, rejection, and direct mutation of groups/roles/apps are intentionally **not** exposed via MCP:
+
+- `create_access_request` — user requests membership or ownership for themselves
+- `create_role_request` — role owner requests that a role be granted access to a group
+- `create_group_request` — user requests creation of a new group, role, or app group
+
+Every tool runs the same authorization predicate and operation pipeline the matching REST endpoint uses, so MCP cannot grant an LLM agent more than the user it's authenticating as.
+
+### Scopes (`MCP_FALLBACK_SCOPES`)
+
+Two coarse scopes:
+
+| Scope             | Required by                                                            |
+|-------------------|------------------------------------------------------------------------|
+| `read_all`        | every `list_*` / `get_*` tool                                          |
+| `create_requests` | `create_access_request`, `create_role_request`, `create_group_request` |
+
+When an MCP token carries an explicit `scope` (space-separated) or `scp` (list) claim, that set controls the session. When the claim is absent — the typical case under Cloudflare Managed OAuth today, which does not currently issue scope claims — the operator-configured `MCP_FALLBACK_SCOPES` value is applied. Three meaningful settings:
+
+- `MCP_FALLBACK_SCOPES=read_all` *(default)* — read-only sessions; LLM agents can browse but cannot file any request via MCP.
+- `MCP_FALLBACK_SCOPES=read_all,create_requests` — enables the three write tools. Explicit opt-in.
+- `MCP_FALLBACK_SCOPES=""` — fail-closed; tokens with no scope claim cannot call any tool. The right setting once your provider starts emitting scope claims.
+
+Scopes attenuate — they never grant. A token with `create_requests` still cannot file a role request for a role the user does not own; the per-tool authorization check fires after the scope check.
+
+### Authentication
+
+MCP auth is pluggable via the same [pluggy](https://pluggy.readthedocs.io/en/latest/) framework Access uses for notifications and conditional access. The shipped default is the Cloudflare Access provider: it accepts the JWT in `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, and reuses the existing `verify_cloudflare_token` helper. The default opts itself out automatically when `CLOUDFLARE_TEAM_DOMAIN` is unset, so a non-CF deployment can register its own provider without fighting the default.
+
+Cloudflare deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
+
+To add a provider for a different auth model (OIDC, mTLS, custom JWT issuer, …), implement the `mcp_resolve_identity` hookspec ([`api/plugins/mcp_auth.py`](api/plugins/mcp_auth.py)) in your own plugin package and register it under the `access_mcp_auth` setuptools entry point:
+
+```python
+# my_plugin/mcp_auth.py
+from api.plugins.mcp_auth import hookimpl
+from api.mcp.auth import MCPIdentity
+
+@hookimpl
+def mcp_resolve_identity(scope):
+    # Inspect the ASGI scope, verify the credential, resolve to an OktaUser.
+    # Return MCPIdentity(user_id=..., scopes=frozenset({...})) on success,
+    # or None to defer to the next registered provider.
+    ...
+```
+
+```toml
+# my_plugin/pyproject.toml
+[project.entry-points.access_mcp_auth]
+my_provider = "my_plugin.mcp_auth"
+```
+
+Providers run in registration order; the first non-`None` result wins. Return `None` (don't raise) to defer. The ASGI middleware emits `401 + WWW-Authenticate: Bearer realm="access"` when every provider declines.
+
+### Audit logging
+
+Every MCP-originated mutation is tagged with `source: "mcp"` in the audit log payload (REST traffic is tagged `source: "web"`). The tag is injected automatically from the active request context — no per-tool plumbing — so an admin investigating an incident can distinguish agent activity from interactive use.
+
+### Endpoint
+
+  `POST https://<your-access-deployment>/mcp`
+
+Standard MCP Streamable HTTP. Any MCP-compliant client connects with just this URL plus the auth credential your registered provider expects.
+
+### Local development
+
+A dev MCP auth provider ships in `api/mcp/auth/dev.py` and activates only when `ENV` is `development` or `test`. In those modes it resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set — the same shortcut the REST path takes in `api/auth/dependencies.py`. The Cloudflare provider stays registered but opts out automatically when `CLOUDFLARE_TEAM_DOMAIN` is unset, so the two don't compete.
+
+To exercise the MCP server locally, add to your `.env`:
+
+```
+ENABLE_MCP=true
+```
+
+Then run `make run-backend` and point an MCP client (Claude Code, mcp-inspector, etc.) at `http://localhost:6060/mcp` with no auth credential. The dev provider grants both `read_all` and `create_requests`, so every tool is reachable.
+
+This path is gated on `ENV` and explicitly defers in any production-style environment, so the dev provider is safe to ship alongside the Cloudflare default.
 
 ## Plugins
 

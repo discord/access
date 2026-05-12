@@ -398,6 +398,39 @@ def test_cloudflare_explicit_scope_claim_overrides_fallback(
     assert MCP_SCOPE_CREATE_REQUESTS not in identity.scopes
 
 
+def test_dev_provider_resolves_in_development(
+    db: Db,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In ENV=development, the dev provider resolves CURRENT_OKTA_USER_EMAIL
+    to an OktaUser and grants the full v1 scope set so local testing can
+    exercise both read and write tools without a faked CF JWT."""
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    assert admin is not None
+
+    monkeypatch.setattr(settings, "ENV", "development")
+
+    from api.mcp.auth.dev import mcp_resolve_identity
+
+    identity = mcp_resolve_identity(scope={"headers": []})
+    assert identity is not None
+    assert identity.user_id == admin.id
+    assert identity.scopes == ALL_V1_SCOPES
+
+
+def test_dev_provider_defers_outside_dev_or_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """In any production-style ENV, the dev provider returns None so the
+    CF (or operator-supplied) provider gets a chance. Registering the
+    dev provider unconditionally is therefore safe."""
+    monkeypatch.setattr(settings, "ENV", "production")
+
+    from api.mcp.auth.dev import mcp_resolve_identity
+
+    assert mcp_resolve_identity(scope={"headers": []}) is None
+
+
 def test_create_role_request_denies_non_owner(
     with_mcp_enabled: None,
     db: Db,

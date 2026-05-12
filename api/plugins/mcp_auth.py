@@ -79,8 +79,14 @@ def get_mcp_auth_hook() -> pluggy.HookRelay:
     # the Cloudflare verification machinery unless this function actually
     # runs (i.e. ENABLE_MCP is true).
     from api.mcp.auth import cloudflare as _cf
+    from api.mcp.auth import dev as _dev
 
     pm.register(_cf)
+    # Dev provider is registered unconditionally; its hookimpl gates on
+    # ENV ∈ {development, test}, so in any production-style environment
+    # it returns None and defers. Locally, the CF provider opts out via
+    # its own CLOUDFLARE_TEAM_DOMAIN check, so the two never compete.
+    pm.register(_dev)
 
     count = pm.load_setuptools_entrypoints(mcp_auth_plugin_name)
     logger.info(f"Loaded {count} additional MCP auth provider(s)")
