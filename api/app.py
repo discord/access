@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import logging
 import sys
+from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
@@ -123,6 +124,22 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
 
     from api.auth.dependencies import require_authenticated
 
+    # MCP lifespan: when ENABLE_MCP is on, build the server eagerly so
+    # the route registration below can grab the session manager, then
+    # enter its lifespan in the FastAPI lifespan so the session
+    # manager's task group is running while requests are served.
+    if settings.ENABLE_MCP:
+        from api.mcp.server import create_mcp_server, mcp_lifespan
+
+        create_mcp_server()
+
+        @asynccontextmanager
+        async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
+            async with mcp_lifespan():
+                yield
+    else:
+        lifespan = None  # type: ignore[assignment]
+
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
@@ -136,6 +153,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # The SPA catch-all route mounted below inherits this dependency
         # too, so static assets are inside the gate.
         dependencies=[Depends(require_authenticated)],
+        lifespan=lifespan,
     )
 
     # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture
@@ -178,9 +196,23 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         )
 
     # Order: outer-most last. RequestId outermost so request_id is on state
-    # for inner middleware and dependencies.
+    # for inner middleware and dependencies. The MCP auth middleware is
+    # added BEFORE RequestContextMiddleware so it ends up *inside* that
+    # wrapper — RequestContext sets source="web" first, then MCP auth
+    # overrides to "mcp" for the duration of /mcp requests (and clears
+    # on the way out). Inverting the order would let RequestContext
+    # trample the MCP-sourced binding before tools see it.
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
+    if settings.ENABLE_MCP:
+        from api.mcp.server import MCPAuthMiddleware, get_mcp_route
+
+        app.add_middleware(MCPAuthMiddleware)
+        # Use a Route (not a Mount) so /mcp without trailing slash works;
+        # /mcp/ would 405 some MCP clients. Insert the route at the
+        # FastAPI level — it doesn't go through include_router because
+        # the handler is a raw ASGI app from FastMCP.
+        app.routes.append(get_mcp_route())
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
 

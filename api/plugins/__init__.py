@@ -22,12 +22,14 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.plugins.conditional_access import ConditionalAccessResponse, get_conditional_access_hook
+from api.plugins.mcp_auth import get_mcp_auth_hook
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
 from api.plugins.notifications import get_notification_hook
 
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
 conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
+mcp_auth_hook_impl = pluggy.HookimplMarker("access_mcp_auth")
 
 
 def load_plugins() -> None:
@@ -37,11 +39,21 @@ def load_plugins() -> None:
     one-shot entry point: subsequent calls (from hook invocations during
     a request, sync, notify, …) hit the cache. Surfaces any
     entry-point-load failure at startup instead of silently no-op'ing
-    later when the hook fires."""
+    later when the hook fires.
+
+    The MCP auth hook is loaded only when the MCP server is enabled —
+    the default Cloudflare provider it registers pulls in the JWT/JWK
+    verification path, and there's no point initialising that for
+    operators who aren't running the MCP feature.
+    """
     get_app_group_lifecycle_hook()
     get_conditional_access_hook()
     get_notification_hook()
     get_metrics_reporter_hook()
+    from api.config import settings
+
+    if settings.ENABLE_MCP:
+        get_mcp_auth_hook()
 
 
 __all__ = [
@@ -75,6 +87,9 @@ __all__ = [
     "notification_hook_impl",
     # Metrics Reporter Plugin
     "get_metrics_reporter_hook",
+    # MCP Auth Plugin
+    "get_mcp_auth_hook",
+    "mcp_auth_hook_impl",
     # Eager loader
     "load_plugins",
 ]
