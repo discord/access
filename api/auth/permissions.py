@@ -129,7 +129,7 @@ def require_access_admin_or_app_creator(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> str:
-    if settings.APP_CREATOR_ID is not None and current_user_id == settings.APP_CREATOR_ID:
+    if current_user_id in settings.app_creator_ids:
         return current_user_id
     if is_access_admin(db, current_user_id):
         return current_user_id
