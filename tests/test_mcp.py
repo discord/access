@@ -254,9 +254,7 @@ def test_write_tool_requires_create_requests_scope(
         MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS}))
     )
     try:
-        result = _call_tool(
-            mcp, "create_access_request", group_id=okta_group.id, reason="legitimate ask"
-        )
+        result = _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="legitimate ask")
     finally:
         reset_mcp_identity(token)
     payload = json.loads(result)
@@ -271,9 +269,7 @@ def _make_access_admin(db: Db) -> OktaUser:
     Conftest's setup adds them as a *member* (not owner) of
     App-Access-Owners — that's the membership pattern is_access_admin
     checks for, so no additional wiring is needed."""
-    admin = (
-        db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
-    )
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     assert admin is not None
     return admin
 
@@ -420,9 +416,7 @@ def test_create_role_request_denies_non_owner(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -460,9 +454,7 @@ def test_create_role_request_allowed_for_role_owner(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -498,9 +490,7 @@ def test_create_role_request_allowed_for_access_admin(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=admin.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=admin.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -540,9 +530,7 @@ def test_create_role_request_rejects_role_as_target(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -610,9 +598,7 @@ def test_create_group_request_allowed_for_authenticated_user(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -645,9 +631,7 @@ def test_create_group_request_requires_app_id_for_app_group(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         # Missing app_id on app_group request — fails at body validation
         # because the discriminated union variant requires it.
@@ -678,9 +662,7 @@ def test_create_group_request_rejects_unknown_app_id(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
         result = _call_tool(
             mcp,
@@ -711,9 +693,7 @@ def test_create_group_request_for_app_group(
 
     mcp = create_mcp_server()
 
-    token = set_mcp_identity(
-        MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS}))
-    )
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     # Use the prefix matching this app so it passes the name pattern.
     target_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Newgrp"
     try:
@@ -765,9 +745,7 @@ def test_mcp_write_tags_audit_log_with_source_mcp(
     )
     try:
         with caplog.at_level(logging.INFO, logger="access.audit"):
-            result = _call_tool(
-                mcp, "create_access_request", group_id=okta_group.id, reason="audit-source-test"
-            )
+            result = _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="audit-source-test")
     finally:
         reset_mcp_identity(id_token)
         from api.context import reset_request_context

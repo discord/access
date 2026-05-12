@@ -345,7 +345,9 @@ def _register_group_tools(mcp: "FastMCP") -> None:
             "groups. Requires the 'read_all' scope."
         ),
     )
-    def list_groups(q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
+    def list_groups(
+        q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
+    ) -> str:
         try:
             require_scope(MCP_SCOPE_READ_ALL)
         except MCPScopeError as e:
@@ -359,12 +361,8 @@ def _register_group_tools(mcp: "FastMCP") -> None:
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                 selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
-                selectinload(RoleGroup.active_role_associated_group_member_mappings).options(
-                    *role_group_map_options()
-                ),
-                selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(
-                    *role_group_map_options()
-                ),
+                selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
+                selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
                 joinedload(AppGroup.app),
             )
             .filter(OktaGroup.deleted_at.is_(None))
@@ -856,9 +854,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         db = _db_shim.session
         current_user_id = get_mcp_user_id()
         query = (
-            db.query(RoleRequest)
-            .options(*_role_request_summary_load_options())
-            .order_by(RoleRequest.created_at.desc())
+            db.query(RoleRequest).options(*_role_request_summary_load_options()).order_by(RoleRequest.created_at.desc())
         )
         if status:
             query = query.filter(RoleRequest.status == status)
@@ -873,9 +869,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
             query = query.filter(RoleRequest.requested_group_id == requested_group_id)
         if q:
             like = f"%{q}%"
-            query = query.filter(
-                _db_shim.or_(RoleRequest.id.like(f"{q}%"), RoleRequest.request_reason.ilike(like))
-            )
+            query = query.filter(_db_shim.or_(RoleRequest.id.like(f"{q}%"), RoleRequest.request_reason.ilike(like)))
         page_data = _paginate_query(query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(RoleRequestSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
@@ -939,9 +933,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
             return _error(err)
         db = _db_shim.session
         current_user_id = get_mcp_user_id()
-        query = (
-            db.query(GroupRequest).options(*_group_request_load_options()).order_by(GroupRequest.created_at.desc())
-        )
+        query = db.query(GroupRequest).options(*_group_request_load_options()).order_by(GroupRequest.created_at.desc())
         if status:
             query = query.filter(GroupRequest.status == status)
         if requester_user_id:
@@ -971,10 +963,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_group_request",
-        description=(
-            "Get detail for a single group request by id. Requires the "
-            "'read_all' scope."
-        ),
+        description=("Get detail for a single group request by id. Requires the " "'read_all' scope."),
     )
     def get_group_request(group_request_id: str) -> str:
         try:
@@ -1088,9 +1077,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
             }
             for m in items
         ]
-        return json.dumps(
-            _envelope(total=total, pages=pages, page=page, size=size, results=results)
-        )
+        return json.dumps(_envelope(total=total, pages=pages, page=page, size=size, results=results))
 
 
 # --- Write tools ------------------------------------------------------------
@@ -1147,10 +1134,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         with mcp_db_session() as db:
             requester = (
-                db.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first()
+                db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
             )
             if requester is None:
                 # No active OktaUser for the resolved id — typically a
@@ -1159,10 +1143,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 # here; we mirror that.
                 return _error("Current user is not allowed to perform this action")
             group = (
-                db.query(OktaGroup)
-                .filter(OktaGroup.id == body.group_id)
-                .filter(OktaGroup.deleted_at.is_(None))
-                .first()
+                db.query(OktaGroup).filter(OktaGroup.id == body.group_id).filter(OktaGroup.deleted_at.is_(None)).first()
             )
             if group is None:
                 return _error("Group not found")
@@ -1262,16 +1243,10 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         with mcp_db_session() as db:
             requester = (
-                db.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first()
+                db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
             )
             role = (
-                db.query(RoleGroup)
-                .filter(RoleGroup.deleted_at.is_(None))
-                .filter(RoleGroup.id == body.role_id)
-                .first()
+                db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == body.role_id).first()
             )
             if role is None:
                 return _error("Role not found")
@@ -1284,10 +1259,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             if requester is None or not can_manage_group(db, current_user_id, role):
                 return _error("Current user is not allowed to perform this action")
             group = (
-                db.query(OktaGroup)
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaGroup.id == body.group_id)
-                .first()
+                db.query(OktaGroup).filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == body.group_id).first()
             )
             if group is None:
                 return _error("Group not found")
@@ -1394,9 +1366,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         from api.operations import CreateGroupRequest, RejectGroupRequest
 
-        requested_app_id: Optional[str] = (
-            body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
-        )
+        requested_app_id: Optional[str] = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
 
         with mcp_db_session() as db:
             # Same gate as POST /api/group-requests: an active OktaUser
@@ -1405,10 +1375,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # approval step (not exposed here) is where the gating
             # happens.
             requester = (
-                db.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first()
+                db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
             )
             if requester is None:
                 return _error("Current user is not allowed to perform this action")
@@ -1417,21 +1384,13 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             if body.requested_group_type == "app_group":
                 if requested_app_id is None:
                     return _error("app_id is required for app group requests")
-                app = (
-                    db.query(App)
-                    .filter(App.deleted_at.is_(None))
-                    .filter(App.id == requested_app_id)
-                    .first()
-                )
+                app = db.query(App).filter(App.deleted_at.is_(None)).filter(App.id == requested_app_id).first()
                 if app is None:
                     return _error("App not found")
 
             if body.requested_group_tags:
                 tags = (
-                    db.query(Tag)
-                    .filter(Tag.deleted_at.is_(None))
-                    .filter(Tag.id.in_(body.requested_group_tags))
-                    .all()
+                    db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(body.requested_group_tags)).all()
                 )
                 if len(tags) != len(body.requested_group_tags):
                     return _error("One or more tags not found")
@@ -1466,10 +1425,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             if gr is None:
                 return _error("Group request could not be created")
             refreshed = (
-                db.query(GroupRequest)
-                .options(*_group_request_load_options())
-                .filter(GroupRequest.id == gr.id)
-                .first()
+                db.query(GroupRequest).options(*_group_request_load_options()).filter(GroupRequest.id == gr.id).first()
             )
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":

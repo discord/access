@@ -124,9 +124,7 @@ def require_scope(scope: str) -> None:
     if identity is None:
         raise MCPAuthenticationError("No MCP identity on the active context")
     if scope not in identity.scopes:
-        raise MCPScopeError(
-            f"This tool requires the '{scope}' scope; the active token does not carry it."
-        )
+        raise MCPScopeError(f"This tool requires the '{scope}' scope; the active token does not carry it.")
 
 
 __all__ = [
