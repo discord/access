@@ -10,7 +10,16 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar
 import pluggy
 from slack_sdk import WebClient
 
-from api.models import AccessRequest, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, RoleRequest
+from api.models import (
+    AccessRequest,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroup,
+    RoleGroupMap,
+    RoleRequest,
+)
 
 notification_hook_impl = pluggy.HookimplMarker("access_notifications")
 logger = logging.getLogger(__name__)
@@ -372,6 +381,46 @@ def access_role_request_created(
 
 
 @notification_hook_impl
+def access_group_request_created(
+    group_request: GroupRequest, requester: OktaUser, approvers: List[OktaUser]
+) -> None:
+    """Notify the approvers that a group creation has been requested.
+
+    Args:
+        group_request (GroupRequest): The group request.
+        requester (OktaUser): The user requesting the group.
+        approvers (List[OktaUser]): The list of approvers.
+    """
+    group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
+
+    group_type_labels = {
+        "okta_group": "group",
+        "role_group": "role",
+        "app_group": "app group",
+    }
+    group_type_label = group_type_labels.get(group_request.requested_group_type, "group")
+
+    approver_message = (
+        f":pray: {requester.email} has requested the creation of the {group_type_label} "
+        f"*{group_request.requested_group_name}*.\n\n"
+        f"<{group_request_url}|View request to approve or reject>\n\n"
+    )
+
+    # Send the message to the approvers
+    for approver in approvers:
+        send_slack_dm(approver, approver_message)
+    logger.info(f"Approver message: {approver_message}")
+
+    # Send the message to the requester only if they're not already an approver
+    if requester.id not in [approver.id for approver in approvers]:
+        send_slack_dm(requester, approver_message)
+        logger.info("Requester received group request creation notification")
+
+    # Post to the alerts channel
+    send_slack_channel_message(requester, approver_message)
+
+
+@notification_hook_impl
 def access_request_completed(
     access_request: AccessRequest,
     group: OktaGroup,
@@ -406,6 +455,50 @@ def access_request_completed(
 
     # Post to the alerts channel
     send_slack_channel_message(requester, requester_message)
+
+
+@notification_hook_impl
+def access_group_request_completed(
+    group_request: GroupRequest,
+    group: Optional[OktaGroup],
+    requester: OktaUser,
+    approvers: List[OktaUser],
+    notify_requester: bool,
+) -> None:
+    """Notify the requester that their group request has been processed.
+
+    Args:
+        group_request (GroupRequest): The group request.
+        group (Optional[OktaGroup]): The group created (None if rejected).
+        requester (OktaUser): The user requesting the group.
+        approvers (List[OktaUser]): The list of approvers.
+        notify_requester (bool): Whether to notify the requester.
+    """
+    group_request_url = get_base_url() + f"/group-requests/{group_request.id}"
+    emoji = ":white_check_mark:" if group_request.status.lower() == "approved" else ":x:"
+
+    group_name = (
+        group.name if group is not None else (group_request.resolved_group_name or group_request.requested_group_name)
+    )
+
+    message = (
+        f"{emoji} Request to create the group {group_name} has been {group_request.status.lower()}.\n\n"
+        f"<{group_request_url}|View request>\n"
+    )
+
+    # Send the message to the requester
+    if notify_requester:
+        send_slack_dm(requester, message)
+        logger.info(f"Requester message: {message}")
+
+    # Send the message to all approvers (except the requester)
+    for approver in approvers:
+        if approver.id != requester.id:
+            send_slack_dm(approver, message)
+    logger.info("Approvers received group request completion notification")
+
+    # Post to the alerts channel
+    send_slack_channel_message(requester, message)
 
 
 @notification_hook_impl
