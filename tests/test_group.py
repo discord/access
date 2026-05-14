@@ -733,6 +733,41 @@ def test_delete_group(
     assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
 
 
+def test_delete_group_as_app_group_deleter(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    okta_group: OktaGroup,
+    app_group: AppGroup,
+    access_app: App,
+    user: OktaUser,
+    url_for: Any,
+    mock_user: Any,
+) -> None:
+    db.session.add_all([user, access_app, okta_group])
+    db.session.commit()
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+    unmanaged = AppGroupFactory.build(app_id=access_app.id, is_owner=False, is_managed=False)
+    db.session.add(unmanaged)
+    db.session.commit()
+
+    mocker.patch.object(okta, "async_delete_group")
+    mock_user(user.id)
+    monkeypatch.setattr(settings, "APP_GROUP_DELETER_ID", f"someone-else,{user.id}")
+
+    # Managed AppGroup: allowed.
+    rep = client.delete(url_for("api-groups.group_by_id", group_id=app_group.id))
+    assert rep.status_code == 200
+    assert db.session.get(OktaGroup, app_group.id).deleted_at is not None
+
+    # Plain OktaGroup and unmanaged AppGroup: still 403.
+    assert client.delete(url_for("api-groups.group_by_id", group_id=okta_group.id)).status_code == 403
+    assert client.delete(url_for("api-groups.group_by_id", group_id=unmanaged.id)).status_code == 403
+
+
 def test_create_group(
     client: TestClient,
     db: Db,
