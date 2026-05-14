@@ -383,7 +383,7 @@ def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    if not _perms.can_manage_group(db, current_user_id, group):
+    if not _perms.can_delete_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
