@@ -8,6 +8,8 @@
 instance/*
 !instance/.gitignore
 .env
+# Port handoff for Claude Code Desktop Preview (see .claude/launch.json)
+.claude/.api-port
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

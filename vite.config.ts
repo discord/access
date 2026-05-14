@@ -1,4 +1,5 @@
 /// <reference types="vitest" />
+import {readFileSync} from 'node:fs';
 import {defineConfig, loadEnv} from 'vite';
 import react from '@vitejs/plugin-react';
 import {sentryVitePlugin} from '@sentry/vite-plugin';
@@ -43,11 +44,20 @@ export default defineConfig(({mode}) => {
       REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true',
     },
     server: {
-      port: 3000,
+      port: 5173,
       proxy: {
         '/api': {
-          target: 'http://localhost:6060',
+          target: 'http://localhost:8000',
           changeOrigin: true,
+          router: () => {
+            try {
+              const port = readFileSync('.claude/.api-port', 'utf8').trim();
+              if (port) return `http://localhost:${port}`;
+            } catch {
+              // .api-port missing — fall through to default target
+            }
+            return 'http://localhost:8000';
+          },
         },
       },
     },
