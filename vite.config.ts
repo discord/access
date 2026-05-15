@@ -7,6 +7,25 @@ import {loadAccessConfig} from './src/config/loadAccessConfig';
 
 const accessConfig = loadAccessConfig();
 
+const PORT_FILE = '.claude/.api-port';
+const DEFAULT_BACKEND_PORT = 6060;
+
+// Resolves the backend port from .claude/.api-port (written by the Makefile),
+// then ACCESS_API_PORT, then the default. Read at Vite startup, so the
+// backend should be started before the frontend in Claude Code Desktop
+// Preview; restart Vite if the backend port changes.
+function resolveBackendPort(): number {
+  try {
+    const fromFile = parseInt(readFileSync(PORT_FILE, 'utf8').trim(), 10);
+    if (Number.isFinite(fromFile) && fromFile > 0) return fromFile;
+  } catch {
+    // fall through
+  }
+  const fromEnv = parseInt(process.env.ACCESS_API_PORT ?? '', 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return DEFAULT_BACKEND_PORT;
+}
+
 export default defineConfig(({mode}) => {
   // Load env file based on `mode` in the current working directory.
   // Process environment variables take precedence over .env files
@@ -47,17 +66,9 @@ export default defineConfig(({mode}) => {
       port: 3000,
       proxy: {
         '/api': {
-          target: 'http://localhost:6060',
+          target: `http://localhost:${resolveBackendPort()}`,
           changeOrigin: true,
-          router: () => {
-            try {
-              const port = readFileSync('.claude/.api-port', 'utf8').trim();
-              if (port) return `http://localhost:${port}`;
-            } catch {
-              // .api-port missing — fall through to default target
-            }
-            return 'http://localhost:6060';
-          },
+          secure: false,
         },
       },
     },
