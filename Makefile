@@ -7,8 +7,8 @@ LOCAL_DB_URI ?= sqlite:///instance/access.db
 
 # Ports — overridable via the PORT env var so Claude Code Desktop Preview's
 # autoPort can pick a free port per worktree. See .claude/launch.json.
-BACKEND_PORT  ?= $(if $(PORT),$(PORT),8000)
-FRONTEND_PORT ?= $(if $(PORT),$(PORT),5173)
+BACKEND_PORT  ?= $(if $(PORT),$(PORT),6060)
+FRONTEND_PORT ?= $(if $(PORT),$(PORT),3000)
 
 .PHONY: help
 help:

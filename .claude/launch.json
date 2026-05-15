@@ -5,14 +5,14 @@
       "name": "backend",
       "runtimeExecutable": "make",
       "runtimeArgs": ["run-backend"],
-      "port": 8000,
+      "port": 6060,
       "autoPort": true
     },
     {
       "name": "frontend",
       "runtimeExecutable": "make",
       "runtimeArgs": ["run-frontend"],
-      "port": 5173,
+      "port": 3000,
       "autoPort": true
     }
   ]

@@ -44,10 +44,10 @@ export default defineConfig(({mode}) => {
       REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true',
     },
     server: {
-      port: 5173,
+      port: 3000,
       proxy: {
         '/api': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:6060',
           changeOrigin: true,
           router: () => {
             try {
@@ -56,7 +56,7 @@ export default defineConfig(({mode}) => {
             } catch {
               // .api-port missing — fall through to default target
             }
-            return 'http://localhost:8000';
+            return 'http://localhost:6060';
           },
         },
       },
