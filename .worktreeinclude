@@ -10,3 +10,7 @@
 config/config.override.json
 config/config.development.json
 config/config.test.json
+
+# Local SQLite DB (LOCAL_DB_URI in the Makefile). Carrying it across
+# worktrees skips re-running `make db-init` for each new worktree.
+instance/access.db
