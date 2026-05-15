@@ -11,7 +11,7 @@ const PORT_FILE = '.claude/.api-port';
 const DEFAULT_BACKEND_PORT = 6060;
 
 // Resolves the backend port from .claude/.api-port (written by the Makefile),
-// then ACCESS_API_PORT, then the default. Read at Vite startup, so the
+// then BACKEND_PORT, then the default. Read at Vite startup, so the
 // backend should be started before the frontend in Claude Code Desktop
 // Preview; restart Vite if the backend port changes.
 function resolveBackendPort(): number {
@@ -21,7 +21,7 @@ function resolveBackendPort(): number {
   } catch {
     // fall through
   }
-  const fromEnv = parseInt(process.env.ACCESS_API_PORT ?? '', 10);
+  const fromEnv = parseInt(process.env.BACKEND_PORT ?? '', 10);
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
   return DEFAULT_BACKEND_PORT;
 }
