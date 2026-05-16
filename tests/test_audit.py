@@ -720,3 +720,61 @@ def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_
     assert rep.status_code == 200, rep.text
     rows = rep.json()["results"]
     assert all(r.get("group", {}).get("id") != associated.id for r in rows)
+
+
+def test_users_audit_returns_rows_when_user_is_soft_deleted(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """`/api/audit/users` must surface every membership in a group's history,
+    including those whose user has since been soft-deleted. Pre-fix the query
+    eager-loaded `OktaUserGroupMember.active_user`, whose relationship carries
+    `innerjoin=True` + `deleted_at IS NULL`, so SQLAlchemy emitted an INNER
+    JOIN that silently dropped the row for any soft-deleted user."""
+    group = OktaGroupFactory.create()
+    user = OktaUserFactory.create()
+    db.session.add_all([group, user])
+    db.session.commit()
+    ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
+
+    user.deleted_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    matching = [r for r in rows if r["user_id"] == user.id]
+    assert len(matching) == 1
+    row = matching[0]
+    assert row["user"]["id"] == user.id
+    assert row["user"]["deleted_at"] is not None
+    # Pre-migration wire shape — these keys should not appear on audit rows.
+    for absent in ("active_user", "active_group", "active_role_group_mapping"):
+        assert absent not in row, f"audit row should not include {absent!r}"
+
+
+def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
+    client: TestClient, db: Db, url_for: Any
+) -> None:
+    """Mirror regression for `/api/audit/groups`. The migration added
+    `joinedload(RoleGroupMap.active_role_group)`, and that relationship has
+    the same `innerjoin=True` + `deleted_at IS NULL` shape, so audit rows
+    were silently dropped when the role group was soft-deleted."""
+    role = RoleGroupFactory.create()
+    group = OktaGroupFactory.create()
+    db.session.add_all([role, group])
+    db.session.commit()
+    ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    role.deleted_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    rep = client.get(url_for("api-audit.groups_and_roles"), params={"group_id": group.id})
+    assert rep.status_code == 200, rep.text
+    rows = rep.json()["results"]
+    matching = [r for r in rows if r["role_group_id"] == role.id]
+    assert len(matching) == 1
+    row = matching[0]
+    assert row["role_group"]["id"] == role.id
+    assert row["role_group"]["deleted_at"] is not None
+    for absent in ("active_group", "active_role_group"):
+        assert absent not in row, f"audit row should not include {absent!r}"
