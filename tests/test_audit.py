@@ -722,9 +722,7 @@ def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_
     assert all(r.get("group", {}).get("id") != associated.id for r in rows)
 
 
-def test_users_audit_returns_rows_when_user_is_soft_deleted(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_users_audit_returns_rows_when_user_is_soft_deleted(client: TestClient, db: Db, url_for: Any) -> None:
     """`/api/audit/users` must surface every membership in a group's history,
     including those whose user has since been soft-deleted. Pre-fix the query
     eager-loaded `OktaUserGroupMember.active_user`, whose relationship carries
@@ -752,9 +750,7 @@ def test_users_audit_returns_rows_when_user_is_soft_deleted(
         assert absent not in row, f"audit row should not include {absent!r}"
 
 
-def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
-    client: TestClient, db: Db, url_for: Any
-) -> None:
+def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(client: TestClient, db: Db, url_for: Any) -> None:
     """Mirror regression for `/api/audit/groups`. The migration added
     `joinedload(RoleGroupMap.active_role_group)`, and that relationship has
     the same `innerjoin=True` + `deleted_at IS NULL` shape, so audit rows
