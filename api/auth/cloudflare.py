@@ -12,8 +12,8 @@ import logging
 import threading
 from typing import Any, Dict, Optional
 
+import httpx
 import jwt
-import requests
 from cachetools import TTLCache, cached
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import HTTPException
@@ -35,7 +35,7 @@ _jwks_cache_lock = threading.RLock()
 
 @cached(cache=TTLCache(maxsize=1, ttl=3600), lock=_jwks_cache_lock)
 def _signing_keys(team_domain: str) -> Dict[str, RSAPrivateKey | RSAPublicKey]:
-    r = requests.get(
+    r = httpx.get(
         f"https://{team_domain}/cdn-cgi/access/certs",
         timeout=10,
     )
