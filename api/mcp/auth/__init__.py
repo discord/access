@@ -30,10 +30,11 @@ MCP_SCOPE_CREATE_REQUESTS = "create_requests"
 
 # The full v1 scope set, kept as a named constant for tests and any
 # operator-supplied provider that wants to issue a fully-scoped
-# session. NOT the default fallback — the Cloudflare provider's
-# fallback for tokens without a `scope` claim is operator-configurable
-# via ``settings.MCP_FALLBACK_SCOPES`` and defaults to read-only
-# (`read_all` only).
+# session. This also matches the default value of
+# ``settings.MCP_FALLBACK_SCOPES`` (`read_all,create_requests`), which
+# the Cloudflare provider uses for tokens without an explicit `scope`
+# claim — operators who want read-only MCP sessions override that
+# setting to `read_all`.
 ALL_V1_SCOPES: frozenset[str] = frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS})
 
 

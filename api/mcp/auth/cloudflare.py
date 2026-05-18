@@ -29,12 +29,14 @@ Scopes:
   custom scopes — we fall back to the operator-configured scope set
   in ``settings.MCP_FALLBACK_SCOPES``.
 
-  The default fallback is ``read_all`` (read-only) — least privilege.
-  Operators who want LLM agents to submit requests via MCP must
-  explicitly opt in by setting
-  ``MCP_FALLBACK_SCOPES=read_all,create_requests``. Operators who
-  want strict fail-closed behavior (no fallback at all) set
-  ``MCP_FALLBACK_SCOPES=""`` — every CF token without an explicit
+  The default fallback is ``read_all,create_requests`` — both read
+  and write tools are reachable. Every write tool still runs the same
+  authorization predicate (Layer 2) and operation constraints (Layer 3)
+  the matching REST endpoint applies, so this grants the user no
+  capability they don't already have via REST. Operators who want
+  read-only MCP sessions set ``MCP_FALLBACK_SCOPES=read_all``.
+  Operators who want strict fail-closed behavior (no fallback at all)
+  set ``MCP_FALLBACK_SCOPES=""`` — every CF token without an explicit
   scope claim will then fail every ``require_scope`` check, which is
   the right posture once your provider starts emitting scopes.
 """
@@ -180,12 +182,11 @@ def mcp_resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     scopes = _parse_scopes(payload.get("scope") or payload.get("scp"))
     if not scopes:
         # Token has no scope claim — fall back to the operator-
-        # configured scope set. Default is read-only (`read_all`
-        # only); operators who want LLM agents to submit requests via
-        # MCP set MCP_FALLBACK_SCOPES=read_all,create_requests. Once
-        # CF (or whatever provider is in use) starts populating the
-        # scope claim, this branch never fires and tokens control
-        # scope per session.
+        # configured scope set. Default is `read_all,create_requests`;
+        # operators who want read-only MCP set
+        # MCP_FALLBACK_SCOPES=read_all. Once CF (or whatever provider
+        # is in use) starts populating the scope claim, this branch
+        # never fires and tokens control scope per session.
         scopes = _configured_fallback_scopes()
 
     return MCPIdentity(user_id=user_id, scopes=scopes)

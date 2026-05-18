@@ -274,22 +274,21 @@ def _make_access_admin(db: Db) -> OktaUser:
     return admin
 
 
-def test_cloudflare_fallback_defaults_to_read_only(
+def test_cloudflare_fallback_read_only_opt_in(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A CF Access token with no scope claim falls back to read-only
-    by default — the safer posture given CF Managed OAuth doesn't
-    currently issue scope claims. Operators that want LLM agents to
-    submit requests via MCP must explicitly add `create_requests` to
-    MCP_FALLBACK_SCOPES."""
+    """Operators can pin `MCP_FALLBACK_SCOPES=read_all` to get
+    read-only MCP sessions — useful for operators who don't want LLM
+    agents filing requests via MCP. Verifies the read-only configuration
+    actually disables write capability."""
     db.session.add(user)
     db.session.commit()
 
     # CF provider gates on CLOUDFLARE_TEAM_DOMAIN being set.
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
-    # Default fallback — `read_all` only.
+    # Operator-pinned read-only fallback.
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "read_all")
 
     from api.mcp.auth.cloudflare import mcp_resolve_identity
@@ -305,7 +304,7 @@ def test_cloudflare_fallback_defaults_to_read_only(
     identity = mcp_resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL})
-    # Critical: writes are NOT in the default fallback.
+    # Critical: writes are NOT in this read-only fallback.
     assert MCP_SCOPE_CREATE_REQUESTS not in identity.scopes
 
 
@@ -314,10 +313,9 @@ def test_cloudflare_fallback_honours_operator_config(
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Operator opt-in: setting MCP_FALLBACK_SCOPES to include
-    `create_requests` enables write tools on CF-issued tokens that
-    don't carry a scope claim. Mirrors what Discord would set in
-    deployment."""
+    """Default fallback: `MCP_FALLBACK_SCOPES=read_all,create_requests`
+    grants both scopes on CF-issued tokens that don't carry a scope
+    claim, enabling read and write tools. Mirrors the shipped default."""
     db.session.add(user)
     db.session.commit()
 

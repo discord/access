@@ -47,7 +47,10 @@ that implements RBAC over Okta groups and roles.
   job function, and adding the role to groups is the maintainable path.
 - Prefer **time-bounded access** for non-day-to-day needs. Indefinite
   access is for ongoing responsibilities; everything else should
-  expire.
+  expire. When the user hasn't named a duration and no tag on the
+  target enforces a limit, offer the standard set (matches the UI
+  dropdown): **12 hours, 5 days, two weeks, 30 days, 90 days, or
+  indefinite**.
 - **Least privilege**: never recommend a permission tier broader than
   the task requires.
 
@@ -118,7 +121,10 @@ def _request_access_prompt(group_or_role: str = "") -> str:
         "2. **Is this access needed indefinitely, or for a specific task?** "
         "If it's task-bound (incident response, one-time investigation, "
         "vendor onboarding window), request time-bounded access with an "
-        "``ending_at`` rather than indefinite membership.\n"
+        "``ending_at`` rather than indefinite membership. If the user "
+        "hasn't named a duration and no tag enforces a limit, offer the "
+        "standard set (these match the UI dropdown): 12 hours, 5 days, "
+        "two weeks, 30 days, 90 days, or indefinite.\n"
         "3. **Inspect tag constraints on the target.** ``get_group`` and "
         "``get_role`` return ``active_group_tags``. Enabled tags can force "
         "a reason, force a time limit, or disallow self-add. Surface these "

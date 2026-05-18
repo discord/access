@@ -120,16 +120,17 @@ class Settings(BaseSettings):
     # scope claim, so this fallback fires on every CF-fronted MCP request
     # today.
     #
-    # Default is `read_all` only — least privilege. Operators who want
-    # LLM agents to submit requests via MCP (`create_access_request`,
-    # `create_role_request`, `create_group_request`) must explicitly
-    # extend this to `"read_all,create_requests"`. Set to `""` to
-    # fail-closed entirely — only tokens with an explicit scope claim
-    # work, and every tool call from a CF-issued token would 403.
+    # Default is `read_all,create_requests` — every MCP write tool still
+    # runs the same authorization predicate (Layer 2) and operation
+    # constraints (Layer 3) the matching REST endpoint applies, so this
+    # grants the user no capability they don't already have via REST; it
+    # just permits the tool to be CALLED. Operators who want a stricter
+    # posture can set this to `"read_all"` (read-only sessions) or `""`
+    # (fail-closed; only tokens with an explicit scope claim work).
     # When CF (or your provider) starts emitting scope claims, this
     # fallback never fires and the token controls scope per session;
     # the value here becomes inert.
-    MCP_FALLBACK_SCOPES: str = "read_all"
+    MCP_FALLBACK_SCOPES: str = "read_all,create_requests"
 
     @property
     def user_search_attrs(self) -> list[str]:

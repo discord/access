@@ -250,7 +250,7 @@ The `.env.production` file is where you configure the application.
 - `SECRET_KEY`: Specifies the secret key used to sign the OIDC session cookie. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
 - `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
-- `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all` (read-only). Only relevant when `ENABLE_MCP=true`.
+- `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -390,8 +390,8 @@ Two coarse scopes:
 
 When an MCP token carries an explicit `scope` (space-separated) or `scp` (list) claim, that set controls the session. When the claim is absent — the typical case under Cloudflare Managed OAuth today, which does not currently issue scope claims — the operator-configured `MCP_FALLBACK_SCOPES` value is applied. Three meaningful settings:
 
-- `MCP_FALLBACK_SCOPES=read_all` *(default)* — read-only sessions; LLM agents can browse but cannot file any request via MCP.
-- `MCP_FALLBACK_SCOPES=read_all,create_requests` — enables the three write tools. Explicit opt-in.
+- `MCP_FALLBACK_SCOPES=read_all,create_requests` *(default)* — read tools plus the three write tools (`create_access_request`, `create_role_request`, `create_group_request`). Per-tool authorization still applies, so users get no capability beyond what they have via REST.
+- `MCP_FALLBACK_SCOPES=read_all` — read-only sessions; LLM agents can browse but cannot file any request via MCP.
 - `MCP_FALLBACK_SCOPES=""` — fail-closed; tokens with no scope claim cannot call any tool. The right setting once your provider starts emitting scope claims.
 
 Scopes attenuate — they never grant. A token with `create_requests` still cannot file a role request for a role the user does not own; the per-tool authorization check fires after the scope check.

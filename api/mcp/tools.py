@@ -56,6 +56,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
+from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
@@ -123,6 +124,32 @@ logger = logging.getLogger(__name__)
 # than enough to answer most questions and keeps token cost predictable.
 MCP_MAX_PAGE_SIZE = 100
 MCP_DEFAULT_PAGE_SIZE = 50
+
+
+# Tool annotations. These are advisory hints — compliant MCP clients use
+# them to decide whether to auto-allow a call in modes like Claude Code's
+# `--dangerously-skip-permissions`. They do not enforce anything on the
+# server side and a non-compliant client can ignore them. The structural
+# defense remains: writes only file PENDING proposals, and approval is
+# never exposed via MCP.
+#
+# Reads: pure DB reads of Access state. openWorldHint=False because the
+# tool's domain of interaction is bounded (Access's DB).
+_READ_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=True,
+    openWorldHint=False,
+)
+# Writes: file PENDING request rows. destructiveHint=False is the honest
+# framing — these tools do not effect a state change on their own; a
+# human still has to approve through a different surface. Not idempotent
+# (each call creates a fresh request record and emits an audit log entry,
+# even though the supersede-prior-pending logic ends older duplicates).
+_WRITE_PROPOSAL_ANNOTATIONS = ToolAnnotations(
+    readOnlyHint=False,
+    destructiveHint=False,
+    idempotentHint=False,
+    openWorldHint=False,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -338,12 +365,14 @@ def register_tools(mcp: "FastMCP") -> None:
 def _register_group_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_groups",
+        title="List groups",
         description=(
             "List groups (OktaGroup, AppGroup, RoleGroup). Returns a paginated "
             "list of group summaries. Use 'q' for free-text search across name "
             "and description. Set 'managed=false' to include externally-managed "
             "groups. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_groups(
         q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
@@ -389,12 +418,14 @@ def _register_group_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_group",
+        title="Get group",
         description=(
             "Get full detail for a single group by id or by name. Returns the "
             "polymorphic GroupDetail shape, which includes active members, "
             "owners, role mappings, group tags, and app metadata for AppGroups. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_group(group_id_or_name: str) -> str:
         try:
@@ -416,12 +447,14 @@ def _register_group_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="list_group_memberships",
+        title="List group memberships",
         description=(
             "List active members and owners of a group by id or name. Returns "
             "two lists: 'members' (user ids who are members) and 'owners' "
             "(user ids who are owners). Use 'get_user' for full user detail. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_group_memberships(group_id_or_name: str) -> str:
         try:
@@ -463,12 +496,14 @@ def _register_group_tools(mcp: "FastMCP") -> None:
 def _register_role_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_roles",
+        title="List roles",
         description=(
             "List Role groups (job-function-shaped groups, prefix configurable). "
             "Returns a paginated list of role summaries. Use 'owner_id' (user id "
             "or email) to filter to roles a specific user owns. Requires the "
             "'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_roles(q: str = "", owner_id: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         try:
@@ -515,12 +550,14 @@ def _register_role_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_role",
+        title="Get role",
         description=(
             "Get full detail for a single role by id or by name. Returns the "
             "polymorphic GroupDetail shape (a role is a group). Includes active "
             "members, owners, the associated groups this role grants access to, "
             "and tags. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_role(role_id_or_name: str) -> str:
         try:
@@ -546,12 +583,14 @@ def _register_role_tools(mcp: "FastMCP") -> None:
 def _register_app_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_apps",
+        title="List apps",
         description=(
             "List Access apps. An 'app' in Access is a logical grouping of "
             "AppGroups in Access's DB only — it does not correspond to an Okta "
             "app. Use 'q' for free-text search across name and description. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_apps(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         try:
@@ -575,10 +614,12 @@ def _register_app_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_app",
+        title="Get app",
         description=(
             "Get full detail for a single app by id or by name. Returns owner "
             "groups, non-owner groups, and tags. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_app(app_id_or_name: str) -> str:
         try:
@@ -604,11 +645,13 @@ def _register_app_tools(mcp: "FastMCP") -> None:
 def _register_user_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_users",
+        title="List users",
         description=(
             "List active Okta users. Use 'q' for free-text search across email, "
             "first/last name, display name, and custom profile attributes. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_users(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         try:
@@ -640,11 +683,13 @@ def _register_user_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_user",
+        title="Get user",
         description=(
             "Get detail for a single user by id, email, or the literal '@me' to "
             "look up the calling user. Includes the user's active group "
             "memberships and ownerships. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_user(user_id_or_email: str) -> str:
         try:
@@ -676,6 +721,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
 def _register_tag_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_tags",
+        title="List tags",
         description=(
             "List tags. Tags carry constraints (member/owner time limits, "
             "reason requirements, self-add restrictions) that apply to the "
@@ -683,6 +729,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
             "enforce — but list_tags returns all tags including disabled ones. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_tags(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         try:
@@ -706,11 +753,13 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_tag",
+        title="Get tag",
         description=(
             "Get detail for a single tag by id or name. Returns the constraints "
             "dict, the enabled flag, and the groups/apps the tag is currently "
             "attached to. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_tag(tag_id_or_name: str) -> str:
         try:
@@ -736,6 +785,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
 def _register_access_request_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_access_requests",
+        title="List access requests",
         description=(
             "List access requests (a user requesting membership/ownership in a "
             "group/role). Filter by 'status' (PENDING/APPROVED/REJECTED), "
@@ -743,6 +793,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
             "'resolver_user_id'. Use 'q' for free-text search. Requires the "
             "'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_access_requests(
         q: str = "",
@@ -798,12 +849,14 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_access_request",
+        title="Get access request",
         description=(
             "Get detail for a single access request by id. Includes the rich "
             "'requested_group' projection (group tags, role-association "
             "mappings on role groups, app/is_owner on app groups). Requires the "
             "'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_access_request(access_request_id: str) -> str:
         try:
@@ -828,12 +881,14 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
 def _register_role_request_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_role_requests",
+        title="List role requests",
         description=(
             "List role requests (a role owner requesting that the role be "
             "granted access to a group). Filter by 'status', "
             "'requester_user_id' (use '@me'), 'requester_role_id', "
             "'requested_group_id'. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_role_requests(
         q: str = "",
@@ -879,11 +934,13 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_role_request",
+        title="Get role request",
         description=(
             "Get detail for a single role request by id. Includes the rich "
             "'requester_role' projection (role members) and the target group's "
             "active tags. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_role_request(role_request_id: str) -> str:
         try:
@@ -908,12 +965,14 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
 def _register_group_request_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_group_requests",
+        title="List group requests",
         description=(
             "List group requests (a user requesting creation of a new group, "
             "role, or app group). Filter by 'status', 'requester_user_id' (use "
             "'@me'), 'requested_group_type' (okta_group/role_group/app_group), "
             "'requested_app_id'. Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_group_requests(
         q: str = "",
@@ -963,7 +1022,9 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="get_group_request",
+        title="Get group request",
         description=("Get detail for a single group request by id. Requires the " "'read_all' scope."),
+        annotations=_READ_ANNOTATIONS,
     )
     def get_group_request(group_request_id: str) -> str:
         try:
@@ -988,6 +1049,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
 def _register_audit_tool(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="list_audit_entries",
+        title="List access history",
         description=(
             "List user-group membership audit rows (the OktaUserGroupMember "
             "table). Each row is a single membership/ownership grant or "
@@ -996,6 +1058,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
             "only currently-active records; false includes ended ones. "
             "Requires the 'read_all' scope."
         ),
+        annotations=_READ_ANNOTATIONS,
     )
     def list_audit_entries(
         user_id: str = "",
@@ -1086,6 +1149,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
 def _register_write_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="create_access_request",
+        title="Submit access request",
         description=(
             "Submit an access request for the calling user — a request for "
             "membership (default) or ownership ('group_owner=true') in a "
@@ -1098,6 +1162,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             "use get_group/get_role first to see what's required. Requires "
             "the 'create_requests' scope."
         ),
+        annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     def create_access_request(
         group_id: str,
@@ -1200,6 +1265,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="create_role_request",
+        title="Submit role request",
         description=(
             "Submit a role request — a request to grant a ROLE access to a "
             "specific group (or app group). Only role OWNERS (and Access "
@@ -1211,6 +1277,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             "request is created PENDING; approval is out-of-band and not "
             "exposed via MCP. Requires the 'create_requests' scope."
         ),
+        annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     def create_role_request(
         role_id: str,
@@ -1315,6 +1382,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
     @mcp.tool(
         name="create_group_request",
+        title="Submit group request",
         description=(
             "Submit a group request — a request to CREATE a new group, role, "
             "or app group. 'group_type' is one of 'okta_group', 'role_group', "
@@ -1326,6 +1394,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             "ids to attach to the newly-created group. Requires the "
             "'create_requests' scope."
         ),
+        annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     def create_group_request(
         group_name: str,
