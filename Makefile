@@ -5,12 +5,17 @@ ACTIVATE := $(if $(wildcard venv/bin/activate),. venv/bin/activate &&,)
 # Local sqlite DB used for `make run` / `make db-*` targets
 LOCAL_DB_URI ?= sqlite:///instance/access.db
 
+# Ports — overridable via the PORT env var so Claude Code Desktop Preview's
+# autoPort can pick a free port per worktree. See .claude/launch.json.
+BACKEND_PORT  ?= $(if $(PORT),$(PORT),6060)
+FRONTEND_PORT ?= $(if $(PORT),$(PORT),3000)
+
 .PHONY: help
 help:
 	@echo "Access dev targets:"
-	@echo "  make run                Run backend (port 6060) and frontend together"
-	@echo "  make run-backend        Run uvicorn on port 6060 with --reload"
-	@echo "  make run-frontend       Run Vite dev server on port 3000"
+	@echo "  make run                Run backend (port $(BACKEND_PORT)) and frontend (port $(FRONTEND_PORT)) together"
+	@echo "  make run-backend        Run uvicorn on port $(BACKEND_PORT) with --reload"
+	@echo "  make run-frontend       Run Vite dev server on port $(FRONTEND_PORT)"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db-migrate         alembic upgrade head"
@@ -71,19 +76,23 @@ dev:
 # ----------------------------------------------------------------------
 
 .PHONY: run
-run: .env dev
+run: .env dev db-migrate
+	@mkdir -p .claude
+	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port 6060 api.asgi:app & \
-	cd . && npm install && npm start
+	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app & \
+	npm install && npx vite --host 0.0.0.0 --port $(FRONTEND_PORT)
 
 .PHONY: run-frontend
 run-frontend:
-	npm install && npm start
+	npm install && npx vite --host 0.0.0.0 --port $(FRONTEND_PORT)
 
 .PHONY: run-backend
-run-backend: .env dev
+run-backend: .env dev db-migrate
+	@mkdir -p .claude
+	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port 6060 api.asgi:app
+	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app
 
 # ----------------------------------------------------------------------
 # Database / migrations
