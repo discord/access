@@ -243,11 +243,8 @@ def _audit_user_group_row(m: OktaUserGroupMember, include_role_associations: boo
         updated_at=getattr(m, "updated_at", None),
         ended_at=m.ended_at,
         user=_user_summary_for_audit(getattr(m, "user", None)),
-        active_user=_user_summary_for_audit(getattr(m, "active_user", None)),
         group=_group_ref_for_audit(getattr(m, "group", None), include_role_associations),
-        active_group=_group_ref_for_audit(getattr(m, "active_group", None), include_role_associations=False),
         role_group_mapping=_role_group_mapping_for_audit(getattr(m, "role_group_mapping", None)),
-        active_role_group_mapping=_role_group_mapping_for_audit(getattr(m, "active_role_group_mapping", None)),
         access_request=_access_request_ref_for_audit(getattr(m, "access_request", None)),
         created_actor=_user_summary_for_audit(getattr(m, "created_actor", None)),
         ended_actor=_user_summary_for_audit(getattr(m, "ended_actor", None)),
@@ -265,9 +262,7 @@ def _audit_group_role_row(rgm: RoleGroupMap) -> AuditGroupRoleRow:
         created_at=rgm.created_at,
         ended_at=rgm.ended_at,
         group=_group_ref_for_audit(getattr(rgm, "group", None), include_role_associations=False),
-        active_group=_group_ref_for_audit(getattr(rgm, "active_group", None), include_role_associations=False),
         role_group=_role_group_ref_for_audit(getattr(rgm, "role_group", None)),
-        active_role_group=_role_group_ref_for_audit(getattr(rgm, "active_role_group", None)),
         created_actor=_user_summary_for_audit(getattr(rgm, "created_actor", None)),
         ended_actor=_user_summary_for_audit(getattr(rgm, "ended_actor", None)),
     )
@@ -324,17 +319,11 @@ def users_and_groups(
         db.query(OktaUserGroupMember)
         .options(
             joinedload(OktaUserGroupMember.user),
-            joinedload(OktaUserGroupMember.active_user),
             joinedload(OktaUserGroupMember.created_actor),
             joinedload(OktaUserGroupMember.ended_actor),
             joinedload(OktaUserGroupMember.access_request),
             group_load,
-            selectinload(OktaUserGroupMember.active_group).options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-            ),
             selectinload(OktaUserGroupMember.role_group_mapping).joinedload(RoleGroupMap.role_group),
-            selectinload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         )
         .join(OktaUserGroupMember.user)
         .join(OktaUserGroupMember.group.of_type(group_alias))
@@ -539,7 +528,6 @@ def groups_and_roles(
         db.query(RoleGroupMap)
         .options(
             joinedload(RoleGroupMap.role_group),
-            joinedload(RoleGroupMap.active_role_group),
             joinedload(RoleGroupMap.created_actor),
             joinedload(RoleGroupMap.ended_actor),
             selectinload(RoleGroupMap.group).options(
@@ -549,10 +537,6 @@ def groups_and_roles(
                     joinedload(OktaGroupTagMap.active_tag),
                     joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_app),
                 ),
-            ),
-            selectinload(RoleGroupMap.active_group).options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
             ),
         )
         .join(RoleGroupMap.role_group)
