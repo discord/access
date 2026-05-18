@@ -111,6 +111,30 @@ class Settings(BaseSettings):
     # Behavior toggles
     REQUIRE_DESCRIPTIONS: bool = False
 
+    # MCP server. Off-by-default; flipping this to True mounts the FastMCP
+    # server at /mcp and activates the MCP auth middleware. Most operators
+    # of the open-source distribution don't run LLM tooling and shouldn't
+    # pay for any of it. See api/mcp/ for the implementation.
+    ENABLE_MCP: bool = False
+
+    # Fallback scope set the default Cloudflare auth provider grants when
+    # an incoming MCP token carries no `scope` (or `scp`) claim. Comma-
+    # separated. CF Managed OAuth does not currently issue tokens with a
+    # scope claim, so this fallback fires on every CF-fronted MCP request
+    # today.
+    #
+    # Default is `read_all,create_requests` — every MCP write tool still
+    # runs the same authorization predicate (Layer 2) and operation
+    # constraints (Layer 3) the matching REST endpoint applies, so this
+    # grants the user no capability they don't already have via REST; it
+    # just permits the tool to be CALLED. Operators who want a stricter
+    # posture can set this to `"read_all"` (read-only sessions) or `""`
+    # (fail-closed; only tokens with an explicit scope claim work).
+    # When CF (or your provider) starts emitting scope claims, this
+    # fallback never fires and the token controls scope per session;
+    # the value here becomes inert.
+    MCP_FALLBACK_SCOPES: str = "read_all,create_requests"
+
     @property
     def user_search_attrs(self) -> list[str]:
         if self.USER_SEARCH_CUSTOM_ATTRIBUTES is not None:
@@ -207,3 +231,5 @@ APP_NAME = settings.APP_NAME
 FASTAPI_SENTRY_DSN = settings.FASTAPI_SENTRY_DSN
 REACT_SENTRY_DSN = settings.REACT_SENTRY_DSN
 REQUIRE_DESCRIPTIONS = settings.REQUIRE_DESCRIPTIONS
+ENABLE_MCP = settings.ENABLE_MCP
+MCP_FALLBACK_SCOPES = settings.MCP_FALLBACK_SCOPES

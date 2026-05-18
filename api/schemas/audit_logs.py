@@ -370,6 +370,12 @@ class AuditLogPayload(BaseModel):
     event_type: Optional[EventType] = None
     user_agent: Optional[str] = None
     ip: Optional[str] = None
+    # Entry-point that produced the audit log. Defaults to "web" for
+    # backwards compatibility; "mcp" is set on entries produced by the
+    # embedded MCP server. New values may be added (e.g. "cli", "syncer")
+    # — keep this field as a free-form string so downstream consumers
+    # don't break when we add another source.
+    source: Optional[str] = None
     current_user_id: Optional[str] = None
     current_user_email: Optional[str] = None
 
@@ -520,6 +526,16 @@ class AuditLogSchema:
         # Validate + coerce ORM instances to the projection models, then
         # dump back to a plain dict so we can apply the exclude paths and
         # honor the `_ALLOWED_NULL_KEYS` retention rule below.
+        if "source" not in data:
+            # Auto-inject from the active RequestContext so MCP-driven
+            # audit entries get tagged without every operation having to
+            # opt in. Local import to avoid a top-level import cycle —
+            # api.context imports stdlib only, so the lazy form is safe.
+            from api.context import get_request_context
+
+            _ctx = get_request_context()
+            if _ctx is not None:
+                data = {**data, "source": _ctx.source}
         payload = AuditLogPayload.model_validate(data).model_dump(mode="json", by_alias=False)
 
         out: dict[str, Any] = {}

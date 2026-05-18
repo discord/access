@@ -34,6 +34,12 @@ okta==2.9.8
 # Plugins
 pluggy==1.5.0
 
+# MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
+# Pinned to the same minor as Sirius's lockfile so we're tracking a build
+# that's already running in prod. Bumping the major (2.x) will break
+# imports — FastMCP's API has historically reshaped between majors.
+mcp[cli]==1.27.0
+
 # Test - TODO: Move test packages to separate file
 tox==4.23.2
 # Lint
