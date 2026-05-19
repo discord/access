@@ -48,9 +48,9 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
 
-const APP_GROUP_PREFIX = 'App-';
-const APP_NAME_APP_GROUP_SEPARATOR = '-';
-const ROLE_GROUP_PREFIX = 'Role-';
+const APP_GROUP_PREFIX = accessConfig.APP_GROUP_NAME_PREFIX;
+const APP_NAME_APP_GROUP_SEPARATOR = accessConfig.APP_NAME_GROUP_NAME_SEPARATOR;
+const ROLE_GROUP_PREFIX = accessConfig.ROLE_GROUP_NAME_PREFIX;
 
 const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
 
