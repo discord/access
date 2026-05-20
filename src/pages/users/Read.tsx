@@ -217,9 +217,10 @@ function GroupTable({
                 <Typography variant="h6" color="text.accent">
                   {title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Box sx={{display: 'flex', alignItems: 'center'}}>
+                  <Divider sx={{mx: 2}} orientation="vertical" flexItem />
                   Total: {Object.keys(groups).length}
-                </Typography>
+                </Box>
               </Box>
             </TableCell>
           </TableRow>
