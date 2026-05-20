@@ -213,9 +213,14 @@ function GroupTable({
         <TableHead>
           <TableRow>
             <TableCell colSpan={3}>
-              <Typography variant="h6" color="text.accent">
-                {title}
-              </Typography>
+              <Box sx={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                <Typography variant="h6" color="text.accent">
+                  {title}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Total: {Object.keys(groups).length}
+                </Typography>
+              </Box>
             </TableCell>
           </TableRow>
           <TableRow>
