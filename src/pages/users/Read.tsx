@@ -463,10 +463,10 @@ export default function ReadUser() {
             </Paper>
           </Grid>
           <Grid item container xs={12} lg={3} spacing={3} alignContent={'flex-start'} order={{xs: 2, lg: 3}}>
-            <Grid item xs={6} lg={12}>
+            <Grid item xs={12} sm={6} lg={12}>
               <ProfileToCard user={user} />
             </Grid>
-            <Grid item xs={6} lg={12}>
+            <Grid item xs={12} sm={6} lg={12}>
               <ReportingToCard user={user} />
             </Grid>
           </Grid>
