@@ -2,7 +2,15 @@ import React from 'react';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
 import AuditIcon from '@mui/icons-material/History';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
+import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
+import Accordion from '@mui/material/Accordion';
+import AccordionDetails from '@mui/material/AccordionDetails';
+import AccordionSummary from '@mui/material/AccordionSummary';
+import Autocomplete from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
@@ -24,6 +32,7 @@ import TableContainer from '@mui/material/TableContainer';
 import TableFooter from '@mui/material/TableFooter';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
@@ -177,6 +186,7 @@ interface GroupTableProps {
   groups: Record<string, OktaUserGroupMember[]>;
   user: OktaUser;
   owner: boolean;
+  filterGroupName?: string | null;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -186,6 +196,7 @@ function GroupTable({
   groups,
   user,
   owner,
+  filterGroupName,
   onClickRemoveGroupFromRole,
   onClickRemoveDirectAccess,
 }: GroupTableProps) {
@@ -207,6 +218,12 @@ function GroupTable({
     [putGroupUsers, owner, user.id],
   );
 
+  const filterQuery = filterGroupName?.trim().toLowerCase() ?? '';
+  const filteredEntries = Object.entries(groups).filter(([_, members]) => {
+    if (!filterQuery) return true;
+    return (members[0]?.active_group?.name ?? '').toLowerCase().includes(filterQuery);
+  });
+
   return (
     <TableContainer component={Paper}>
       <Table size="small" aria-label={title.toLowerCase()}>
@@ -219,7 +236,7 @@ function GroupTable({
                 </Typography>
                 <Box sx={{display: 'flex', alignItems: 'center'}}>
                   <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                  Total: {Object.keys(groups).length}
+                  Total: {filteredEntries.length}
                 </Box>
               </Box>
             </TableCell>
@@ -231,8 +248,8 @@ function GroupTable({
           </TableRow>
         </TableHead>
         <TableBody>
-          {Object.keys(groups).length > 0 ? (
-            Object.entries(groups)
+          {filteredEntries.length > 0 ? (
+            filteredEntries
               .sort(sortUserGroups)
               .map(([groupId, groupMembers]: [string, Array<OktaUserGroupMember>]) => (
                 <TableRow key={groupId}>
@@ -299,6 +316,7 @@ interface SideBySideTablesProps {
   ownerships: Record<string, OktaUserGroupMember[]>;
   memberships: Record<string, OktaUserGroupMember[]>;
   user: OktaUser;
+  filterGroupName?: string | null;
   onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
   onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
 }
@@ -307,6 +325,7 @@ function SideBySideTables({
   ownerships,
   memberships,
   user,
+  filterGroupName,
   onClickRemoveGroupFromRole,
   onClickRemoveDirectAccess,
 }: SideBySideTablesProps) {
@@ -318,6 +337,7 @@ function SideBySideTables({
           groups={ownerships}
           user={user}
           owner={true}
+          filterGroupName={filterGroupName}
           onClickRemoveGroupFromRole={onClickRemoveGroupFromRole}
           onClickRemoveDirectAccess={onClickRemoveDirectAccess}
         />
@@ -328,12 +348,96 @@ function SideBySideTables({
           groups={memberships}
           user={user}
           owner={false}
+          filterGroupName={filterGroupName}
           onClickRemoveGroupFromRole={onClickRemoveGroupFromRole}
           onClickRemoveDirectAccess={onClickRemoveDirectAccess}
         />
       </Grid>
     </Grid>
   );
+}
+
+interface CollapsibleSectionProps {
+  summaryLeft: React.ReactNode;
+  ownerships: Record<string, OktaUserGroupMember[]>;
+  memberships: Record<string, OktaUserGroupMember[]>;
+  user: OktaUser;
+  filterGroupName?: string | null;
+  expanded: boolean;
+  onToggle: (event: React.SyntheticEvent, expanded: boolean) => void;
+  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
+  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
+}
+
+function CollapsibleSection({
+  summaryLeft,
+  ownerships,
+  memberships,
+  user,
+  filterGroupName,
+  expanded,
+  onToggle,
+  onClickRemoveGroupFromRole,
+  onClickRemoveDirectAccess,
+}: CollapsibleSectionProps) {
+  const ownerCount = Object.keys(ownerships).length;
+  const memberCount = Object.keys(memberships).length;
+
+  return (
+    <Accordion expanded={expanded} onChange={onToggle} TransitionProps={{unmountOnExit: true}}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Box sx={{display: 'inline-flex', flexGrow: 1, alignItems: 'center'}}>
+          <Box sx={{flexGrow: 0.95}}>{summaryLeft}</Box>
+          <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'flex-end'}}>
+            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
+            <Box>
+              Ownerships: {ownerCount}
+              <br />
+              Memberships: {memberCount}
+            </Box>
+          </Box>
+        </Box>
+      </AccordionSummary>
+      <AccordionDetails>
+        <SideBySideTables
+          ownerships={ownerships}
+          memberships={memberships}
+          user={user}
+          filterGroupName={filterGroupName}
+          onClickRemoveGroupFromRole={onClickRemoveGroupFromRole}
+          onClickRemoveDirectAccess={onClickRemoveDirectAccess}
+        />
+      </AccordionDetails>
+    </Accordion>
+  );
+}
+
+function sectionContainsGroupName(
+  ownerships: Record<string, OktaUserGroupMember[]>,
+  memberships: Record<string, OktaUserGroupMember[]>,
+  groupName: string | null,
+): boolean {
+  const q = groupName?.trim().toLowerCase() ?? '';
+  if (!q) return false;
+  const all = [...Object.values(ownerships), ...Object.values(memberships)];
+  return all.some((members) => (members[0]?.active_group?.name ?? '').toLowerCase().includes(q));
+}
+
+function collectGroupNames(ownerPartitions: PartitionedGroups, memberPartitions: PartitionedGroups): string[] {
+  const names = new Set<string>();
+  const visit = (groupsById: Record<string, OktaUserGroupMember[]>) => {
+    for (const members of Object.values(groupsById)) {
+      const name = members[0]?.active_group?.name;
+      if (name) names.add(name);
+    }
+  };
+  visit(ownerPartitions.roles);
+  visit(ownerPartitions.appGroups);
+  visit(ownerPartitions.standardGroups);
+  visit(memberPartitions.roles);
+  visit(memberPartitions.appGroups);
+  visit(memberPartitions.standardGroups);
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
 }
 
 export default function ReadUser() {
@@ -348,6 +452,10 @@ export default function ReadUser() {
   const [removeOwnDirectAccessDialogOpen, setRemoveOwnDirectAccessDialogOpen] = React.useState(false);
   const [removeOwnDirectAccessDialogParameters, setRemoveOwnDirectAccessDialogParameters] =
     React.useState<RemoveOwnDirectAccessDialogParameters>({} as RemoveOwnDirectAccessDialogParameters);
+
+  const [searchSelection, setSearchSelection] = React.useState<string | null>(null);
+  const [isExpandedAll, setIsExpandedAll] = React.useState(false);
+  const [userToggleMap, setUserToggleMap] = React.useState<Record<string, boolean>>({});
 
   const {data, isError, isLoading} = useGetUserById({
     pathParams: {userId: id ?? ''},
@@ -413,6 +521,30 @@ export default function ReadUser() {
     setRemoveOwnDirectAccessDialogOpen(true);
   };
 
+  const allGroupNames = collectGroupNames(ownerPartitions, memberPartitions);
+
+  const accordionExpanded = (id: string, hasMatch: boolean): boolean => {
+    if (id in userToggleMap) return userToggleMap[id];
+    if (searchSelection && hasMatch) return true;
+    return isExpandedAll;
+  };
+
+  const handleAccordionToggle =
+    (id: string) =>
+    (_: React.SyntheticEvent, expanded: boolean): void => {
+      setUserToggleMap((prev) => ({...prev, [id]: expanded}));
+    };
+
+  const handleToggleExpandAll = (): void => {
+    setIsExpandedAll((prev) => !prev);
+    setUserToggleMap({});
+  };
+
+  const handleSearchChange = (_: React.SyntheticEvent, value: string | null): void => {
+    setSearchSelection(value);
+    setUserToggleMap({});
+  };
+
   const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
   return (
@@ -444,13 +576,44 @@ export default function ReadUser() {
                   </Typography>
                 </Stack>
                 <Divider />
-                <Stack justifyContent="center" direction="row" gap={1}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}>
+                  {(hasRoles || hasAppGroups || hasStandardGroups) && (
+                    <>
+                      <Autocomplete
+                        size="small"
+                        freeSolo
+                        sx={{flex: '1 1 220px', minWidth: 0, maxWidth: 360}}
+                        renderInput={(params) => <TextField {...params} label="Search Roles, Groups, and App Groups" />}
+                        options={allGroupNames}
+                        value={searchSelection}
+                        onChange={handleSearchChange}
+                        clearOnEscape
+                      />
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="small"
+                        startIcon={isExpandedAll ? <UnfoldLessIcon /> : <UnfoldMoreIcon />}
+                        onClick={handleToggleExpandAll}
+                        sx={{flexShrink: 0}}>
+                        {isExpandedAll ? 'Collapse' : 'Expand'}
+                      </Button>
+                    </>
+                  )}
                   <Tooltip title="Audit" placement="top" PopperProps={moveTooltip}>
                     <IconButton
                       aria-label="audit"
                       to={`/users/${id}/audit`}
                       component={RouterLink}
                       sx={{
+                        marginLeft: 'auto',
+                        flexShrink: 0,
                         '&:hover': {
                           backgroundColor: 'primary.main',
                           color: 'primary.contrastText',
@@ -459,7 +622,7 @@ export default function ReadUser() {
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>
-                </Stack>
+                </Box>
               </Stack>
             </Paper>
           </Grid>
@@ -477,10 +640,50 @@ export default function ReadUser() {
                 <Typography variant="h5" sx={{mb: 2}}>
                   Roles
                 </Typography>
-                <SideBySideTables
+                <CollapsibleSection
+                  summaryLeft={
+                    <Typography variant="h6" color="text.accent">
+                      All Roles
+                    </Typography>
+                  }
                   ownerships={ownerPartitions.roles}
                   memberships={memberPartitions.roles}
                   user={user}
+                  filterGroupName={searchSelection}
+                  expanded={accordionExpanded(
+                    'roles',
+                    sectionContainsGroupName(ownerPartitions.roles, memberPartitions.roles, searchSelection),
+                  )}
+                  onToggle={handleAccordionToggle('roles')}
+                  onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
+                  onClickRemoveDirectAccess={removeOwnDirectAccess}
+                />
+              </Grid>
+            )}
+            {hasStandardGroups && (
+              <Grid item xs={12}>
+                <Typography variant="h5" sx={{mb: 2}}>
+                  Groups
+                </Typography>
+                <CollapsibleSection
+                  summaryLeft={
+                    <Typography variant="h6" color="text.accent">
+                      All Groups
+                    </Typography>
+                  }
+                  ownerships={ownerPartitions.standardGroups}
+                  memberships={memberPartitions.standardGroups}
+                  user={user}
+                  filterGroupName={searchSelection}
+                  expanded={accordionExpanded(
+                    'groups',
+                    sectionContainsGroupName(
+                      ownerPartitions.standardGroups,
+                      memberPartitions.standardGroups,
+                      searchSelection,
+                    ),
+                  )}
+                  onToggle={handleAccordionToggle('groups')}
                   onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
                   onClickRemoveDirectAccess={removeOwnDirectAccess}
                 />
@@ -491,45 +694,46 @@ export default function ReadUser() {
                 <Typography variant="h5" sx={{mb: 2}}>
                   Apps
                 </Typography>
-                {allAppEntries.map((appEntry) => (
-                  <Box key={appEntry.appId} sx={{mb: 3}}>
-                    <Typography variant="h6" sx={{mb: 1}}>
-                      <Link
-                        to={`/apps/${appEntry.appName}`}
-                        sx={{
-                          textDecoration: 'none',
-                          color: 'inherit',
-                          '&:hover': {
-                            color: (theme) => theme.palette.primary.main,
-                          },
-                        }}
-                        component={RouterLink}>
-                        {appEntry.appName}
-                      </Link>
-                    </Typography>
-                    <SideBySideTables
-                      ownerships={appEntry.ownerships}
-                      memberships={appEntry.memberships}
-                      user={user}
-                      onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
-                      onClickRemoveDirectAccess={removeOwnDirectAccess}
-                    />
-                  </Box>
-                ))}
-              </Grid>
-            )}
-            {hasStandardGroups && (
-              <Grid item xs={12}>
-                <Typography variant="h5" sx={{mb: 2}}>
-                  Groups
-                </Typography>
-                <SideBySideTables
-                  ownerships={ownerPartitions.standardGroups}
-                  memberships={memberPartitions.standardGroups}
-                  user={user}
-                  onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
-                  onClickRemoveDirectAccess={removeOwnDirectAccess}
-                />
+                <Stack spacing={2}>
+                  {allAppEntries.map((appEntry) => {
+                    const id = `app-${appEntry.appId}`;
+                    const hasMatch = sectionContainsGroupName(
+                      appEntry.ownerships,
+                      appEntry.memberships,
+                      searchSelection,
+                    );
+                    return (
+                      <CollapsibleSection
+                        key={appEntry.appId}
+                        summaryLeft={
+                          <Typography variant="h6" color="text.accent">
+                            <Link
+                              to={`/apps/${appEntry.appName}`}
+                              sx={{
+                                textDecoration: 'none',
+                                color: 'inherit',
+                                '&:hover': {
+                                  color: (theme) => theme.palette.primary.main,
+                                },
+                              }}
+                              component={RouterLink}
+                              onClick={(e) => e.stopPropagation()}>
+                              {appEntry.appName}
+                            </Link>
+                          </Typography>
+                        }
+                        ownerships={appEntry.ownerships}
+                        memberships={appEntry.memberships}
+                        user={user}
+                        filterGroupName={searchSelection}
+                        expanded={accordionExpanded(id, hasMatch)}
+                        onToggle={handleAccordionToggle(id)}
+                        onClickRemoveGroupFromRole={showRemoveGroupFromRoleDialog}
+                        onClickRemoveDirectAccess={removeOwnDirectAccess}
+                      />
+                    );
+                  })}
+                </Stack>
               </Grid>
             )}
           </Grid>
