@@ -113,6 +113,12 @@ def can_manage_group(db: Session, current_user_id: str, group: OktaGroup) -> boo
     return False
 
 
+def can_delete_group(db: Session, current_user_id: str, group: OktaGroup) -> bool:
+    if current_user_id in settings.app_group_deleter_ids and type(group) is AppGroup and group.is_managed:
+        return True
+    return can_manage_group(db, current_user_id, group)
+
+
 # --- Depends factories -----------------------------------------------------
 
 
