@@ -503,6 +503,16 @@ export default function ReadUser() {
   const hasStandardGroups =
     Object.keys(ownerPartitions.standardGroups).length > 0 || Object.keys(memberPartitions.standardGroups).length > 0;
 
+  const searchActive = !!searchSelection?.trim();
+  const rolesHasMatch =
+    !searchActive || sectionContainsGroupName(ownerPartitions.roles, memberPartitions.roles, searchSelection);
+  const standardGroupsHasMatch =
+    !searchActive ||
+    sectionContainsGroupName(ownerPartitions.standardGroups, memberPartitions.standardGroups, searchSelection);
+  const filteredAppEntries = searchActive
+    ? allAppEntries.filter((entry) => sectionContainsGroupName(entry.ownerships, entry.memberships, searchSelection))
+    : allAppEntries;
+
   const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({
       group: removeGroup,
@@ -635,7 +645,7 @@ export default function ReadUser() {
             </Grid>
           </Grid>
           <Grid item container xs={12} lg={9} rowSpacing={3} order={{xs: 3, lg: 2}}>
-            {hasRoles && (
+            {hasRoles && rolesHasMatch && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Roles
@@ -660,7 +670,7 @@ export default function ReadUser() {
                 />
               </Grid>
             )}
-            {hasStandardGroups && (
+            {hasStandardGroups && standardGroupsHasMatch && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Groups
@@ -689,13 +699,13 @@ export default function ReadUser() {
                 />
               </Grid>
             )}
-            {hasAppGroups && (
+            {hasAppGroups && filteredAppEntries.length > 0 && (
               <Grid item xs={12}>
                 <Typography variant="h5" sx={{mb: 2}}>
                   Apps
                 </Typography>
                 <Stack spacing={2}>
-                  {allAppEntries.map((appEntry) => {
+                  {filteredAppEntries.map((appEntry) => {
                     const id = `app-${appEntry.appId}`;
                     const hasMatch = sectionContainsGroupName(
                       appEntry.ownerships,
