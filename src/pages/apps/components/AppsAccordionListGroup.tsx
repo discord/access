@@ -221,6 +221,8 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
     const appGroupRef = React.useRef(app_group);
     appGroupRef.current = app_group;
 
+    const groupNamesKey = React.useMemo(() => (app_group ?? []).map((g) => g.name).join('|'), [app_group]);
+
     React.useEffect(() => {
       const currentAppGroup = appGroupRef.current;
       if (currentAppGroup) {
@@ -238,7 +240,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
           return hasChanges ? newExpanded : prevExpanded;
         });
       }
-    }, [isExpanded]);
+    }, [isExpanded, groupNamesKey]);
 
     const handleChange = React.useCallback(
       (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {

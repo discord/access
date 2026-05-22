@@ -10,7 +10,7 @@ import React from 'react';
 interface AppsAdminActionGroupProps {
   currentUser: OktaUser;
   app: App;
-  onSearchSubmit?: (appGroup: AppGroup[]) => void;
+  onSearchSubmit?: (appGroup: AppGroup[], isActive: boolean) => void;
   onToggleExpand?: (expanded: boolean) => void;
   isExpanded?: boolean;
 }
@@ -61,7 +61,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
       const q = newValue?.trim().toLowerCase() ?? '';
       const fallback = appGroupsRef.current ?? [];
       if (!q) {
-        onSearchSubmitRef.current?.(fallback);
+        onSearchSubmitRef.current?.(fallback, false);
         return;
       }
       const matchedById: Record<string, AppGroup> = {};
@@ -73,7 +73,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
           if (g.id) matchedById[g.id] = g;
         });
       });
-      onSearchSubmitRef.current?.(Object.values(matchedById));
+      onSearchSubmitRef.current?.(Object.values(matchedById), true);
     }, []);
 
     const onToggleExpandRef = React.useRef(onToggleExpand);
