@@ -151,9 +151,9 @@ export default function ListRequests() {
 
   return (
     <>
-      <ChangeTitle title="Access Requests" />
+      <ChangeTitle title="Individual Access Requests" />
       <TableContainer component={Paper}>
-        <TableTopBar title="Access Requests">
+        <TableTopBar title="Individual Access Requests">
           <CreateRequest currentUser={currentUser}></CreateRequest>
           <StatusFilter value={statusFilter} onChange={handleStatusFilter} />
           <TableTopBarAutocomplete
