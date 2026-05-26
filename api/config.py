@@ -132,6 +132,15 @@ class Settings(BaseSettings):
     # the value here becomes inert.
     MCP_FALLBACK_SCOPES: str = "read_all,create_requests"
 
+    # DNS-rebinding protection for the FastMCP transport layer. Comma-
+    # separated Host header allowlist (wildcards like ``"localhost:*"``
+    # are supported). Empty (default) disables the check — relies on
+    # the auth middleware + CORS + no-browser-client to cover the
+    # threat. Set to your public host (``"access.example.com"``) for
+    # defense-in-depth, or to ``"localhost:*,127.0.0.1:*"`` for dev
+    # with a browser open. Any non-empty value flips protection ON.
+    MCP_ALLOWED_HOSTS: str = ""
+
     @property
     def user_search_attrs(self) -> list[str]:
         if self.USER_SEARCH_CUSTOM_ATTRIBUTES is not None:

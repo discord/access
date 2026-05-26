@@ -16,8 +16,10 @@ outside an HTTP request (e.g. from a test).
 from __future__ import annotations
 
 import contextvars
+import functools
+import json
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Callable, Optional, TypeVar
 
 # Scope strings used by the v1 tool surface. Tools declare a required
 # scope via ``@require_scope(MCP_SCOPE_READ_ALL)`` etc.; the
@@ -113,19 +115,54 @@ def get_mcp_scopes() -> frozenset[str]:
 def require_scope(scope: str) -> None:
     """Raise ``MCPScopeError`` if the active identity is missing ``scope``.
 
-    Read tools call ``require_scope(MCP_SCOPE_READ_ALL)`` at the top of
-    their handler. The write tool calls
-    ``require_scope(MCP_SCOPE_CREATE_REQUESTS)``. We deliberately do NOT
-    decorate handlers — keeping the check inline makes it visible at
-    every call site, which matches the convention used elsewhere in the
-    codebase where authorization is checked explicitly rather than via
-    decorators.
+    Underlying primitive used by the ``requires_scope`` decorator and
+    available to tests / non-tool helpers that need to assert scope
+    without the decorator's tool-result envelope.
     """
     identity = _mcp_identity.get()
     if identity is None:
         raise MCPAuthenticationError("No MCP identity on the active context")
     if scope not in identity.scopes:
         raise MCPScopeError(f"This tool requires the '{scope}' scope; the active token does not carry it.")
+
+
+F = TypeVar("F", bound=Callable[..., str])
+
+
+def requires_scope(scope: str) -> Callable[[F], F]:
+    """Decorator: enforce ``scope`` on the active MCP identity before the
+    tool handler runs. On a missing scope, returns the canonical
+    ``{"error": "..."}`` JSON envelope (same shape tool handlers use for
+    every other failure) instead of raising — keeps the contract stable
+    across FastMCP versions, which handle exceptions inconsistently.
+
+    The MCP Python SDK ships a route-level ``RequireAuthMiddleware`` for
+    a flat ``required_scopes`` list, but no per-tool decorator — and our
+    v1 surface needs different scopes per tool (``read_all`` for reads,
+    ``create_requests`` for writes), so we provide this.
+
+    Apply between ``@mcp.tool(...)`` and the function definition::
+
+        @mcp.tool(name="list_groups", ...)
+        @requires_scope(MCP_SCOPE_READ_ALL)
+        def list_groups(...): ...
+
+    ``functools.wraps`` preserves the wrapped function's signature so
+    FastMCP's schema introspection sees the original parameter list.
+    """
+
+    def decorator(fn: F) -> F:
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> str:
+            try:
+                require_scope(scope)
+            except MCPScopeError as e:
+                return json.dumps({"error": str(e)})
+            return fn(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
 
 
 __all__ = [
@@ -139,6 +176,7 @@ __all__ = [
     "get_mcp_scopes",
     "get_mcp_user_id",
     "require_scope",
+    "requires_scope",
     "reset_mcp_identity",
     "set_mcp_identity",
 ]

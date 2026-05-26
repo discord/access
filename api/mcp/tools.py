@@ -16,7 +16,7 @@ Each tool mirrors the corresponding REST endpoint:
 
       - Read tools: every GET endpoint in the REST API is gated only on
         ``require_authenticated``. The MCP equivalent is
-        ``require_scope(MCP_SCOPE_READ_ALL)`` — authentication is
+        ``@requires_scope(MCP_SCOPE_READ_ALL)`` — authentication is
         already enforced by the ASGI middleware, the scope check is the
         only extra gate. No bare-predicate call needed.
       - Write tools: the authorization gate is the **same predicate
@@ -67,9 +67,8 @@ from api.extensions import db as _db_shim
 from api.mcp.auth import (
     MCP_SCOPE_CREATE_REQUESTS,
     MCP_SCOPE_READ_ALL,
-    MCPScopeError,
     get_mcp_user_id,
-    require_scope,
+    requires_scope,
 )
 from api.mcp.db import mcp_db_session
 from api.models import (
@@ -172,7 +171,7 @@ def _error(message: str) -> str:
 
 def _validation_error(exc: ValidationError) -> str:
     """Friendly first-error projection for ``CreateAccessRequestBody``
-    parsing failures. Matches the shape Sirius uses on its tools."""
+    parsing failures."""
     err = exc.errors()[0]
     loc = ".".join(str(p) for p in err["loc"]) or "input"
     return _error(f"{loc}: {err['msg']}")
@@ -213,7 +212,7 @@ def _envelope(*, total: int, pages: int, page: int, size: int, results: list[Any
 
 def _serialize_model(model: Any) -> Any:
     """Dump a Pydantic model to a plain JSON-serializable dict."""
-    return json.loads(model.model_dump_json())
+    return model.model_dump(mode="json")
 
 
 def _group_load_options() -> tuple:
@@ -338,7 +337,8 @@ def register_tools(mcp: "FastMCP") -> None:
     """Register every v1 tool on the given FastMCP instance.
 
     Pattern:
-      - First line of each handler: ``require_scope(...)`` — enforced
+      - Each handler carries ``@requires_scope(MCP_SCOPE_*)`` between
+        ``@mcp.tool(...)`` and the function definition — enforced
         regardless of which auth provider resolved the request.
       - ``get_mcp_user_id()`` returns the authenticated user id.
       - Reads use ``_db_shim.session`` directly (no commit).
@@ -374,13 +374,10 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_groups(
         q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -420,18 +417,25 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         name="get_group",
         title="Get group",
         description=(
-            "Get full detail for a single group by id or by name. Returns the "
-            "polymorphic GroupDetail shape, which includes active members, "
-            "owners, role mappings, group tags, and app metadata for AppGroups. "
-            "Requires the 'read_all' scope."
+            "Get full detail for a single group by id or by name. The 'active_' "
+            "prefix on a list field means 'currently in force' (ended_at is "
+            "null or future). Key response fields: "
+            "'active_user_memberships' = users who are direct members of this "
+            "group; "
+            "'active_user_ownerships' = users who directly manage this group; "
+            "'active_role_member_mappings' = roles whose members get membership "
+            "in THIS group; "
+            "'active_role_owner_mappings' = roles whose members get ownership "
+            "of THIS group; "
+            "'active_group_tags' = enabled tags on this group (carry "
+            "constraints like time limits and reason requirements). For "
+            "AppGroups, 'app' identifies the parent app. Requires the "
+            "'read_all' scope."
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_group(group_id_or_name: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         group = (
             db.query(OktaGroup)
@@ -456,11 +460,8 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_group_memberships(group_id_or_name: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         group = (
             db.query(OktaGroup)
@@ -505,11 +506,8 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_roles(q: str = "", owner_id: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -552,18 +550,24 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         name="get_role",
         title="Get role",
         description=(
-            "Get full detail for a single role by id or by name. Returns the "
-            "polymorphic GroupDetail shape (a role is a group). Includes active "
-            "members, owners, the associated groups this role grants access to, "
-            "and tags. Requires the 'read_all' scope."
+            "Get full detail for a single role by id or by name. A role IS a "
+            "group (single-table inheritance), so it shares the group fields "
+            "below — but with role-specific mappings instead of the inbound "
+            "ones. The 'active_' prefix means 'currently in force'. Key "
+            "response fields: "
+            "'active_user_memberships' = users who are members of this role; "
+            "'active_user_ownerships' = users who manage this role; "
+            "'active_role_associated_group_member_mappings' = groups this role "
+            "grants its members MEMBERSHIP in (the access the role confers); "
+            "'active_role_associated_group_owner_mappings' = groups this role "
+            "grants its members OWNERSHIP of; "
+            "'active_group_tags' = enabled tags on the role itself. Requires "
+            "the 'read_all' scope."
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_role(role_id_or_name: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         role = (
             db.query(RoleGroup)
@@ -592,11 +596,8 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_apps(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -616,16 +617,21 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         name="get_app",
         title="Get app",
         description=(
-            "Get full detail for a single app by id or by name. Returns owner "
-            "groups, non-owner groups, and tags. Requires the 'read_all' scope."
+            "Get full detail for a single app by id or by name. The 'active_' "
+            "prefix means 'currently in force'. Key response fields: "
+            "'active_owner_app_groups' = the app's owner AppGroup(s); members "
+            "of these groups are the app owners and are an approval-routing "
+            "tier above Access admins; "
+            "'active_non_owner_app_groups' = the app's regular AppGroups "
+            "(grant access to the app); "
+            "'active_app_tags' = enabled tags on the app (constraints "
+            "propagate to all of the app's AppGroups). Requires the "
+            "'read_all' scope."
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_app(app_id_or_name: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         app = (
             db.query(App)
@@ -653,11 +659,8 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_users(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -686,16 +689,20 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         title="Get user",
         description=(
             "Get detail for a single user by id, email, or the literal '@me' to "
-            "look up the calling user. Includes the user's active group "
-            "memberships and ownerships. Requires the 'read_all' scope."
+            "look up the calling user. The 'active_' prefix means 'currently in "
+            "force'. Key response fields: "
+            "'active_group_memberships' = groups (including roles) this user "
+            "is currently a member of, either directly or via a role; "
+            "'active_group_ownerships' = groups this user currently manages. "
+            "Each row carries 'active_role_group_mapping' which is non-null "
+            "when the membership was granted via a role (and identifies which "
+            "one), null when it's a direct grant. Requires the 'read_all' "
+            "scope."
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_user(user_id_or_email: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         if user_id_or_email == "@me":
             user_id_or_email = get_mcp_user_id()
         db = _db_shim.session
@@ -731,11 +738,8 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_tags(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -761,11 +765,8 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_tag(tag_id_or_name: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         tag = (
             db.query(Tag)
@@ -795,6 +796,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_access_requests(
         q: str = "",
         status: str = "",
@@ -804,10 +806,6 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         page: int = 0,
         size: int = MCP_DEFAULT_PAGE_SIZE,
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -858,11 +856,8 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_access_request(access_request_id: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         ar = (
             db.query(AccessRequest)
@@ -890,6 +885,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_role_requests(
         q: str = "",
         status: str = "",
@@ -899,10 +895,6 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         page: int = 0,
         size: int = MCP_DEFAULT_PAGE_SIZE,
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -942,11 +934,8 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_role_request(role_request_id: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         rr = (
             db.query(RoleRequest)
@@ -974,6 +963,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_group_requests(
         q: str = "",
         status: str = "",
@@ -983,10 +973,6 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         page: int = 0,
         size: int = MCP_DEFAULT_PAGE_SIZE,
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -1026,11 +1012,8 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         description=("Get detail for a single group request by id. Requires the " "'read_all' scope."),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def get_group_request(group_request_id: str) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         db = _db_shim.session
         gr = (
             db.query(GroupRequest)
@@ -1060,6 +1043,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         ),
         annotations=_READ_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_READ_ALL)
     def list_audit_entries(
         user_id: str = "",
         group_id: str = "",
@@ -1068,10 +1052,6 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         page: int = 0,
         size: int = MCP_DEFAULT_PAGE_SIZE,
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_READ_ALL)
-        except MCPScopeError as e:
-            return _error(str(e))
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -1164,22 +1144,13 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
     def create_access_request(
         group_id: str,
         reason: str = "",
         group_owner: bool = False,
         ending_at: str = "",
     ) -> str:
-        # Authorization: enforce both authentication and the explicit
-        # create-requests scope. The Cloudflare default provider returns
-        # the full v1 scope set by default; operators with a stricter
-        # provider can issue tokens that lack create_requests to make a
-        # session effectively read-only.
-        try:
-            require_scope(MCP_SCOPE_CREATE_REQUESTS)
-        except MCPScopeError as e:
-            return _error(str(e))
-
         current_user_id = get_mcp_user_id()
 
         # Validate the body through the same Pydantic model the REST
@@ -1279,6 +1250,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
     def create_role_request(
         role_id: str,
         group_id: str,
@@ -1286,11 +1258,6 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         group_owner: bool = False,
         ending_at: str = "",
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_CREATE_REQUESTS)
-        except MCPScopeError as e:
-            return _error(str(e))
-
         current_user_id = get_mcp_user_id()
 
         body_dict: dict[str, Any] = {
@@ -1396,6 +1363,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         ),
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
+    @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
     def create_group_request(
         group_name: str,
         group_type: str,
@@ -1405,11 +1373,6 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         ownership_ending_at: str = "",
         reason: str = "",
     ) -> str:
-        try:
-            require_scope(MCP_SCOPE_CREATE_REQUESTS)
-        except MCPScopeError as e:
-            return _error(str(e))
-
         current_user_id = get_mcp_user_id()
 
         body_dict: dict[str, Any] = {

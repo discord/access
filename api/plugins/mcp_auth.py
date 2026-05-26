@@ -14,6 +14,17 @@ result wins (``firstresult=True``). The shipped Cloudflare provider opts
 out by returning ``None`` when ``settings.CLOUDFLARE_TEAM_DOMAIN`` is
 unset, so a non-CF deployment can register another provider without
 fighting the default.
+
+Scope: this hookspec is for **credential verification**, not for hosting
+an OAuth/OIDC authorization server. It assumes the OAuth flow (if any)
+runs in front of Access — typically a Cloudflare-Access-style OIDC
+proxy that completes the dance with the upstream IdP and injects a
+verified header into the request. The hookimpl then validates that
+header and resolves it to an ``OktaUser``. Hosting ``/authorize``,
+``/token``, dynamic client registration, or callback handling is out of
+scope for this interface; an operator who wants Access itself to be the
+authorization server needs to add their own router for those endpoints
+in addition to a ``mcp_resolve_identity`` impl.
 """
 
 from __future__ import annotations

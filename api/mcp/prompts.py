@@ -60,8 +60,14 @@ that implements RBAC over Okta groups and roles.
   ``get_user``, ``list_tags`` / ``get_tag``, ``list_access_requests`` /
   ``get_access_request``, ``list_role_requests`` /
   ``get_role_request``, ``list_group_requests`` /
-  ``get_group_request``, ``list_audit_entries``,
-  ``list_group_memberships``. All require the ``read_all`` scope.
+  ``get_group_request``, ``list_group_memberships``. All require the
+  ``read_all`` scope.
+- ``list_audit_entries`` — query by ``user_id`` (use ``@me``) or
+  ``group_id`` to inspect membership/ownership history. When a user
+  reports recently losing access to a group or role, set
+  ``active_only=false`` to include ended rows and find the revocation
+  that caused it (each row carries ``ended_at`` and
+  ``ended_actor_id``). Requires the ``read_all`` scope.
 - Write (all require the ``create_requests`` scope):
   - ``create_access_request`` — request membership/ownership in a
     specific group/role for yourself. Open to any authenticated user.

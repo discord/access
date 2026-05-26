@@ -153,31 +153,25 @@ def mcp_resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
 
     db = _db_shim.session
 
-    # Human user: identified by `email`. Service token: identified by
-    # `common_name`. Mirrors the resolution logic in
-    # ``api.auth.dependencies.get_current_user_id`` so MCP requests
-    # resolve to the same user the REST API would.
-    if "email" in payload:
-        user = (
-            db.query(OktaUser)
-            .filter(func.lower(OktaUser.email) == func.lower(payload["email"]))
-            .filter(OktaUser.deleted_at.is_(None))
-            .first()
-        )
-        if user is None:
-            logger.warning(
-                f"CF Access JWT verified for email={payload['email']!r} but no matching active OktaUser exists"
-            )
-            return None
-        user_id = user.id
-    elif "common_name" in payload:
-        # Service token: pass `common_name` through as user_id so audit
-        # logs record it; downstream permission checks that need a real
-        # OktaUser row will fail naturally if there isn't one.
-        user_id = payload["common_name"]
-    else:
-        logger.warning("CF Access JWT verified but carries neither 'email' nor 'common_name'")
+    # MCP is human-user-only: the standard MCP deployment shape uses CF
+    # Managed OAuth, which is OAuth-flow based and incompatible with
+    # service tokens (no browser, no consent). Operators with a CF
+    # Access policy that permits service tokens on /mcp will see those
+    # requests rejected here. REST keeps its `common_name` handling in
+    # ``api.auth.dependencies`` for non-MCP traffic.
+    if "email" not in payload:
+        logger.warning("CF Access JWT verified but carries no 'email' claim")
         return None
+    user = (
+        db.query(OktaUser)
+        .filter(func.lower(OktaUser.email) == func.lower(payload["email"]))
+        .filter(OktaUser.deleted_at.is_(None))
+        .first()
+    )
+    if user is None:
+        logger.warning(f"CF Access JWT verified for email={payload['email']!r} but no matching active OktaUser exists")
+        return None
+    user_id = user.id
 
     scopes = _parse_scopes(payload.get("scope") or payload.get("scp"))
     if not scopes:

@@ -402,6 +402,8 @@ MCP auth is pluggable via the same [pluggy](https://pluggy.readthedocs.io/en/lat
 
 Cloudflare deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
 
+The hookspec is **credential verification** only — it expects the OAuth/OIDC flow (if any) to run in front of Access, typically via an OIDC proxy that completes the dance with the upstream IdP and injects a verified header into the request. Hosting `/authorize`, `/token`, dynamic client registration, or callback handling is out of scope for v1; an operator who wants Access itself to be the authorization server would need to add their own router for those endpoints alongside their `mcp_resolve_identity` impl.
+
 To add a provider for a different auth model (OIDC, mTLS, custom JWT issuer, …), implement the `mcp_resolve_identity` hookspec ([`api/plugins/mcp_auth.py`](api/plugins/mcp_auth.py)) in your own plugin package and register it under the `access_mcp_auth` setuptools entry point:
 
 ```python

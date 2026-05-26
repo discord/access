@@ -1,7 +1,6 @@
 """FastMCP server construction, ASGI auth middleware, and lifespan.
 
-Wiring overview (matches Sirius's reporting-service for shape, adapted to
-Access's sync ORM + pluggable auth):
+Wiring overview:
 
   1. ``create_mcp_server`` builds the singleton ``FastMCP`` with
      ``stateless_http=True`` and DNS-rebinding protection off (the
@@ -22,7 +21,7 @@ Access's sync ORM + pluggable auth):
 
 The FastAPI app-wide ``Depends(require_authenticated)`` does NOT
 propagate into a Starlette ``Route`` mounted this way, so the MCP path
-runs in its own auth/authz lane. That's correct: AuthN is the
+runs in its own auth/authz lane. AuthN is the
 ``mcp_resolve_identity`` chain; AuthZ is re-checked per tool against the
 existing bare predicates in ``api.auth.permissions``.
 """
@@ -41,6 +40,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.mcp.auth import (
     MCPIdentity,
@@ -73,14 +73,22 @@ def create_mcp_server() -> FastMCP:
     from api.mcp.prompts import ACCESS_MCP_INSTRUCTIONS, register_prompts
     from api.mcp.tools import register_tools
 
+    # DNS-rebinding protection is driven by ``settings.MCP_ALLOWED_HOSTS``.
+    # Empty (default) → protection OFF; structural defenses (auth
+    # middleware, CORS, no browser MCP client) carry the threat model
+    # for prod deployments behind a reverse proxy that rewrites Host.
+    # Non-empty → protection ON, with the configured hosts as the
+    # allowlist (operators set this for defense-in-depth or for local
+    # dev with a browser open).
+    allowed_hosts = [h.strip() for h in (settings.MCP_ALLOWED_HOSTS or "").split(",") if h.strip()]
     mcp = FastMCP(
         "Access",
         instructions=ACCESS_MCP_INSTRUCTIONS,
         stateless_http=True,
-        # The deployment edge handles DNS rebinding — Cloudflare for
-        # Discord, the operator's proxy elsewhere. Leaving it on would
-        # block legitimate same-origin proxying setups.
-        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=bool(allowed_hosts),
+            allowed_hosts=allowed_hosts,
+        ),
     )
 
     register_tools(mcp)
@@ -108,8 +116,8 @@ def get_mcp_route() -> Route:
     exposes; ``Route`` registers it as a normal Starlette route so the
     request actually traverses the outer middleware stack (RequestId,
     CacheControl, etc.) on the way in and out. A ``Mount`` would require
-    ``/mcp/`` and 405 on bare-``/mcp`` POSTs (per Sirius's experience),
-    which is what some MCP clients send.
+    ``/mcp/`` and 405 on bare-``/mcp`` POSTs, which is what some MCP
+    clients send.
     """
     mcp = get_mcp_server()
     # Force creation of the session manager — ``streamable_http_app``
