@@ -251,6 +251,7 @@ The `.env.production` file is where you configure the application.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
 - `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
 - `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
+- `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -398,34 +399,17 @@ Scopes attenuate — they never grant. A token with `create_requests` still cann
 
 ### Authentication
 
-MCP auth is pluggable via the same [pluggy](https://pluggy.readthedocs.io/en/latest/) framework Access uses for notifications and conditional access. The shipped default is the Cloudflare Access provider: it accepts the JWT in `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, and reuses the existing `verify_cloudflare_token` helper. The default opts itself out automatically when `CLOUDFLARE_TEAM_DOMAIN` is unset, so a non-CF deployment can register its own provider without fighting the default.
+MCP ships with two built-in auth providers: **Cloudflare Access** and **OIDC**. Each opts in automatically when its config is set. They are mutually exclusive for the MCP surface — the app refuses to start if both `CLOUDFLARE_TEAM_DOMAIN` and `OIDC_SERVER_METADATA_URL` are configured with `ENABLE_MCP=true`.
 
-Cloudflare deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
+Both providers do **credential verification** only. They assume the OAuth/OIDC flow (if any) runs in front of Access — typically a Cloudflare-Access-style proxy or an MCP client that has already obtained a bearer token from your IdP. Access itself does not host `/authorize`, `/token`, dynamic client registration, or callback endpoints.
 
-The hookspec is **credential verification** only — it expects the OAuth/OIDC flow (if any) to run in front of Access, typically via an OIDC proxy that completes the dance with the upstream IdP and injects a verified header into the request. Hosting `/authorize`, `/token`, dynamic client registration, or callback handling is out of scope for v1; an operator who wants Access itself to be the authorization server would need to add their own router for those endpoints alongside their `mcp_resolve_identity` impl.
+**Cloudflare Access.** Activates when `CLOUDFLARE_TEAM_DOMAIN` is set. Reads the CF-issued JWT from `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, verifies it via `verify_cloudflare_token`, and resolves the `email` claim to an `OktaUser`. CF deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
 
-To add a provider for a different auth model (OIDC, mTLS, custom JWT issuer, …), implement the `mcp_resolve_identity` hookspec ([`api/plugins/mcp_auth.py`](api/plugins/mcp_auth.py)) in your own plugin package and register it under the `access_mcp_auth` setuptools entry point:
+**OIDC.** Activates when `OIDC_SERVER_METADATA_URL` is set. Reads an OIDC bearer token from `Authorization: Bearer`, fetches the IdP's JWKS via the discovery document, and verifies signature, `iss`, `exp`, and `aud` against `OIDC_MCP_AUDIENCE`. `OIDC_MCP_AUDIENCE` is **required** when OIDC is enabled — skipping audience validation would let a token issued for another resource server authenticate to Access MCP. The MCP OIDC integration is intentionally different from the REST OIDC integration: REST uses a browser session-cookie flow (`api/auth/oidc.py`), MCP uses bearer-token verification (`api/mcp/auth/oidc.py`), because MCP clients aren't browsers and the MCP OAuth spec uses bearer tokens.
 
-```python
-# my_plugin/mcp_auth.py
-from api.plugins.mcp_auth import hookimpl
-from api.mcp.auth import MCPIdentity
+For local development there's also a dev provider that activates when `ENV` is `development` or `test`. It resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set, so you can exercise tools locally without faking a token.
 
-@hookimpl
-def mcp_resolve_identity(scope):
-    # Inspect the ASGI scope, verify the credential, resolve to an OktaUser.
-    # Return MCPIdentity(user_id=..., scopes=frozenset({...})) on success,
-    # or None to defer to the next registered provider.
-    ...
-```
-
-```toml
-# my_plugin/pyproject.toml
-[project.entry-points.access_mcp_auth]
-my_provider = "my_plugin.mcp_auth"
-```
-
-Providers run in registration order; the first non-`None` result wins. Return `None` (don't raise) to defer. The ASGI middleware emits `401 + WWW-Authenticate: Bearer realm="access"` when every provider declines.
+When every provider defers (no credential present, or the credential is invalid), the MCP middleware emits `401 + WWW-Authenticate: Bearer realm="access"`.
 
 ### Audit logging
 

@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     OIDC_OVERWRITE_REDIRECT_URI: Optional[str] = None
     OIDC_SCOPES: str = "openid email"
     OIDC_SERVER_METADATA_URL: Optional[str] = None
+    # Required `aud` claim for MCP-bound OIDC bearer tokens. When the OIDC
+    # provider is active for MCP (``OIDC_SERVER_METADATA_URL`` set and
+    # ``ENABLE_MCP=true``), every incoming token's ``aud`` claim must match
+    # this value or the request is rejected. Required because skipping
+    # ``aud`` validation lets a token issued for a different resource
+    # server authenticate to Access MCP (the classic confused-deputy /
+    # token-confusion attack). Typically the OAuth client identifier for
+    # the MCP application registered with the IdP, e.g. ``access-mcp``.
+    OIDC_MCP_AUDIENCE: Optional[str] = None
 
     # Session
     SECRET_KEY: Optional[str] = Field(default_factory=_read_secret_key)
@@ -157,7 +166,39 @@ def _build_settings() -> Settings:
         parsed = _parse_oidc_client_secrets(s.OIDC_CLIENT_SECRETS)
         # Reassign through __setattr__; Pydantic v2 settings allow mutation
         s.OIDC_CLIENT_SECRETS = parsed
+    _validate_mcp_auth_settings(s)
     return s
+
+
+def _validate_mcp_auth_settings(s: Settings) -> None:
+    """Fail-closed guards on the MCP auth configuration.
+
+    Only fires when ``ENABLE_MCP=true``. Two rules:
+
+      1. ``CLOUDFLARE_TEAM_DOMAIN`` and ``OIDC_SERVER_METADATA_URL`` are
+         mutually exclusive for MCP. The middleware runs the providers
+         in order and the first one to succeed wins, but configuring
+         both is almost always a mistake — pick one auth model for the
+         MCP surface and stick with it.
+      2. The OIDC provider requires ``OIDC_MCP_AUDIENCE``. Skipping
+         audience validation lets a token issued for a different
+         resource server authenticate to Access MCP, which is the
+         classic OAuth confused-deputy attack.
+    """
+    if not s.ENABLE_MCP:
+        return
+    cf = bool(s.CLOUDFLARE_TEAM_DOMAIN)
+    oidc = bool(s.OIDC_SERVER_METADATA_URL)
+    if cf and oidc:
+        raise ValueError(
+            "ENABLE_MCP=true with both CLOUDFLARE_TEAM_DOMAIN and "
+            "OIDC_SERVER_METADATA_URL set: pick one auth model for /mcp"
+        )
+    if oidc and not s.OIDC_MCP_AUDIENCE:
+        raise ValueError(
+            "ENABLE_MCP=true with OIDC_SERVER_METADATA_URL set requires "
+            "OIDC_MCP_AUDIENCE to validate the token's `aud` claim"
+        )
 
 
 def assert_env_explicitly_set() -> None:

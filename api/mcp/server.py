@@ -9,21 +9,22 @@ Wiring overview:
   2. ``get_mcp_route`` returns a Starlette ``Route`` (not a ``Mount``)
      bound at ``/mcp`` so requests without a trailing slash work — some
      MCP clients POST to ``/mcp`` bare and ``Mount`` 405s on that path.
-  3. ``MCPAuthMiddleware`` is an ASGI middleware that runs the pluggy
-     ``mcp_resolve_identity`` hook, takes the first non-None result,
-     binds it to the per-request ContextVar in ``api.mcp.auth``, and
-     swaps the active ``RequestContext`` for one tagged
-     ``source="mcp"`` so the audit log can distinguish MCP-driven
-     entries. Returns 401 when every provider returns None.
+  3. ``MCPAuthMiddleware`` is an ASGI middleware that calls each of the
+     built-in providers in ``api.mcp.auth`` (dev → cloudflare → oidc) in
+     order, takes the first non-None ``MCPIdentity``, binds it to the
+     per-request ContextVar in ``api.mcp.auth``, and swaps the active
+     ``RequestContext`` for one tagged ``source="mcp"`` so the audit
+     log can distinguish MCP-driven entries. Returns 401 when every
+     provider returns None.
   4. ``mcp_lifespan`` is an async context manager that the FastAPI app
      enters during its lifespan so the FastMCP session manager's task
      group is alive while requests are served.
 
 The FastAPI app-wide ``Depends(require_authenticated)`` does NOT
 propagate into a Starlette ``Route`` mounted this way, so the MCP path
-runs in its own auth/authz lane. AuthN is the
-``mcp_resolve_identity`` chain; AuthZ is re-checked per tool against the
-existing bare predicates in ``api.auth.permissions``.
+runs in its own auth/authz lane. AuthN is the built-in provider chain;
+AuthZ is re-checked per tool against the existing bare predicates in
+``api.auth.permissions``.
 """
 
 from __future__ import annotations
@@ -47,7 +48,9 @@ from api.mcp.auth import (
     reset_mcp_identity,
     set_mcp_identity,
 )
-from api.plugins.mcp_auth import get_mcp_auth_hook
+from api.mcp.auth import cloudflare as cloudflare_provider
+from api.mcp.auth import dev as dev_provider
+from api.mcp.auth import oidc as oidc_provider
 
 logger = logging.getLogger(__name__)
 
@@ -223,18 +226,23 @@ class MCPAuthMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Run the pluggy hook chain. ``firstresult=True`` means we get
-        # the first non-None identity back, or None if every registered
-        # provider deferred.
-        try:
-            identity: Optional[MCPIdentity] = get_mcp_auth_hook().mcp_resolve_identity(scope=scope)
-        except Exception:
-            # Pluggy implementations should not raise — they should
-            # return None on missing credentials. A raised exception is
-            # a provider bug; log it and treat as 401 so the request
-            # doesn't proceed unauthenticated.
-            logger.exception("MCP auth provider raised; treating as unauthenticated")
-            identity = None
+        # Try each built-in provider in order. First non-None identity
+        # wins. The dev provider gates on ENV={development,test}; the CF
+        # and OIDC providers are mutually exclusive in production (the
+        # config validator in api/config.py rejects setups that
+        # configure both).
+        identity: Optional[MCPIdentity] = None
+        for provider in (dev_provider, cloudflare_provider, oidc_provider):
+            try:
+                identity = provider.resolve_identity(scope)
+            except Exception:
+                # Providers shouldn't raise — they return None on
+                # missing or invalid credentials. A raised exception is
+                # a provider bug; log it and continue down the chain.
+                logger.exception("MCP auth provider %s raised; continuing", provider.__name__)
+                continue
+            if identity is not None:
+                break
 
         if identity is None:
             await _send_401(send, scope)

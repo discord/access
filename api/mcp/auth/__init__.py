@@ -1,12 +1,13 @@
 """Identity types and helpers for the MCP auth layer.
 
-The pluggy hookspec lives in ``api/plugins/mcp_auth.py``; concrete
-implementations live alongside it in this package (the Cloudflare default
-in ``cloudflare.py``). The ASGI auth middleware in ``api.mcp.server``
-runs the hookcall, stores the resolved ``MCPIdentity`` on
-``scope["state"]``, and propagates it to the per-tool helpers below via a
-``ContextVar`` so handlers don't have to thread the Starlette request
-through every call.
+Two built-in providers live alongside this module: ``cloudflare.py``
+(Cloudflare Access JWT verification) and ``oidc.py`` (OIDC bearer-token
+verification). ``dev.py`` is the local-dev shortcut. The ASGI auth
+middleware in ``api.mcp.server`` calls each provider in order, stores
+the resolved ``MCPIdentity`` on a ``ContextVar``, and the per-tool
+helpers below read it. CF and OIDC are mutually exclusive — the config
+validator in ``api/config.py`` rejects setups that configure both for
+the MCP surface.
 
 Tool handlers should call these helpers rather than reaching into
 ``request.state`` directly — that keeps tool code working when invoked

@@ -2,7 +2,8 @@
 
 Covers the seams that aren't exercised by the REST test suite:
 
-  - Pluggy ``mcp_resolve_identity`` firstresult semantics.
+  - Provider-chain semantics: the middleware tries dev → cloudflare →
+    oidc, and the first non-None ``MCPIdentity`` wins.
   - ``MCPAuthMiddleware`` 401 path when every provider defers.
   - ``require_scope`` enforcement on a representative read tool and on
     the only v1 write tool.
@@ -20,9 +21,8 @@ exact code path FastMCP would take, minus the JSON-RPC framing.
 from __future__ import annotations
 
 import json
-from typing import Any, Generator
+from typing import Any, Generator, Optional
 
-import pluggy
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -39,7 +39,6 @@ from api.mcp.auth import (
 )
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers
-from api.plugins import mcp_auth as mcp_auth_plugin
 from tests.factories import RoleGroupFactory
 
 
@@ -60,36 +59,28 @@ def with_mcp_enabled() -> Generator[None, None, None]:
 
 
 @pytest.fixture
-def override_mcp_auth(with_mcp_enabled: None) -> Generator[Any, None, None]:
-    """Replace the cached pluggy hook with one whose sole provider
-    returns whatever the test wants. Returns a setter that the test
-    uses to declare what ``mcp_resolve_identity`` should produce.
+def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -> Generator[Any, None, None]:
+    """Stub every built-in provider so the middleware sees exactly what
+    the test sets. Returns a setter — tests call it with an
+    ``MCPIdentity`` (or ``None`` to simulate the 401 path).
     """
-    # Build a one-off PluginManager so we don't trample the module-cached
-    # hook used by an actual deploy.
-    prev_cached = mcp_auth_plugin._cached_mcp_auth_hook
+    holder: dict[str, Optional[MCPIdentity]] = {"identity": None}
 
-    holder: dict[str, Any] = {"identity": None}
+    def _stub(_scope: Any) -> Optional[MCPIdentity]:
+        return holder["identity"]
 
-    class _StubProvider:
-        plugin_name = "mcp-test-provider"
+    # Patch all three providers as the middleware imports them. Any of
+    # them returning identity is enough; patching all three keeps the
+    # test independent of which provider's gating condition would
+    # normally fire under ENV=test.
+    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", _stub)
+    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", _stub)
+    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", _stub)
 
-        @mcp_auth_plugin.hookimpl
-        def mcp_resolve_identity(self, scope: Any) -> Any:
-            return holder["identity"]
-
-    pm = pluggy.PluginManager(mcp_auth_plugin.mcp_auth_plugin_name)
-    pm.add_hookspecs(mcp_auth_plugin.MCPAuthPluginSpec)
-    pm.register(_StubProvider())
-    mcp_auth_plugin._cached_mcp_auth_hook = pm.hook
-
-    def _set(identity: Any) -> None:
+    def _set(identity: Optional[MCPIdentity]) -> None:
         holder["identity"] = identity
 
-    try:
-        yield _set
-    finally:
-        mcp_auth_plugin._cached_mcp_auth_hook = prev_cached
+    yield _set
 
 
 def test_mcp_route_absent_when_disabled(app: FastAPI) -> None:
@@ -145,35 +136,66 @@ def test_authenticated_request_proceeds_past_middleware(
         assert r.status_code != 401, f"Auth gate rejected a valid identity: {r.status_code} {r.text}"
 
 
-def test_firstresult_wins_in_plugin_chain(with_mcp_enabled: None) -> None:
-    """Multiple registered providers: the first non-None wins. Mirrors
-    how an operator-supplied OIDC provider would coexist with the
-    default Cloudflare one — only one identity survives."""
-    pm = pluggy.PluginManager(mcp_auth_plugin.mcp_auth_plugin_name)
-    pm.add_hookspecs(mcp_auth_plugin.MCPAuthPluginSpec)
+def test_provider_chain_first_non_none_wins(
+    with_mcp_enabled: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The middleware walks dev → cloudflare → oidc in that order and
+    takes the first non-None identity. Exercises the chain logic
+    directly against ``MCPAuthMiddleware`` rather than a TestClient so
+    each iteration is independent of FastMCP's session-manager lifecycle
+    (which can only ``.run()`` once per instance).
+    """
+    dev_id = MCPIdentity(user_id="dev-user", scopes=ALL_V1_SCOPES)
+    cf_id = MCPIdentity(user_id="cf-user", scopes=ALL_V1_SCOPES)
+    oidc_id = MCPIdentity(user_id="oidc-user", scopes=ALL_V1_SCOPES)
 
-    class _Defers:
-        @mcp_auth_plugin.hookimpl
-        def mcp_resolve_identity(self, scope: Any) -> Any:
-            return None
+    captured: dict[str, Any] = {}
 
-    class _Wins:
-        @mcp_auth_plugin.hookimpl
-        def mcp_resolve_identity(self, scope: Any) -> Any:
-            return MCPIdentity(user_id="winning-user", scopes=frozenset({MCP_SCOPE_READ_ALL}))
+    async def _inner_app(_scope: Any, _recv: Any, _send: Any) -> None:
+        # The middleware sets the identity ContextVar before delegating
+        # — capture it here so the test can assert which provider's
+        # result won.
+        from api.mcp.auth import get_mcp_identity
 
-    class _Late:
-        @mcp_auth_plugin.hookimpl
-        def mcp_resolve_identity(self, scope: Any) -> Any:
-            return MCPIdentity(user_id="late-user", scopes=ALL_V1_SCOPES)
+        captured["identity"] = get_mcp_identity()
 
-    # Registration order matters for firstresult: pluggy iterates in
-    # reverse-registration order (most recently registered first).
-    pm.register(_Late())
-    pm.register(_Wins())
-    pm.register(_Defers())
-    identity = pm.hook.mcp_resolve_identity(scope={})
-    assert identity.user_id == "winning-user"
+    from api.mcp.server import MCPAuthMiddleware
+
+    middleware = MCPAuthMiddleware(_inner_app)
+
+    async def _async_send(_msg: Any) -> None:
+        return None
+
+    async def _async_receive() -> Any:
+        return {"type": "http.request"}
+
+    async def _run() -> Optional[MCPIdentity]:
+        captured.clear()
+        await middleware({"type": "http", "path": "/mcp", "headers": []}, _async_receive, _async_send)
+        return captured.get("identity")
+
+    import asyncio
+
+    # Dev wins outright; CF and OIDC don't get called.
+    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", lambda _s: dev_id)
+    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", lambda _s: cf_id)
+    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", lambda _s: oidc_id)
+    assert asyncio.run(_run()) == dev_id
+
+    # Dev defers → CF wins; OIDC doesn't get called.
+    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", lambda _s: None)
+    assert asyncio.run(_run()) == cf_id
+
+    # Dev + CF defer → OIDC wins.
+    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", lambda _s: None)
+    assert asyncio.run(_run()) == oidc_id
+
+    # All defer → identity remains None (the middleware short-circuits
+    # with 401 in that case; the inner app is not called, so 'identity'
+    # is missing from captured rather than set to None).
+    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", lambda _s: None)
+    assert asyncio.run(_run()) is None
 
 
 def _call_tool(mcp_server: Any, tool_name: str, **kwargs: Any) -> str:
@@ -291,7 +313,7 @@ def test_cloudflare_fallback_read_only_opt_in(
     # Operator-pinned read-only fallback.
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "read_all")
 
-    from api.mcp.auth.cloudflare import mcp_resolve_identity
+    from api.mcp.auth.cloudflare import resolve_identity
 
     # Bypass JWT verification + fake a CF-Access-Jwt-Assertion header.
     monkeypatch.setattr(
@@ -301,7 +323,7 @@ def test_cloudflare_fallback_read_only_opt_in(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = mcp_resolve_identity(scope=scope)
+    identity = resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL})
     # Critical: writes are NOT in this read-only fallback.
@@ -322,7 +344,7 @@ def test_cloudflare_fallback_honours_operator_config(
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "read_all,create_requests")
 
-    from api.mcp.auth.cloudflare import mcp_resolve_identity
+    from api.mcp.auth.cloudflare import resolve_identity
 
     monkeypatch.setattr(
         "api.mcp.auth.cloudflare.verify_cloudflare_token",
@@ -331,7 +353,7 @@ def test_cloudflare_fallback_honours_operator_config(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = mcp_resolve_identity(scope=scope)
+    identity = resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS})
 
@@ -351,7 +373,7 @@ def test_cloudflare_fallback_empty_string_fails_closed(
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "")
 
-    from api.mcp.auth.cloudflare import mcp_resolve_identity
+    from api.mcp.auth.cloudflare import resolve_identity
 
     monkeypatch.setattr(
         "api.mcp.auth.cloudflare.verify_cloudflare_token",
@@ -360,7 +382,7 @@ def test_cloudflare_fallback_empty_string_fails_closed(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = mcp_resolve_identity(scope=scope)
+    identity = resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset()
 
@@ -381,7 +403,7 @@ def test_cloudflare_explicit_scope_claim_overrides_fallback(
     # Permissive fallback — but the token's explicit scope should win.
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "read_all,create_requests")
 
-    from api.mcp.auth.cloudflare import mcp_resolve_identity
+    from api.mcp.auth.cloudflare import resolve_identity
 
     monkeypatch.setattr(
         "api.mcp.auth.cloudflare.verify_cloudflare_token",
@@ -390,7 +412,7 @@ def test_cloudflare_explicit_scope_claim_overrides_fallback(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = mcp_resolve_identity(scope=scope)
+    identity = resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL})
     assert MCP_SCOPE_CREATE_REQUESTS not in identity.scopes
@@ -408,9 +430,9 @@ def test_dev_provider_resolves_in_development(
 
     monkeypatch.setattr(settings, "ENV", "development")
 
-    from api.mcp.auth.dev import mcp_resolve_identity
+    from api.mcp.auth.dev import resolve_identity
 
-    identity = mcp_resolve_identity(scope={"headers": []})
+    identity = resolve_identity(scope={"headers": []})
     assert identity is not None
     assert identity.user_id == admin.id
     assert identity.scopes == ALL_V1_SCOPES
@@ -420,13 +442,185 @@ def test_dev_provider_defers_outside_dev_or_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """In any production-style ENV, the dev provider returns None so the
-    CF (or operator-supplied) provider gets a chance. Registering the
-    dev provider unconditionally is therefore safe."""
+    CF or OIDC provider gets a chance. The dev provider is safe to call
+    unconditionally because of this guard."""
     monkeypatch.setattr(settings, "ENV", "production")
 
-    from api.mcp.auth.dev import mcp_resolve_identity
+    from api.mcp.auth.dev import resolve_identity
 
-    assert mcp_resolve_identity(scope={"headers": []}) is None
+    assert resolve_identity(scope={"headers": []}) is None
+
+
+def test_oidc_provider_defers_when_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without OIDC_SERVER_METADATA_URL, the OIDC provider returns None
+    immediately so it doesn't fight a CF deployment."""
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", None)
+    from api.mcp.auth.oidc import resolve_identity
+
+    assert resolve_identity(scope={"headers": []}) is None
+
+
+def test_oidc_provider_defers_when_no_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OIDC configured but no Authorization header → defer (None)."""
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(settings, "OIDC_MCP_AUDIENCE", "access-mcp")
+    from api.mcp.auth.oidc import resolve_identity
+
+    assert resolve_identity(scope={"headers": []}) is None
+    # Also: a non-bearer Authorization header → still defer.
+    assert resolve_identity(scope={"headers": [(b"authorization", b"Basic abc")]}) is None
+
+
+def test_oidc_provider_resolves_valid_token(
+    db: Db,
+    user: OktaUser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Happy path: a verified token's email claim resolves to an
+    OktaUser; the token's scope claim becomes the identity's scopes."""
+    db.session.add(user)
+    db.session.commit()
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(settings, "OIDC_MCP_AUDIENCE", "access-mcp")
+
+    from api.mcp.auth import oidc as oidc_provider
+
+    # Bypass the JWKS fetch + JWT verification — we're testing the
+    # post-verify resolution, not crypto.
+    monkeypatch.setattr(
+        oidc_provider,
+        "_get_metadata_and_jwks",
+        lambda: (
+            {"issuer": "https://idp.example", "jwks_uri": "x", "id_token_signing_alg_values_supported": ["RS256"]},
+            None,
+        ),
+    )
+
+    class _Key:
+        key = "fake-key"
+
+    class _StubJWKS:
+        def get_signing_key_from_jwt(self, _token: str) -> Any:
+            return _Key()
+
+    # Patch the JWKS client so signing-key lookup doesn't hit the network.
+    monkeypatch.setattr(
+        oidc_provider,
+        "_get_metadata_and_jwks",
+        lambda: (
+            {"issuer": "https://idp.example", "jwks_uri": "x", "id_token_signing_alg_values_supported": ["RS256"]},
+            _StubJWKS(),
+        ),
+    )
+
+    import jwt as _jwt
+
+    monkeypatch.setattr(
+        _jwt,
+        "decode",
+        lambda *args, **kwargs: {"email": user.email, "scope": "read_all create_requests"},
+    )
+
+    scope: dict[str, Any] = {
+        "headers": [(b"authorization", b"Bearer any-token")],
+    }
+    identity = oidc_provider.resolve_identity(scope=scope)
+    assert identity is not None
+    assert identity.user_id == user.id
+    assert identity.scopes == ALL_V1_SCOPES
+
+
+def test_oidc_provider_rejects_invalid_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A token that fails verification → defer (None), no raise."""
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(settings, "OIDC_MCP_AUDIENCE", "access-mcp")
+
+    from api.mcp.auth import oidc as oidc_provider
+
+    class _Key:
+        key = "fake-key"
+
+    class _StubJWKS:
+        def get_signing_key_from_jwt(self, _token: str) -> Any:
+            return _Key()
+
+    monkeypatch.setattr(
+        oidc_provider,
+        "_get_metadata_and_jwks",
+        lambda: (
+            {"issuer": "https://idp.example", "jwks_uri": "x", "id_token_signing_alg_values_supported": ["RS256"]},
+            _StubJWKS(),
+        ),
+    )
+
+    import jwt as _jwt
+
+    def _raise(*_a: Any, **_k: Any) -> Any:
+        raise _jwt.InvalidAudienceError("audience mismatch")
+
+    monkeypatch.setattr(_jwt, "decode", _raise)
+
+    scope: dict[str, Any] = {
+        "headers": [(b"authorization", b"Bearer any-token")],
+    }
+    assert oidc_provider.resolve_identity(scope=scope) is None
+
+
+def test_config_validation_rejects_both_cf_and_oidc(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ENABLE_MCP with both CLOUDFLARE_TEAM_DOMAIN and
+    OIDC_SERVER_METADATA_URL set is a configuration mistake — pick
+    one auth model for /mcp."""
+    from api.config import Settings, _validate_mcp_auth_settings
+
+    s = Settings()
+    monkeypatch.setattr(s, "ENABLE_MCP", True)
+    monkeypatch.setattr(s, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
+    monkeypatch.setattr(s, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(s, "OIDC_MCP_AUDIENCE", "access-mcp")
+    with pytest.raises(ValueError, match="pick one"):
+        _validate_mcp_auth_settings(s)
+
+
+def test_config_validation_requires_oidc_audience(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ENABLE_MCP with OIDC_SERVER_METADATA_URL but no OIDC_MCP_AUDIENCE
+    is rejected at startup — skipping aud validation is a confused-deputy
+    foot-gun."""
+    from api.config import Settings, _validate_mcp_auth_settings
+
+    s = Settings()
+    monkeypatch.setattr(s, "ENABLE_MCP", True)
+    monkeypatch.setattr(s, "CLOUDFLARE_TEAM_DOMAIN", None)
+    monkeypatch.setattr(s, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(s, "OIDC_MCP_AUDIENCE", None)
+    with pytest.raises(ValueError, match="OIDC_MCP_AUDIENCE"):
+        _validate_mcp_auth_settings(s)
+
+
+def test_config_validation_no_op_when_mcp_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ENABLE_MCP=false, the MCP auth validators don't fire — an
+    operator running plain REST under both CF and OIDC for their REST
+    surface is fine, only the MCP path imposes the mutual-exclusion."""
+    from api.config import Settings, _validate_mcp_auth_settings
+
+    s = Settings()
+    monkeypatch.setattr(s, "ENABLE_MCP", False)
+    monkeypatch.setattr(s, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
+    monkeypatch.setattr(s, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    monkeypatch.setattr(s, "OIDC_MCP_AUDIENCE", None)
+    # Should not raise.
+    _validate_mcp_auth_settings(s)
 
 
 def test_create_role_request_denies_non_owner(

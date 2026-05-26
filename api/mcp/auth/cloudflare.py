@@ -1,12 +1,9 @@
-"""Default Cloudflare-Access MCP auth provider.
+"""Cloudflare-Access MCP auth provider.
 
-This is the shipped default. It opts in automatically when the operator
-has configured Cloudflare Access (``settings.CLOUDFLARE_TEAM_DOMAIN``);
-otherwise it returns ``None`` so the next registered provider can run.
-A non-Cloudflare deployment that wants MCP support implements its own
-``mcp_resolve_identity`` hookimpl and registers it via the
-``access_mcp_auth`` setuptools entry-point — see
-``api/plugins/mcp_auth.py``.
+One of two built-in MCP auth providers (the other is OIDC in
+``oidc.py``). Activates when the operator has configured Cloudflare
+Access (``settings.CLOUDFLARE_TEAM_DOMAIN``); otherwise it returns
+``None`` and the middleware tries the next provider.
 
 JWT extraction:
 
@@ -56,7 +53,6 @@ from api.config import settings
 from api.extensions import db as _db_shim
 from api.mcp.auth import MCPIdentity
 from api.models import OktaUser
-from api.plugins.mcp_auth import hookimpl
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +109,8 @@ def _parse_scopes(claim: object) -> frozenset[str]:
     return frozenset()
 
 
-@hookimpl
-def mcp_resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
-    """Default Cloudflare ``mcp_resolve_identity`` implementation.
+def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+    """Resolve an ``MCPIdentity`` from a Cloudflare Access JWT.
 
     Returns ``None`` (defers to the next provider) when:
       - Cloudflare Access isn't configured on this deployment, OR
