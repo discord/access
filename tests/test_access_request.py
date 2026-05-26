@@ -90,7 +90,7 @@ def test_get_access_request(
     assert data["request_reason"] == okta_group_access_request.request_reason
     assert data["request_ownership"] == okta_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -128,7 +128,7 @@ def test_get_access_request(
     assert data["request_reason"] == role_group_access_request.request_reason
     assert data["request_ownership"] == role_group_access_request.request_ownership
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
@@ -193,7 +193,7 @@ def test_put_access_request(
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     data = rep.json()
     assert data["requester"]["email"] == user.email
@@ -205,7 +205,7 @@ def test_put_access_request(
     assert data["resolver"]["email"] == access_owner.email
     assert data["resolution_reason"] == access_request.resolution_reason
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
     access_request2 = CreateAccessRequest(
         requester_user=user,
@@ -226,7 +226,7 @@ def test_put_access_request(
     assert add_user_to_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     data = rep.json()
     assert data["requester"]["email"] == user.email
@@ -238,7 +238,7 @@ def test_put_access_request(
     assert data["resolver"]["email"] == access_owner.email
     assert data["resolution_reason"] == access_request.resolution_reason
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
 
 def test_put_access_request_by_non_owner(
@@ -251,7 +251,7 @@ def test_put_access_request_by_non_owner(
     db.session.commit()
 
     access_request_by_owner = CreateAccessRequest(
-        requester_user=OktaUser.query.filter(OktaUser.email == access_owner).first(),
+        requester_user=db.session.query(OktaUser).filter(OktaUser.email == access_owner).first(),
         requested_group=okta_group,
         request_ownership=False,
         request_reason="test reason",
@@ -266,7 +266,7 @@ def test_put_access_request_by_non_owner(
 
     db.session.commit()
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     assert access_request_by_owner is not None
     assert access_request_by_owner.status == AccessRequestStatus.PENDING
@@ -287,7 +287,7 @@ def test_put_access_request_by_non_owner(
     assert access_request_by_non_owner.resolved_at is None
     assert access_request_by_non_owner.resolver_user_id is None
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     data = {"approved": False, "reason": "test rejection"}
 
@@ -298,7 +298,7 @@ def test_put_access_request_by_non_owner(
     assert access_request_by_non_owner.resolved_at is None
     assert access_request_by_non_owner.resolver_user_id is None
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     access_request_url = url_for(
         "api-access-requests.access_request_by_id", access_request_id=access_request_by_non_owner.id
@@ -312,7 +312,7 @@ def test_put_access_request_by_non_owner(
     assert access_request_by_non_owner.resolved_at is None
     assert access_request_by_non_owner.resolver_user_id is None
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     data = {"approved": False, "reason": "test rejection"}
 
@@ -331,7 +331,7 @@ def test_put_access_request_by_non_owner(
     assert access_request_by_non_owner.resolved_at is not None
     assert access_request_by_non_owner.resolver_user_id == user.id
 
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
 
 def test_create_access_request(app: FastAPI, client: TestClient, db: Db, okta_group: OktaGroup, url_for: Any) -> None:
@@ -355,7 +355,7 @@ def test_create_access_request(app: FastAPI, client: TestClient, db: Db, okta_gr
 
     data = rep.json()
     access_request = db.session.get(AccessRequest, data["id"])
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     assert data["requester"]["email"] == access_owner.email
     assert data["requested_group"]["name"] == okta_group.name
@@ -445,7 +445,7 @@ def test_create_access_request_notification(
     assert access_request is not None
     assert request_created_notification_spy.call_count == 1
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
@@ -517,7 +517,7 @@ def test_create_app_access_request_notification(
     assert kwargs["group"] == app_group
     assert kwargs["requester"] == user
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     ApproveAccessRequest(access_request=access_request, approver_user=access_owner).execute()
 
@@ -546,7 +546,7 @@ def test_create_app_access_request_notification(
 
 
 def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture, db: Db) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     users = OktaUserFactory.build_batch(3)
     db.session.add_all(users)
@@ -578,7 +578,7 @@ def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFixture,
 def test_resolve_app_access_request_notification(
     app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
-    access_admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     app_owner_user1 = OktaUserFactory.build()
     app_owner_user2 = OktaUserFactory.build()

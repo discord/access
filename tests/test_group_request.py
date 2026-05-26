@@ -7,6 +7,7 @@ from okta.models import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from sqlalchemy import func, or_
 from api.config import settings
 from api.extensions import Db
 from api.models import (
@@ -266,7 +267,7 @@ def test_approve_group_request_creates_group(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -305,7 +306,8 @@ def test_approve_group_request_creates_group(
     assert created_group.description == "New group description"
 
     ownerships = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == created_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .all()
@@ -322,7 +324,7 @@ def test_approve_group_request_sets_owner_with_ending_time(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -359,7 +361,8 @@ def test_approve_group_request_sets_owner_with_ending_time(
 
     # Check that the requester is an owner with the correct ending time
     ownerships = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == created_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .all()
@@ -385,7 +388,7 @@ def test_approve_group_request_tag_limits_owner_ending_time(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -436,7 +439,8 @@ def test_approve_group_request_tag_limits_owner_ending_time(
 
     # Check that requester is an owner
     ownerships = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == created_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .all()
@@ -474,7 +478,7 @@ def test_approve_group_request_applies_tags(
     user: OktaUser,
     tag: Tag,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(tag)
@@ -513,12 +517,13 @@ def test_approve_group_request_applies_tags(
 
     # Check that the tag was applied
     tag_mappings = (
-        OktaGroupTagMap.query.filter(OktaGroupTagMap.group_id == created_group.id)
+        db.session.query(OktaGroupTagMap)
+        .filter(OktaGroupTagMap.group_id == created_group.id)
         .filter(OktaGroupTagMap.tag_id == tag.id)
         .filter(
-            db.or_(
+            or_(
                 OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > db.func.now(),
+                OktaGroupTagMap.ended_at > func.now(),
             )
         )
         .all()
@@ -534,7 +539,7 @@ def test_approve_group_request_sets_name(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.commit()
@@ -576,7 +581,7 @@ def test_approve_group_request_sets_type(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     app_obj = AppFactory.create()
 
     db.session.add(user)
@@ -875,7 +880,7 @@ def test_admin_can_reject_request(
     db: Db,
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     db.session.add(user)
     db.session.add(admin)
@@ -1008,7 +1013,7 @@ def test_approver_can_modify_group_details(
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     tag = TagFactory.create(enabled=True)
     other_tag = TagFactory.create(enabled=True)
 
@@ -1056,11 +1061,12 @@ def test_approver_can_modify_group_details(
 
     # Check tags
     tag_mappings = (
-        OktaGroupTagMap.query.filter(OktaGroupTagMap.group_id == created_group.id)
+        db.session.query(OktaGroupTagMap)
+        .filter(OktaGroupTagMap.group_id == created_group.id)
         .filter(
-            db.or_(
+            or_(
                 OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > db.func.now(),
+                OktaGroupTagMap.ended_at > func.now(),
             )
         )
         .all()
@@ -1155,7 +1161,7 @@ def test_cannot_approve_deleted_requester(
     assert group_request is not None
 
     # Delete the requester
-    user.deleted_at = db.func.now()
+    user.deleted_at = func.now()
     db.session.commit()
 
     # Try to approve
@@ -1240,7 +1246,8 @@ def test_app_owner_auto_approves_own_app_group_request(
 
     # Verify the requester (app owner) is set as the group owner
     ownerships = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == created_group.id)
         .filter(OktaUserGroupMember.user_id == app_owner.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .all()
@@ -1327,7 +1334,8 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
 
     # Verify the app owner is *not* set as the group owner due to tags (will own implicitly via app ownership)
     ownerships = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == created_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == created_group.id)
         .filter(OktaUserGroupMember.user_id == app_owner.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .all()
@@ -1338,12 +1346,13 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
     tag_mappings = {
         tag_map.tag_id
         for tag_map in (
-            OktaGroupTagMap.query.filter(OktaGroupTagMap.group_id == created_group.id)
+            db.session.query(OktaGroupTagMap)
+            .filter(OktaGroupTagMap.group_id == created_group.id)
             .filter(OktaGroupTagMap.tag_id == tag.id)
             .filter(
-                db.or_(
+                or_(
                     OktaGroupTagMap.ended_at.is_(None),
-                    OktaGroupTagMap.ended_at > db.func.now(),
+                    OktaGroupTagMap.ended_at > func.now(),
                 )
             )
             .all()
@@ -1461,7 +1470,8 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == sensitive_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == sensitive_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .filter(OktaUserGroupMember.ended_at.is_(None))
@@ -1533,7 +1543,8 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == existing_okta_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == existing_okta_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .filter(OktaUserGroupMember.ended_at.is_(None))
@@ -1605,7 +1616,8 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == existing_role_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == existing_role_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .filter(OktaUserGroupMember.ended_at.is_(None))
@@ -1678,7 +1690,8 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == sensitive_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == sensitive_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.is_owner.is_(True))
         .filter(OktaUserGroupMember.ended_at.is_(None))
@@ -1747,7 +1760,10 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     assert group_request.resolved_at is None
 
     assert (
-        OktaGroup.query.filter(OktaGroup.name == "App-Payments-Owners").filter(OktaGroup.deleted_at.is_(None)).first()
+        db.session.query(OktaGroup)
+        .filter(OktaGroup.name == "App-Payments-Owners")
+        .filter(OktaGroup.deleted_at.is_(None))
+        .first()
         is None
     )
 
@@ -1812,7 +1828,10 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
     assert group_request.resolved_at is None
 
     assert (
-        OktaGroup.query.filter(OktaGroup.name == "App-Payments-Owners").filter(OktaGroup.deleted_at.is_(None)).first()
+        db.session.query(OktaGroup)
+        .filter(OktaGroup.name == "App-Payments-Owners")
+        .filter(OktaGroup.deleted_at.is_(None))
+        .first()
         is None
     )
 
@@ -1878,7 +1897,10 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     assert group_request.resolved_at is None
 
     assert (
-        OktaGroup.query.filter(OktaGroup.name == "App-Payments-Members").filter(OktaGroup.deleted_at.is_(None)).first()
+        db.session.query(OktaGroup)
+        .filter(OktaGroup.name == "App-Payments-Members")
+        .filter(OktaGroup.deleted_at.is_(None))
+        .first()
         is None
     )
 
@@ -1947,7 +1969,8 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
     assert group_request.resolved_at is None
 
     assert (
-        OktaGroup.query.filter(OktaGroup.name == owners_group_name)
+        db.session.query(OktaGroup)
+        .filter(OktaGroup.name == owners_group_name)
         .filter(OktaGroup.deleted_at.is_(None))
         .filter(OktaGroup.id != owner_group.id)
         .first()

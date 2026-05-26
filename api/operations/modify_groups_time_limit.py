@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import func, or_
 from api.extensions import db
 from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import coalesce_constraints
@@ -9,19 +10,21 @@ class ModifyGroupsTimeLimit:
     def __init__(self, groups: list[str] | set[str], tags: list[str] | set[str]):
         # Only include groups that are managed
         self.groups = (
-            OktaGroup.query.filter(OktaGroup.id.in_(groups))
+            db.session.query(OktaGroup)
+            .filter(OktaGroup.id.in_(groups))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.is_managed.is_(True))
             .all()
         )
         self.role_groups = (
-            RoleGroup.query.filter(RoleGroup.id.in_(groups))
+            db.session.query(RoleGroup)
+            .filter(RoleGroup.id.in_(groups))
             .filter(RoleGroup.deleted_at.is_(None))
             .filter(RoleGroup.is_managed.is_(True))
             .all()
         )
 
-        self.tags = Tag.query.filter(Tag.id.in_(tags)).filter(Tag.deleted_at.is_(None)).all()
+        self.tags = db.session.query(Tag).filter(Tag.id.in_(tags)).filter(Tag.deleted_at.is_(None)).all()
 
     def execute(self) -> None:
         if len(self.groups) == 0:
@@ -34,10 +37,10 @@ class ModifyGroupsTimeLimit:
         if membership_seconds_limit is not None:
             membership_time_limit_from_now = datetime.now(UTC) + timedelta(seconds=membership_seconds_limit)
             # Reduce all user memberships for the given groups to minimum allowed time limit
-            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.in_([g.id for g in self.groups])).filter(
-                OktaUserGroupMember.is_owner.is_(False)
-            ).filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember).filter(
+                OktaUserGroupMember.group_id.in_([g.id for g in self.groups])
+            ).filter(OktaUserGroupMember.is_owner.is_(False)).filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > membership_time_limit_from_now,
                 )
@@ -46,10 +49,10 @@ class ModifyGroupsTimeLimit:
                 synchronize_session="fetch",
             )
             # Reduce all role memberships for the given groups to the minimum allowed time limit
-            RoleGroupMap.query.filter(RoleGroupMap.group_id.in_([g.id for g in self.groups])).filter(
+            db.session.query(RoleGroupMap).filter(RoleGroupMap.group_id.in_([g.id for g in self.groups])).filter(
                 RoleGroupMap.is_owner.is_(False)
             ).filter(
-                db.or_(
+                or_(
                     RoleGroupMap.ended_at.is_(None),
                     RoleGroupMap.ended_at > membership_time_limit_from_now,
                 )
@@ -60,20 +63,21 @@ class ModifyGroupsTimeLimit:
             # Reduce all user memberships for groups associated with any given role groups
             # to the minimum allowed time limit
             role_group_map_associations = (
-                RoleGroupMap.query.filter(RoleGroupMap.role_group_id.in_([g.id for g in self.role_groups]))
+                db.session.query(RoleGroupMap)
+                .filter(RoleGroupMap.role_group_id.in_([g.id for g in self.role_groups]))
                 .filter(RoleGroupMap.is_owner.is_(False))
                 .filter(
-                    db.or_(
+                    or_(
                         RoleGroupMap.ended_at.is_(None),
-                        RoleGroupMap.ended_at > db.func.now(),
+                        RoleGroupMap.ended_at > func.now(),
                     )
                 )
                 .all()
             )
-            OktaUserGroupMember.query.filter(
+            db.session.query(OktaUserGroupMember).filter(
                 OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_group_map_associations])
             ).filter(OktaUserGroupMember.is_owner.is_(False)).filter(
-                db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > membership_time_limit_from_now,
                 )
@@ -85,10 +89,10 @@ class ModifyGroupsTimeLimit:
         if ownership_seconds_limit is not None:
             ownership_time_limit_from_now = datetime.now(UTC) + timedelta(seconds=ownership_seconds_limit)
             # Reduce all user ownerships for the given groups to minimum allowed time limit
-            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id.in_([g.id for g in self.groups])).filter(
-                OktaUserGroupMember.is_owner.is_(True)
-            ).filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember).filter(
+                OktaUserGroupMember.group_id.in_([g.id for g in self.groups])
+            ).filter(OktaUserGroupMember.is_owner.is_(True)).filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > ownership_time_limit_from_now,
                 )
@@ -97,10 +101,10 @@ class ModifyGroupsTimeLimit:
                 synchronize_session="fetch",
             )
             # Reduce all role ownerships for the given groups to the minimum allowed time limit
-            RoleGroupMap.query.filter(RoleGroupMap.group_id.in_([g.id for g in self.groups])).filter(
+            db.session.query(RoleGroupMap).filter(RoleGroupMap.group_id.in_([g.id for g in self.groups])).filter(
                 RoleGroupMap.is_owner.is_(True)
             ).filter(
-                db.or_(
+                or_(
                     RoleGroupMap.ended_at.is_(None),
                     RoleGroupMap.ended_at > ownership_time_limit_from_now,
                 )
@@ -111,20 +115,21 @@ class ModifyGroupsTimeLimit:
             # Reduce all user ownerships for groups associated with any given role groups
             # to the minimum allowed time limit
             role_group_map_associations = (
-                RoleGroupMap.query.filter(RoleGroupMap.role_group_id.in_([g.id for g in self.role_groups]))
+                db.session.query(RoleGroupMap)
+                .filter(RoleGroupMap.role_group_id.in_([g.id for g in self.role_groups]))
                 .filter(RoleGroupMap.is_owner.is_(True))
                 .filter(
-                    db.or_(
+                    or_(
                         RoleGroupMap.ended_at.is_(None),
-                        RoleGroupMap.ended_at > db.func.now(),
+                        RoleGroupMap.ended_at > func.now(),
                     )
                 )
                 .all()
             )
-            OktaUserGroupMember.query.filter(
+            db.session.query(OktaUserGroupMember).filter(
                 OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_group_map_associations])
             ).filter(OktaUserGroupMember.is_owner.is_(True)).filter(
-                db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > membership_time_limit_from_now,
                 )

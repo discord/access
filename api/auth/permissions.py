@@ -11,13 +11,12 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth.dependencies import CurrentUserId
 from api.config import settings
 from api.database import DbSession
-from api.extensions import db as _db_shim
 from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember
 
 
@@ -30,7 +29,7 @@ def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()
@@ -69,7 +68,7 @@ def is_app_owner_group_owner(
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()
@@ -95,7 +94,7 @@ def is_access_admin(db: Session, current_user_id: str) -> bool:
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()

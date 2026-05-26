@@ -23,7 +23,7 @@ def test_get_user_at_me_includes_group_memberships(
     OktaUserDetail originally dropped these lists."""
     db.session.add(okta_group)
     db.session.commit()
-    access_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_user = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     ModifyGroupUsers(
         group=okta_group,
         members_to_add=[access_user.id],

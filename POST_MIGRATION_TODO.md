@@ -8,23 +8,6 @@ Items grouped roughly by surface area; ordering within each group is rough prior
 
 ## Database / SQLAlchemy
 
-### 1. Remove the `db` compatibility shim
-
-The shim in `api/extensions.py` keeps the legacy `db.Model` / `db.session` /
-`Model.query` API alive on top of plain SQLAlchemy 2.0. It was added so the
-migration could touch models and operations as little as possible.
-
-**What's involved:**
-- `db.Model` → `Base` (a `DeclarativeBase`)
-- `db.Column` → `mapped_column`
-- `db.relationship` → `relationship`
-- `db.func` / `db.or_` / `db.not_` / `db.and_` → direct `sqlalchemy` imports
-- `Model.query.filter(...)` → `db.session.query(Model).filter(...)` or
-  `session.execute(select(Model).filter(...))`
-
-**Net change:** removes ~150 lines of shim, makes the model layer indistinguishable
-from any other SQLAlchemy 2.0 project. Mostly mechanical.
-
 ### 2. Switch to async SQLAlchemy
 
 The migration kept SQLAlchemy synchronous. To go async:
@@ -35,8 +18,7 @@ The migration kept SQLAlchemy synchronous. To go async:
 - Routers: `def` → `async def`
 
 Major lift — every operation file changes — but unlocks concurrent I/O and
-removes the sync-thread-pool overhead per request. Should be done **after**
-#1 (removing the shim) since the shim's `Query` class assumes sync.
+removes the sync-thread-pool overhead per request.
 
 ### 3. Replace the `_session_scope` ContextVar dance with `async_scoped_session`
 

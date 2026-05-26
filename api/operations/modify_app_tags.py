@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 
 from api.extensions import db
@@ -20,17 +21,23 @@ class ModifyAppTags:
         current_user_id: Optional[str],
     ):
         self.app = (
-            App.query.filter(App.deleted_at.is_(None))
+            db.session.query(App)
+            .filter(App.deleted_at.is_(None))
             .filter(App.id == (app if isinstance(app, str) else app.id))
             .first()
         )
 
-        self.tags_to_add = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_add)).all()
+        self.tags_to_add = db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_add)).all()
 
-        self.tags_to_remove = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_remove)).all()
+        self.tags_to_remove = (
+            db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_remove)).all()
+        )
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -40,10 +47,11 @@ class ModifyAppTags:
             # Only add tags that are not already associated with this app
             tag_ids_to_add = [t.id for t in self.tags_to_add]
             existing_tag_maps = (
-                AppTagMap.query.filter(
-                    db.or_(
+                db.session.query(AppTagMap)
+                .filter(
+                    or_(
                         AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                        AppTagMap.ended_at > func.now(),
                     )
                 )
                 .filter(
@@ -67,19 +75,23 @@ class ModifyAppTags:
             db.session.commit()
 
             new_app_tag_maps = (
-                AppTagMap.query.filter(AppTagMap.tag_id.in_(new_tag_ids_to_add))
+                db.session.query(AppTagMap)
+                .filter(AppTagMap.tag_id.in_(new_tag_ids_to_add))
                 .filter(AppTagMap.app_id == self.app.id)
                 .filter(
-                    db.or_(
+                    or_(
                         AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                        AppTagMap.ended_at > func.now(),
                     )
                 )
                 .all()
             )
 
             all_app_groups = (
-                AppGroup.query.filter(AppGroup.app_id == self.app.id).filter(AppGroup.deleted_at.is_(None)).all()
+                db.session.query(AppGroup)
+                .filter(AppGroup.app_id == self.app.id)
+                .filter(AppGroup.deleted_at.is_(None))
+                .all()
             )
             for app_tag_map in new_app_tag_maps:
                 for app_group in all_app_groups:
@@ -100,31 +112,32 @@ class ModifyAppTags:
         if len(self.tags_to_remove) > 0:
             tag_ids_to_remove = [t.id for t in self.tags_to_remove]
             existing_tag_maps_query = (
-                AppTagMap.query.filter(AppTagMap.tag_id.in_(tag_ids_to_remove))
+                db.session.query(AppTagMap)
+                .filter(AppTagMap.tag_id.in_(tag_ids_to_remove))
                 .filter(AppTagMap.app_id == self.app.id)
                 .filter(
-                    db.or_(
+                    or_(
                         AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                        AppTagMap.ended_at > func.now(),
                     )
                 )
             )
 
             existing_tag_maps = existing_tag_maps_query.all()
-            OktaGroupTagMap.query.filter(
-                db.or_(
+            db.session.query(OktaGroupTagMap).filter(
+                or_(
                     OktaGroupTagMap.ended_at.is_(None),
-                    OktaGroupTagMap.ended_at > db.func.now(),
+                    OktaGroupTagMap.ended_at > func.now(),
                 )
             ).filter(
                 OktaGroupTagMap.app_tag_map_id.in_([m.id for m in existing_tag_maps]),
             ).update(
-                {OktaGroupTagMap.ended_at: db.func.now()},
+                {OktaGroupTagMap.ended_at: func.now()},
                 synchronize_session="fetch",
             )
 
             existing_tag_maps_query.update(
-                {AppTagMap.ended_at: db.func.now()},
+                {AppTagMap.ended_at: func.now()},
                 synchronize_session="fetch",
             )
             db.session.commit()

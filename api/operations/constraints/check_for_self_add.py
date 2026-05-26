@@ -5,6 +5,7 @@ from sqlalchemy.orm import (
     selectinload,
 )
 
+from sqlalchemy import func, or_
 from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
@@ -42,7 +43,8 @@ class CheckForSelfAdd:
             self.current_user = None
         else:
             self.current_user = (
-                OktaUser.query.filter(OktaUser.deleted_at.is_(None))
+                db.session.query(OktaUser)
+                .filter(OktaUser.deleted_at.is_(None))
                 .filter(OktaUser.id == (current_user if isinstance(current_user, str) else current_user.id))
                 .first()
             )
@@ -118,13 +120,14 @@ class CheckForSelfAdd:
         # Check to see if the current user is a member of the role,
         # which would grant them access to the newly added groups associated with the role
         if (
-            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.group.id)
+            db.session.query(OktaUserGroupMember)
+            .filter(OktaUserGroupMember.group_id == self.group.id)
             .filter(OktaUserGroupMember.user_id == self.current_user.id)
             .filter(OktaUserGroupMember.is_owner.is_(False))
             .filter(
-                db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .count()
@@ -132,9 +135,8 @@ class CheckForSelfAdd:
         ):
             if len(self.members_to_add) > 0:
                 new_member_groups = (
-                    OktaGroup.query.options(
-                        selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                    )
+                    db.session.query(OktaGroup)
+                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.members_to_add))
                     .filter(OktaGroup.deleted_at.is_(None))
@@ -155,9 +157,8 @@ class CheckForSelfAdd:
 
             if len(self.owners_to_add) > 0:
                 new_owner_groups = (
-                    OktaGroup.query.options(
-                        selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                    )
+                    db.session.query(OktaGroup)
+                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.owners_to_add))
                     .filter(OktaGroup.deleted_at.is_(None))

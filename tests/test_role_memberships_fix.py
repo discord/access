@@ -30,13 +30,15 @@ def test_missing_user_from_group_membership(
     assert add_ownership_spy.call_count == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 1
@@ -67,7 +69,8 @@ def test_missing_user_from_group_membership_with_expiring_role_membership(
     assert add_ownership_spy.call_count == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
@@ -76,7 +79,8 @@ def test_missing_user_from_group_membership_with_expiring_role_membership(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
@@ -85,13 +89,15 @@ def test_missing_user_from_group_membership_with_expiring_role_membership(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
@@ -132,7 +138,8 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
     assert add_ownership_spy.call_count == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
@@ -141,7 +148,8 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
@@ -150,13 +158,15 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
@@ -195,7 +205,8 @@ def test_missing_user_from_group_membership_with_both_expiring(
     assert add_ownership_spy.call_count == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
@@ -204,7 +215,8 @@ def test_missing_user_from_group_membership_with_both_expiring(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
@@ -213,13 +225,15 @@ def test_missing_user_from_group_membership_with_both_expiring(
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
@@ -264,19 +278,22 @@ def test_extra_user_from_role_membership(
     assert remove_ownership_spy.call_count == 1
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == okta_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == okta_group.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
@@ -334,19 +351,22 @@ def test_extra_user_from_role_membership_with_direct(
     assert remove_ownership_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == okta_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == okta_group.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 2

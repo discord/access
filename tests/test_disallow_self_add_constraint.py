@@ -101,15 +101,15 @@ def test_disallow_self_add_modify_group_users(
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -125,15 +125,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -148,15 +148,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -179,15 +179,15 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -219,15 +219,15 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
 
@@ -247,15 +247,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
 
@@ -270,15 +270,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
 
@@ -301,15 +301,15 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
 
@@ -333,15 +333,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
 
@@ -356,15 +356,15 @@ def test_disallow_self_add_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
 
@@ -387,15 +387,15 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 8
     )
 
@@ -469,19 +469,25 @@ def test_disallow_self_add_modify_role_groups(
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
 
     # Add current_user as owner of role_groups[0]
     ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
@@ -498,19 +504,25 @@ def test_disallow_self_add_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
 
     # Add the current user role group as a owner to the okta group
     data = {
@@ -527,19 +539,25 @@ def test_disallow_self_add_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -557,19 +575,25 @@ def test_disallow_self_add_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -593,19 +617,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -628,19 +658,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -663,19 +699,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -700,19 +742,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -730,19 +778,25 @@ def test_disallow_self_add_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     # Add the current user role group as a member and owner to the app group
     data = {
@@ -755,19 +809,25 @@ def test_disallow_self_add_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     # Add the user role group as a member to the app group
     data = {
@@ -785,19 +845,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -820,19 +886,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -855,19 +927,25 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
 
 
 # Admin should be allowed to bypass the constraints in all cases
@@ -883,7 +961,7 @@ def test_disallow_self_add_admin_modify_group_users(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    current_user = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     tags = TagFactory.create_batch(
         3,
@@ -943,15 +1021,15 @@ def test_disallow_self_add_admin_modify_group_users(
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
 
@@ -967,15 +1045,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert rep.status_code == 200
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
 
@@ -998,15 +1076,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1030,15 +1108,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1066,15 +1144,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1103,15 +1181,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1135,15 +1213,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
 
@@ -1167,15 +1245,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
 
@@ -1203,15 +1281,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
 
@@ -1236,15 +1314,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 8
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
 
@@ -1272,15 +1350,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 8
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
 
@@ -1304,15 +1382,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 8
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
 
@@ -1340,15 +1418,15 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 11
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 10
     )
 
@@ -1365,7 +1443,7 @@ def test_disallow_self_add_admin_modify_role_groups(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    current_user = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
 
     role_groups = RoleGroupFactory.create_batch(2)
 
@@ -1421,19 +1499,25 @@ def test_disallow_self_add_admin_modify_role_groups(
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
 
     # Add the current user role group as a member to the okta group
     data: dict[str, Any] = {
@@ -1451,19 +1535,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 0
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1485,19 +1575,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1515,19 +1611,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert rep.status_code == 200
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1551,19 +1653,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1586,19 +1694,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1621,19 +1735,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 5
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1655,19 +1775,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 2
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1689,19 +1815,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1723,19 +1855,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
 
     # Add the user role group as a member to the app group
     data = {
@@ -1753,19 +1891,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 4
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 3
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 4
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 3
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1788,19 +1932,25 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 4
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 4
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 4
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 4
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -1823,16 +1973,22 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 7
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count() == 4
-    assert RoleGroupMap.query.filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count() == 4
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        == 4
+    )
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        == 4
+    )

@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import selectin_polymorphic
 
+from sqlalchemy import func, or_
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -30,7 +31,10 @@ class UnmanageGroup:
         )
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -43,10 +47,11 @@ class UnmanageGroup:
 
         # End all group memberships and ownerships via a role (not direct memberships or ownerships)
         active_access_via_roles_query = (
-            OktaUserGroupMember.query.filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember)
+            .filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .filter(OktaUserGroupMember.group_id == self.group.id)
@@ -62,14 +67,16 @@ class UnmanageGroup:
 
         if not dry_run:
             active_access_via_roles_query.update(
-                {OktaUserGroupMember.ended_at: db.func.now()}, synchronize_session="fetch"
+                {OktaUserGroupMember.ended_at: func.now()}, synchronize_session="fetch"
             )
             db.session.commit()
 
         # End all roles associations where this group was a member
-        active_role_assignments_query = RoleGroupMap.query.filter(
-            db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
-        ).filter(RoleGroupMap.group_id == self.group.id)
+        active_role_assignments_query = (
+            db.session.query(RoleGroupMap)
+            .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+            .filter(RoleGroupMap.group_id == self.group.id)
+        )
 
         for active_role_assignment in active_role_assignments_query.all():
             logger.info(
@@ -79,7 +86,7 @@ class UnmanageGroup:
             )
 
         if not dry_run:
-            active_role_assignments_query.update({RoleGroupMap.ended_at: db.func.now()}, synchronize_session="fetch")
+            active_role_assignments_query.update({RoleGroupMap.ended_at: func.now()}, synchronize_session="fetch")
             db.session.commit()
 
         # If this groups is a RoleGroup, do not remove the groups associated with the role
@@ -87,7 +94,8 @@ class UnmanageGroup:
 
         # Reject all pending access requests for this group
         obsolete_access_requests = (
-            AccessRequest.query.filter(AccessRequest.requested_group_id == self.group.id)
+            db.session.query(AccessRequest)
+            .filter(AccessRequest.requested_group_id == self.group.id)
             .filter(AccessRequest.status == AccessRequestStatus.PENDING)
             .filter(AccessRequest.resolved_at.is_(None))
             .all()

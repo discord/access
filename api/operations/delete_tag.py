@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 
 from api.extensions import db
@@ -11,9 +12,12 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteTag:
     def __init__(self, *, tag: Tag | str, current_user_id: Optional[str] = None):
-        self.tag = Tag.query.filter(Tag.id == (tag if isinstance(tag, str) else tag.id)).first()
+        self.tag = db.session.query(Tag).filter(Tag.id == (tag if isinstance(tag, str) else tag.id)).first()
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -41,26 +45,24 @@ class DeleteTag:
 
         # Disable and delete tag
         self.tag.enabled = False
-        self.tag.deleted_at = db.func.now()
+        self.tag.deleted_at = func.now()
 
         # End all active group tag mappings for tag
-        OktaGroupTagMap.query.filter(
-            db.or_(
+        db.session.query(OktaGroupTagMap).filter(
+            or_(
                 OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > db.func.now(),
+                OktaGroupTagMap.ended_at > func.now(),
             )
         ).filter(OktaGroupTagMap.tag_id == self.tag.id).update(
-            {OktaGroupTagMap.ended_at: db.func.now()}, synchronize_session="fetch"
+            {OktaGroupTagMap.ended_at: func.now()}, synchronize_session="fetch"
         )
 
         # End all active app tag mappings for tag
-        AppTagMap.query.filter(
-            db.or_(
+        db.session.query(AppTagMap).filter(
+            or_(
                 AppTagMap.ended_at.is_(None),
-                AppTagMap.ended_at > db.func.now(),
+                AppTagMap.ended_at > func.now(),
             )
-        ).filter(AppTagMap.tag_id == self.tag.id).update(
-            {AppTagMap.ended_at: db.func.now()}, synchronize_session="fetch"
-        )
+        ).filter(AppTagMap.tag_id == self.tag.id).update({AppTagMap.ended_at: func.now()}, synchronize_session="fetch")
 
         db.session.commit()

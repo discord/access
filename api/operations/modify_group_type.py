@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, func, insert, or_
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
@@ -36,7 +36,10 @@ class ModifyGroupType:
 
         self.group_changes = group_changes
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -59,12 +62,16 @@ class ModifyGroupType:
                     )
 
                 # End all group attachments to this role and all group memberships via the role grant
-                active_role_associated_groups = RoleGroupMap.query.filter(
-                    db.or_(
-                        RoleGroupMap.ended_at.is_(None),
-                        RoleGroupMap.ended_at > db.func.now(),
+                active_role_associated_groups = (
+                    db.session.query(RoleGroupMap)
+                    .filter(
+                        or_(
+                            RoleGroupMap.ended_at.is_(None),
+                            RoleGroupMap.ended_at > func.now(),
+                        )
                     )
-                ).filter(RoleGroupMap.role_group_id == self.group.id)
+                    .filter(RoleGroupMap.role_group_id == self.group.id)
+                )
                 ModifyRoleGroups(
                     role_group=self.group,
                     current_user_id=self.current_user_id,
@@ -105,10 +112,10 @@ class ModifyGroupType:
                         db.session.rollback()
 
                 # Remove app tag map for this group that is no longer attached to an app
-                OktaGroupTagMap.query.filter(
-                    db.or_(
+                db.session.query(OktaGroupTagMap).filter(
+                    or_(
                         OktaGroupTagMap.ended_at.is_(None),
-                        OktaGroupTagMap.ended_at > db.func.now(),
+                        OktaGroupTagMap.ended_at > func.now(),
                     )
                 ).filter(OktaGroupTagMap.group_id == self.group.id).filter(
                     OktaGroupTagMap.app_tag_map_id.isnot(None)
@@ -128,16 +135,22 @@ class ModifyGroupType:
             self.group.type = OktaGroup.__mapper_args__["polymorphic_identity"]
             db.session.commit()
 
-            self.group = OktaGroup.query.filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == group_id).first()
+            self.group = (
+                db.session.query(OktaGroup)
+                .filter(OktaGroup.deleted_at.is_(None))
+                .filter(OktaGroup.id == group_id)
+                .first()
+            )
 
             # Create new child table row
             if type(self.group_changes) is RoleGroup:
                 # Convert any group memberships and ownerships via a role to direct group memberships and ownerships
                 active_group_users_from_role = (
-                    OktaUserGroupMember.query.filter(
-                        db.or_(
+                    db.session.query(OktaUserGroupMember)
+                    .filter(
+                        or_(
                             OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > db.func.now(),
+                            OktaUserGroupMember.ended_at > func.now(),
                         )
                     )
                     .filter(OktaUserGroupMember.role_group_map_id.is_not(None))
@@ -164,10 +177,11 @@ class ModifyGroupType:
 
                 # Remove all group memberships and ownerships via a role grant
                 active_role_associated_groups = (
-                    RoleGroupMap.query.filter(
-                        db.or_(
+                    db.session.query(RoleGroupMap)
+                    .filter(
+                        or_(
                             RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > db.func.now(),
+                            RoleGroupMap.ended_at > func.now(),
                         )
                     )
                     .filter(RoleGroupMap.group_id == group_id)
@@ -207,11 +221,12 @@ class ModifyGroupType:
             # Add all app tags to this new app group, after we've updated the group type
             if type(self.group_changes) is AppGroup:
                 app_tag_maps = (
-                    AppTagMap.query.options(joinedload(AppTagMap.active_tag))
+                    db.session.query(AppTagMap)
+                    .options(joinedload(AppTagMap.active_tag))
                     .filter(
-                        db.or_(
+                        or_(
                             AppTagMap.ended_at.is_(None),
-                            AppTagMap.ended_at > db.func.now(),
+                            AppTagMap.ended_at > func.now(),
                         )
                     )
                     .filter(

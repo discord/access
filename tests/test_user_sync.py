@@ -3,6 +3,7 @@ from typing import List
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
 from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.extensions import Db
 from api.operations import CreateAccessRequest
@@ -177,7 +178,7 @@ def test_user_sync_ends_memberships_for_previously_deleted_user(
     seed_db(db, initial_users_in_okta)
 
     # Mark the user as deleted in Access
-    db.session.get(OktaUser, initial_users_in_okta[0].id).deleted_at = db.func.now()
+    db.session.get(OktaUser, initial_users_in_okta[0].id).deleted_at = func.now()
 
     # Add a managed group membership and ownership to the user to be deleted
     db.session.add(okta_group)

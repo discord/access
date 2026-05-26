@@ -1,5 +1,6 @@
 import logging
 
+from sqlalchemy import func, or_
 from api.extensions import db
 from api.models import OktaGroup, OktaUserGroupMember, RoleGroupMap
 from api.operations import UnmanageGroup
@@ -10,26 +11,31 @@ logger = logging.getLogger(__name__)
 
 def verify_and_fix_unmanaged_groups(dry_run: bool = False) -> None:
     active_unmanaged_groups = (
-        OktaGroup.query.filter(OktaGroup.is_managed.is_(False)).filter(OktaGroup.deleted_at.is_(None)).all()
+        db.session.query(OktaGroup).filter(OktaGroup.is_managed.is_(False)).filter(OktaGroup.deleted_at.is_(None)).all()
     )
     for group in active_unmanaged_groups:
         UnmanageGroup(group=group.id).execute(dry_run=dry_run)
 
 
 def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
-    active_role_group_maps = RoleGroupMap.query.filter(
-        db.or_(
-            RoleGroupMap.ended_at.is_(None),
-            RoleGroupMap.ended_at > db.func.now(),
+    active_role_group_maps = (
+        db.session.query(RoleGroupMap)
+        .filter(
+            or_(
+                RoleGroupMap.ended_at.is_(None),
+                RoleGroupMap.ended_at > func.now(),
+            )
         )
-    ).all()
+        .all()
+    )
     for active_role_group_map in active_role_group_maps:
         active_role_group_members_query = (
-            OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == active_role_group_map.role_group_id)
+            db.session.query(OktaUserGroupMember)
+            .filter(OktaUserGroupMember.group_id == active_role_group_map.role_group_id)
             .filter(
-                db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .filter(OktaUserGroupMember.is_owner.is_(False))
@@ -37,10 +43,11 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
         active_role_group_members_ids = [m.user_id for m in active_role_group_members_query.all()]
 
         active_group_users_for_role = (
-            OktaUserGroupMember.query.filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember)
+            .filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .filter(OktaUserGroupMember.role_group_map_id == active_role_group_map.id)
@@ -61,6 +68,10 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                     role_group_membership = active_role_group_members_query.filter(
                         OktaUserGroupMember.user_id == member
                     ).first()
+                    # `member` came out of `active_role_group_members_ids` which we
+                    # just built from this same query, so the filter must return a
+                    # row. Assert to narrow `Optional` for type checking.
+                    assert role_group_membership is not None
                     if not active_role_group_map.is_owner:
                         # Add user to okta group members
                         okta.add_user_to_group(
@@ -104,15 +115,15 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
             )
             if not dry_run:
                 # End all extra OktaUserGroupMembers the users not members of the role group
-                OktaUserGroupMember.query.filter(
-                    db.or_(
+                db.session.query(OktaUserGroupMember).filter(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 ).filter(OktaUserGroupMember.role_group_map_id == active_role_group_map.id).filter(
                     OktaUserGroupMember.user_id.in_(extra_group_users_for_role)
                 ).update(
-                    {OktaUserGroupMember.ended_at: db.func.now()},
+                    {OktaUserGroupMember.ended_at: func.now()},
                     synchronize_session="fetch",
                 )
                 db.session.commit()
@@ -121,10 +132,11 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                 # combination before removing membership, there can be multiple role groups
                 # which allow group access for this user
                 removed_users_with_other_access = (
-                    OktaUserGroupMember.query.filter(
-                        db.or_(
+                    db.session.query(OktaUserGroupMember)
+                    .filter(
+                        or_(
                             OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > db.func.now(),
+                            OktaUserGroupMember.ended_at > func.now(),
                         )
                     )
                     .filter(OktaUserGroupMember.is_owner == active_role_group_map.is_owner)

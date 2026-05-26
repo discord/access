@@ -39,7 +39,8 @@ class ApproveGroupRequest:
         bypass_self_approval: bool = False,
     ):
         self.group_request = (
-            GroupRequest.query.options(joinedload(GroupRequest.active_requester))
+            db.session.query(GroupRequest)
+            .options(joinedload(GroupRequest.active_requester))
             .filter(GroupRequest.id == (group_request if isinstance(group_request, str) else group_request.id))
             .first()
         )
@@ -245,7 +246,7 @@ class ApproveGroupRequest:
             ).execute()
 
         self.group_request.status = AccessRequestStatus.APPROVED
-        self.group_request.resolved_at = db.func.now()
+        self.group_request.resolved_at = func.now()
         self.group_request.resolver_user_id = self.approver_id
         self.group_request.resolution_reason = self.approval_reason
         self.group_request.approved_group_id = created_group.id

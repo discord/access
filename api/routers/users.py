@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import cast, func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
 from starlette.requests import Request
@@ -66,7 +66,7 @@ def list_users(
             search_jsonpath = f"strict $ ? ({' || '.join(attr_query)})"
             format_params = [query_regex_quote_escaped] * len(search_attributes)
             query = query.filter(
-                _db.or_(
+                or_(
                     OktaUser.email.ilike(like),
                     OktaUser.first_name.ilike(like),
                     OktaUser.last_name.ilike(like),
@@ -77,7 +77,7 @@ def list_users(
                     # FORMAT() at execution time. The regex is escaped above.
                     func.jsonb_path_exists(
                         OktaUser.profile,
-                        _db.cast(func.format(search_jsonpath, *format_params), sqltypes.JSON.JSONPathType),
+                        cast(func.format(search_jsonpath, *format_params), sqltypes.JSON.JSONPathType),
                         func.jsonb_build_object(),
                         True,
                     ),
@@ -86,7 +86,7 @@ def list_users(
         else:
             # Naive search of JSON field (matches both keys and values).
             query = query.filter(
-                _db.or_(
+                or_(
                     OktaUser.email.ilike(like),
                     OktaUser.first_name.ilike(like),
                     OktaUser.last_name.ilike(like),
@@ -111,7 +111,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> Okt
             selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
             joinedload(OktaUser.manager),
         )
-        .filter(_db.or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
+        .filter(or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
         .order_by(nullsfirst(OktaUser.deleted_at.desc()))
         .first()
     )
