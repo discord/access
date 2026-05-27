@@ -372,9 +372,7 @@ class AuditLogPayload(BaseModel):
     ip: Optional[str] = None
     # Entry-point that produced the audit log. Defaults to "web" for
     # backwards compatibility; "mcp" is set on entries produced by the
-    # embedded MCP server. New values may be added (e.g. "cli", "syncer")
-    # — keep this field as a free-form string so downstream consumers
-    # don't break when we add another source.
+    # embedded MCP server.
     source: Optional[str] = None
     current_user_id: Optional[str] = None
     current_user_email: Optional[str] = None

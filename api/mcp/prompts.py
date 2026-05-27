@@ -25,13 +25,17 @@ if TYPE_CHECKING:
 # the operator-configurable bits (the prefixes for App- and Role-
 # groups, etc.) so it doesn't invent them. Anything else lives in the
 # README.
-ACCESS_MCP_INSTRUCTIONS = """You are connected to Access, an Okta access-control portal
-that implements RBAC over Okta groups and roles.
+ACCESS_MCP_INSTRUCTIONS = """You are connected to Access, an access-control portal
+that implements RBAC over an upstream identity provider's groups and
+roles. Access was originally built for Okta and the ``Okta`` prefix on
+some entity names is legacy — when the project was open-sourced it was
+generalized so operators can use any compatible IdP. Treat ``Okta`` in
+type names as a vestigial label, not a deployment requirement.
 
 ## Core concepts
-- **OktaGroup** is a plain Okta group. **AppGroup** is an Okta group
+- **OktaGroup** is a plain IdP group. **AppGroup** is an IdP group
   associated with an Access ``App`` (prefix configurable, defaults to
-  ``App-``). **RoleGroup** is an Okta group representing a job function
+  ``App-``). **RoleGroup** is an IdP group representing a job function
   (prefix configurable, defaults to ``Role-``); adding a role to a
   group grants every role member access to that group.
 - **AccessRequest** = a user requests membership or ownership in a

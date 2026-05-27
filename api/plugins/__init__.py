@@ -37,8 +37,7 @@ def load_plugins() -> None:
     one-shot entry point: subsequent calls (from hook invocations during
     a request, sync, notify, …) hit the cache. Surfaces any
     entry-point-load failure at startup instead of silently no-op'ing
-    later when the hook fires.
-    """
+    later when the hook fires."""
     get_app_group_lifecycle_hook()
     get_conditional_access_hook()
     get_notification_hook()

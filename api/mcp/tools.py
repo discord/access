@@ -367,7 +367,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         name="list_groups",
         title="List groups",
         description=(
-            "List groups (OktaGroup, AppGroup, RoleGroup). Returns a paginated "
+            "List groups (plain, app, role). Returns a paginated "
             "list of group summaries. Use 'q' for free-text search across name "
             "and description. Set 'managed=false' to include externally-managed "
             "groups. Requires the 'read_all' scope."
@@ -590,9 +590,9 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         title="List apps",
         description=(
             "List Access apps. An 'app' in Access is a logical grouping of "
-            "AppGroups in Access's DB only — it does not correspond to an Okta "
-            "app. Use 'q' for free-text search across name and description. "
-            "Requires the 'read_all' scope."
+            "AppGroups in Access's DB only — it does not correspond to an "
+            "IdP-side app. Use 'q' for free-text search across name and "
+            "description. Requires the 'read_all' scope."
         ),
         annotations=_READ_ANNOTATIONS,
     )
@@ -653,7 +653,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         name="list_users",
         title="List users",
         description=(
-            "List active Okta users. Use 'q' for free-text search across email, "
+            "List active users. Use 'q' for free-text search across email, "
             "first/last name, display name, and custom profile attributes. "
             "Requires the 'read_all' scope."
         ),
@@ -1034,8 +1034,8 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         name="list_audit_entries",
         title="List access history",
         description=(
-            "List user-group membership audit rows (the OktaUserGroupMember "
-            "table). Each row is a single membership/ownership grant or "
+            "List user-group membership audit rows. Each row is a single "
+            "membership/ownership grant or "
             "revocation. Filter by 'user_id' (use '@me'), 'group_id', or "
             "'is_owner' (true/false). Set 'active_only=true' (default) to see "
             "only currently-active records; false includes ended ones. "
