@@ -4,6 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from sqlalchemy import func, or_
 from api.extensions import Db
 from api.models import (
     App,
@@ -82,10 +83,12 @@ def test_time_limit_modify_group_users(
 
     # Establish a baseline where a user shouldn't be expiring in the next 8 days
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -111,17 +114,21 @@ def test_time_limit_modify_group_users(
 
     # user should only be added to the app group for 3 days (time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -151,17 +158,21 @@ def test_time_limit_modify_group_users(
 
     # user should only be added to the app group group for 1 days (less than time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
-        ).count()
+        )
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -206,7 +217,7 @@ def test_time_limit_modify_group_users(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -236,17 +247,21 @@ def test_time_limit_modify_group_users(
 
     # user should only be added to the role and okta group for 3 days (time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -276,17 +291,21 @@ def test_time_limit_modify_group_users(
 
     # user should only be added to the role and okta group for 1 days (less than time limit constraint)
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
-        ).count()
+        )
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -350,17 +369,19 @@ def test_time_limit_modify_role_groups(
 
     # Establish a base line of tag, user, and role mappings
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        RoleGroupMap.query.filter(
-            db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
-        ).count()
+        db.session.query(RoleGroupMap)
+        .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+        .count()
         == 0
     )
 
@@ -379,21 +400,25 @@ def test_time_limit_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     # Add the role group as a member and owner of the app group, for an unlimited time
     add_user_to_group_spy.reset_mock()
@@ -414,21 +439,25 @@ def test_time_limit_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 6
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
 
 def test_time_limit_modify_group_type(
@@ -486,17 +515,19 @@ def test_time_limit_modify_group_type(
     role_group_id = role_group.id
 
     # Establish a base line of tag, user, and role mappings
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
@@ -518,24 +549,28 @@ def test_time_limit_modify_group_type(
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == data["description"]
     assert ret_data["id"] == okta_group_id
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 5
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 5
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 6
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
     # Update the role group to be an app group which should affect and also limit it's role group mapping
     update_group_spy.reset_mock()
@@ -551,20 +586,22 @@ def test_time_limit_modify_group_type(
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == data["description"]
     assert ret_data["id"] == role_group_id
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 3
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 8
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 8
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        RoleGroupMap.query.filter(
-            db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > db.func.now())
-        ).count()
+        db.session.query(RoleGroupMap)
+        .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+        .count()
         == 0
     )
 
@@ -630,20 +667,24 @@ def test_time_limit_modify_group_tags(
     ).execute()
 
     # Establish a baseline of user and role mappings
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 6
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 2
     )
 
@@ -672,34 +713,42 @@ def test_time_limit_modify_group_tags(
     assert data["id"] == tags[0].id
 
     # The primary tag should reduce the user and role mappings to three days
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -728,26 +777,33 @@ def test_time_limit_modify_group_tags(
     assert data["id"] == tags[2].id
 
     # The enabled tag should reduce the user and role mappings to one day
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
-        ).count()
+        )
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)))
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(
-            RoleGroupMap.ended_at > db.func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))
-        ).count()
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.ended_at > func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2)))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
+        == 0
+    )
 
     # Update the last tag to be disabled
     data = {
@@ -774,26 +830,33 @@ def test_time_limit_modify_group_tags(
     assert data["id"] == tags[2].id
 
     # The disabled tag should have no effect on the user and role mappings
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
-        ).count()
+        )
+        .count()
         == 6
     )
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)))
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
     assert (
-        RoleGroupMap.query.filter(
-            RoleGroupMap.ended_at > db.func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2))
-        ).count()
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.ended_at > func.now(), RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=2)))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count() == 0
+    assert (
+        db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2))).count()
+        == 0
+    )
 
 
 def test_time_limit_add_group_tags(
@@ -844,12 +907,12 @@ def test_time_limit_add_group_tags(
     ).execute()
 
     # Establish a base line of tag, user, and role mappings
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 9
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 4
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at > func.now()).count() == 0
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 9
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at > func.now()).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 4
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
@@ -865,25 +928,29 @@ def test_time_limit_add_group_tags(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
 
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy.reset_mock()
 
@@ -899,39 +966,47 @@ def test_time_limit_add_group_tags(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 4
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 4
 
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 0
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy.reset_mock()
 
@@ -948,39 +1023,47 @@ def test_time_limit_add_group_tags(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 6
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 6
 
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
 
 def test_time_limit_add_app_tags(
@@ -1026,12 +1109,12 @@ def test_time_limit_add_app_tags(
     ).execute()
 
     # Establish a base line of tag, user, and role mappings
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at > db.func.now()).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at > func.now()).count() == 0
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at > func.now()).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 2
 
     update_group_spy = mocker.patch.object(okta, "update_group")
 
@@ -1043,24 +1126,28 @@ def test_time_limit_add_app_tags(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 0
 
     update_group_spy.reset_mock()
 
@@ -1077,21 +1164,25 @@ def test_time_limit_add_app_tags(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 2
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 2
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 4
     )
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
     assert (
-        RoleGroupMap.query.filter(
+        db.session.query(RoleGroupMap)
+        .filter(
             RoleGroupMap.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             RoleGroupMap.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(RoleGroupMap).filter(RoleGroupMap.ended_at.is_(None)).count() == 0

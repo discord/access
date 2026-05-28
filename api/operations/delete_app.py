@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 
 from api.extensions import db
@@ -13,12 +14,15 @@ from api.schemas import AuditLogSchema, EventType
 class DeleteApp:
     def __init__(self, *, app: App | str, current_user_id: Optional[str] = None):
         if isinstance(app, str):
-            self.app = App.query.filter(App.deleted_at.is_(None)).filter(App.id == app).first()
+            self.app = db.session.query(App).filter(App.deleted_at.is_(None)).filter(App.id == app).first()
         else:
             self.app = app
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -48,23 +52,25 @@ class DeleteApp:
             )
         )
 
-        self.app.deleted_at = db.func.now()
+        self.app.deleted_at = func.now()
         db.session.commit()
 
         # Delete all associated Okta App Groups and end their membership
-        app_groups = AppGroup.query.filter(AppGroup.deleted_at.is_(None)).filter(AppGroup.app_id == self.app.id)
+        app_groups = (
+            db.session.query(AppGroup).filter(AppGroup.deleted_at.is_(None)).filter(AppGroup.app_id == self.app.id)
+        )
         app_group_ids = [ag.id for ag in app_groups]
         for app_group_id in app_group_ids:
             DeleteGroup(group=app_group_id, current_user_id=self.current_user_id).execute()
 
         # End all tag mappings for this app (OktaGroupTagMaps are ended by the DeleteGroup operation above)
-        AppTagMap.query.filter(AppTagMap.app_id == self.app.id).filter(
-            db.or_(
+        db.session.query(AppTagMap).filter(AppTagMap.app_id == self.app.id).filter(
+            or_(
                 AppTagMap.ended_at.is_(None),
-                AppTagMap.ended_at > db.func.now(),
+                AppTagMap.ended_at > func.now(),
             )
         ).update(
-            {AppTagMap.ended_at: db.func.now()},
+            {AppTagMap.ended_at: func.now()},
             synchronize_session="fetch",
         )
         db.session.commit()

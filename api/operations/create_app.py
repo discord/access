@@ -5,7 +5,7 @@ from typing import Optional, TypedDict
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
@@ -41,15 +41,22 @@ class CreateApp:
             app.id = id
             self.app = app
 
-        self.tag_ids = [tag.id for tag in Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()]
+        self.tag_ids = [
+            tag.id for tag in db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
+        ]
 
         self.owner_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == owner_id).first(), "id", None
+            db.session.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == owner_id).first(),
+            "id",
+            None,
         )
         self.owner_role_ids = None
         if owner_role_ids is not None:
             self.owner_roles = (
-                RoleGroup.query.filter(RoleGroup.id.in_(owner_role_ids)).filter(RoleGroup.deleted_at.is_(None)).all()
+                db.session.query(RoleGroup)
+                .filter(RoleGroup.id.in_(owner_role_ids))
+                .filter(RoleGroup.deleted_at.is_(None))
+                .all()
             )
             self.owner_role_ids = [role.id for role in self.owner_roles]
 
@@ -74,7 +81,10 @@ class CreateApp:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -82,7 +92,10 @@ class CreateApp:
     def execute(self) -> App:
         # Do not allow non-deleted apps with the same name
         existing_app = (
-            App.query.filter(func.lower(App.name) == func.lower(self.app.name)).filter(App.deleted_at.is_(None)).first()
+            db.session.query(App)
+            .filter(func.lower(App.name) == func.lower(self.app.name))
+            .filter(App.deleted_at.is_(None))
+            .first()
         )
         if existing_app is not None:
             return existing_app
@@ -136,7 +149,7 @@ class CreateApp:
                     group_changes=AppGroup(app_id=app_id, is_owner=True),
                     current_user_id=self.current_user_id,
                 ).execute()
-            owner_app_group = AppGroup.query.filter(AppGroup.id == group_id).first()
+            owner_app_group = db.session.query(AppGroup).filter(AppGroup.id == group_id).first()
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             db.session.commit()
@@ -201,14 +214,14 @@ class CreateApp:
                             group_changes=AppGroup(app_id=app_id, is_owner=False),
                             current_user_id=self.current_user_id,
                         ).execute()
-                    app_group = AppGroup.query.filter(AppGroup.id == group_id).first()
+                    app_group = db.session.query(AppGroup).filter(AppGroup.id == group_id).first()
                     app_group.app_id = app_id
                     app_group.is_owner = False
                     db.session.commit()
 
         if len(self.tag_ids) > 0:
             all_app_groups = (
-                AppGroup.query.filter(AppGroup.app_id == app_id).filter(AppGroup.deleted_at.is_(None)).all()
+                db.session.query(AppGroup).filter(AppGroup.app_id == app_id).filter(AppGroup.deleted_at.is_(None)).all()
             )
 
             for tag_id in self.tag_ids:
@@ -221,11 +234,12 @@ class CreateApp:
             db.session.commit()
 
             new_app_tag_maps = (
-                AppTagMap.query.filter(AppTagMap.app_id == app_id)
+                db.session.query(AppTagMap)
+                .filter(AppTagMap.app_id == app_id)
                 .filter(
-                    db.or_(
+                    or_(
                         AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                        AppTagMap.ended_at > func.now(),
                     )
                 )
                 .all()

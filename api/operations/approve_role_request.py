@@ -25,9 +25,8 @@ class ApproveRoleRequest:
         notify: bool = True,
     ):
         self.role_request = (
-            RoleRequest.query.options(
-                joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role)
-            )
+            db.session.query(RoleRequest)
+            .options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
             .filter(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
             .first()
         )

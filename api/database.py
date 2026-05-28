@@ -1,6 +1,6 @@
 """SQLAlchemy engine creation and the FastAPI `get_db` dependency.
 
-The shim in `api.extensions` holds the `db` namespace. This module wires the
+`api.extensions` holds the `db` session/engine facade; this module wires the
 engine into it and provides the request-scoped session dependency.
 """
 

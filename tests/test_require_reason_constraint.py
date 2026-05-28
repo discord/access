@@ -90,15 +90,15 @@ def test_require_reason_modify_group_users(
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -114,15 +114,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -145,15 +145,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -173,15 +173,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -205,15 +205,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -242,15 +242,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -270,15 +270,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -293,15 +293,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -325,15 +325,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -354,15 +354,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -385,15 +385,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -413,15 +413,15 @@ def test_require_reason_modify_group_users(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -445,15 +445,15 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 10
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -516,19 +516,29 @@ def test_require_reason_modify_role_groups(
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     # Add the role group as a member to the okta group without a reason
     data: dict[str, Any] = {
@@ -542,19 +552,29 @@ def test_require_reason_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     # Add the role group as a owner to the okta group without a reason
     data = {
@@ -571,19 +591,29 @@ def test_require_reason_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -601,19 +631,29 @@ def test_require_reason_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 0
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -637,19 +677,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 1
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -673,19 +723,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -709,19 +769,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -743,19 +813,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -773,19 +853,29 @@ def test_require_reason_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     # Add the role group as a member and owner to the app group without a reason
     data = {
@@ -798,19 +888,29 @@ def test_require_reason_modify_role_groups(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 2
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 1
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 2
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 1
+    )
 
     # Add the role group as a member to the app group with a reason
     data = {
@@ -829,19 +929,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 3
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 3
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -865,19 +975,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 4
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 4
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
     add_user_to_group_spy.reset_mock()
     remove_user_from_group_spy.reset_mock()
@@ -901,19 +1021,29 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None)).count() == 4
-    assert RoleGroupMap.query.filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None)).count() == 0
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 4
+    )
+    assert (
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        .count()
+        == 0
+    )
 
 
 def test_require_reason_approve_access_request(
@@ -985,15 +1115,15 @@ def test_require_reason_approve_access_request(
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1013,15 +1143,15 @@ def test_require_reason_approve_access_request(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1043,15 +1173,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 0
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1080,15 +1210,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1115,15 +1245,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1152,15 +1282,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1183,15 +1313,15 @@ def test_require_reason_approve_access_request(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1215,15 +1345,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1250,15 +1380,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1283,15 +1413,15 @@ def test_require_reason_approve_access_request(
     assert rep.status_code == 400
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )
 
@@ -1313,15 +1443,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 4
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1350,15 +1480,15 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 9
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 2
     )
 
@@ -1385,14 +1515,14 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 10
     )
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
-        ).count()
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
+        .count()
         == 1
     )

@@ -2,58 +2,69 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    Unicode,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, validates
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
 from api import config
-from api.extensions import db
+from api.extensions import Base, db
 
 
-class OktaUserGroupMember(db.Model):
+class OktaUserGroupMember(Base):
     # See https://stackoverflow.com/a/60840921
     id: Mapped[int] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
+        BigInteger().with_variant(Integer, "sqlite"),
         autoincrement=True,
         primary_key=True,
     )
-    user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    group_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
+    user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
     # If this membership is via a role group map
     # See https://stackoverflow.com/a/60840921
     role_group_map_id: Mapped[Optional[int]] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
-        db.ForeignKey("role_group_map.id"),
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("role_group_map.id"),
     )
     # Is this user an owner of the group and can administer the group and manage membership?
     # Or is this user only a member of this group?
-    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     # Save the user IDs of the person who added/removed someone from a group
-    created_actor_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    ended_actor_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    created_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    ended_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
 
-    created_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="", server_default="")
+    created_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="", server_default="")
 
     # This field is set to True when an owner chooses to not renew access in the Expiring Access workflow
     should_expire: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
+        Boolean, nullable=False, server_default=expression.false(), default=False
     )
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
-    group: Mapped["OktaGroup"] = db.relationship(
+    group: Mapped["OktaGroup"] = relationship(
         "OktaGroup",
         back_populates="all_user_memberships_and_ownerships",
         lazy="raise_on_sql",
     )
-    active_group: Mapped["OktaGroup"] = db.relationship(
+    active_group: Mapped["OktaGroup"] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_user_memberships_and_ownerships",
@@ -62,13 +73,13 @@ class OktaUserGroupMember(db.Model):
         innerjoin=True,
     )
 
-    user: Mapped["OktaUser"] = db.relationship(
+    user: Mapped["OktaUser"] = relationship(
         "OktaUser",
         back_populates="all_group_memberships_and_ownerships",
         foreign_keys=[user_id],
         lazy="raise_on_sql",
     )
-    active_user: Mapped["OktaUser"] = db.relationship(
+    active_user: Mapped["OktaUser"] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, " "OktaUser.deleted_at.is_(None))",
         back_populates="active_group_memberships_and_ownerships",
@@ -77,13 +88,13 @@ class OktaUserGroupMember(db.Model):
         innerjoin=True,
     )
 
-    role_group_mapping: Mapped["RoleGroupMap"] = db.relationship(
+    role_group_mapping: Mapped["RoleGroupMap"] = relationship(
         "RoleGroupMap",
         back_populates="all_group_memberships_and_ownerships",
         foreign_keys=[role_group_map_id],
         lazy="raise_on_sql",
     )
-    active_role_group_mapping: Mapped["RoleGroupMap"] = db.relationship(
+    active_role_group_mapping: Mapped["RoleGroupMap"] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(RoleGroupMap.id == OktaUserGroupMember.role_group_map_id, "
         "or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))",
@@ -93,54 +104,52 @@ class OktaUserGroupMember(db.Model):
         lazy="raise_on_sql",
     )
 
-    access_request: Mapped["AccessRequest"] = db.relationship(
+    access_request: Mapped["AccessRequest"] = relationship(
         "AccessRequest",
         back_populates="approved_membership",
         lazy="raise_on_sql",
         uselist=False,
     )
 
-    created_actor: Mapped["OktaUser"] = db.relationship(
+    created_actor: Mapped["OktaUser"] = relationship(
         "OktaUser", foreign_keys=[created_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
-    ended_actor: Mapped["OktaUser"] = db.relationship(
+    ended_actor: Mapped["OktaUser"] = relationship(
         "OktaUser", foreign_keys=[ended_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
 
-class OktaUser(db.Model):
-    id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+class OktaUser(Base):
+    id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
     # https://developer.okta.com/docs/reference/api/users/#default-profile-properties
-    email: Mapped[str] = mapped_column(db.Unicode(100), nullable=False)
-    first_name: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
-    last_name: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
-    display_name: Mapped[Optional[str]] = mapped_column(db.Unicode(100))
-    employee_number: Mapped[Optional[str]] = mapped_column(db.Unicode(50))
-    manager_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    email: Mapped[str] = mapped_column(Unicode(100), nullable=False)
+    first_name: Mapped[str] = mapped_column(Unicode(50), nullable=False)
+    last_name: Mapped[str] = mapped_column(Unicode(50), nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(Unicode(100))
+    employee_number: Mapped[Optional[str]] = mapped_column(Unicode(50))
+    manager_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
 
     # These 2 indexes are equivalent to a unique index on (email,deleted_at) with UNIQUE NULLS NOT DISTINCT
     # SQL alchemy 1.4 does not support UNIQUE NULLS NOT DISTINCT, but 2.0 does.
     __table_args__ = (
-        db.Index(
+        Index(
             "idx_email_deleted_at",
             "email",
             "deleted_at",
             unique=True,
-            postgresql_where=db.text("deleted_at IS NOT NULL"),
-            sqlite_where=db.text("deleted_at IS NOT NULL"),
+            postgresql_where=text("deleted_at IS NOT NULL"),
+            sqlite_where=text("deleted_at IS NOT NULL"),
         ),
-        db.Index(
+        Index(
             "idx_email",
             "email",
             unique=True,
-            postgresql_where=db.text("deleted_at IS NULL"),
-            sqlite_where=db.text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
         ),
     )
 
@@ -149,21 +158,21 @@ class OktaUser(db.Model):
     # https://amercader.net/blog/beware-of-json-fields-in-sqlalchemy/
     profile: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
             nested=True,
         ),
         nullable=False,
         server_default="{}",
     )
 
-    manager: Mapped["OktaUser"] = db.relationship(
+    manager: Mapped["OktaUser"] = relationship(
         "OktaUser",
         back_populates="reports",
         remote_side=[id],
         lazy="raise_on_sql",
     )
 
-    reports: Mapped[List["OktaUser"]] = db.relationship(
+    reports: Mapped[List["OktaUser"]] = relationship(
         "OktaUser",
         back_populates="manager",
         lazy="raise_on_sql",
@@ -171,13 +180,13 @@ class OktaUser(db.Model):
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
-    all_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    all_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="OktaUser.id == OktaUserGroupMember.user_id",
         back_populates="user",
         lazy="raise_on_sql",
     )
-    active_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, "
         "or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))",
@@ -186,7 +195,7 @@ class OktaUser(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_group_memberships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_group_memberships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, "
         "OktaUserGroupMember.is_owner.is_(False), "
@@ -195,7 +204,7 @@ class OktaUser(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_group_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_group_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, "
         "OktaUserGroupMember.is_owner.is_(True), "
@@ -205,7 +214,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    all_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    all_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest",
         primaryjoin="OktaUser.id == AccessRequest.requester_user_id",
         back_populates="requester",
@@ -213,7 +222,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    all_resolved_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    all_resolved_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest",
         primaryjoin="OktaUser.id == AccessRequest.resolver_user_id",
         back_populates="resolver",
@@ -221,7 +230,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    all_resolved_role_requests: Mapped[List["RoleRequest"]] = db.relationship(
+    all_resolved_role_requests: Mapped[List["RoleRequest"]] = relationship(
         "RoleRequest",
         primaryjoin="OktaUser.id == RoleRequest.resolver_user_id",
         back_populates="resolver",
@@ -229,7 +238,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    all_resolved_group_requests: Mapped[List["GroupRequest"]] = db.relationship(
+    all_resolved_group_requests: Mapped[List["GroupRequest"]] = relationship(
         "GroupRequest",
         primaryjoin="OktaUser.id == GroupRequest.resolver_user_id",
         back_populates="resolver",
@@ -237,7 +246,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    pending_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    pending_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest",
         primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, "
         "AccessRequest.status == 'PENDING', "
@@ -247,7 +256,7 @@ class OktaUser(db.Model):
         innerjoin=True,
     )
 
-    resolved_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    resolved_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest",
         primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, "
         "AccessRequest.status != 'PENDING', "
@@ -258,26 +267,24 @@ class OktaUser(db.Model):
     )
 
 
-class OktaGroup(db.Model):
+class OktaGroup(Base):
     __tablename__ = "okta_group"
-    id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
-    type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
+    type: Mapped[str] = mapped_column(Unicode(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
-    name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
-    description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     # Is this group managed by Access or is it managed externally (Built-in Okta group? via Okta Group rule?)
-    is_managed: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.true(), default=True)
+    is_managed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.true(), default=True)
 
     # Field containing additional data about externally managed groups
     externally_managed_data: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
             nested=True,
         ),
         nullable=False,
@@ -288,19 +295,19 @@ class OktaGroup(db.Model):
     # https://github.com/edelooff/sqlalchemy-json
     # https://amercader.net/blog/beware-of-json-fields-in-sqlalchemy/
     plugin_data: Mapped[Dict[str, Any]] = mapped_column(
-        mutable_json_type(dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True),
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
         nullable=False,
         server_default="{}",
     )
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
-    all_user_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    all_user_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         back_populates="group",
         lazy="raise_on_sql",
     )
-    active_user_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_user_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
         "or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))",
@@ -309,7 +316,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_user_memberships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_user_memberships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
         "OktaUserGroupMember.is_owner.is_(False), "
@@ -318,7 +325,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_user_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_user_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
         "OktaUserGroupMember.is_owner.is_(True), "
@@ -327,7 +334,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_non_role_user_memberships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_non_role_user_memberships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
         "OktaUserGroupMember.is_owner.is_(False), "
@@ -337,7 +344,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_non_role_user_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_non_role_user_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, "
         "OktaUserGroupMember.is_owner.is_(True), "
@@ -348,13 +355,13 @@ class OktaGroup(db.Model):
         innerjoin=True,
     )
 
-    all_role_mappings: Mapped[List["RoleGroupMap"]] = db.relationship(
+    all_role_mappings: Mapped[List["RoleGroupMap"]] = relationship(
         "RoleGroupMap",
         back_populates="group",
         foreign_keys="RoleGroupMap.group_id",
         lazy="raise_on_sql",
     )
-    active_role_mappings: Mapped[List["RoleGroupMap"]] = db.relationship(
+    active_role_mappings: Mapped[List["RoleGroupMap"]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, "
         "or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))",
@@ -363,7 +370,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_role_member_mappings: Mapped[List["RoleGroupMap"]] = db.relationship(
+    active_role_member_mappings: Mapped[List["RoleGroupMap"]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, "
         "RoleGroupMap.is_owner.is_(False), "
@@ -372,7 +379,7 @@ class OktaGroup(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_role_owner_mappings: Mapped[List["RoleGroupMap"]] = db.relationship(
+    active_role_owner_mappings: Mapped[List["RoleGroupMap"]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, "
         "RoleGroupMap.is_owner.is_(True), "
@@ -382,11 +389,11 @@ class OktaGroup(db.Model):
         innerjoin=True,
     )
 
-    all_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    all_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest", back_populates="requested_group", lazy="raise_on_sql"
     )
 
-    pending_access_requests: Mapped[List["AccessRequest"]] = db.relationship(
+    pending_access_requests: Mapped[List["AccessRequest"]] = relationship(
         "AccessRequest",
         primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, "
         "AccessRequest.status == 'PENDING', "
@@ -397,7 +404,7 @@ class OktaGroup(db.Model):
     )
 
     # requests to join group
-    all_role_requests_to: Mapped[List["RoleRequest"]] = db.relationship(
+    all_role_requests_to: Mapped[List["RoleRequest"]] = relationship(
         "RoleRequest",
         back_populates="requested_group",
         primaryjoin="OktaGroup.id == RoleRequest.requested_group_id",
@@ -405,14 +412,14 @@ class OktaGroup(db.Model):
     )
 
     # request by role group to join group
-    all_role_requests_from: Mapped[List["RoleRequest"]] = db.relationship(
+    all_role_requests_from: Mapped[List["RoleRequest"]] = relationship(
         "RoleRequest",
         back_populates="requester_role",
         primaryjoin="OktaGroup.id == RoleRequest.requester_role_id",
         lazy="raise_on_sql",
     )
 
-    pending_role_requests: Mapped[List["RoleRequest"]] = db.relationship(
+    pending_role_requests: Mapped[List["RoleRequest"]] = relationship(
         "RoleRequest",
         primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, "
         "RoleRequest.status == 'PENDING', "
@@ -422,14 +429,14 @@ class OktaGroup(db.Model):
         innerjoin=True,
     )
 
-    group_request: Mapped["GroupRequest"] = db.relationship(
+    group_request: Mapped["GroupRequest"] = relationship(
         "GroupRequest",
         back_populates="approved_group",
         lazy="raise_on_sql",
         uselist=False,
     )
 
-    all_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
+    all_group_tags: Mapped[List["OktaGroupTagMap"]] = relationship(
         "OktaGroupTagMap",
         back_populates="group",
         lazy="raise_on_sql",
@@ -437,7 +444,7 @@ class OktaGroup(db.Model):
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
     # in GET /api/audit/users so we have to enable "select" lazy loading.
-    active_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
+    active_group_tags: Mapped[List["OktaGroupTagMap"]] = relationship(
         "OktaGroupTagMap",
         primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, "
         "or_(OktaGroupTagMap.ended_at.is_(None), OktaGroupTagMap.ended_at > func.now()))",
@@ -452,44 +459,42 @@ class OktaGroup(db.Model):
     }
 
 
-class RoleGroupMap(db.Model):
+class RoleGroupMap(Base):
     # See https://stackoverflow.com/a/60840921
     id: Mapped[int] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
+        BigInteger().with_variant(Integer, "sqlite"),
         autoincrement=True,
         primary_key=True,
     )
-    role_group_id: Mapped[str] = mapped_column("role_id", db.Unicode(50), db.ForeignKey("okta_group.id"))
-    group_id: Mapped[str] = mapped_column("group_id", db.Unicode(50), db.ForeignKey("okta_group.id"))
+    role_group_id: Mapped[str] = mapped_column("role_id", Unicode(50), ForeignKey("okta_group.id"))
+    group_id: Mapped[str] = mapped_column("group_id", Unicode(50), ForeignKey("okta_group.id"))
     # Does this role grant ownership of the group and allow role members to administer the group and manage membership?
     # Or does this role grant only membership to the group?
-    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     # Save the user IDs of the person who added/removed someone from a group
-    created_actor_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    ended_actor_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    created_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    ended_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
 
-    created_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="", server_default="")
+    created_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="", server_default="")
 
     # This field is set to True when an owner chooses to not renew access in the Expiring Access workflow
     should_expire: Mapped[bool] = mapped_column(
-        db.Boolean, nullable=False, server_default=expression.false(), default=False
+        Boolean, nullable=False, server_default=expression.false(), default=False
     )
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
-    role_group: Mapped["RoleGroup"] = db.relationship(
+    role_group: Mapped["RoleGroup"] = relationship(
         "RoleGroup",
         back_populates="all_role_associated_group_mappings",
         foreign_keys=[role_group_id],
         lazy="raise_on_sql",
     )
-    active_role_group: Mapped["RoleGroup"] = db.relationship(
+    active_role_group: Mapped["RoleGroup"] = relationship(
         "RoleGroup",
         primaryjoin="and_(remote(OktaGroup.id) == RoleGroupMap.role_group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_associated_group_mappings",
@@ -499,13 +504,13 @@ class RoleGroupMap(db.Model):
         innerjoin=True,
     )
 
-    group: Mapped[OktaGroup] = db.relationship(
+    group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="all_role_mappings",
         foreign_keys=[group_id],
         lazy="raise_on_sql",
     )
-    active_group: Mapped[OktaGroup] = db.relationship(
+    active_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_mappings",
@@ -518,10 +523,10 @@ class RoleGroupMap(db.Model):
         innerjoin=True,
     )
 
-    all_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    all_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember", back_populates="role_group_mapping", lazy="raise_on_sql"
     )
-    active_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = db.relationship(
+    active_group_memberships_and_ownerships: Mapped[List[OktaUserGroupMember]] = relationship(
         "OktaUserGroupMember",
         primaryjoin="and_(RoleGroupMap.id == OktaUserGroupMember.role_group_map_id, "
         "or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))",
@@ -531,15 +536,15 @@ class RoleGroupMap(db.Model):
         innerjoin=True,
     )
 
-    created_actor: Mapped[OktaUser] = db.relationship(
+    created_actor: Mapped[OktaUser] = relationship(
         "OktaUser", foreign_keys=[created_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
-    ended_actor: Mapped[OktaUser] = db.relationship(
+    ended_actor: Mapped[OktaUser] = relationship(
         "OktaUser", foreign_keys=[ended_actor_id], lazy="raise_on_sql", viewonly=True
     )
 
-    role_request: Mapped["RoleRequest"] = db.relationship(
+    role_request: Mapped["RoleRequest"] = relationship(
         "RoleRequest",
         back_populates="approved_membership",
         lazy="raise_on_sql",
@@ -557,17 +562,17 @@ class RoleGroup(OktaGroup):
     ROLE_GROUP_NAME_PREFIX = "Role-"
 
     __tablename__ = "role_group"
-    id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
 
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
-    all_role_associated_group_mappings: Mapped[List[RoleGroupMap]] = db.relationship(
+    all_role_associated_group_mappings: Mapped[List[RoleGroupMap]] = relationship(
         "RoleGroupMap",
         back_populates="role_group",
         foreign_keys="RoleGroupMap.role_group_id",
         lazy="raise_on_sql",
     )
-    active_role_associated_group_mappings: Mapped[List[RoleGroupMap]] = db.relationship(
+    active_role_associated_group_mappings: Mapped[List[RoleGroupMap]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(OktaGroup.id == foreign(RoleGroupMap.role_group_id), "
         "or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))",
@@ -577,7 +582,7 @@ class RoleGroup(OktaGroup):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_role_associated_group_member_mappings: Mapped[List[RoleGroupMap]] = db.relationship(
+    active_role_associated_group_member_mappings: Mapped[List[RoleGroupMap]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(RoleGroup.id == foreign(RoleGroupMap.role_group_id), "
         "RoleGroupMap.is_owner.is_(False), "
@@ -586,7 +591,7 @@ class RoleGroup(OktaGroup):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    active_role_associated_group_owner_mappings: Mapped[List[RoleGroupMap]] = db.relationship(
+    active_role_associated_group_owner_mappings: Mapped[List[RoleGroupMap]] = relationship(
         "RoleGroupMap",
         primaryjoin="and_(RoleGroup.id == foreign(RoleGroupMap.role_group_id), "
         "RoleGroupMap.is_owner.is_(True), "
@@ -607,18 +612,18 @@ class AppGroup(OktaGroup):
     APP_OWNERS_GROUP_NAME_SUFFIX = "Owners"
 
     __tablename__ = "app_group"
-    id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
 
-    app_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("app.id"), nullable=False)
+    app_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("app.id"), nullable=False)
     # Is this group the app owner group and can administer the app and other app groups?
     # Membership to an app onwer group implicitly grants group owner permissions on the
     # group to administer and manage membership of the app owner group
-    is_owner: Mapped[bool] = mapped_column(db.Boolean, nullable=False, server_default=expression.false(), default=False)
+    is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
 
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
     # in GET /api/audit/users so we have to enable "select" lazy loading.
-    app: Mapped["App"] = db.relationship("App", back_populates="app_groups", lazy="select")
+    app: Mapped["App"] = relationship("App", back_populates="app_groups", lazy="select")
 
     __mapper_args__ = {
         "polymorphic_identity": "app_group",
@@ -626,7 +631,7 @@ class AppGroup(OktaGroup):
 
     @validates("name")
     def validate_group(self, key: str, name: str) -> str:
-        app = App.query.filter(App.id == self.app_id).filter(App.deleted_at.is_(None)).first()
+        app = db.session.query(App).filter(App.id == self.app_id).filter(App.deleted_at.is_(None)).first()
         if app is None:
             raise ValueError(f"Specified App with app_id: {self.app_id} does not exist")
         # app_groups should have app name prepended always
@@ -640,35 +645,33 @@ class AppGroup(OktaGroup):
         return name
 
 
-class App(db.Model):
+class App(Base):
     ACCESS_APP_RESERVED_NAME = config.APP_NAME
 
     # A 20 character random string like Okta IDs
-    id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
-    description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     # Optional plugin ID for managing app group lifecycle
-    app_group_lifecycle_plugin: Mapped[Optional[str]] = mapped_column(db.Unicode(255))
+    app_group_lifecycle_plugin: Mapped[Optional[str]] = mapped_column(Unicode(255))
 
     # A JSON field for App plugin integrations in the form of {"unique_plugin_name": plugin_data }
     # https://github.com/edelooff/sqlalchemy-json
     # https://amercader.net/blog/beware-of-json-fields-in-sqlalchemy/
     plugin_data: Mapped[Dict[str, Any]] = mapped_column(
-        mutable_json_type(dbtype=db.JSON().with_variant(JSONB, "postgresql"), nested=True),
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
         nullable=False,
         server_default="{}",
     )
 
-    app_groups: Mapped[List[AppGroup]] = db.relationship("AppGroup", back_populates="app", lazy="raise_on_sql")
+    app_groups: Mapped[List[AppGroup]] = relationship("AppGroup", back_populates="app", lazy="raise_on_sql")
 
-    active_app_groups: Mapped[List[AppGroup]] = db.relationship(
+    active_app_groups: Mapped[List[AppGroup]] = relationship(
         "AppGroup",
         primaryjoin="and_(App.id == AppGroup.app_id, AppGroup.deleted_at.is_(None))",
         viewonly=True,
@@ -677,7 +680,7 @@ class App(db.Model):
         order_by="AppGroup.name",
     )
 
-    active_owner_app_groups: Mapped[List[AppGroup]] = db.relationship(
+    active_owner_app_groups: Mapped[List[AppGroup]] = relationship(
         "AppGroup",
         primaryjoin="and_(App.id == AppGroup.app_id, " "AppGroup.deleted_at.is_(None), " "AppGroup.is_owner.is_(True))",
         viewonly=True,
@@ -686,7 +689,7 @@ class App(db.Model):
         order_by="AppGroup.name",
     )
 
-    active_non_owner_app_groups: Mapped[List[AppGroup]] = db.relationship(
+    active_non_owner_app_groups: Mapped[List[AppGroup]] = relationship(
         "AppGroup",
         primaryjoin="and_(App.id == AppGroup.app_id, "
         "AppGroup.deleted_at.is_(None), "
@@ -697,12 +700,12 @@ class App(db.Model):
         order_by="AppGroup.name",
     )
 
-    all_app_tags: Mapped[List["AppTagMap"]] = db.relationship(
+    all_app_tags: Mapped[List["AppTagMap"]] = relationship(
         "AppTagMap",
         back_populates="app",
         lazy="raise_on_sql",
     )
-    active_app_tags: Mapped[List["AppTagMap"]] = db.relationship(
+    active_app_tags: Mapped[List["AppTagMap"]] = relationship(
         "AppTagMap",
         primaryjoin="and_(App.id == AppTagMap.app_id, "
         "or_(AppTagMap.ended_at.is_(None), AppTagMap.ended_at > func.now()))",
@@ -720,46 +723,44 @@ class AccessRequestStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
-class AccessRequest(db.Model):
+class AccessRequest(Base):
     # A 20 character random string like Okta IDs
-    id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
-        db.Enum(AccessRequestStatus),
+        Enum(AccessRequestStatus),
         nullable=False,
         default=AccessRequestStatus.PENDING,
     )
 
-    requester_user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    requested_group_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
-    request_ownership: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=False)
-    request_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
-    request_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    requester_user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    requested_group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
+    request_ownership: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+    request_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    resolver_user_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    resolution_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    resolver_user_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
-    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     # See https://stackoverflow.com/a/60840921
     approved_membership_id: Mapped[Optional[int]] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
-        db.ForeignKey("okta_user_group_member.id"),
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("okta_user_group_member.id"),
     )
 
-    requester: Mapped[OktaUser] = db.relationship(
+    requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         back_populates="all_access_requests",
         foreign_keys=[requester_user_id],
         lazy="raise_on_sql",
     )
 
-    active_requester: Mapped[OktaUser] = db.relationship(
+    active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
@@ -767,14 +768,14 @@ class AccessRequest(db.Model):
         innerjoin=True,
     )
 
-    requested_group: Mapped[OktaGroup] = db.relationship(
+    requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="all_access_requests",
         foreign_keys=[requested_group_id],
         lazy="raise_on_sql",
     )
 
-    active_requested_group: Mapped[OktaGroup] = db.relationship(
+    active_requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
         viewonly=True,
@@ -782,21 +783,21 @@ class AccessRequest(db.Model):
         innerjoin=True,
     )
 
-    resolver: Mapped[OktaUser] = db.relationship(
+    resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         back_populates="all_resolved_access_requests",
         foreign_keys=[resolver_user_id],
         lazy="raise_on_sql",
     )
 
-    active_resolver: Mapped[OktaUser] = db.relationship(
+    active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
 
-    approved_membership: Mapped[OktaUserGroupMember] = db.relationship(
+    approved_membership: Mapped[OktaUserGroupMember] = relationship(
         "OktaUserGroupMember",
         back_populates="access_request",
         foreign_keys=[approved_membership_id],
@@ -804,42 +805,40 @@ class AccessRequest(db.Model):
     )
 
 
-class RoleRequest(db.Model):
+class RoleRequest(Base):
     # A 20 character random string like Okta IDs
-    id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
-        db.Enum(AccessRequestStatus),
+        Enum(AccessRequestStatus),
         nullable=False,
         default=AccessRequestStatus.PENDING,
     )
 
     # must be an owner of the role
-    requester_user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    requester_user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     # role to be added to the requested group
-    requester_role_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
-    requested_group_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
-    request_ownership: Mapped[bool] = mapped_column(db.Boolean, nullable=False, default=False)
-    request_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
-    request_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    requester_role_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
+    requested_group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
+    request_ownership: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+    request_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    resolver_user_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
-    resolution_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    resolver_user_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
+    resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
-    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     # See https://stackoverflow.com/a/60840921
     approved_membership_id: Mapped[Optional[int]] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
-        db.ForeignKey("role_group_map.id"),
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("role_group_map.id"),
     )
 
-    requester: Mapped[OktaUser] = db.relationship(
+    requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == RoleRequest.requester_user_id",
         viewonly=True,
@@ -847,7 +846,7 @@ class RoleRequest(db.Model):
         innerjoin=True,
     )
 
-    active_requester: Mapped[OktaUser] = db.relationship(
+    active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == RoleRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
@@ -855,14 +854,14 @@ class RoleRequest(db.Model):
         innerjoin=True,
     )
 
-    requester_role: Mapped[OktaGroup] = db.relationship(
+    requester_role: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="all_role_requests_from",
         foreign_keys=[requester_role_id],
         lazy="raise_on_sql",
     )
 
-    active_requester_role: Mapped[OktaGroup] = db.relationship(
+    active_requester_role: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
         viewonly=True,
@@ -870,14 +869,14 @@ class RoleRequest(db.Model):
         innerjoin=True,
     )
 
-    requested_group: Mapped[OktaGroup] = db.relationship(
+    requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="all_role_requests_to",
         foreign_keys=[requested_group_id],
         lazy="raise_on_sql",
     )
 
-    active_requested_group: Mapped[OktaGroup] = db.relationship(
+    active_requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
         viewonly=True,
@@ -885,21 +884,21 @@ class RoleRequest(db.Model):
         innerjoin=True,
     )
 
-    resolver: Mapped[OktaUser] = db.relationship(
+    resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         back_populates="all_resolved_role_requests",
         foreign_keys=[resolver_user_id],
         lazy="raise_on_sql",
     )
 
-    active_resolver: Mapped[OktaUser] = db.relationship(
+    active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == RoleRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
 
-    approved_membership: Mapped[RoleGroupMap] = db.relationship(
+    approved_membership: Mapped[RoleGroupMap] = relationship(
         "RoleGroupMap",
         back_populates="role_request",
         foreign_keys=[approved_membership_id],
@@ -907,34 +906,32 @@ class RoleRequest(db.Model):
     )
 
 
-class GroupRequest(db.Model):
+class GroupRequest(Base):
     # A 20 character random string like Okta IDs
-    id: Mapped[str] = mapped_column(db.Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
-        db.Enum(AccessRequestStatus),
+        Enum(AccessRequestStatus),
         nullable=False,
         default=AccessRequestStatus.PENDING,
     )
 
     # For now, the requester will be set as the owner of the group, may expand in the future to allow the
     # requester to set other users or roles as proposed owners
-    requester_user_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    requester_user_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
-    requested_group_name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
-    requested_group_description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
-    requested_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False)
-    requested_app_id: Mapped[Optional[str]] = mapped_column(db.Unicode(20), db.ForeignKey("app.id"))
-    requested_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    requested_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    requested_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+    requested_group_type: Mapped[str] = mapped_column(Unicode(50), nullable=False)
+    requested_app_id: Mapped[Optional[str]] = mapped_column(Unicode(20), ForeignKey("app.id"))
+    requested_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
     # Tag ids
     requested_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
             nested=True,
         ),
         nullable=False,
@@ -942,34 +939,34 @@ class GroupRequest(db.Model):
         server_default="[]",
     )
     # Will also be used to populate owner access reason field
-    request_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     # Since resolver can edit all fields before group is created, have 'resolved' version
-    resolver_user_id: Mapped[Optional[str]] = mapped_column(db.Unicode(50), db.ForeignKey("okta_user.id"))
+    resolver_user_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
-    resolved_group_name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False, default="")
-    resolved_group_description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
-    resolved_group_type: Mapped[str] = mapped_column(db.Unicode(50), nullable=False, default="")
-    resolved_app_id: Mapped[Optional[str]] = mapped_column(db.Unicode(20), db.ForeignKey("app.id"))
-    resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    resolved_group_name: Mapped[str] = mapped_column(Unicode(255), nullable=False, default="")
+    resolved_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
+    resolved_group_type: Mapped[str] = mapped_column(Unicode(50), nullable=False, default="")
+    resolved_app_id: Mapped[Optional[str]] = mapped_column(Unicode(20), ForeignKey("app.id"))
+    resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
     # Tag ids
     resolved_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
             nested=True,
         ),
         nullable=False,
         default=list,
         server_default="[]",
     )
-    resolution_reason: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
     approved_group_id: Mapped[Optional[str]] = mapped_column(
-        db.Unicode(50),
-        db.ForeignKey("okta_group.id"),
+        Unicode(50),
+        ForeignKey("okta_group.id"),
     )
 
-    requester: Mapped[OktaUser] = db.relationship(
+    requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="OktaUser.id == GroupRequest.requester_user_id",
         viewonly=True,
@@ -977,7 +974,7 @@ class GroupRequest(db.Model):
         innerjoin=True,
     )
 
-    active_requester: Mapped[OktaUser] = db.relationship(
+    active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == GroupRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
@@ -985,28 +982,28 @@ class GroupRequest(db.Model):
         innerjoin=True,
     )
 
-    resolver: Mapped[OktaUser] = db.relationship(
+    resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         back_populates="all_resolved_group_requests",
         foreign_keys=[resolver_user_id],
         lazy="raise_on_sql",
     )
 
-    active_resolver: Mapped[OktaUser] = db.relationship(
+    active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
         primaryjoin="and_(OktaUser.id == GroupRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
 
-    approved_group: Mapped[OktaGroup] = db.relationship(
+    approved_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="group_request",
         foreign_keys=[approved_group_id],
         lazy="raise_on_sql",
     )
 
-    requested_app: Mapped[Optional["App"]] = db.relationship(
+    requested_app: Mapped[Optional["App"]] = relationship(
         "App",
         foreign_keys=[requested_app_id],
     )
@@ -1026,7 +1023,7 @@ class TagConstraint:
         self.coalesce = coalesce
 
 
-class Tag(db.Model):
+class Tag(Base):
     MEMBER_TIME_LIMIT_CONSTRAINT_KEY = "member_time_limit"
     OWNER_TIME_LIMIT_CONSTRAINT_KEY = "owner_time_limit"
     REQUIRE_MEMBER_REASON_CONSTRAINT_KEY = "require_member_reason"
@@ -1078,34 +1075,32 @@ class Tag(db.Model):
         ),
     }
 
-    id: Mapped[str] = mapped_column(db.Unicode(50), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    name: Mapped[str] = mapped_column(db.Unicode(255), nullable=False)
-    description: Mapped[str] = mapped_column(db.Unicode(1024), nullable=False, default="")
+    name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
-    enabled: Mapped[bool] = mapped_column(db.Boolean(), nullable=False, default=True)
+    enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
     # Field containing additional data about externally managed groups
     constraints: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
-            dbtype=db.JSON().with_variant(JSONB, "postgresql"),
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
             nested=True,
         ),
         nullable=False,
         server_default="{}",
     )
 
-    all_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
+    all_group_tags: Mapped[List["OktaGroupTagMap"]] = relationship(
         "OktaGroupTagMap",
         back_populates="tag",
         lazy="raise_on_sql",
     )
-    active_group_tags: Mapped[List["OktaGroupTagMap"]] = db.relationship(
+    active_group_tags: Mapped[List["OktaGroupTagMap"]] = relationship(
         "OktaGroupTagMap",
         primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, "
         "or_(OktaGroupTagMap.ended_at.is_(None), OktaGroupTagMap.ended_at > func.now()))",
@@ -1115,12 +1110,12 @@ class Tag(db.Model):
         innerjoin=True,
     )
 
-    all_app_tags: Mapped[List["AppTagMap"]] = db.relationship(
+    all_app_tags: Mapped[List["AppTagMap"]] = relationship(
         "AppTagMap",
         back_populates="tag",
         lazy="raise_on_sql",
     )
-    active_app_tags: Mapped[List["AppTagMap"]] = db.relationship(
+    active_app_tags: Mapped[List["AppTagMap"]] = relationship(
         "AppTagMap",
         primaryjoin="and_(Tag.id == AppTagMap.tag_id, "
         "or_(AppTagMap.ended_at.is_(None), AppTagMap.ended_at > func.now()))",
@@ -1131,29 +1126,27 @@ class Tag(db.Model):
     )
 
 
-class OktaGroupTagMap(db.Model):
+class OktaGroupTagMap(Base):
     # See https://stackoverflow.com/a/60840921
     id: Mapped[int] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
+        BigInteger().with_variant(Integer, "sqlite"),
         autoincrement=True,
         primary_key=True,
     )
-    tag_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("tag.id"))
-    group_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("okta_group.id"))
+    tag_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("tag.id"))
+    group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
     # If this tag is via a AppTagMap
     # See https://stackoverflow.com/a/60840921
     app_tag_map_id: Mapped[Optional[int]] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
-        db.ForeignKey("app_tag_map.id"),
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("app_tag_map.id"),
     )
 
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    tag: Mapped[Tag] = db.relationship(
+    tag: Mapped[Tag] = relationship(
         "Tag",
         back_populates="all_group_tags",
         foreign_keys=[tag_id],
@@ -1162,7 +1155,7 @@ class OktaGroupTagMap(db.Model):
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
     # in GET /api/audit/users so we have to enable "select" lazy loading.
-    active_tag: Mapped[Tag] = db.relationship(
+    active_tag: Mapped[Tag] = relationship(
         "Tag",
         primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None))",
         back_populates="active_group_tags",
@@ -1170,7 +1163,7 @@ class OktaGroupTagMap(db.Model):
         lazy="select",
         innerjoin=True,
     )
-    enabled_active_tag: Mapped[Tag] = db.relationship(
+    enabled_active_tag: Mapped[Tag] = relationship(
         "Tag",
         primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
@@ -1178,12 +1171,12 @@ class OktaGroupTagMap(db.Model):
         innerjoin=True,
     )
 
-    group: Mapped[OktaGroup] = db.relationship(
+    group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         back_populates="all_group_tags",
         lazy="raise_on_sql",
     )
-    active_group: Mapped[OktaGroup] = db.relationship(
+    active_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
         primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, " "OktaGroup.deleted_at.is_(None))",
         back_populates="active_group_tags",
@@ -1192,7 +1185,7 @@ class OktaGroupTagMap(db.Model):
         innerjoin=True,
     )
 
-    app_tag_mapping: Mapped["AppTagMap"] = db.relationship(
+    app_tag_mapping: Mapped["AppTagMap"] = relationship(
         "AppTagMap",
         back_populates="group_tag_mappings",
         foreign_keys=[app_tag_map_id],
@@ -1201,7 +1194,7 @@ class OktaGroupTagMap(db.Model):
     # SQLAlchemy doesn't seem to support loading
     # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
     # in GET /api/audit/users so we have to enable "select" lazy loading.
-    active_app_tag_mapping: Mapped["AppTagMap"] = db.relationship(
+    active_app_tag_mapping: Mapped["AppTagMap"] = relationship(
         "AppTagMap",
         primaryjoin="and_(AppTagMap.id == OktaGroupTagMap.app_tag_map_id, "
         "or_(AppTagMap.ended_at.is_(None), AppTagMap.ended_at > func.now()))",
@@ -1212,29 +1205,27 @@ class OktaGroupTagMap(db.Model):
     )
 
 
-class AppTagMap(db.Model):
+class AppTagMap(Base):
     # See https://stackoverflow.com/a/60840921
     id: Mapped[int] = mapped_column(
-        db.BigInteger().with_variant(db.Integer, "sqlite"),
+        BigInteger().with_variant(Integer, "sqlite"),
         autoincrement=True,
         primary_key=True,
     )
-    tag_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("tag.id"))
-    app_id: Mapped[str] = mapped_column(db.Unicode(50), db.ForeignKey("app.id"))
+    tag_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("tag.id"))
+    app_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("app.id"))
 
-    created_at: Mapped[datetime] = mapped_column(db.DateTime(), nullable=False, default=db.func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        db.DateTime(), nullable=False, default=db.func.now(), onupdate=db.func.now()
-    )
-    ended_at: Mapped[Optional[datetime]] = mapped_column(db.DateTime())
+    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
 
-    tag: Mapped[Tag] = db.relationship(
+    tag: Mapped[Tag] = relationship(
         "Tag",
         back_populates="all_app_tags",
         foreign_keys=[tag_id],
         lazy="raise_on_sql",
     )
-    active_tag: Mapped[Tag] = db.relationship(
+    active_tag: Mapped[Tag] = relationship(
         "Tag",
         primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None))",
         back_populates="active_app_tags",
@@ -1242,7 +1233,7 @@ class AppTagMap(db.Model):
         lazy="raise_on_sql",
         innerjoin=True,
     )
-    enabled_active_tag: Mapped[Tag] = db.relationship(
+    enabled_active_tag: Mapped[Tag] = relationship(
         "Tag",
         primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
@@ -1250,12 +1241,12 @@ class AppTagMap(db.Model):
         innerjoin=True,
     )
 
-    app: Mapped[App] = db.relationship(
+    app: Mapped[App] = relationship(
         "App",
         back_populates="all_app_tags",
         lazy="raise_on_sql",
     )
-    active_app: Mapped[App] = db.relationship(
+    active_app: Mapped[App] = relationship(
         "App",
         primaryjoin="and_(App.id == AppTagMap.app_id, " "App.deleted_at.is_(None))",
         back_populates="active_app_tags",
@@ -1264,10 +1255,10 @@ class AppTagMap(db.Model):
         innerjoin=True,
     )
 
-    group_tag_mappings: Mapped[List[OktaGroupTagMap]] = db.relationship(
+    group_tag_mappings: Mapped[List[OktaGroupTagMap]] = relationship(
         "OktaGroupTagMap", back_populates="app_tag_mapping", lazy="raise_on_sql"
     )
-    active_group_tag_mappings: Mapped[List[OktaGroupTagMap]] = db.relationship(
+    active_group_tag_mappings: Mapped[List[OktaGroupTagMap]] = relationship(
         "OktaGroupTagMap",
         primaryjoin="and_(AppTagMap.id == OktaGroupTagMap.app_tag_map_id, "
         "or_(OktaGroupTagMap.ended_at.is_(None), OktaGroupTagMap.ended_at > func.now()))",

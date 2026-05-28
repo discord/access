@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -15,7 +15,6 @@ from api.auth.permissions import (
     require_app_owner_or_access_admin_for_app,
 )
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import (
     App,
     AppGroup,
@@ -68,7 +67,7 @@ def list_apps(
     query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(_db.or_(App.name.ilike(like), App.description.ilike(like)))
+        query = query.filter(or_(App.name.ilike(like), App.description.ilike(like)))
     return paginate(request, query, AppPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
@@ -78,7 +77,7 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDe
         db.query(App)
         .options(*APP_LOAD_OPTIONS)
         .filter(App.deleted_at.is_(None))
-        .filter(_db.or_(App.id == app_id, App.name == app_id))
+        .filter(or_(App.id == app_id, App.name == app_id))
         .first()
     )
     if app is None:
@@ -113,7 +112,7 @@ def post_app(
             db.query(OktaUser)
             .filter(OktaUser.deleted_at.is_(None))
             .filter(
-                _db.or_(
+                or_(
                     OktaUser.id == body.initial_owner_id,
                     OktaUser.email.ilike(body.initial_owner_id),
                 )

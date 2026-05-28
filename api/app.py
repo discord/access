@@ -138,9 +138,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         dependencies=[Depends(require_authenticated)],
     )
 
-    # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture
-    # rebuilds with a sqlite-in-memory engine, so we only bind here when not
-    # testing.
+    # Bind the SQLAlchemy engine to the session facade. In tests the `db`
+    # fixture rebuilds with a sqlite-in-memory engine, so we only bind here
+    # when not testing.
     if not testing and (settings.SQLALCHEMY_DATABASE_URI or settings.CLOUDSQL_CONNECTION_NAME):
         db.init_app(engine=build_engine())
 

@@ -6,7 +6,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -14,7 +14,6 @@ from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import require_access_admin
 from api.context import get_request_context
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import AppTagMap, OktaUser, Tag
 from api.operations import CreateTag, DeleteTag
 from api.pagination import paginate
@@ -52,7 +51,7 @@ def list_tags(
     query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(_db.or_(Tag.name.ilike(like), Tag.description.ilike(like)))
+        query = query.filter(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
     return paginate(request, query, TagPagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
@@ -64,7 +63,7 @@ def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> TagDe
     tag = (
         db.query(Tag)
         .options(*_TAG_LOAD_OPTIONS)
-        .filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id))
+        .filter(or_(Tag.id == tag_id, Tag.name == tag_id))
         .order_by(nullsfirst(Tag.deleted_at.desc()))
         .first()
     )
@@ -112,7 +111,7 @@ def put_tag(
 
     from api.operations import ModifyGroupsTimeLimit
 
-    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     payload = body.model_dump(exclude_unset=True)
@@ -187,7 +186,7 @@ def delete_tag(
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> DeleteMessage:
-    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(_db.or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(or_(Tag.id == tag_id, Tag.name == tag_id)).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     DeleteTag(tag=tag, current_user_id=current_user_id).execute()

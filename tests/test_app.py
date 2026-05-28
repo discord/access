@@ -138,8 +138,8 @@ def test_put_app(
         db.session.get(AppGroup, old_app_group_id).name
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}Updated{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}group"
     )
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
 
     update_group_spy.reset_mock()
 
@@ -152,8 +152,8 @@ def test_put_app(
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
 
     update_group_spy.reset_mock()
 
@@ -166,14 +166,14 @@ def test_put_app(
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
 
     # Updating the name of the built-in Access app should fail
-    builtin_access_app = App.query.filter(App.name == App.ACCESS_APP_RESERVED_NAME).first()
-    builtin_access_owners_group = AppGroup.query.filter(
-        AppGroup.app_id == builtin_access_app.id, AppGroup.is_owner.is_(True)
-    ).first()
+    builtin_access_app = db.session.query(App).filter(App.name == App.ACCESS_APP_RESERVED_NAME).first()
+    builtin_access_owners_group = (
+        db.session.query(AppGroup).filter(AppGroup.app_id == builtin_access_app.id, AppGroup.is_owner.is_(True)).first()
+    )
     app_url = url_for("api-apps.app_by_id", app_id=builtin_access_app.id)
     data = {"name": "UpdatedAccess"}
     rep = client.put(app_url, json=data)
@@ -195,8 +195,8 @@ def test_put_app(
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
 
     data = {"name": "UpdatedAccess", "description": "new description", "tags_to_remove": [tag.id]}
     update_group_spy.reset_mock()
@@ -213,8 +213,8 @@ def test_put_app(
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
 def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any) -> None:
@@ -248,8 +248,8 @@ def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_ap
     assert delete_group_spy.call_count == 3
     assert db.session.get(App, app_id).deleted_at is not None
     assert db.session.get(AppGroup, app_group_id).deleted_at is not None
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
 
 
 def test_get_app_excludes_soft_deleted(
@@ -315,12 +315,14 @@ def test_create_app(
     assert data["description"] == ""
     assert data["active_app_tags"][0]["active_tag"]["id"] == tag.id
 
-    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
     assert len(app_groups) == 1
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
 
-    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    test_app_group = (
+        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    )
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
@@ -359,22 +361,26 @@ def test_create_app_with_initial_owners(
     assert data["name"] == "Created"
     assert data["description"] == ""
 
-    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
     assert len(app_groups) == 1
 
-    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    test_app_group = (
+        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    )
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
     assert (
-        OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == test_app_group.id)
+        db.session.query(OktaUserGroupMember)
+        .filter(OktaUserGroupMember.group_id == test_app_group.id)
         .filter(OktaUserGroupMember.user_id == user.id)
         .filter(OktaUserGroupMember.ended_at.is_(None))
         .count()
         == 2
     )
     assert (
-        RoleGroupMap.query.filter(RoleGroupMap.group_id == test_app_group.id)
+        db.session.query(RoleGroupMap)
+        .filter(RoleGroupMap.group_id == test_app_group.id)
         .filter(RoleGroupMap.role_group_id == role_group.id)
         .filter(RoleGroupMap.ended_at.is_(None))
         .count()
@@ -445,14 +451,18 @@ def test_create_app_with_additional_groups(
     assert data["name"] == "Created"
     assert data["description"] == ""
 
-    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
     assert len(app_groups) == 3
 
-    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    test_app_group = (
+        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
+    )
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
-    test_app_group = AppGroup.query.filter(AppGroup.name == "App-Created-Test", AppGroup.app_id == data["id"]).first()
+    test_app_group = (
+        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Test", AppGroup.app_id == data["id"]).first()
+    )
     assert test_app_group is not None
     assert test_app_group.description == "test"
     assert test_app_group.is_owner is False
@@ -496,11 +506,11 @@ def test_create_app_with_name_collision(
     assert data["name"] == "Test"
 
     # Make sure new app doesn't end up with additional app groups from name collision
-    app_groups = AppGroup.query.filter(AppGroup.app_id == data["id"]).all()
+    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
     assert len(app_groups) == 1
 
     # Make sure original app still has its app group
-    app_groups = AppGroup.query.filter(AppGroup.app_id == app.id).all()
+    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == app.id).all()
     assert len(app_groups) == 1
 
 
@@ -679,7 +689,7 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     rep = client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 409
 
-    assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is None
+    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is None
 
 
 def test_create_app_succeeds_with_empty_preexisting_owner_group(
@@ -709,7 +719,7 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
 
     data = rep.json()
     assert data["name"] == "Payments"
-    assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
 
 
 def test_create_app_succeeds_with_members_only_preexisting_owner_group(
@@ -745,7 +755,7 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
 
     data = rep.json()
     assert data["name"] == "Payments"
-    assert App.query.filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
 
 
 def test_delete_reserved_access_app_blocked(client: TestClient, db: Db, url_for: Any) -> None:

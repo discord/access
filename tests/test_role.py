@@ -4,6 +4,7 @@ from typing import Any
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
+from sqlalchemy import func, or_
 from api.extensions import Db
 from api.models import (
     AccessRequestStatus,
@@ -409,7 +410,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -433,7 +434,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -458,7 +459,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -484,7 +485,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 0
@@ -508,7 +509,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -535,7 +536,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
 
     data = rep.json()
     assert len(data["members"]) == 0
@@ -559,7 +560,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -584,7 +585,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -609,7 +610,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -635,7 +636,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -662,7 +663,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -687,7 +688,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -713,7 +714,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -738,7 +739,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -766,7 +767,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
 
     data = rep.json()
     assert len(data["members"]) == 0
@@ -791,7 +792,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -823,7 +824,7 @@ def test_complex_role_modifications(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert data["type"] == "app_group"
@@ -857,7 +858,7 @@ def test_complex_role_modifications(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert data["type"] == "role_group"
@@ -887,8 +888,8 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at > db.func.now()).count() == 2
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at > func.now()).count() == 2
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -916,20 +917,24 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should only be added for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
-            OktaUserGroupMember.ended_at > db.func.now(),
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            OktaUserGroupMember.ended_at > func.now(),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
-        ).count()
+        )
+        .count()
         == 3
     )
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 0
     )
 
@@ -953,21 +958,25 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should be added for the length of the okta group membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
     # User should only be added for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 1
     )
 
@@ -995,13 +1004,15 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
-        ).count()
+        )
+        .count()
         == 3
     )
 
@@ -1030,13 +1041,15 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
-        ).count()
+        )
+        .count()
         == 3
     )
 
@@ -1066,13 +1079,15 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
-        ).count()
+        )
+        .count()
         == 3
     )
 
@@ -1102,21 +1117,25 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
-        ).count()
+        )
+        .count()
         == 1
     )
     # User should be added for the length of the okta group membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
 
@@ -1144,13 +1163,15 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        OktaUserGroupMember.query.filter(
+        db.session.query(OktaUserGroupMember)
+        .filter(
             OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
             OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
-        ).count()
+        )
+        .count()
         == 2
     )
 
@@ -1178,7 +1199,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -1204,7 +1225,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -1234,7 +1255,7 @@ def test_complex_role_modifications(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert data["type"] == "role_group"
@@ -1264,7 +1285,7 @@ def test_complex_role_modifications(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert data["type"] == "okta_group"
@@ -1290,7 +1311,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -1316,7 +1337,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -1340,7 +1361,7 @@ def test_complex_role_modifications(
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
     assert delete_group_spy.call_count == 1
-    assert OktaUserGroupMember.query.filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
     assert db.session.get(OktaGroup, group_id).deleted_at is not None
 
 
@@ -1373,7 +1394,7 @@ def test_do_not_renew(
     ).execute()
 
     # need the RoleGroupMap id to pass in later
-    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id).first()
+    role_group_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role_group.id).first()
 
     # set one user to renew and one do not renew
     add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
@@ -1404,10 +1425,11 @@ def test_do_not_renew(
 
     # get OktaUserGroupMembers, check expiration dates and should_expire
     membership_role = (
-        RoleGroupMap.query.filter(
-            db.or_(
+        db.session.query(RoleGroupMap)
+        .filter(
+            or_(
                 RoleGroupMap.ended_at.is_(None),
-                RoleGroupMap.ended_at > db.func.now(),
+                RoleGroupMap.ended_at > func.now(),
             )
         )
         .filter(RoleGroupMap.role_group_id == role_group.id)
@@ -1454,7 +1476,7 @@ def test_do_not_renew_scoped_to_route_role(
         sync_to_okta=False,
     ).execute()
 
-    victim_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == victim_role.id).first()
+    victim_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == victim_role.id).first()
     assert victim_map is not None
 
     data: dict[str, Any] = {
@@ -1499,7 +1521,7 @@ def test_do_not_renew_requires_group_ownership(
         sync_to_okta=False,
     ).execute()
 
-    role_group_map = RoleGroupMap.query.filter(RoleGroupMap.role_group_id == role_group.id).first()
+    role_group_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role_group.id).first()
     assert role_group_map is not None
 
     # User is not an admin and not an owner of the group in the mapping

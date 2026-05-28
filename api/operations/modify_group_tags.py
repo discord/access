@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
@@ -28,12 +29,17 @@ class ModifyGroupTags:
             .first()
         )
 
-        self.tags_to_add = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_add)).all()
+        self.tags_to_add = db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_add)).all()
 
-        self.tags_to_remove = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_remove)).all()
+        self.tags_to_remove = (
+            db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_remove)).all()
+        )
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -43,10 +49,11 @@ class ModifyGroupTags:
             # Only add tags that are not already associated with the group
             tag_ids_to_add = [t.id for t in self.tags_to_add]
             existing_tag_maps = (
-                OktaGroupTagMap.query.filter(
-                    db.or_(
+                db.session.query(OktaGroupTagMap)
+                .filter(
+                    or_(
                         OktaGroupTagMap.ended_at.is_(None),
-                        OktaGroupTagMap.ended_at > db.func.now(),
+                        OktaGroupTagMap.ended_at > func.now(),
                     )
                 )
                 .filter(
@@ -78,10 +85,10 @@ class ModifyGroupTags:
             db.session.commit()
 
         if len(self.tags_to_remove) > 0:
-            OktaGroupTagMap.query.filter(
-                db.or_(
+            db.session.query(OktaGroupTagMap).filter(
+                or_(
                     OktaGroupTagMap.ended_at.is_(None),
-                    OktaGroupTagMap.ended_at > db.func.now(),
+                    OktaGroupTagMap.ended_at > func.now(),
                 )
             ).filter(
                 OktaGroupTagMap.group_id == self.group.id,
@@ -90,7 +97,7 @@ class ModifyGroupTags:
             ).filter(
                 OktaGroupTagMap.app_tag_map_id.is_(None),
             ).update(
-                {OktaGroupTagMap.ended_at: db.func.now()},
+                {OktaGroupTagMap.ended_at: func.now()},
                 synchronize_session="fetch",
             )
             db.session.commit()

@@ -25,7 +25,8 @@ class ApproveAccessRequest:
         notify: bool = True,
     ):
         self.access_request = (
-            AccessRequest.query.options(joinedload(AccessRequest.active_requested_group))
+            db.session.query(AccessRequest)
+            .options(joinedload(AccessRequest.active_requested_group))
             .filter(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
             .first()
         )
@@ -81,7 +82,7 @@ class ApproveAccessRequest:
 
         # Now handled inside ModifyGroupUsers
         # self.access_request.status = AccessRequestStatus.APPROVED
-        # self.access_request.resolved_at = db.func.now()
+        # self.access_request.resolved_at = func.now()
         # self.access_request.resolver_user_id = self.approver_id
         # self.access_request.resolution_reason = self.approval_reason
         # self.access_request.approval_ending_at = self.ending_at
@@ -133,7 +134,7 @@ class ApproveAccessRequest:
 
         # Now handled inside ModifyGroupUsers
         # self.access_request.approved_membership_id = (
-        #     OktaUserGroupMember.query.filter(
+        #     db.session.query(OktaUserGroupMember).filter(
         #         OktaUserGroupMember.user_id == self.access_request.requester_user_id
         #     )
         #     .filter(

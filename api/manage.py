@@ -17,6 +17,7 @@ import uuid
 from typing import Any, Callable, List, TypeVar
 
 import click
+from sqlalchemy import func, or_
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -118,7 +119,7 @@ def _import_from_okta() -> None:
     from api.services import okta
 
     click.echo("Starting Okta Import")
-    if db.session.query(db.func.count(OktaUser.id)).scalar() > 0:
+    if db.session.query(func.count(OktaUser.id)).scalar() > 0:
         click.echo("Skipping import of Okta Users as they were previously imported")
     else:
         click.echo("Importing Okta Users")
@@ -137,7 +138,7 @@ def _import_from_okta() -> None:
 
         db.session.commit()
 
-    if db.session.query(db.func.count(OktaGroup.id)).scalar() > 0:
+    if db.session.query(func.count(OktaGroup.id)).scalar() > 0:
         click.echo("Skipping import of Okta Groups as they were previously imported")
     else:
         click.echo("Importing Okta Groups")
@@ -149,7 +150,7 @@ def _import_from_okta() -> None:
             db.session.add(group.update_okta_group(OktaGroup(), group_ids_with_group_rules))
         db.session.commit()
 
-    if db.session.query(db.func.count(OktaUserGroupMember.id)).scalar() > 0:
+    if db.session.query(func.count(OktaUserGroupMember.id)).scalar() > 0:
         click.echo("Skipping import of Okta Group Memberships as they were previously imported")
     else:
         click.echo("Importing Okta Group Memberships")
@@ -176,15 +177,18 @@ def _init_builtin_apps(admin_okta_user_email: str) -> None:
     from api.models import App, OktaUser
     from api.operations import CreateApp
 
-    existing_app = App.query.filter(App.name == App.ACCESS_APP_RESERVED_NAME).filter(App.deleted_at.is_(None)).first()
+    existing_app = (
+        db.session.query(App).filter(App.name == App.ACCESS_APP_RESERVED_NAME).filter(App.deleted_at.is_(None)).first()
+    )
     if existing_app is not None:
         click.echo("Access app and groups already exist, skipping init of built-in apps")
         return
 
     admin_okta_user = (
-        OktaUser.query.filter(OktaUser.deleted_at.is_(None))
+        db.session.query(OktaUser)
+        .filter(OktaUser.deleted_at.is_(None))
         .filter(
-            db.or_(
+            or_(
                 OktaUser.id == admin_okta_user_email,
                 OktaUser.email.ilike(admin_okta_user_email),
             )
@@ -316,7 +320,7 @@ def sync_app_group_memberships() -> None:
     click.echo("Starting app group lifecycle plugin sync")
 
     apps: List[App] = (
-        App.query.filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).all()
+        db.session.query(App).filter(App.deleted_at.is_(None)).filter(App.app_group_lifecycle_plugin.isnot(None)).all()
     )
 
     if len(apps) == 0:

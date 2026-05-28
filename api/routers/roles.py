@@ -10,13 +10,12 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, or_
 from starlette.requests import Request
 
 from api.auth import permissions as _perms
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
 from api.pagination import paginate
@@ -54,7 +53,7 @@ def list_roles(
         owner_id = current_user_id if q_args.owner_id == "@me" else q_args.owner_id
         owner = (
             db.query(OktaUser)
-            .filter(_db.or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+            .filter(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
             .order_by(nullsfirst(OktaUser.deleted_at.desc()))
             .first()
         )
@@ -66,9 +65,9 @@ def list_roles(
             .filter(OktaUserGroupMember.user_id == owner.id)
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .all()
@@ -77,7 +76,7 @@ def list_roles(
 
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(_db.or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
+        query = query.filter(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
     return paginate(request, query, RolePagination, extract=lambda: (q_args.page, q_args.per_page))
 
 
@@ -86,7 +85,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> Gro
     role = (
         db.query(RoleGroup)
         .options(*_GROUP_LOAD_OPTIONS)
-        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .filter(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
         .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
         .first()
     )
@@ -109,7 +108,7 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
     role = (
         db.query(RoleGroup)
         .filter(RoleGroup.deleted_at.is_(None))
-        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .filter(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
         .first()
     )
     if role is None:
@@ -117,7 +116,7 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
     mappings = (
         db.query(RoleGroupMap)
         .filter(RoleGroupMap.role_group_id == role.id)
-        .filter(_db.or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > _db.func.now()))
+        .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
         .all()
     )
     return RoleMembersSummary(
@@ -141,7 +140,7 @@ def put_role_members(
     role = (
         db.query(RoleGroup)
         .filter(RoleGroup.deleted_at.is_(None))
-        .filter(_db.or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        .filter(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
         .first()
     )
     if role is None:
@@ -204,7 +203,7 @@ def put_role_members(
     affected_ids = body.groups_to_add + body.owner_groups_to_add + body.groups_to_remove + body.owner_groups_to_remove
     if affected_ids:
         unmanaged_count = (
-            db.query(_db.func.count(OktaGroup.id))
+            db.query(func.count(OktaGroup.id))
             .filter(OktaGroup.id.in_(affected_ids))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.is_managed.is_(False))
@@ -217,7 +216,7 @@ def put_role_members(
     add_ids = body.groups_to_add + body.owner_groups_to_add
     if add_ids:
         role_in_add_count = (
-            db.query(_db.func.count(OktaGroup.id))
+            db.query(func.count(OktaGroup.id))
             .filter(OktaGroup.id.in_(add_ids))
             .filter(OktaGroup.deleted_at.is_(None))
             .filter(OktaGroup.type == RoleGroup.__mapper_args__["polymorphic_identity"])
