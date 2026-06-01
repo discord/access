@@ -2274,3 +2274,91 @@ def test_put_group_request_persists_resolution_reason_via_http(
     db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolution_reason == "duplicate work"
+
+
+def test_put_group_request_app_owner_cannot_escalate_to_role_group(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    """An app owner authorized to approve an `app_group` request
+    against their own app must not be able to escalate the resolution into
+    creating a a group for another app or group type by supplying for eg. 
+    `resolved_group_type="role_group"` in the PUT body. Only Access admins
+    can mint vanilla and role groups via the normal POST /api/groups path, 
+    so the group-request PUT must not become a backdoor that bypasses that
+    admin check.
+    """
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    # Alice is the app owner of Foo. She is NOT an Access admin.
+    alice = OktaUserFactory.create()
+    foo_app = AppFactory.create()
+    db.session.add(user)
+    db.session.add(alice)
+    db.session.add(foo_app)
+    db.session.commit()
+
+    owner_group = AppGroupFactory.create(
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo_app.name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        app_id=foo_app.id,
+        is_owner=True,
+    )
+    db.session.add(owner_group)
+    db.session.commit()
+    # is_owner=True makes Alice a *manager* of app Foo
+    db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=owner_group.id, is_owner=True))
+    db.session.commit()
+
+    # Regular user files an app_group request against Foo. Alice is a valid
+    # approver for this request because she owns Foo.
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{foo_app.name}-Members",
+        requested_group_description="legit app group",
+        requested_group_type="app_group",
+        requested_app_id=foo_app.id,
+        request_reason="need access",
+    ).execute()
+    assert group_request is not None
+
+    # Alice approves, but flips resolved_group_type to role_group and names
+    # the group with the Role- prefix. resolved_app_id stays on Foo so the
+    # in-op authz check in ApproveGroupRequest (which only looks at
+    # resolved_app_id) still passes. 
+    mock_user(alice.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    rep = client.put(
+        resolve_url,
+        json={
+            "approved": True,
+            "resolved_group_type": "role_group",
+            "resolved_group_name": "Role-evil",
+            "resolution_reason": "lgtm",
+        },
+    )
+
+    # No RoleGroup should be created since Alice is only an
+    # app owner but not an admin
+    db.session.refresh(group_request)
+    role_evil = (
+        db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
+    )
+    assert role_evil is None, (
+        "App owner was able to escalate an app_group request into creating a RoleGroup "
+        f"(PUT returned {rep.status_code}, request status={group_request.status})."
+    )
+    assert group_request.status != AccessRequestStatus.APPROVED or group_request.approved_group_id is None, (
+        "Request was approved and bound to a group despite the type/name mismatch."
+    )
