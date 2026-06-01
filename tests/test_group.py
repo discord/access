@@ -845,6 +845,60 @@ def test_create_app_group(
     assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
 
 
+def test_create_app_group_cannot_set_is_owner_shadow_escalation(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
+) -> None:
+    """A non-admin app owner must not be able to create a *second* owner-group
+    by setting `is_owner=True` on POST /api/groups. Such a "shadow" owner-group
+    silently turns anyone added as its owner into an app owner — without them
+    ever appearing in the App-<app>-Owners member list.
+    """
+    # App "Foo" with its owner group, owned by non-admin Alice
+    foo = AppFactory.create()
+    owners_group = AppGroupFactory.create(
+        app_id=foo.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+    )
+    alice = OktaUserFactory.create()
+    db.session.add_all([foo, owners_group, alice])
+    db.session.commit()
+    foo_id = foo.id
+    foo_name = foo.name
+
+    ModifyGroupUsers(group=owners_group, owners_to_add=[alice.id], sync_to_okta=False).execute()
+
+    mocker.patch.object(okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()}))
+
+    # act as Alice — a plain app owner, NOT an Access admin.
+    app.state.current_user_email = alice.email
+    assert not AuthorizationHelpers.is_access_admin(db.session, alice.id)
+
+    shadow_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}shadow"
+    rep = client.post(
+        url_for("api-groups.groups"),
+        json={"type": "app_group", "app_id": foo_id, "name": shadow_name, "is_owner": True, "description": ""},
+    )
+    assert rep.status_code == 201
+
+    # privilege flag should be ignored, so the new group is an
+    # ordinary (non-owner) app group and Foo still has exactly one owner group.
+    created = db.session.get(AppGroup, rep.json()["id"])
+    assert not created.is_owner
+    owner_groups = (
+        db.session.query(AppGroup)
+        .filter(AppGroup.app_id == foo_id, AppGroup.is_owner.is_(True), AppGroup.deleted_at.is_(None))
+        .all()
+    )
+    assert [g.id for g in owner_groups] == [owners_group.id]
+
+
 def test_get_all_group(client: TestClient, db: Db, access_app: App, url_for: Any) -> None:
     groups_url = url_for("api-groups.groups")
 
