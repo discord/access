@@ -250,9 +250,7 @@ def put_group_request(
         raise HTTPException(400, "Group request is not pending")
 
     if body.approved and not is_access_admin(db, current_user_id):
-        type_changed = (
-            body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type
-        )
+        type_changed = body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type
         app_changed = body.resolved_app_id is not None and body.resolved_app_id != gr.requested_app_id
         if type_changed or app_changed:
             raise HTTPException(

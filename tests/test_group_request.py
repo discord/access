@@ -2287,9 +2287,9 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
 ) -> None:
     """An app owner authorized to approve an `app_group` request
     against their own app must not be able to escalate the resolution into
-    creating a a group for another app or group type by supplying for eg. 
+    creating a a group for another app or group type by supplying for eg.
     `resolved_group_type="role_group"` in the PUT body. Only Access admins
-    can mint vanilla and role groups via the normal POST /api/groups path, 
+    can mint vanilla and role groups via the normal POST /api/groups path,
     so the group-request PUT must not become a backdoor that bypasses that
     admin check.
     """
@@ -2336,7 +2336,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     # Alice approves, but flips resolved_group_type to role_group and names
     # the group with the Role- prefix. resolved_app_id stays on Foo so the
     # in-op authz check in ApproveGroupRequest (which only looks at
-    # resolved_app_id) still passes. 
+    # resolved_app_id) still passes.
     mock_user(alice.id)
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
     rep = client.put(
@@ -2352,13 +2352,11 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     # No RoleGroup should be created since Alice is only an
     # app owner but not an admin
     db.session.refresh(group_request)
-    role_evil = (
-        db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
-    )
+    role_evil = db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
     assert role_evil is None, (
         "App owner was able to escalate an app_group request into creating a RoleGroup "
         f"(PUT returned {rep.status_code}, request status={group_request.status})."
     )
-    assert group_request.status != AccessRequestStatus.APPROVED or group_request.approved_group_id is None, (
-        "Request was approved and bound to a group despite the type/name mismatch."
-    )
+    assert (
+        group_request.status != AccessRequestStatus.APPROVED or group_request.approved_group_id is None
+    ), "Request was approved and bound to a group despite the type/name mismatch."
