@@ -526,7 +526,6 @@ class _RoleGroupCreateBody(_GroupCreateBodyShared):
 class _AppGroupCreateBody(_GroupCreateBodyShared):
     type: Literal["app_group"]
     app_id: Optional[str] = None
-    is_owner: bool = False
     plugin_data: Optional[dict[str, Any]] = None
 
 
@@ -570,7 +569,6 @@ class _RoleGroupUpdateBody(_GroupUpdateBodyShared):
 class _AppGroupUpdateBody(_GroupUpdateBodyShared):
     type: Literal["app_group"]
     app_id: Optional[str] = None
-    is_owner: Optional[bool] = None
     plugin_data: Optional[dict[str, Any]] = None
 
 
