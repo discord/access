@@ -35,9 +35,7 @@ def test_emits_counter_and_histogram_per_request(
     assert hist_kwargs["tags"] == {"method": "GET", "status": "200", "unit": "ms"}
 
 
-def test_tags_record_non_2xx_status(
-    app: FastAPI, client: TestClient, db: Any, fake_hook: MagicMock
-) -> None:
+def test_tags_record_non_2xx_status(app: FastAPI, client: TestClient, db: Any, fake_hook: MagicMock) -> None:
     rep = client.get("/api/this-route-does-not-exist")
     assert rep.status_code == 404
     assert fake_hook.record_counter.call_args.kwargs["tags"]["status"] == "404"

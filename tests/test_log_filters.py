@@ -42,7 +42,5 @@ def test_passes_through_paths_without_query() -> None:
 
 
 def test_ignores_unexpected_record_shape() -> None:
-    record = logging.LogRecord(
-        name="x", level=logging.INFO, pathname="", lineno=0, msg="msg", args=(), exc_info=None
-    )
+    record = logging.LogRecord(name="x", level=logging.INFO, pathname="", lineno=0, msg="msg", args=(), exc_info=None)
     assert RedactingUvicornLogger().filter(record) is True
