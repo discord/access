@@ -252,6 +252,7 @@ The `.env.production` file is where you configure the application.
 - `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
 - `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
 - `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.
+- `MCP_RESOURCE_URL`: **[OPTIONAL]** Canonical public URL of the MCP resource (e.g. `https://access.example.com/mcp`), published in the RFC 9728 metadata document and the 401 `resource_metadata` pointer. Derived from the request when unset; set it explicitly behind a proxy that rewrites Host. Only relevant when `ENABLE_MCP=true`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -401,7 +402,7 @@ Scopes attenuate — they never grant. A token with `create_requests` still cann
 
 MCP ships with two built-in auth providers: **Cloudflare Access** and **OIDC**. Each opts in automatically when its config is set. They are mutually exclusive for the MCP surface — the app refuses to start if both `CLOUDFLARE_TEAM_DOMAIN` and `OIDC_SERVER_METADATA_URL` are configured with `ENABLE_MCP=true`.
 
-Both providers do **credential verification** only. They assume the OAuth/OIDC flow (if any) runs in front of Access — typically a Cloudflare-Access-style proxy or an MCP client that has already obtained a bearer token from your IdP. Access itself does not host `/authorize`, `/token`, dynamic client registration, or callback endpoints.
+Both providers do **credential verification** only. Access is a *resource server*: it verifies bearer tokens and publishes discovery metadata (see below), but the OAuth/OIDC flow — `/authorize`, `/token`, dynamic client registration, callbacks — runs on the operator's authorization server (a Cloudflare-Access-style proxy or your IdP), not in Access.
 
 **Cloudflare Access.** Activates when `CLOUDFLARE_TEAM_DOMAIN` is set. Reads the CF-issued JWT from `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, verifies it via `verify_cloudflare_token`, and resolves the `email` claim to an `OktaUser`. CF deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
 
@@ -409,7 +410,16 @@ Both providers do **credential verification** only. They assume the OAuth/OIDC f
 
 For local development there's also a dev provider that activates when `ENV` is `development` or `test`. It resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set, so you can exercise tools locally without faking a token.
 
-When every provider defers (no credential present, or the credential is invalid), the MCP middleware emits `401 + WWW-Authenticate: Bearer realm="access"`.
+When every provider defers (no credential present, or the credential is invalid), the MCP middleware emits a `401` whose `WWW-Authenticate` header carries an RFC 9728 `resource_metadata` pointer (see below).
+
+### Client discovery (RFC 9728)
+
+To let a spec-compliant client connect cold with just the `/mcp` URL, Access implements the resource-server half of the [MCP authorization flow](https://modelcontextprotocol.io/docs/tutorials/security/authorization):
+
+- The `401` challenge advertises `WWW-Authenticate: Bearer realm="access", resource_metadata="<url>"`.
+- That URL serves a [Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728) document at `/.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`), listing the `resource`, the `authorization_servers` (derived from `OIDC_SERVER_METADATA_URL` / `CLOUDFLARE_TEAM_DOMAIN`), and the supported scopes. It is served unauthenticated so a token-less client can read it.
+
+The client then discovers the authorization server, registers, and runs the `/authorize` + `/token` dance against *that* server — Access never sees those steps. Set `MCP_RESOURCE_URL` to your public `/mcp` URL when running behind a proxy that rewrites Host or terminates TLS; otherwise it's derived from the request. (Cloudflare Managed OAuth handles discovery at the edge, so CF deployments don't depend on this.)
 
 ### Audit logging
 

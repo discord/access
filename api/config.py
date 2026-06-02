@@ -141,6 +141,13 @@ class Settings(BaseSettings):
     # the value here becomes inert.
     MCP_FALLBACK_SCOPES: str = "read_all,create_requests"
 
+    # Canonical public URL of the MCP resource, e.g.
+    # ``https://access.example.com/mcp``. Surfaced in the RFC 9728 metadata
+    # document and the 401 ``resource_metadata`` pointer for client
+    # discovery. When unset, derived from the request (forwarded scheme +
+    # Host + ``/mcp``); set explicitly behind a proxy that rewrites Host.
+    MCP_RESOURCE_URL: Optional[str] = None
+
     # DNS-rebinding protection for the FastMCP transport layer. Comma-
     # separated Host header allowlist (wildcards like ``"localhost:*"``
     # are supported). Empty (default) disables the check — relies on

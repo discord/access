@@ -34,9 +34,12 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
+from urllib.parse import urlsplit, urlunsplit
+
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import StreamableHTTPASGIApp
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -44,6 +47,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.mcp.auth import (
+    ALL_V1_SCOPES,
     MCPIdentity,
     reset_mcp_identity,
     set_mcp_identity,
@@ -55,6 +59,15 @@ from api.mcp.auth import oidc as oidc_provider
 logger = logging.getLogger(__name__)
 
 MCP_PATH = "/mcp"
+
+# RFC 9728 Protected Resource Metadata well-known path.
+PRM_WELL_KNOWN_PATH = "/.well-known/oauth-protected-resource"
+
+# Discovery-doc suffixes stripped to recover the bare issuer identifier.
+_AS_METADATA_SUFFIXES = (
+    "/.well-known/openid-configuration",
+    "/.well-known/oauth-authorization-server",
+)
 
 # Module-level singleton so the lifespan and route helpers reference the
 # same FastMCP instance. Constructed lazily by ``create_mcp_server`` and
@@ -151,6 +164,76 @@ async def mcp_lifespan() -> AsyncIterator[None]:
             logger.info("MCP session manager shutting down")
 
 
+# --- Protected Resource Metadata (RFC 9728) ---------------------------------
+
+
+def _resource_url(scope: Scope) -> str:
+    """Canonical public URL of the MCP resource: ``MCP_RESOURCE_URL`` if
+    set, else derived from the request (forwarded scheme + Host + ``/mcp``)."""
+    if settings.MCP_RESOURCE_URL:
+        return settings.MCP_RESOURCE_URL.rstrip("/")
+    headers = dict(scope.get("headers", []))
+    host = headers.get(b"host", b"").decode() or "localhost"
+    fwd_proto = headers.get(b"x-forwarded-proto")
+    scheme = fwd_proto.decode().split(",")[0].strip() if fwd_proto else str(scope.get("scheme", "https"))
+    return f"{scheme}://{host}{MCP_PATH}"
+
+
+def _prm_metadata_url(resource_url: str) -> str:
+    """RFC 9728 metadata URL for a resource: well-known segment inserted
+    ahead of the path (``https://h/mcp`` → ``.../oauth-protected-resource/mcp``)."""
+    parts = urlsplit(resource_url)
+    new_path = PRM_WELL_KNOWN_PATH + parts.path.rstrip("/")
+    return urlunsplit((parts.scheme, parts.netloc, new_path, "", ""))
+
+
+def _issuer_from_metadata_url(metadata_url: str) -> str:
+    """Strip a trailing discovery-doc suffix to recover the issuer; returns
+    the input (slash-trimmed) unchanged if no known suffix is present."""
+    trimmed = metadata_url.rstrip("/")
+    for suffix in _AS_METADATA_SUFFIXES:
+        if trimmed.endswith(suffix):
+            return trimmed[: -len(suffix)]
+    return trimmed
+
+
+def _authorization_servers() -> list[str]:
+    """Issuer(s) the client uses for steps 3–5. Access is a resource server
+    only; these point at the operator's authorization server."""
+    servers: list[str] = []
+    if settings.OIDC_SERVER_METADATA_URL:
+        servers.append(_issuer_from_metadata_url(settings.OIDC_SERVER_METADATA_URL))
+    if settings.CLOUDFLARE_TEAM_DOMAIN:
+        servers.append(settings.CLOUDFLARE_TEAM_DOMAIN.rstrip("/"))
+    return servers
+
+
+def _build_protected_resource_metadata(resource_url: str) -> dict[str, object]:
+    """The RFC 9728 Protected Resource Metadata document."""
+    return {
+        "resource": resource_url,
+        "authorization_servers": _authorization_servers(),
+        "scopes_supported": sorted(ALL_V1_SCOPES),
+        "bearer_methods_supported": ["header"],
+    }
+
+
+async def _protected_resource_metadata(request: Request) -> JSONResponse:
+    """Serve the RFC 9728 PRM document. Public — fetched before the client
+    has a token, in response to the 401 challenge."""
+    return JSONResponse(_build_protected_resource_metadata(_resource_url(request.scope)))
+
+
+def get_protected_resource_metadata_routes() -> list[Route]:
+    """PRM routes, served unauthenticated. Appended to ``app.routes`` (not
+    via ``include_router``) so the app-wide auth dependency doesn't apply —
+    the document must be reachable by a token-less client."""
+    return [
+        Route(PRM_WELL_KNOWN_PATH, endpoint=_protected_resource_metadata, methods=["GET"]),
+        Route(PRM_WELL_KNOWN_PATH + MCP_PATH, endpoint=_protected_resource_metadata, methods=["GET"]),
+    ]
+
+
 # --- ASGI auth middleware ---------------------------------------------------
 
 
@@ -178,17 +261,16 @@ def _user_agent_from_headers(scope: Scope) -> Optional[str]:
 
 
 async def _send_401(send: Send, scope: Scope) -> None:
-    # Per the MCP OAuth spec, 401 responses include a WWW-Authenticate
-    # header so the client knows where to send the user for auth. We
-    # don't currently advertise a discovery endpoint because Cloudflare
-    # Managed OAuth handles redirection at the edge — operators with a
-    # different provider can add ``as_uri="..."`` as part of their
-    # provider's response shaping. The middleware-level header is the
-    # fallback for direct hits.
+    # Step 1: the 401's ``resource_metadata`` points the client at our
+    # RFC 9728 document so it can discover the authorization server. CF
+    # also handles discovery at the edge; this serves direct-hit clients
+    # (the self-hosted OIDC shape).
+    prm_url = _prm_metadata_url(_resource_url(scope))
+    challenge = f'Bearer realm="access", resource_metadata="{prm_url}"'
     resp = JSONResponse(
         status_code=401,
         content={"message": "Unauthorized"},
-        headers={"WWW-Authenticate": 'Bearer realm="access"'},
+        headers={"WWW-Authenticate": challenge},
     )
     await resp(scope, receive=lambda: _empty_recv(), send=send)
 

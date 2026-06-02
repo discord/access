@@ -985,3 +985,82 @@ def test_mcp_write_tags_audit_log_with_source_mcp(
     assert audit_records, "expected at least one access.audit log entry"
     audit_payload = json.loads(audit_records[-1].message)
     assert audit_payload.get("source") == "mcp", audit_payload
+
+
+# --- RFC 9728 Protected Resource Metadata (auth-flow steps 1 & 2) -----------
+
+
+def test_prm_route_absent_when_disabled(app: FastAPI) -> None:
+    """The well-known PRM routes only exist when ENABLE_MCP is on."""
+    paths = [getattr(r, "path", None) for r in app.routes]
+    assert "/.well-known/oauth-protected-resource" not in paths
+    assert "/.well-known/oauth-protected-resource/mcp" not in paths
+
+
+def test_prm_document_served_unauthenticated(
+    override_mcp_auth: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Step 2: the PRM document is reachable with no credential (the
+    client fetches it before it has a token) and advertises the
+    configured authorization server, the resource URL, and the v1 scopes.
+    """
+    # Make every provider defer, proving the PRM route sits outside the
+    # auth lane: a /mcp hit would 401, but the well-known path must 200.
+    override_mcp_auth(None)
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
+    from api.app import create_app
+
+    a = create_app(testing=True)
+    with TestClient(a, raise_server_exceptions=False) as client:
+        # /mcp is gated...
+        assert client.post("/mcp", json={}).status_code == 401
+        # ...the metadata document is not.
+        for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
+            r = client.get(path)
+            assert r.status_code == 200, (path, r.text)
+            body = r.json()
+            assert body["resource"] == "http://testserver/mcp"
+            # The configured discovery URL is reduced to its bare issuer.
+            assert body["authorization_servers"] == ["https://idp.example"]
+            assert body["scopes_supported"] == ["create_requests", "read_all"]
+            assert body["bearer_methods_supported"] == ["header"]
+
+
+def test_prm_resource_url_honours_config_override(
+    with_mcp_enabled: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When MCP_RESOURCE_URL is set (the behind-a-proxy case) the document
+    reflects it instead of the request's Host header."""
+    monkeypatch.setattr(settings, "MCP_RESOURCE_URL", "https://access.example.com/mcp/")
+    monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "https://team.cloudflareaccess.com")
+    monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", None)
+    from api.app import create_app
+
+    a = create_app(testing=True)
+    with TestClient(a, raise_server_exceptions=False) as client:
+        body = client.get("/.well-known/oauth-protected-resource").json()
+        # Trailing slash trimmed; Host header ignored in favour of config.
+        assert body["resource"] == "https://access.example.com/mcp"
+        assert body["authorization_servers"] == ["https://team.cloudflareaccess.com"]
+
+
+def test_401_advertises_resource_metadata(
+    override_mcp_auth: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Step 1: the 401 challenge points at the PRM document via the
+    RFC 9728 ``resource_metadata`` parameter, with the well-known segment
+    inserted ahead of the resource's path component."""
+    override_mcp_auth(None)
+    monkeypatch.setattr(settings, "MCP_RESOURCE_URL", "https://access.example.com/mcp")
+    from api.app import create_app
+
+    a = create_app(testing=True)
+    with TestClient(a, raise_server_exceptions=False) as client:
+        r = client.post("/mcp", json={})
+        assert r.status_code == 401
+        challenge = r.headers.get("WWW-Authenticate", "")
+        assert challenge.startswith("Bearer ")
+        assert 'resource_metadata="https://access.example.com/.well-known/oauth-protected-resource/mcp"' in challenge

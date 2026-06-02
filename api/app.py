@@ -205,7 +205,11 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
     if settings.ENABLE_MCP:
-        from api.mcp.server import MCPAuthMiddleware, get_mcp_route
+        from api.mcp.server import (
+            MCPAuthMiddleware,
+            get_mcp_route,
+            get_protected_resource_metadata_routes,
+        )
 
         app.add_middleware(MCPAuthMiddleware)
         # Use a Route (not a Mount) so /mcp without trailing slash works;
@@ -213,6 +217,10 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # FastAPI level — it doesn't go through include_router because
         # the handler is a raw ASGI app from FastMCP.
         app.routes.append(get_mcp_route())
+        # RFC 9728 metadata, served unauthenticated for client discovery.
+        # Registered ahead of the SPA catch-all so the well-known path
+        # resolves here; MCP auth only intercepts /mcp, so it stays public.
+        app.routes.extend(get_protected_resource_metadata_routes())
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
 
