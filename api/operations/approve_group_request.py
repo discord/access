@@ -127,6 +127,7 @@ class ApproveGroupRequest:
                         AppGroup.is_owner.is_(True),
                         AppGroup.deleted_at.is_(None),
                         OktaUserGroupMember.user_id == self.approver_id,
+                        OktaUserGroupMember.is_owner.is_(True),
                         OktaUserGroupMember.ended_at.is_(None),
                     )
                     .first()

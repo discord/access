@@ -76,6 +76,7 @@ class RejectGroupRequest:
                                 AppGroup.is_owner.is_(True),
                                 AppGroup.deleted_at.is_(None),
                                 OktaUserGroupMember.user_id == self.rejecter_id,
+                                OktaUserGroupMember.is_owner.is_(True),
                                 OktaUserGroupMember.ended_at.is_(None),
                             )
                             .first()

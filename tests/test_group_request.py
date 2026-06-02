@@ -709,7 +709,7 @@ def test_app_owner_can_approve_request(
         OktaUserGroupMember(
             user_id=app_owner.id,
             group_id=owner_group.id,
-            is_owner=False,
+            is_owner=True,
         )
     )
     db.session.commit()
@@ -766,7 +766,7 @@ def test_app_owner_can_reject_request(
         OktaUserGroupMember(
             user_id=app_owner.id,
             group_id=owner_group.id,
-            is_owner=False,
+            is_owner=True,
         )
     )
     db.session.commit()
@@ -840,7 +840,7 @@ def test_wrong_app_owner_cannot_approve_request(
         OktaUserGroupMember(
             user_id=app_owner.id,
             group_id=owner_group.id,
-            is_owner=False,
+            is_owner=True,
         )
     )
     db.session.commit()
@@ -1436,7 +1436,7 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
@@ -1510,7 +1510,7 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     existing_okta_group = OktaGroupFactory.create(name="Okta-Platform-Admins")
@@ -1583,7 +1583,7 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     existing_role_group = RoleGroupFactory.create(name="Role-Security-Engineers")
@@ -1658,7 +1658,7 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
@@ -1730,7 +1730,7 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     group_request = CreateGroupRequest(
@@ -1798,7 +1798,7 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     group_request = CreateGroupRequest(
@@ -1866,7 +1866,7 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     group_request = CreateGroupRequest(
@@ -1935,7 +1935,7 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
     )
     db.session.add(owner_group)
     db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
     db.session.commit()
 
     group_request = CreateGroupRequest(
@@ -2287,7 +2287,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
 ) -> None:
     """An app owner authorized to approve an `app_group` request
     against their own app must not be able to escalate the resolution into
-    creating a a group for another app or group type by supplying for eg.
+    creating a group for another app or group type by supplying for eg.
     `resolved_group_type="role_group"` in the PUT body. Only Access admins
     can mint vanilla and role groups via the normal POST /api/groups path,
     so the group-request PUT must not become a backdoor that bypasses that
@@ -2349,6 +2349,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
         },
     )
 
+    assert rep.status_code == 403
     # No RoleGroup should be created since Alice is only an
     # app owner but not an admin
     db.session.refresh(group_request)
@@ -2357,6 +2358,150 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
         "App owner was able to escalate an app_group request into creating a RoleGroup "
         f"(PUT returned {rep.status_code}, request status={group_request.status})."
     )
-    assert (
-        group_request.status != AccessRequestStatus.APPROVED or group_request.approved_group_id is None
-    ), "Request was approved and bound to a group despite the type/name mismatch."
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+
+
+def test_put_group_request_app_owner_cannot_escalate_to_other_app(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    """Non-admin app owner of Foo cannot approve an app_group request filed
+    against Foo by flipping `resolved_app_id` to a different app (Bar) they
+    don't own. Mirror of the type-escalation case for the app_id branch.
+    """
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    alice = OktaUserFactory.create()
+    foo_app = AppFactory.create()
+    bar_app = AppFactory.create()
+    db.session.add(user)
+    db.session.add(alice)
+    db.session.add(foo_app)
+    db.session.add(bar_app)
+    db.session.commit()
+
+    foo_owner_group = AppGroupFactory.create(
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo_app.name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        app_id=foo_app.id,
+        is_owner=True,
+    )
+    db.session.add(foo_owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=foo_owner_group.id, is_owner=True))
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{foo_app.name}-Members",
+        requested_group_description="legit app group",
+        requested_group_type="app_group",
+        requested_app_id=foo_app.id,
+        request_reason="need access",
+    ).execute()
+    assert group_request is not None
+
+    mock_user(alice.id)
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    rep = client.put(
+        resolve_url,
+        json={
+            "approved": True,
+            "resolved_app_id": bar_app.id,
+            "resolved_group_name": f"App-{bar_app.name}-Members",
+            "resolution_reason": "lgtm",
+        },
+    )
+
+    assert rep.status_code == 403
+    db.session.refresh(group_request)
+    bar_group = (
+        db.session.query(AppGroup)
+        .filter(AppGroup.app_id == bar_app.id)
+        .filter(AppGroup.deleted_at.is_(None))
+        .first()
+    )
+    assert bar_group is None, "App owner of Foo escalated approval into creating a group attached to Bar."
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+
+
+def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+) -> None:
+    """Direct-op coverage for the mirror check in ApproveGroupRequest. The
+    router-level test exercises the HTTP gate; this one bypasses the router
+    so the in-op no-op path is what's being asserted on. With a mismatched
+    resolved_group_type and a non-admin approver, the request must stay
+    PENDING and no group may be created.
+    """
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    alice = OktaUserFactory.create()
+    foo_app = AppFactory.create()
+    db.session.add(user)
+    db.session.add(alice)
+    db.session.add(foo_app)
+    db.session.commit()
+
+    foo_owner_group = AppGroupFactory.create(
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo_app.name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        app_id=foo_app.id,
+        is_owner=True,
+    )
+    db.session.add(foo_owner_group)
+    db.session.commit()
+    db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=foo_owner_group.id, is_owner=True))
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{foo_app.name}-Members",
+        requested_group_description="legit app group",
+        requested_group_type="app_group",
+        requested_app_id=foo_app.id,
+        request_reason="need access",
+    ).execute()
+    assert group_request is not None
+
+    # Persist the resolved_* overrides directly on the row, simulating a
+    # caller that bypasses the router (e.g. another internal operation).
+    group_request.resolved_group_type = "role_group"
+    group_request.resolved_group_name = "Role-evil"
+    db.session.commit()
+
+    ApproveGroupRequest(
+        group_request=group_request,
+        approver_user=alice,
+        approval_reason="lgtm",
+    ).execute()
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+    role_evil = db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
+    assert role_evil is None
