@@ -27,7 +27,7 @@ from typing import Awaitable, Callable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
@@ -173,7 +173,7 @@ class RequestObservabilityMiddleware:
         start = time.perf_counter()
         status_code = 500
 
-        async def _send(message: dict) -> None:
+        async def _send(message: Message) -> None:
             nonlocal status_code
             if message["type"] == "http.response.start":
                 status_code = message["status"]
