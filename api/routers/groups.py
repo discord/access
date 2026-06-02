@@ -149,7 +149,7 @@ def post_group(
             name=body.name,
             description=description,
             app_id=body.app_id,
-            is_owner=body.is_owner,
+            is_owner=False,
             plugin_data=body.plugin_data or {},
         )
     elif isinstance(body, _RoleGroupCreateBody):
@@ -324,7 +324,7 @@ def put_group(
             setattr(new_group, k, getattr(group, k, None))
         if isinstance(new_group, AppGroup) and isinstance(body, _AppGroupUpdateBody):
             new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
-            new_group.is_owner = bool(body.is_owner) if body.is_owner is not None else False
+            new_group.is_owner = False
         try:
             group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
         except ValueError as e:
