@@ -65,4 +65,4 @@ ENV SENTRY_RELEASE=$SENTRY_RELEASE
 
 EXPOSE 3000
 
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "-k", "uvicorn.workers.UvicornWorker", "--access-logfile", "-", "--logger-class", "api.log_filters.RedactingGunicornLogger", "api.asgi:app"]
+CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "-k", "uvicorn.workers.UvicornWorker", "--access-logfile", "-", "api.asgi:app"]

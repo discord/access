@@ -18,8 +18,8 @@ class MetricsReporterPluginSpec:
     def record_counter(
         self,
         metric_name: str,
-        value: float = 1.0,
-        tags: Optional[Dict[str, str]] = None,
+        value: float,
+        tags: Optional[Dict[str, str]],
         monotonic: bool = True,
     ) -> None:
         """
@@ -27,9 +27,15 @@ class MetricsReporterPluginSpec:
 
         Args:
             metric_name: The metric name
-            value: The value to add (default 1.0)
-            tags: Optional tags
+            value: The value to add
+            tags: Optional tags (pass {} or None for no tags)
             monotonic: If True, counter only increases. If False, can decrease.
+
+        Note: pluggy 1.5+ does not forward caller kwargs that correspond to
+        impl parameters with default values. `metric_name`, `value`, and `tags`
+        are declared as required here so they reach implementations.
+        Implementations must mirror this since there are no defaults on these
+        three params.
         """
 
     @hookspec
@@ -46,7 +52,7 @@ class MetricsReporterPluginSpec:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]] = None,
+        tags: Optional[Dict[str, str]],
         buckets: Optional[List[float]] = None,
     ) -> None:
         """
@@ -55,8 +61,10 @@ class MetricsReporterPluginSpec:
         Args:
             metric_name: The metric name
             value: The value to record
-            tags: Optional tags
+            tags: Tags (pass {} or None for no tags)
             buckets: Optional bucket boundaries for the histogram
+
+        Note: see record_counter `tags` is required so pluggy forwards it.
         """
 
     @hookspec

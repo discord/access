@@ -21,7 +21,7 @@ from api import exception_handlers, middleware
 from api.config import settings
 from api.database import build_engine
 from api.extensions import db
-from api.log_filters import TokenSanitizingFilter
+from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
 from api.services import okta
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,7 @@ def _configure_logging() -> None:
     token_filter = TokenSanitizingFilter()
     logging.getLogger("authlib").addFilter(token_filter)
     logging.getLogger("uvicorn.access").addFilter(token_filter)
+    logging.getLogger("uvicorn.access").addFilter(RedactingUvicornLogger())
     logging.root.addFilter(token_filter)
 
 
@@ -183,6 +184,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.add_middleware(middleware.SecurityHeadersMiddleware)
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
+    app.add_middleware(middleware.RequestObservabilityMiddleware)
 
     exception_handlers.install(app)
 

@@ -77,7 +77,7 @@ class DatadogMetricsReporter:
 
     @metrics_reporter_hookimpl
     def record_counter(
-        self, metric_name: str, value: float = 1.0, tags: Optional[Dict[str, str]] = None, monotonic: bool = True
+        self, metric_name: str, value: float, tags: Optional[Dict[str, str]], monotonic: bool = True
     ) -> None:
         if not self.client:
             return
@@ -118,7 +118,7 @@ class DatadogMetricsReporter:
         self,
         metric_name: str,
         value: float,
-        tags: Optional[Dict[str, str]] = None,
+        tags: Optional[Dict[str, str]],
         buckets: Optional[List[float]] = None,
     ) -> None:
         if not self.client:

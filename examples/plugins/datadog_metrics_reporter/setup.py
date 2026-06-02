@@ -5,6 +5,6 @@ setup(
     install_requires=["pluggy==1.5.0", "datadog>=0.49.0"],
     py_modules=["metrics_reporter"],
     entry_points={
-        "access_metrics_reporter": ["metrics_reporter = metrics_reporter"],
+        "access_metrics_reporter": ["metrics_reporter = metrics_reporter:datadog_metrics_plugin"],
     },
 )
