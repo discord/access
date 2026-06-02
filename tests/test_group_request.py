@@ -2428,10 +2428,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
     assert rep.status_code == 403
     db.session.refresh(group_request)
     bar_group = (
-        db.session.query(AppGroup)
-        .filter(AppGroup.app_id == bar_app.id)
-        .filter(AppGroup.deleted_at.is_(None))
-        .first()
+        db.session.query(AppGroup).filter(AppGroup.app_id == bar_app.id).filter(AppGroup.deleted_at.is_(None)).first()
     )
     assert bar_group is None, "App owner of Foo escalated approval into creating a group attached to Bar."
     assert group_request.status == AccessRequestStatus.PENDING
