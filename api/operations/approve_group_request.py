@@ -110,6 +110,12 @@ class ApproveGroupRequest:
         access_owner_ids = {u.id for u in get_access_owners()}
         is_admin = self.approver_id in access_owner_ids
 
+        if not is_admin:
+            type_changed = resolved_type != self.group_request.requested_group_type
+            app_changed = resolved_app_id != self.group_request.requested_app_id
+            if type_changed or app_changed:
+                return self.group_request
+
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
             if not is_admin:
@@ -121,6 +127,7 @@ class ApproveGroupRequest:
                         AppGroup.is_owner.is_(True),
                         AppGroup.deleted_at.is_(None),
                         OktaUserGroupMember.user_id == self.approver_id,
+                        OktaUserGroupMember.is_owner.is_(True),
                         OktaUserGroupMember.ended_at.is_(None),
                     )
                     .first()

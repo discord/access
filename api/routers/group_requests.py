@@ -249,6 +249,15 @@ def put_group_request(
     if gr.status != AccessRequestStatus.PENDING or gr.resolved_at is not None:
         raise HTTPException(400, "Group request is not pending")
 
+    if body.approved and not is_access_admin(db, current_user_id):
+        type_changed = body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type
+        app_changed = body.resolved_app_id is not None and body.resolved_app_id != gr.requested_app_id
+        if type_changed or app_changed:
+            raise HTTPException(
+                403,
+                "Only admins can change the resolved group type or target app on approval",
+            )
+
     # Update resolved_* fields if the body carried them.
     if body.resolved_group_name is not None:
         gr.resolved_group_name = body.resolved_group_name
