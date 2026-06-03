@@ -1,7 +1,7 @@
 import datetime
 import logging
 import sys
-from typing import Generator, Optional
+from typing import Dict, Generator, Optional
 
 import pluggy
 
@@ -15,6 +15,7 @@ from api.models import (
     RoleGroupMap,
     RoleRequest,
 )
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 
 notification_plugin_name = "access_notifications"
 hookspec = pluggy.HookspecMarker(notification_plugin_name)
@@ -23,6 +24,13 @@ hookimpl = pluggy.HookimplMarker(notification_plugin_name)
 _cached_notification_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
+
+
+def _record_sent(metric_name: str, tags: Optional[Dict[str, str]] = None) -> None:
+    try:
+        get_metrics_reporter_hook().record_counter(metric_name=metric_name, value=1, tags=tags)
+    except Exception:
+        logger.exception("Failed to record %s metric", metric_name)
 
 
 class NotificationPluginSpec:
@@ -146,12 +154,15 @@ def access_request_created(
     access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access request created notification callback")
+        return
+    _record_sent("notifications.access_request_created.sent")
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -163,12 +174,15 @@ def access_request_completed(
     notify_requester: bool,
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access request completed notification callback")
+        return
+    _record_sent("notifications.access_request_completed.sent")
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -179,12 +193,15 @@ def access_expiring_user(
     okta_user_group_members: Optional[list[OktaUserGroupMember]],
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for user notification callback")
+        return
+    _record_sent("notifications.expiring_access.sent", tags={"kind": "user"})
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -198,12 +215,15 @@ def access_expiring_owner(
     role_group_associations: Optional[list[RoleGroupMap]],
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for owner notification callback")
+        return
+    _record_sent("notifications.expiring_access.sent", tags={"kind": "owner"})
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -213,12 +233,15 @@ def access_expiring_role_owner(
     expiration_datetime: datetime.datetime,
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute access expiring for role owner notification callback")
+        return
+    _record_sent("notifications.expiring_access.sent", tags={"kind": "role_owner"})
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -230,12 +253,15 @@ def access_role_request_created(
     approvers: list[OktaUser],
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute role request created notification callback")
+        return
+    _record_sent("notifications.role_request_created.sent")
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -248,12 +274,15 @@ def access_role_request_completed(
     notify_requester: bool,
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute role request completed notification callback")
+        return
+    _record_sent("notifications.role_request_completed.sent")
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -263,12 +292,15 @@ def access_group_request_created(
     approvers: list[OktaUser],
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute group request created notification callback")
+        return
+    _record_sent("notifications.group_request_created.sent")
+    return result
 
 
 @hookimpl(wrapper=True)
@@ -280,12 +312,15 @@ def access_group_request_completed(
     notify_requester: bool,
 ) -> Generator[None, None, None]:
     try:
-        return (yield)
+        result = yield
     except Exception:
         # Log and do not raise since notification failures should not
         # break the flow. Users can still manually ping approvers
         # to process their request from the UI
         logger.exception("Failed to execute group request completed notification callback")
+        return
+    _record_sent("notifications.group_request_completed.sent")
+    return result
 
 
 def get_notification_hook() -> pluggy.HookRelay:

@@ -11,13 +11,12 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth.dependencies import CurrentUserId
 from api.config import settings
 from api.database import DbSession
-from api.extensions import db as _db_shim
 from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember
 
 
@@ -30,7 +29,7 @@ def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()
@@ -69,7 +68,7 @@ def is_app_owner_group_owner(
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()
@@ -95,7 +94,7 @@ def is_access_admin(db: Session, current_user_id: str) -> bool:
         .filter(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .count()
@@ -111,6 +110,12 @@ def can_manage_group(db: Session, current_user_id: str, group: OktaGroup) -> boo
     if is_access_admin(db, current_user_id):
         return True
     return False
+
+
+def can_delete_group(db: Session, current_user_id: str, group: OktaGroup) -> bool:
+    if current_user_id in settings.app_group_deleter_ids and type(group) is AppGroup and group.is_managed:
+        return True
+    return can_manage_group(db, current_user_id, group)
 
 
 # --- Depends factories -----------------------------------------------------
@@ -129,7 +134,7 @@ def require_access_admin_or_app_creator(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> str:
-    if settings.APP_CREATOR_ID is not None and current_user_id == settings.APP_CREATOR_ID:
+    if current_user_id in settings.app_creator_ids:
         return current_user_id
     if is_access_admin(db, current_user_id):
         return current_user_id

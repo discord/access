@@ -4,6 +4,7 @@ from typing import Dict, Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
@@ -37,8 +38,8 @@ class ModifyGroupUsers:
         users_added_ended_at: Optional[datetime] = None,
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
-        members_should_expire: list[str] = [],
-        owners_should_expire: list[str] = [],
+        members_should_expire: list[int] = [],
+        owners_should_expire: list[int] = [],
         members_to_remove: list[str] = [],
         owners_to_remove: list[str] = [],
         sync_to_okta: bool = True,
@@ -76,49 +77,66 @@ class ModifyGroupUsers:
         self.members_to_add = []
         if len(members_to_add) > 0:
             self.members_to_add = (
-                OktaUser.query.filter(OktaUser.id.in_(members_to_add)).filter(OktaUser.deleted_at.is_(None)).all()
+                db.session.query(OktaUser)
+                .filter(OktaUser.id.in_(members_to_add))
+                .filter(OktaUser.deleted_at.is_(None))
+                .all()
             )
 
         self.owners_to_add = []
         if len(owners_to_add) > 0:
             self.owners_to_add = (
-                OktaUser.query.filter(OktaUser.id.in_(owners_to_add)).filter(OktaUser.deleted_at.is_(None)).all()
+                db.session.query(OktaUser)
+                .filter(OktaUser.id.in_(owners_to_add))
+                .filter(OktaUser.deleted_at.is_(None))
+                .all()
             )
 
         self.members_should_expire = []
         if len(members_should_expire) > 0:
             self.members_should_expire = (
-                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(members_should_expire))
+                db.session.query(OktaUserGroupMember)
+                .filter(OktaUserGroupMember.id.in_(members_should_expire))
                 .filter(OktaUserGroupMember.group_id == self.group.id)
-                .filter(OktaUserGroupMember.ended_at > db.func.now())
+                .filter(OktaUserGroupMember.ended_at > func.now())
                 .filter(OktaUserGroupMember.is_owner.is_(False))
             ).all()
 
         self.owners_should_expire = []
         if len(owners_should_expire) > 0:
             self.owners_should_expire = (
-                OktaUserGroupMember.query.filter(OktaUserGroupMember.id.in_(owners_should_expire))
+                db.session.query(OktaUserGroupMember)
+                .filter(OktaUserGroupMember.id.in_(owners_should_expire))
                 .filter(OktaUserGroupMember.group_id == self.group.id)
-                .filter(OktaUserGroupMember.ended_at > db.func.now())
+                .filter(OktaUserGroupMember.ended_at > func.now())
                 .filter(OktaUserGroupMember.is_owner.is_(True))
             ).all()
 
         self.members_to_remove = []
         if len(members_to_remove) > 0:
             self.members_to_remove = (
-                OktaUser.query.filter(OktaUser.id.in_(members_to_remove)).filter(OktaUser.deleted_at.is_(None)).all()
+                db.session.query(OktaUser)
+                .filter(OktaUser.id.in_(members_to_remove))
+                .filter(OktaUser.deleted_at.is_(None))
+                .all()
             )
 
         self.owners_to_remove = []
         if len(owners_to_remove) > 0:
             self.owners_to_remove = (
-                OktaUser.query.filter(OktaUser.id.in_(owners_to_remove)).filter(OktaUser.deleted_at.is_(None)).all()
+                db.session.query(OktaUser)
+                .filter(OktaUser.id.in_(owners_to_remove))
+                .filter(OktaUser.deleted_at.is_(None))
+                .all()
             )
 
         self.sync_to_okta = sync_to_okta
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -206,51 +224,53 @@ class ModifyGroupUsers:
 
         # End group memberships and ownerships
         if len(remove_changed_members) > 0 or len(remove_changed_owners) > 0:
-            OktaUserGroupMember.query.filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember).filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             ).filter(OktaUserGroupMember.group_id == self.group.id).filter(
                 OktaUserGroupMember.is_owner.is_(False)
             ).filter(OktaUserGroupMember.user_id.in_([m.id for m in remove_changed_members])).filter(
                 OktaUserGroupMember.role_group_map_id.is_(None)
             ).update(
-                {OktaUserGroupMember.ended_at: db.func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
+                {OktaUserGroupMember.ended_at: func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
                 synchronize_session="fetch",
             )
 
-            OktaUserGroupMember.query.filter(
-                db.or_(
+            db.session.query(OktaUserGroupMember).filter(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             ).filter(OktaUserGroupMember.group_id == self.group.id).filter(
                 OktaUserGroupMember.is_owner.is_(True)
             ).filter(OktaUserGroupMember.user_id.in_([m.id for m in remove_changed_owners])).filter(
                 OktaUserGroupMember.role_group_map_id.is_(None)
             ).update(
-                {OktaUserGroupMember.ended_at: db.func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
+                {OktaUserGroupMember.ended_at: func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
                 synchronize_session="fetch",
             )
 
             # For role groups, members to be removed should also be removed from all role associated groups
             if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = (
-                    RoleGroupMap.query.filter(
-                        db.or_(
+                    db.session.query(RoleGroupMap)
+                    .filter(
+                        or_(
                             RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > db.func.now(),
+                            RoleGroupMap.ended_at > func.now(),
                         )
                     )
                     .filter(RoleGroupMap.role_group_id == self.group.id)
                     .all()
                 )
                 role_associated_group_memberships = (
-                    OktaUserGroupMember.query.filter(
-                        db.or_(
+                    db.session.query(OktaUserGroupMember)
+                    .filter(
+                        or_(
                             OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > db.func.now(),
+                            OktaUserGroupMember.ended_at > func.now(),
                         )
                     )
                     .filter(OktaUserGroupMember.user_id.in_([m.id for m in remove_changed_members]))
@@ -259,7 +279,7 @@ class ModifyGroupUsers:
 
                 role_associated_group_memberships.update(
                     {
-                        OktaUserGroupMember.ended_at: db.func.now(),
+                        OktaUserGroupMember.ended_at: func.now(),
                         OktaUserGroupMember.ended_actor_id: self.current_user_id,
                     },
                     synchronize_session="fetch",
@@ -273,11 +293,12 @@ class ModifyGroupUsers:
             members_to_remove_ids = [m.id for m in self.members_to_remove]
             owners_to_remove_ids = [m.id for m in self.owners_to_remove]
             removed_users_with_other_access = (
-                OktaUserGroupMember.query.with_entities(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
+                db.session.query(OktaUserGroupMember)
+                .with_entities(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
                 .filter(
-                    db.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .filter(OktaUserGroupMember.group_id == self.group.id)
@@ -311,13 +332,14 @@ class ModifyGroupUsers:
             # For role groups, members to be removed should also be removed from all role associated groups
             if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = (
-                    RoleGroupMap.query.options(joinedload(RoleGroupMap.active_group))
+                    db.session.query(RoleGroupMap)
+                    .options(joinedload(RoleGroupMap.active_group))
                     .join(RoleGroupMap.active_group)
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(
-                        db.or_(
+                        or_(
                             RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > db.func.now(),
+                            RoleGroupMap.ended_at > func.now(),
                         )
                     )
                     .filter(RoleGroupMap.role_group_id == self.group.id)
@@ -327,15 +349,16 @@ class ModifyGroupUsers:
                 # combination before removing group membership, there can be multiple role groups
                 # which allow group access for this user
                 removed_role_group_users_with_other_access = (
-                    OktaUserGroupMember.query.with_entities(
+                    db.session.query(OktaUserGroupMember)
+                    .with_entities(
                         OktaUserGroupMember.user_id,
                         OktaUserGroupMember.group_id,
                         OktaUserGroupMember.is_owner,
                     )
                     .filter(
-                        db.or_(
+                        or_(
                             OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > db.func.now(),
+                            OktaUserGroupMember.ended_at > func.now(),
                         )
                     )
                     .filter(OktaUserGroupMember.user_id.in_(members_to_remove_ids + owners_to_remove_ids))
@@ -420,7 +443,7 @@ class ModifyGroupUsers:
         # Only relevant for the expiring groups page so not adding checks for this field anywhere else since OK if marked to expire
         # then manually renewed from group page or with an access request
         if len(self.members_should_expire) > 0:
-            OktaUserGroupMember.query.filter(
+            db.session.query(OktaUserGroupMember).filter(
                 OktaUserGroupMember.id.in_(m.id for m in self.members_should_expire)
             ).update(
                 {OktaUserGroupMember.should_expire: True},
@@ -428,7 +451,7 @@ class ModifyGroupUsers:
             )
 
         if len(self.owners_should_expire) > 0:
-            OktaUserGroupMember.query.filter(
+            db.session.query(OktaUserGroupMember).filter(
                 OktaUserGroupMember.id.in_(m.id for m in self.owners_should_expire)
             ).update(
                 {OktaUserGroupMember.should_expire: True},
@@ -443,11 +466,12 @@ class ModifyGroupUsers:
             # Check which members being added currently have NO active memberships (to track first-time access)
             members_to_add_ids = [m.id for m in self.members_to_add]
             existing_members_with_access = (
-                OktaUserGroupMember.query.with_entities(OktaUserGroupMember.user_id)
+                db.session.query(OktaUserGroupMember)
+                .with_entities(OktaUserGroupMember.user_id)
                 .filter(
-                    db.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .filter(OktaUserGroupMember.group_id == self.group.id)
@@ -503,13 +527,14 @@ class ModifyGroupUsers:
             # For role groups, new members should also be added to all Access-managed role associated groups
             if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = (
-                    RoleGroupMap.query.options(joinedload(RoleGroupMap.active_group))
+                    db.session.query(RoleGroupMap)
+                    .options(joinedload(RoleGroupMap.active_group))
                     .join(RoleGroupMap.active_group)
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(
-                        db.or_(
+                        or_(
                             RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > db.func.now(),
+                            RoleGroupMap.ended_at > func.now(),
                         )
                     )
                     .filter(RoleGroupMap.role_group_id == self.group.id)
@@ -525,14 +550,15 @@ class ModifyGroupUsers:
                         existing_access_by_group[group_id] = set()
 
                     existing_role_members_with_access = (
-                        OktaUserGroupMember.query.with_entities(
+                        db.session.query(OktaUserGroupMember)
+                        .with_entities(
                             OktaUserGroupMember.user_id,
                             OktaUserGroupMember.group_id,
                         )
                         .filter(
-                            db.or_(
+                            or_(
                                 OktaUserGroupMember.ended_at.is_(None),
-                                OktaUserGroupMember.ended_at > db.func.now(),
+                                OktaUserGroupMember.ended_at > func.now(),
                             )
                         )
                         .filter(OktaUserGroupMember.user_id.in_(members_to_add_ids))
@@ -628,7 +654,8 @@ class ModifyGroupUsers:
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (
-                AccessRequest.query.options(joinedload(AccessRequest.requested_group))
+                db.session.query(AccessRequest)
+                .options(joinedload(AccessRequest.requested_group))
                 .filter(AccessRequest.status == AccessRequestStatus.PENDING)
                 .filter(AccessRequest.resolved_at.is_(None))
             )
@@ -692,7 +719,7 @@ class ModifyGroupUsers:
         self, access_request: AccessRequest, added_okta_user_group_member: OktaUserGroupMember
     ) -> asyncio.Task[None]:
         access_request.status = AccessRequestStatus.APPROVED
-        access_request.resolved_at = db.func.now()
+        access_request.resolved_at = func.now()
         access_request.resolver_user_id = self.current_user_id
         access_request.resolution_reason = self.created_reason
         access_request.approval_ending_at = added_okta_user_group_member.ended_at

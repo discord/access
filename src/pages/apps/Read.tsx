@@ -24,6 +24,7 @@ export default function ReadApp() {
   });
   const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>([]);
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const [isSearchActive, setIsSearchActive] = React.useState(false);
 
   const app = data ?? ({} as App);
 
@@ -45,7 +46,7 @@ export default function ReadApp() {
     });
   }, []);
 
-  const handleSearchSubmit = React.useCallback((newAppGroups: AppGroup[]) => {
+  const handleSearchSubmit = React.useCallback((newAppGroups: AppGroup[], isActive: boolean) => {
     setNonOwnerAppGroups((prev) => {
       // Only update if the groups actually changed
       if (prev.length === newAppGroups.length && prev.every((group, index) => group.id === newAppGroups[index]?.id)) {
@@ -53,6 +54,7 @@ export default function ReadApp() {
       }
       return newAppGroups;
     });
+    setIsSearchActive((prev) => (prev === isActive ? prev : isActive));
   }, []);
 
   if (isError) {
@@ -105,7 +107,7 @@ export default function ReadApp() {
             <AppsAccordionListGroup
               app_group={nonOwnerAppGroups}
               list_group_title={nonOwnerAppGroups.length > 1 ? 'App Groups' : 'App Group'}
-              isExpanded={isExpanded}
+              isExpanded={isExpanded || isSearchActive}
             />
           )}
         </Grid>

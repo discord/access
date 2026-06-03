@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import String, cast
+from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import paginate
@@ -58,7 +57,7 @@ def list_group_requests(
         else:
             requester_alias = aliased(OktaUser)
             query = query.join(GroupRequest.requester.of_type(requester_alias)).filter(
-                _db.or_(
+                or_(
                     GroupRequest.requester_user_id == q_args.requester_user_id,
                     requester_alias.email.ilike(q_args.requester_user_id),
                 )
@@ -77,7 +76,7 @@ def list_group_requests(
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
         assignee_user = (
             db.query(OktaUser)
-            .filter(_db.or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+            .filter(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
             .first()
         )
         if assignee_user is not None:
@@ -89,7 +88,7 @@ def list_group_requests(
                         owned_app_ids.append(app.id)
                 if owned_app_ids:
                     query = query.filter(
-                        _db.and_(
+                        and_(
                             GroupRequest.requested_app_id.in_(owned_app_ids),
                             GroupRequest.requested_group_type == "app_group",
                         )
@@ -106,7 +105,7 @@ def list_group_requests(
         else:
             resolver_alias = aliased(OktaUser)
             query = query.outerjoin(GroupRequest.resolver.of_type(resolver_alias)).filter(
-                _db.or_(
+                or_(
                     GroupRequest.resolver_user_id == q_args.resolver_user_id,
                     resolver_alias.email.ilike(q_args.resolver_user_id),
                 )
@@ -122,7 +121,7 @@ def list_group_requests(
             query.join(GroupRequest.requester.of_type(q_requester_alias))
             .outerjoin(GroupRequest.resolver.of_type(q_resolver_alias))
             .filter(
-                _db.or_(
+                or_(
                     GroupRequest.id.like(f"{q_args.q}%"),
                     cast(GroupRequest.status, String).ilike(like),
                     q_requester_alias.email.ilike(like),
@@ -249,6 +248,15 @@ def put_group_request(
 
     if gr.status != AccessRequestStatus.PENDING or gr.resolved_at is not None:
         raise HTTPException(400, "Group request is not pending")
+
+    if body.approved and not is_access_admin(db, current_user_id):
+        type_changed = body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type
+        app_changed = body.resolved_app_id is not None and body.resolved_app_id != gr.requested_app_id
+        if type_changed or app_changed:
+            raise HTTPException(
+                403,
+                "Only admins can change the resolved group type or target app on approval",
+            )
 
     # Update resolved_* fields if the body carried them.
     if body.resolved_group_name is not None:

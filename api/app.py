@@ -22,7 +22,7 @@ from api import exception_handlers, middleware
 from api.config import settings
 from api.database import build_engine
 from api.extensions import db
-from api.log_filters import TokenSanitizingFilter
+from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
 from api.services import okta
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ def _configure_logging() -> None:
     token_filter = TokenSanitizingFilter()
     logging.getLogger("authlib").addFilter(token_filter)
     logging.getLogger("uvicorn.access").addFilter(token_filter)
+    logging.getLogger("uvicorn.access").addFilter(RedactingUvicornLogger())
     logging.root.addFilter(token_filter)
 
 
@@ -156,9 +157,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Bind the SQLAlchemy engine to the shim. In tests the `db` fixture
-    # rebuilds with a sqlite-in-memory engine, so we only bind here when not
-    # testing.
+    # Bind the SQLAlchemy engine to the session facade. In tests the `db`
+    # fixture rebuilds with a sqlite-in-memory engine, so we only bind here
+    # when not testing.
     if not testing and (settings.SQLALCHEMY_DATABASE_URI or settings.CLOUDSQL_CONNECTION_NAME):
         db.init_app(engine=build_engine())
 
@@ -195,13 +196,14 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
             allow_credentials=True,
         )
 
-    # Order: outer-most last. RequestId outermost so request_id is on state
-    # for inner middleware and dependencies. The MCP auth middleware is
-    # added BEFORE RequestContextMiddleware so it ends up *inside* that
-    # wrapper — RequestContext sets source="web" first, then MCP auth
-    # overrides to "mcp" for the duration of /mcp requests (and clears
-    # on the way out). Inverting the order would let RequestContext
-    # trample the MCP-sourced binding before tools see it.
+    # Order: outer-most last. RequestObservability outermost so it times the
+    # full request; RequestId next so request_id is on state for inner
+    # middleware and dependencies. The MCP auth middleware is added BEFORE
+    # RequestContextMiddleware so it ends up *inside* that wrapper —
+    # RequestContext sets source="web" first, then MCP auth overrides to
+    # "mcp" for the duration of /mcp requests (and clears on the way out).
+    # Inverting the order would let RequestContext trample the MCP-sourced
+    # binding before tools see it.
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
     if settings.ENABLE_MCP:
@@ -223,6 +225,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         app.routes.extend(get_protected_resource_metadata_routes())
     app.add_middleware(middleware.RequestContextMiddleware)
     app.add_middleware(middleware.RequestIdMiddleware)
+    app.add_middleware(middleware.RequestObservabilityMiddleware)
 
     exception_handlers.install(app)
 

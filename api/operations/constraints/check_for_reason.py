@@ -98,9 +98,8 @@ class CheckForReason:
         if self.invalid_reason(self.reason):
             if len(self.members_to_add) > 0:
                 new_member_groups = (
-                    OktaGroup.query.options(
-                        selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                    )
+                    db.session.query(OktaGroup)
+                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.members_to_add))
                     .filter(OktaGroup.deleted_at.is_(None))
@@ -120,9 +119,8 @@ class CheckForReason:
 
             if len(self.owners_to_add) > 0:
                 new_owner_groups = (
-                    OktaGroup.query.options(
-                        selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag)
-                    )
+                    db.session.query(OktaGroup)
+                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
                     .filter(OktaGroup.is_managed.is_(True))
                     .filter(OktaGroup.id.in_(self.owners_to_add))
                     .filter(OktaGroup.deleted_at.is_(None))

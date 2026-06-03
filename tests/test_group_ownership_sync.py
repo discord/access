@@ -395,7 +395,7 @@ def run_sync(
     user_ownership_func: Callable[[str], list[User]],
     act_as_authority: bool,
     groups_with_rules: set[str] = set(),
-) -> list[OktaGroup]:
+) -> list[OktaUserGroupMember]:
     with Session(db.engine) as session:
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 

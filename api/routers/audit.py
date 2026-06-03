@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import func, inspect as sa_inspect, nullsfirst, nullslast
+from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import (
     AppGroup,
     AppTagMap,
@@ -77,7 +77,7 @@ def _resolve_user(db: DbSession, value: str | None) -> OktaUser | None:
         return None
     user = (
         db.query(OktaUser)
-        .filter(_db.or_(OktaUser.id == value, OktaUser.email.ilike(value)))
+        .filter(or_(OktaUser.id == value, OktaUser.email.ilike(value)))
         .order_by(nullsfirst(OktaUser.deleted_at.desc()))
         .first()
     )
@@ -91,7 +91,7 @@ def _resolve_group(db: DbSession, value: str | None) -> OktaGroup | None:
         return None
     group = (
         db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .filter(_db.or_(OktaGroup.id == value, OktaGroup.name == value))
+        .filter(or_(OktaGroup.id == value, OktaGroup.name == value))
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
         .first()
     )
@@ -105,7 +105,7 @@ def _resolve_role(db: DbSession, value: str | None) -> RoleGroup | None:
         return None
     role = (
         db.query(RoleGroup)
-        .filter(_db.or_(RoleGroup.id == value, RoleGroup.name == value))
+        .filter(or_(RoleGroup.id == value, RoleGroup.name == value))
         .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
         .first()
     )
@@ -243,11 +243,8 @@ def _audit_user_group_row(m: OktaUserGroupMember, include_role_associations: boo
         updated_at=getattr(m, "updated_at", None),
         ended_at=m.ended_at,
         user=_user_summary_for_audit(getattr(m, "user", None)),
-        active_user=_user_summary_for_audit(getattr(m, "active_user", None)),
         group=_group_ref_for_audit(getattr(m, "group", None), include_role_associations),
-        active_group=_group_ref_for_audit(getattr(m, "active_group", None), include_role_associations=False),
         role_group_mapping=_role_group_mapping_for_audit(getattr(m, "role_group_mapping", None)),
-        active_role_group_mapping=_role_group_mapping_for_audit(getattr(m, "active_role_group_mapping", None)),
         access_request=_access_request_ref_for_audit(getattr(m, "access_request", None)),
         created_actor=_user_summary_for_audit(getattr(m, "created_actor", None)),
         ended_actor=_user_summary_for_audit(getattr(m, "ended_actor", None)),
@@ -265,9 +262,7 @@ def _audit_group_role_row(rgm: RoleGroupMap) -> AuditGroupRoleRow:
         created_at=rgm.created_at,
         ended_at=rgm.ended_at,
         group=_group_ref_for_audit(getattr(rgm, "group", None), include_role_associations=False),
-        active_group=_group_ref_for_audit(getattr(rgm, "active_group", None), include_role_associations=False),
         role_group=_role_group_ref_for_audit(getattr(rgm, "role_group", None)),
-        active_role_group=_role_group_ref_for_audit(getattr(rgm, "active_role_group", None)),
         created_actor=_user_summary_for_audit(getattr(rgm, "created_actor", None)),
         ended_actor=_user_summary_for_audit(getattr(rgm, "ended_actor", None)),
     )
@@ -324,17 +319,11 @@ def users_and_groups(
         db.query(OktaUserGroupMember)
         .options(
             joinedload(OktaUserGroupMember.user),
-            joinedload(OktaUserGroupMember.active_user),
             joinedload(OktaUserGroupMember.created_actor),
             joinedload(OktaUserGroupMember.ended_actor),
             joinedload(OktaUserGroupMember.access_request),
             group_load,
-            selectinload(OktaUserGroupMember.active_group).options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-            ),
             selectinload(OktaUserGroupMember.role_group_mapping).joinedload(RoleGroupMap.role_group),
-            selectinload(OktaUserGroupMember.active_role_group_mapping).joinedload(RoleGroupMap.active_role_group),
         )
         .join(OktaUserGroupMember.user)
         .join(OktaUserGroupMember.group.of_type(group_alias))
@@ -354,9 +343,9 @@ def users_and_groups(
             .filter(OktaUserGroupMember.user_id == owner.id)
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .all()
@@ -378,7 +367,7 @@ def users_and_groups(
         ]
         if q_args.app_owner is True:
             query = query.filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.group_id.in_(owner_group_ids),
                     OktaUserGroupMember.group_id.in_(app_groups_owned_ids),
                 )
@@ -392,16 +381,16 @@ def users_and_groups(
                 .filter(OktaUserGroupMember.user_id != owner.id)
                 .filter(OktaUserGroupMember.is_owner.is_(True))
                 .filter(
-                    _db.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > _db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .all()
             ]
             visible_app_groups = set(app_groups_owned_ids) - set(directly_owned_by_others_ids)
             query = query.filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.group_id.in_(owner_group_ids),
                     OktaUserGroupMember.group_id.in_(visible_app_groups),
                 )
@@ -416,16 +405,16 @@ def users_and_groups(
 
     if q_args.active is True:
         query = query.filter(
-            _db.or_(
+            or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
     elif q_args.active is False:
         query = query.filter(
-            _db.and_(
+            and_(
                 OktaUserGroupMember.ended_at.is_not(None),
-                OktaUserGroupMember.ended_at < _db.func.now(),
+                OktaUserGroupMember.ended_at < func.now(),
             )
         )
 
@@ -433,7 +422,7 @@ def users_and_groups(
         query = query.filter(OktaUserGroupMember.should_expire.is_(False))
 
     if q_args.direct is True:
-        query = query.filter(_db.not_(OktaUserGroupMember.active_role_group_mapping.has()))
+        query = query.filter(not_(OktaUserGroupMember.active_role_group_mapping.has()))
 
     if q_args.deleted is False:
         query = query.filter(OktaUser.deleted_at.is_(None))
@@ -443,7 +432,7 @@ def users_and_groups(
 
     if q_args.start_date is not None and q_args.end_date is not None:
         query = query.filter(
-            _db.and_(
+            and_(
                 OktaUserGroupMember.ended_at.is_not(None),
                 OktaUserGroupMember.ended_at > _unix_to_utc_naive(q_args.start_date),
                 OktaUserGroupMember.ended_at < _unix_to_utc_naive(q_args.end_date),
@@ -470,11 +459,11 @@ def users_and_groups(
             (OktaUser.first_name + " " + OktaUser.last_name).ilike(like),
         )
         if user is not None:
-            query = query.filter(_db.or_(*group_cols))
+            query = query.filter(or_(*group_cols))
         if group is not None:
-            query = query.filter(_db.or_(*user_cols))
+            query = query.filter(or_(*user_cols))
         if owner is not None or (user is None and group is None):
-            query = query.filter(_db.or_(*group_cols, *user_cols))
+            query = query.filter(or_(*group_cols, *user_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable
     # when two rows share the primary sort value. Without it, paginated
@@ -539,7 +528,6 @@ def groups_and_roles(
         db.query(RoleGroupMap)
         .options(
             joinedload(RoleGroupMap.role_group),
-            joinedload(RoleGroupMap.active_role_group),
             joinedload(RoleGroupMap.created_actor),
             joinedload(RoleGroupMap.ended_actor),
             selectinload(RoleGroupMap.group).options(
@@ -549,10 +537,6 @@ def groups_and_roles(
                     joinedload(OktaGroupTagMap.active_tag),
                     joinedload(OktaGroupTagMap.active_app_tag_mapping).joinedload(AppTagMap.active_app),
                 ),
-            ),
-            selectinload(RoleGroupMap.active_group).options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
             ),
         )
         .join(RoleGroupMap.role_group)
@@ -571,9 +555,9 @@ def groups_and_roles(
             .filter(OktaUserGroupMember.user_id == owner.id)
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .all()
@@ -595,7 +579,7 @@ def groups_and_roles(
         ]
         if q_args.app_owner is True:
             query = query.filter(
-                _db.or_(
+                or_(
                     RoleGroupMap.group_id.in_(owner_group_ids),
                     RoleGroupMap.group_id.in_(app_groups_owned_ids),
                 )
@@ -608,16 +592,16 @@ def groups_and_roles(
                 .filter(OktaUserGroupMember.user_id != owner.id)
                 .filter(OktaUserGroupMember.is_owner.is_(True))
                 .filter(
-                    _db.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > _db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .all()
             ]
             visible_app_groups = set(app_groups_owned_ids) - set(directly_owned_by_others_ids)
             query = query.filter(
-                _db.or_(
+                or_(
                     RoleGroupMap.group_id.in_(owner_group_ids),
                     RoleGroupMap.group_id.in_(visible_app_groups),
                 )
@@ -630,9 +614,9 @@ def groups_and_roles(
             .filter(OktaUserGroupMember.user_id == role_owner.id)
             .filter(OktaUserGroupMember.is_owner.is_(True))
             .filter(
-                _db.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .all()
@@ -644,11 +628,11 @@ def groups_and_roles(
             owners_subquery = (
                 db.query(OktaUserGroupMember.group_id)
                 .filter(
-                    _db.and_(
+                    and_(
                         OktaUserGroupMember.is_owner.is_(True),
-                        _db.or_(
+                        or_(
                             OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > _db.func.now(),
+                            OktaUserGroupMember.ended_at > func.now(),
                         ),
                     )
                 )
@@ -657,11 +641,11 @@ def groups_and_roles(
             unowned_admin_role_ids = [
                 rg.id
                 for rg in db.query(RoleGroup)
-                .filter(_db.and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery)))
+                .filter(and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery)))
                 .all()
             ]
         query = query.filter(
-            _db.or_(
+            or_(
                 RoleGroupMap.role_group_id.in_(role_owner_role_ids),
                 RoleGroupMap.role_group_id.in_(unowned_admin_role_ids),
             )
@@ -672,16 +656,16 @@ def groups_and_roles(
 
     if q_args.active is True:
         query = query.filter(
-            _db.or_(
+            or_(
                 RoleGroupMap.ended_at.is_(None),
-                RoleGroupMap.ended_at > _db.func.now(),
+                RoleGroupMap.ended_at > func.now(),
             )
         )
     elif q_args.active is False:
         query = query.filter(
-            _db.and_(
+            and_(
                 RoleGroupMap.ended_at.is_not(None),
-                RoleGroupMap.ended_at < _db.func.now(),
+                RoleGroupMap.ended_at < func.now(),
             )
         )
 
@@ -693,7 +677,7 @@ def groups_and_roles(
 
     if q_args.start_date is not None and q_args.end_date is not None:
         query = query.filter(
-            _db.and_(
+            and_(
                 RoleGroupMap.ended_at.is_not(None),
                 RoleGroupMap.ended_at > _unix_to_utc_naive(q_args.start_date),
                 RoleGroupMap.ended_at < _unix_to_utc_naive(q_args.end_date),
@@ -717,11 +701,11 @@ def groups_and_roles(
             group_alias.description.ilike(like),
         )
         if group is not None:
-            query = query.filter(_db.or_(*role_cols))
+            query = query.filter(or_(*role_cols))
         if role is not None:
-            query = query.filter(_db.or_(*group_cols))
+            query = query.filter(or_(*group_cols))
         if owner is not None or (group is None and role is None):
-            query = query.filter(_db.or_(*role_cols, *group_cols))
+            query = query.filter(or_(*role_cols, *group_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable.
     # Primary column depends on context: when `group_id` is pinned, the

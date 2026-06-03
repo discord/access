@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import nullsfirst
+from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
@@ -32,7 +32,10 @@ class RejectAccessRequest:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
             self.rejecter_id = getattr(
-                OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+                db.session.query(OktaUser)
+                .filter(OktaUser.deleted_at.is_(None))
+                .filter(OktaUser.id == current_user_id)
+                .first(),
                 "id",
                 None,
             )
@@ -51,7 +54,7 @@ class RejectAccessRequest:
             return self.access_request
 
         self.access_request.status = AccessRequestStatus.REJECTED
-        self.access_request.resolved_at = db.func.now()
+        self.access_request.resolved_at = func.now()
         self.access_request.resolver_user_id = self.rejecter_id
         self.access_request.resolution_reason = self.rejection_reason
 

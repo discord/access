@@ -19,7 +19,6 @@ pg8000==1.31.5
 
 # HTTP
 httpx==0.28.1
-requests==2.33.0
 
 # Security / auth
 PyJWT[crypto]==2.12.1
@@ -47,5 +46,4 @@ ruff==0.8.0
 # Typing
 mypy==1.13.0
 types-python-dateutil==2.9.0.20250822
-types-requests==2.32.0.20241016
 types-cachetools==7.0.0.20260503

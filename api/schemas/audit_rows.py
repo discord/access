@@ -133,11 +133,8 @@ class AuditUserGroupRow(BaseModel):
     updated_at: RFC822DatetimeOpt = None
     ended_at: RFC822DatetimeOpt = None
     user: Optional[_UserSummaryForAudit] = None
-    active_user: Optional[_UserSummaryForAudit] = None
     group: Optional[_GroupRefForAudit] = None
-    active_group: Optional[_GroupRefForAudit] = None
     role_group_mapping: Optional[_RoleGroupMappingForAudit] = None
-    active_role_group_mapping: Optional[_RoleGroupMappingForAudit] = None
     access_request: Optional[_AccessRequestRef] = None
     created_actor: Optional[_UserSummaryForAudit] = None
     ended_actor: Optional[_UserSummaryForAudit] = None
@@ -155,9 +152,7 @@ class AuditGroupRoleRow(BaseModel):
     created_at: RFC822DatetimeOpt = None
     ended_at: RFC822DatetimeOpt = None
     group: Optional[_GroupRefForAudit] = None
-    active_group: Optional[_GroupRefForAudit] = None
     role_group: Optional[_RoleGroupRefForAudit] = None
-    active_role_group: Optional[_RoleGroupRefForAudit] = None
     created_actor: Optional[_UserSummaryForAudit] = None
     ended_actor: Optional[_UserSummaryForAudit] = None
 

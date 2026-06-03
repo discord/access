@@ -28,7 +28,10 @@ class CreateTag:
             self.tag = tag
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -36,7 +39,10 @@ class CreateTag:
     def execute(self) -> Tag:
         # Do not allow non-deleted groups with the same name (case-insensitive)
         existing_tag = (
-            Tag.query.filter(func.lower(Tag.name) == func.lower(self.tag.name)).filter(Tag.deleted_at.is_(None)).first()
+            db.session.query(Tag)
+            .filter(func.lower(Tag.name) == func.lower(self.tag.name))
+            .filter(Tag.deleted_at.is_(None))
+            .first()
         )
         if existing_tag is not None:
             return existing_tag

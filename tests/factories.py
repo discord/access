@@ -11,6 +11,7 @@ from okta.models.user_profile import UserProfile
 from okta.models.user_schema import UserSchema
 from sqlalchemy.orm import joinedload
 
+from api.extensions import db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -57,7 +58,9 @@ class GroupFactory(factory.Factory[Group]):
 
     @staticmethod
     def create_access_owner_group() -> Group:
-        access_app = App.query.options(joinedload(App.active_owner_app_groups)).filter(App.name == "Access").first()
+        access_app = (
+            db.session.query(App).options(joinedload(App.active_owner_app_groups)).filter(App.name == "Access").first()
+        )
         access_owner_group = access_app.active_owner_app_groups[0]
         okta_access_owner_group = GroupFactory.build()
         okta_access_owner_group.profile.name = access_owner_group.name

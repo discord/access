@@ -5,6 +5,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func, or_
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
@@ -49,7 +50,10 @@ class CreateRoleRequest:
 
         if isinstance(requester_role, str):
             self.requester_role = (
-                RoleGroup.query.filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == requester_role).first()
+                db.session.query(RoleGroup)
+                .filter(RoleGroup.deleted_at.is_(None))
+                .filter(RoleGroup.id == requester_role)
+                .first()
             )
             # self.requester_role = (
             #     db.session.query(RoleGroup)
@@ -111,12 +115,13 @@ class CreateRoleRequest:
         role_memberships = [
             u.user_id
             for u in (
-                OktaUserGroupMember.query.filter(OktaUserGroupMember.group_id == self.requester_role.id)
+                db.session.query(OktaUserGroupMember)
+                .filter(OktaUserGroupMember.group_id == self.requester_role.id)
                 .filter(OktaUserGroupMember.is_owner.is_(False))
                 .filter(
-                    db.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > db.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .all()

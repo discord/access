@@ -106,7 +106,14 @@ class Settings(BaseSettings):
     SECRET_KEY: Optional[str] = Field(default_factory=_read_secret_key)
 
     # App metadata
+    # APP_CREATOR_ID accepts a comma-separated list of identifiers permitted
+    # to create new apps via POST /api/apps (in addition to Access admins). A
+    # single value (no commas) keeps the original single-creator behavior.
     APP_CREATOR_ID: Optional[str] = None
+    # APP_GROUP_DELETER_ID accepts a comma-separated list of identifiers
+    # permitted to delete managed AppGroups (in addition to the existing
+    # group-owner / app-owner / access-admin paths).
+    APP_GROUP_DELETER_ID: Optional[str] = None
     APP_VERSION: str = "Not Defined"
     APP_NAME: str = "Access"
 
@@ -165,6 +172,18 @@ class Settings(BaseSettings):
         if "Manager" in attrs:
             attrs.remove("Manager")
         return attrs
+
+    @property
+    def app_creator_ids(self) -> list[str]:
+        if self.APP_CREATOR_ID is None:
+            return []
+        return [s.strip() for s in self.APP_CREATOR_ID.split(",") if s.strip()]
+
+    @property
+    def app_group_deleter_ids(self) -> list[str]:
+        if self.APP_GROUP_DELETER_ID is None:
+            return []
+        return [s.strip() for s in self.APP_GROUP_DELETER_ID.split(",") if s.strip()]
 
 
 def _build_settings() -> Settings:

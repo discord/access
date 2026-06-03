@@ -3,7 +3,7 @@ from typing import Optional, TypedDict, TypeVar
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
@@ -27,10 +27,13 @@ class CreateGroup:
         else:
             self.group = group
 
-        self.tags = Tag.query.filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
+        self.tags = db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
 
         self.current_user_id = getattr(
-            OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first(),
+            db.session.query(OktaUser)
+            .filter(OktaUser.deleted_at.is_(None))
+            .filter(OktaUser.id == current_user_id)
+            .first(),
             "id",
             None,
         )
@@ -49,7 +52,8 @@ class CreateGroup:
         # Make sure the app exists if we're creating an app group
         if (
             type(self.group) is AppGroup
-            and App.query.filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first() is None
+            and db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            is None
         ):
             raise ValueError("App for AppGroup does not exist")
 
@@ -63,11 +67,12 @@ class CreateGroup:
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
             app_tag_maps = (
-                AppTagMap.query.filter(AppTagMap.app_id == self.group.app_id)
+                db.session.query(AppTagMap)
+                .filter(AppTagMap.app_id == self.group.app_id)
                 .filter(
-                    db.or_(
+                    or_(
                         AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > db.func.now(),
+                        AppTagMap.ended_at > func.now(),
                     )
                 )
                 .all()

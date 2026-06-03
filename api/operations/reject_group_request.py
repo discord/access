@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from sqlalchemy import func
 from api.context import get_request_context
 
 from api.extensions import db
@@ -30,7 +31,12 @@ class RejectGroupRequest:
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
-            user = OktaUser.query.filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
+            user = (
+                db.session.query(OktaUser)
+                .filter(OktaUser.deleted_at.is_(None))
+                .filter(OktaUser.id == current_user_id)
+                .first()
+            )
             self.rejecter_id = user.id if user else None
         else:
             self.rejecter_id = current_user_id.id
@@ -70,6 +76,7 @@ class RejectGroupRequest:
                                 AppGroup.is_owner.is_(True),
                                 AppGroup.deleted_at.is_(None),
                                 OktaUserGroupMember.user_id == self.rejecter_id,
+                                OktaUserGroupMember.is_owner.is_(True),
                                 OktaUserGroupMember.ended_at.is_(None),
                             )
                             .first()
@@ -99,7 +106,7 @@ class RejectGroupRequest:
         )
 
         self.group_request.status = AccessRequestStatus.REJECTED
-        self.group_request.resolved_at = db.func.now()
+        self.group_request.resolved_at = func.now()
         self.group_request.resolver_user_id = self.rejecter_id
         self.group_request.resolution_reason = self.rejection_reason
 

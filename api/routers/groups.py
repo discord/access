@@ -17,7 +17,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
@@ -28,7 +28,6 @@ from api.auth.permissions import (
     is_app_owner_group_owner,
 )
 from api.database import DbSession
-from api.extensions import db as _db
 from api.models import AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
 from api.operations import (
     CreateGroup,
@@ -91,7 +90,7 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
     return (
         db.query(OktaGroup)
         .options(*DEFAULT_LOAD_OPTIONS)
-        .filter(_db.or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
         .first()
     )
@@ -120,7 +119,7 @@ def list_groups(
     )
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(_db.or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
+        query = query.filter(or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
     if q_args.managed is not None:
         query = query.filter(OktaGroup.is_managed == q_args.managed)
 
@@ -150,7 +149,7 @@ def post_group(
             name=body.name,
             description=description,
             app_id=body.app_id,
-            is_owner=body.is_owner,
+            is_owner=False,
             plugin_data=body.plugin_data or {},
         )
     elif isinstance(body, _RoleGroupCreateBody):
@@ -325,7 +324,7 @@ def put_group(
             setattr(new_group, k, getattr(group, k, None))
         if isinstance(new_group, AppGroup) and isinstance(body, _AppGroupUpdateBody):
             new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
-            new_group.is_owner = bool(body.is_owner) if body.is_owner is not None else False
+            new_group.is_owner = False
         try:
             group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
         except ValueError as e:
@@ -383,7 +382,7 @@ def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -
     group = _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    if not _perms.can_manage_group(db, current_user_id, group):
+    if not _perms.can_delete_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
@@ -407,7 +406,7 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
     group = (
         db.query(OktaGroup)
         .filter(OktaGroup.deleted_at.is_(None))
-        .filter(_db.or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
         .first()
     )
     if group is None:
@@ -417,9 +416,9 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
         db.query(OktaUserGroupMember)
         .with_entities(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
         .filter(
-            _db.or_(
+            or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > _db.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .filter(OktaUserGroupMember.group_id == group.id)
@@ -442,7 +441,7 @@ def put_group_members(
     group = (
         db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
         .filter(OktaGroup.deleted_at.is_(None))
-        .filter(_db.or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
         .first()
     )
     if group is None:

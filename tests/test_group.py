@@ -9,8 +9,9 @@ from okta.models.group import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
+from sqlalchemy import func, or_
 from api.auth import permissions as AuthorizationHelpers
-from api.extensions import Db
+from api.extensions import Db, db
 from api.config import settings
 from api.models import (
     AccessRequest,
@@ -237,9 +238,9 @@ def test_put_group(
         f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    builtin_access_owners_group = AppGroup.query.filter(
-        AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner
-    ).first()
+    builtin_access_owners_group = (
+        db.session.query(AppGroup).filter(AppGroup.name == builtin_access_owners_group_name, AppGroup.is_owner).first()
+    )
     update_group_spy.reset_mock()
 
     data: dict[str, Any] = {
@@ -270,7 +271,7 @@ def test_put_group(
     assert ret_data["name"] == builtin_access_owners_group_name
     assert ret_data["description"] != "new description"
     assert ret_data["id"] == group_id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
 
     update_group_spy.reset_mock()
     data.update(
@@ -289,7 +290,7 @@ def test_put_group(
     assert ret_data["name"] == builtin_access_owners_group_name
     assert ret_data["description"] != "new description"
     assert ret_data["id"] == group_id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
 
 
 def _update_group_type(
@@ -322,8 +323,8 @@ def _update_group_type(
     assert ret_data["name"] == data["name"]
     assert ret_data["description"] == f"new description {group_type}"
     assert ret_data["id"] == group_id
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == expected_tags_count
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == expected_tags_count
 
 
 def test_put_app_group_rebind_authorization(
@@ -360,7 +361,7 @@ def test_put_app_group_rebind_authorization(
     target_app_name = target_app.name
     target_app_owner_group_id = target_app_owner_group.id
 
-    access_owner = OktaUser.query.filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
     ModifyGroupUsers(group=app_group, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
 
     mocker.patch.object(okta, "update_group")
@@ -695,7 +696,7 @@ def test_delete_group(
     assert rep.status_code == 200
     assert delete_group_spy.call_count == 1
     assert db.session.get(OktaGroup, group_id).deleted_at is not None
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
 
     db.session.add(user)
     db.session.add(access_app)
@@ -729,8 +730,43 @@ def test_delete_group(
     assert db.session.get(OktaGroup, group_id).deleted_at is not None
     assert access_request is not None
     assert db.session.get(AccessRequest, access_request.id).status == AccessRequestStatus.REJECTED
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert AppTagMap.query.filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+
+
+def test_delete_group_as_app_group_deleter(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    okta_group: OktaGroup,
+    app_group: AppGroup,
+    access_app: App,
+    user: OktaUser,
+    url_for: Any,
+    mock_user: Any,
+) -> None:
+    db.session.add_all([user, access_app, okta_group])
+    db.session.commit()
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+    unmanaged = AppGroupFactory.build(app_id=access_app.id, is_owner=False, is_managed=False)
+    db.session.add(unmanaged)
+    db.session.commit()
+
+    mocker.patch.object(okta, "async_delete_group")
+    mock_user(user.id)
+    monkeypatch.setattr(settings, "APP_GROUP_DELETER_ID", f"someone-else,{user.id}")
+
+    # Managed AppGroup: allowed.
+    rep = client.delete(url_for("api-groups.group_by_id", group_id=app_group.id))
+    assert rep.status_code == 200
+    assert db.session.get(OktaGroup, app_group.id).deleted_at is not None
+
+    # Plain OktaGroup and unmanaged AppGroup: still 403.
+    assert client.delete(url_for("api-groups.group_by_id", group_id=okta_group.id)).status_code == 403
+    assert client.delete(url_for("api-groups.group_by_id", group_id=unmanaged.id)).status_code == 403
 
 
 def test_create_group(
@@ -765,7 +801,7 @@ def test_create_group(
     assert data["name"] == "Created"
     assert data["description"] == ""
     assert data["active_group_tags"][0]["active_tag"]["id"] == tag.id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
 
 
 def test_create_app_group(
@@ -793,7 +829,7 @@ def test_create_app_group(
         okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
 
     app_group_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Created"
     data = {"type": "app_group", "app_id": access_app.id, "name": app_group_name, "description": ""}
@@ -806,7 +842,61 @@ def test_create_app_group(
     assert data["name"] == app_group_name
     assert data["description"] == ""
     assert data["active_group_tags"][0]["active_tag"]["id"] == tag.id
-    assert OktaGroupTagMap.query.filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
+
+
+def test_create_app_group_cannot_set_is_owner_shadow_escalation(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
+) -> None:
+    """A non-admin app owner must not be able to create a *second* owner-group
+    by setting `is_owner=True` on POST /api/groups. Such a "shadow" owner-group
+    silently turns anyone added as its owner into an app owner — without them
+    ever appearing in the App-<app>-Owners member list.
+    """
+    # App "Foo" with its owner group, owned by non-admin Alice
+    foo = AppFactory.create()
+    owners_group = AppGroupFactory.create(
+        app_id=foo.id,
+        is_owner=True,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
+    )
+    alice = OktaUserFactory.create()
+    db.session.add_all([foo, owners_group, alice])
+    db.session.commit()
+    foo_id = foo.id
+    foo_name = foo.name
+
+    ModifyGroupUsers(group=owners_group, owners_to_add=[alice.id], sync_to_okta=False).execute()
+
+    mocker.patch.object(okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()}))
+
+    # act as Alice — a plain app owner, NOT an Access admin.
+    app.state.current_user_email = alice.email
+    assert not AuthorizationHelpers.is_access_admin(db.session, alice.id)
+
+    shadow_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}shadow"
+    rep = client.post(
+        url_for("api-groups.groups"),
+        json={"type": "app_group", "app_id": foo_id, "name": shadow_name, "is_owner": True, "description": ""},
+    )
+    assert rep.status_code == 201
+
+    # privilege flag should be ignored, so the new group is an
+    # ordinary (non-owner) app group and Foo still has exactly one owner group.
+    created = db.session.get(AppGroup, rep.json()["id"])
+    assert not created.is_owner
+    owner_groups = (
+        db.session.query(AppGroup)
+        .filter(AppGroup.app_id == foo_id, AppGroup.is_owner.is_(True), AppGroup.deleted_at.is_(None))
+        .all()
+    )
+    assert [g.id for g in owner_groups] == [owners_group.id]
 
 
 def test_get_all_group(client: TestClient, db: Db, access_app: App, url_for: Any) -> None:
@@ -862,7 +952,7 @@ def test_do_not_renew(
     ).execute()
 
     # need the OktaUserGroupMember id to pass in later
-    membership_user2 = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == user2.id).first()
+    membership_user2 = db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.user_id == user2.id).first()
 
     # test non-owner/admin perms
     mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=False)
@@ -922,10 +1012,11 @@ def test_do_not_renew(
 
     # get OktaUserGroupMembers, check expiration dates and should_expire
     membership_user1 = (
-        OktaUserGroupMember.query.filter(
-            db.or_(
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > db.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .filter(OktaUserGroupMember.user_id == user.id)
@@ -936,20 +1027,21 @@ def test_do_not_renew(
     assert membership_user1[0].ended_at is None
     assert membership_user1[0].should_expire is False
 
-    membership_user2 = (
-        OktaUserGroupMember.query.filter(
-            db.or_(
+    memberships_user2 = (
+        db.session.query(OktaUserGroupMember)
+        .filter(
+            or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > db.func.now(),
+                OktaUserGroupMember.ended_at > func.now(),
             )
         )
         .filter(OktaUserGroupMember.user_id == user2.id)
         .all()
     )
 
-    assert len(membership_user2) == 1
-    assert membership_user2[0].ended_at == expiration_datetime
-    assert membership_user2[0].should_expire is True
+    assert len(memberships_user2) == 1
+    assert memberships_user2[0].ended_at == expiration_datetime
+    assert memberships_user2[0].should_expire is True
 
 
 def test_do_not_renew_scoped_to_route_group(
@@ -979,7 +1071,9 @@ def test_do_not_renew_scoped_to_route_group(
         sync_to_okta=False,
     ).execute()
 
-    victim_membership = OktaUserGroupMember.query.filter(OktaUserGroupMember.user_id == victim_user.id).first()
+    victim_membership = (
+        db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.user_id == victim_user.id).first()
+    )
     assert victim_membership is not None
 
     mocker.patch.object(AuthorizationHelpers, "can_manage_group", return_value=True)
