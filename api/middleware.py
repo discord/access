@@ -19,16 +19,20 @@ FastAPI route, which also runs through the app-wide dependency.
 
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from typing import Awaitable, Callable
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.extensions import _session_scope, db
+from api.plugins.metrics_reporter import get_metrics_reporter_hook
 
 CSP = (
     "default-src 'self'; "
@@ -151,3 +155,45 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
         return response
+
+
+class RequestObservabilityMiddleware:
+    """Emit per-request counter and duration histogram via the metrics_reporter hook."""
+
+    _logger = logging.getLogger(__name__)
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        start = time.perf_counter()
+        status_code = 500
+
+        async def _send(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
+
+        try:
+            await self.app(scope, receive, _send)
+        finally:
+            duration_ms = (time.perf_counter() - start) * 1000.0
+            self._record(scope.get("method", ""), status_code, duration_ms)
+
+    def _record(self, method: str, status_code: int, duration_ms: float) -> None:
+        try:
+            hook = get_metrics_reporter_hook()
+        except Exception:
+            self._logger.exception("metrics_reporter hook unavailable; skipping emit")
+            return
+        tags = {"method": method, "status": str(status_code)}
+        try:
+            hook.record_counter(metric_name="requests", value=1, tags=tags)
+            hook.record_histogram(metric_name="request.duration", value=duration_ms, tags={**tags, "unit": "ms"})
+        except Exception:
+            self._logger.exception("metrics_reporter emit failed; continuing")
