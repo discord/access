@@ -178,8 +178,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
             allow_credentials=True,
         )
 
-    # Order: outer-most last. RequestId outermost so request_id is on state
-    # for inner middleware and dependencies.
+    # Order: outer-most last. RequestObservability outermost so it times the
+    # full request; RequestId next so request_id is on state for inner
+    # middleware and dependencies.
     app.add_middleware(middleware.CacheControlMiddleware)
     app.add_middleware(middleware.SecurityHeadersMiddleware)
     app.add_middleware(middleware.RequestContextMiddleware)

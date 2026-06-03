@@ -99,7 +99,7 @@ class DatadogMetricsReporter:
             self.client.increment(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def record_gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]] = None) -> None:
+    def record_gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
         if not self.client:
             return
 
@@ -140,7 +140,7 @@ class DatadogMetricsReporter:
             self.client.histogram(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def record_summary(self, metric_name: str, value: float, tags: Optional[Dict[str, str]] = None) -> None:
+    def record_summary(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
         if not self.client:
             return
 
