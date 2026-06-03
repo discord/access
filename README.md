@@ -249,6 +249,10 @@ The `.env.production` file is where you configure the application.
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `SECRET_KEY`: Specifies the secret key used to sign the OIDC session cookie. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+- `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
+- `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
+- `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.
+- `MCP_RESOURCE_URL`: **[OPTIONAL]** Canonical public URL of the MCP resource (e.g. `https://access.example.com/mcp`), published in the RFC 9728 metadata document and the 401 `resource_metadata` pointer. Derived from the request when unset; set it explicitly behind a proxy that rewrites Host. Only relevant when `ENABLE_MCP=true`.
 
 **Check out `.env.psql.example` or `.env.production.example` for an example configuration file structure**.
 
@@ -356,6 +360,90 @@ Visit [http://localhost:3000/](http://localhost:3000/) to view your running vers
 As Access is a web application packaged with Docker, it can easily be deployed to a Kubernetes cluster. We've included example Kubernetes yaml objects you can use to deploy Access in the [examples/kubernetes](https://github.com/discord/access/tree/main/examples/kubernetes) directory.
 
 These examples include a Deployment, Service, Namespace, and Service Account object for serving the stateless web application. Additionally there are examples for deploying the `access sync` and `access notify` commands as cronjobs to periodically synchronize users, groups, and their memberships and send expiring access notifications respectively.
+
+## MCP Server (optional)
+
+Access can embed a [Model Context Protocol](https://modelcontextprotocol.io/) server alongside the REST API so that MCP-compatible LLM clients (Claude Code, Claude.ai, Cursor, Zed, self-hosted models, …) can browse groups, roles, apps, and requests, and file access requests on the authenticated user's behalf. The feature is **off by default** — operators who don't run LLM tooling pay nothing at runtime.
+
+### Enabling
+
+Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the FastMCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
+
+`mcp[cli]` is pinned in [`requirements.txt`](requirements.txt) and imported unconditionally; only the runtime wiring is gated by the flag.
+
+### Tool surface (v1)
+
+21 tools and one prompt. Reads (`list_*` / `get_*`) cover groups, roles, apps, users, tags, audit entries, group memberships, and all three request types. Writes are limited to filing **pending** requests — approval, rejection, and direct mutation of groups/roles/apps are intentionally **not** exposed via MCP:
+
+- `create_access_request` — user requests membership or ownership for themselves
+- `create_role_request` — role owner requests that a role be granted access to a group
+- `create_group_request` — user requests creation of a new group, role, or app group
+
+Every tool runs the same authorization predicate and operation pipeline the matching REST endpoint uses, so MCP cannot grant an LLM agent more than the user it's authenticating as.
+
+### Scopes (`MCP_FALLBACK_SCOPES`)
+
+Two coarse scopes:
+
+| Scope             | Required by                                                            |
+|-------------------|------------------------------------------------------------------------|
+| `read_all`        | every `list_*` / `get_*` tool                                          |
+| `create_requests` | `create_access_request`, `create_role_request`, `create_group_request` |
+
+When an MCP token carries an explicit `scope` (space-separated) or `scp` (list) claim, that set controls the session. When the claim is absent — the typical case under Cloudflare Managed OAuth today, which does not currently issue scope claims — the operator-configured `MCP_FALLBACK_SCOPES` value is applied. Three meaningful settings:
+
+- `MCP_FALLBACK_SCOPES=read_all,create_requests` *(default)* — read tools plus the three write tools (`create_access_request`, `create_role_request`, `create_group_request`). Per-tool authorization still applies, so users get no capability beyond what they have via REST.
+- `MCP_FALLBACK_SCOPES=read_all` — read-only sessions; LLM agents can browse but cannot file any request via MCP.
+- `MCP_FALLBACK_SCOPES=""` — fail-closed; tokens with no scope claim cannot call any tool. The right setting once your provider starts emitting scope claims.
+
+Scopes attenuate — they never grant. A token with `create_requests` still cannot file a role request for a role the user does not own; the per-tool authorization check fires after the scope check.
+
+### Authentication
+
+MCP ships with two built-in auth providers: **Cloudflare Access** and **OIDC**. Each opts in automatically when its config is set. They are mutually exclusive for the MCP surface — the app refuses to start if both `CLOUDFLARE_TEAM_DOMAIN` and `OIDC_SERVER_METADATA_URL` are configured with `ENABLE_MCP=true`.
+
+Both providers do **credential verification** only. Access is a *resource server*: it verifies bearer tokens and publishes discovery metadata (see below), but the OAuth/OIDC flow — `/authorize`, `/token`, dynamic client registration, callbacks — runs on the operator's authorization server (a Cloudflare-Access-style proxy or your IdP), not in Access.
+
+**Cloudflare Access.** Activates when `CLOUDFLARE_TEAM_DOMAIN` is set. Reads the CF-issued JWT from `Cf-Access-Jwt-Assertion`, `Cf-Access-Token`, or `Authorization: Bearer`, verifies it via `verify_cloudflare_token`, and resolves the `email` claim to an `OktaUser`. CF deployments using [Managed OAuth for Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/mcp-servers/) need no extra wiring — enable Managed OAuth on the Access application in the CF dashboard and any MCP-compliant client connects with just the `/mcp` URL.
+
+**OIDC.** Activates when `OIDC_SERVER_METADATA_URL` is set. Reads an OIDC bearer token from `Authorization: Bearer`, fetches the IdP's JWKS via the discovery document, and verifies signature, `iss`, `exp`, and `aud` against `OIDC_MCP_AUDIENCE`. `OIDC_MCP_AUDIENCE` is **required** when OIDC is enabled — skipping audience validation would let a token issued for another resource server authenticate to Access MCP. The MCP OIDC integration is intentionally different from the REST OIDC integration: REST uses a browser session-cookie flow (`api/auth/oidc.py`), MCP uses bearer-token verification (`api/mcp/auth/oidc.py`), because MCP clients aren't browsers and the MCP OAuth spec uses bearer tokens.
+
+For local development there's also a dev provider that activates when `ENV` is `development` or `test`. It resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set, so you can exercise tools locally without faking a token.
+
+When every provider defers (no credential present, or the credential is invalid), the MCP middleware emits a `401` whose `WWW-Authenticate` header carries an RFC 9728 `resource_metadata` pointer (see below).
+
+### Client discovery (RFC 9728)
+
+To let a spec-compliant client connect cold with just the `/mcp` URL, Access implements the resource-server half of the [MCP authorization flow](https://modelcontextprotocol.io/docs/tutorials/security/authorization):
+
+- The `401` challenge advertises `WWW-Authenticate: Bearer realm="access", resource_metadata="<url>"`.
+- That URL serves a [Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728) document at `/.well-known/oauth-protected-resource` (and `/.well-known/oauth-protected-resource/mcp`), listing the `resource`, the `authorization_servers` (derived from `OIDC_SERVER_METADATA_URL` / `CLOUDFLARE_TEAM_DOMAIN`), and the supported scopes. It is served unauthenticated so a token-less client can read it.
+
+The client then discovers the authorization server, registers, and runs the `/authorize` + `/token` dance against *that* server — Access never sees those steps. Set `MCP_RESOURCE_URL` to your public `/mcp` URL when running behind a proxy that rewrites Host or terminates TLS; otherwise it's derived from the request. (Cloudflare Managed OAuth handles discovery at the edge, so CF deployments don't depend on this.)
+
+### Audit logging
+
+Every MCP-originated mutation is tagged with `source: "mcp"` in the audit log payload (REST traffic is tagged `source: "web"`). The tag is injected automatically from the active request context — no per-tool plumbing — so an admin investigating an incident can distinguish agent activity from interactive use.
+
+### Endpoint
+
+  `POST https://<your-access-deployment>/mcp`
+
+Standard MCP Streamable HTTP. Any MCP-compliant client connects with just this URL plus the auth credential your registered provider expects.
+
+### Local development
+
+A dev MCP auth provider ships in `api/mcp/auth/dev.py` and activates only when `ENV` is `development` or `test`. In those modes it resolves `CURRENT_OKTA_USER_EMAIL` to an `OktaUser` and grants the full v1 scope set — the same shortcut the REST path takes in `api/auth/dependencies.py`. The Cloudflare provider stays registered but opts out automatically when `CLOUDFLARE_TEAM_DOMAIN` is unset, so the two don't compete.
+
+To exercise the MCP server locally, add to your `.env`:
+
+```
+ENABLE_MCP=true
+```
+
+Then run `make run-backend` and point an MCP client (Claude Code, mcp-inspector, etc.) at `http://localhost:6060/mcp` with no auth credential. The dev provider grants both `read_all` and `create_requests`, so every tool is reachable.
+
+This path is gated on `ENV` and explicitly defers in any production-style environment, so the dev provider is safe to ship alongside the Cloudflare default.
 
 ## Plugins
 

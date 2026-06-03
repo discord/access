@@ -92,6 +92,15 @@ class Settings(BaseSettings):
     OIDC_OVERWRITE_REDIRECT_URI: Optional[str] = None
     OIDC_SCOPES: str = "openid email"
     OIDC_SERVER_METADATA_URL: Optional[str] = None
+    # Required `aud` claim for MCP-bound OIDC bearer tokens. When the OIDC
+    # provider is active for MCP (``OIDC_SERVER_METADATA_URL`` set and
+    # ``ENABLE_MCP=true``), every incoming token's ``aud`` claim must match
+    # this value or the request is rejected. Required because skipping
+    # ``aud`` validation lets a token issued for a different resource
+    # server authenticate to Access MCP (the classic confused-deputy /
+    # token-confusion attack). Typically the OAuth client identifier for
+    # the MCP application registered with the IdP, e.g. ``access-mcp``.
+    OIDC_MCP_AUDIENCE: Optional[str] = None
 
     # Session
     SECRET_KEY: Optional[str] = Field(default_factory=_read_secret_key)
@@ -114,6 +123,46 @@ class Settings(BaseSettings):
 
     # Behavior toggles
     REQUIRE_DESCRIPTIONS: bool = False
+
+    # MCP server. Off-by-default; flipping this to True mounts the FastMCP
+    # server at /mcp and activates the MCP auth middleware. Most operators
+    # of the open-source distribution don't run LLM tooling and shouldn't
+    # pay for any of it. See api/mcp/ for the implementation.
+    ENABLE_MCP: bool = False
+
+    # Fallback scope set the default Cloudflare auth provider grants when
+    # an incoming MCP token carries no `scope` (or `scp`) claim. Comma-
+    # separated. CF Managed OAuth does not currently issue tokens with a
+    # scope claim, so this fallback fires on every CF-fronted MCP request
+    # today.
+    #
+    # Default is `read_all,create_requests` — every MCP write tool still
+    # runs the same authorization predicate (Layer 2) and operation
+    # constraints (Layer 3) the matching REST endpoint applies, so this
+    # grants the user no capability they don't already have via REST; it
+    # just permits the tool to be CALLED. Operators who want a stricter
+    # posture can set this to `"read_all"` (read-only sessions) or `""`
+    # (fail-closed; only tokens with an explicit scope claim work).
+    # When CF (or your provider) starts emitting scope claims, this
+    # fallback never fires and the token controls scope per session;
+    # the value here becomes inert.
+    MCP_FALLBACK_SCOPES: str = "read_all,create_requests"
+
+    # Canonical public URL of the MCP resource, e.g.
+    # ``https://access.example.com/mcp``. Surfaced in the RFC 9728 metadata
+    # document and the 401 ``resource_metadata`` pointer for client
+    # discovery. When unset, derived from the request (forwarded scheme +
+    # Host + ``/mcp``); set explicitly behind a proxy that rewrites Host.
+    MCP_RESOURCE_URL: Optional[str] = None
+
+    # DNS-rebinding protection for the FastMCP transport layer. Comma-
+    # separated Host header allowlist (wildcards like ``"localhost:*"``
+    # are supported). Empty (default) disables the check — relies on
+    # the auth middleware + CORS + no-browser-client to cover the
+    # threat. Set to your public host (``"access.example.com"``) for
+    # defense-in-depth, or to ``"localhost:*,127.0.0.1:*"`` for dev
+    # with a browser open. Any non-empty value flips protection ON.
+    MCP_ALLOWED_HOSTS: str = ""
 
     @property
     def user_search_attrs(self) -> list[str]:
@@ -143,7 +192,39 @@ def _build_settings() -> Settings:
         parsed = _parse_oidc_client_secrets(s.OIDC_CLIENT_SECRETS)
         # Reassign through __setattr__; Pydantic v2 settings allow mutation
         s.OIDC_CLIENT_SECRETS = parsed
+    _validate_mcp_auth_settings(s)
     return s
+
+
+def _validate_mcp_auth_settings(s: Settings) -> None:
+    """Fail-closed guards on the MCP auth configuration.
+
+    Only fires when ``ENABLE_MCP=true``. Two rules:
+
+      1. ``CLOUDFLARE_TEAM_DOMAIN`` and ``OIDC_SERVER_METADATA_URL`` are
+         mutually exclusive for MCP. The middleware runs the providers
+         in order and the first one to succeed wins, but configuring
+         both is almost always a mistake — pick one auth model for the
+         MCP surface and stick with it.
+      2. The OIDC provider requires ``OIDC_MCP_AUDIENCE``. Skipping
+         audience validation lets a token issued for a different
+         resource server authenticate to Access MCP, which is the
+         classic OAuth confused-deputy attack.
+    """
+    if not s.ENABLE_MCP:
+        return
+    cf = bool(s.CLOUDFLARE_TEAM_DOMAIN)
+    oidc = bool(s.OIDC_SERVER_METADATA_URL)
+    if cf and oidc:
+        raise ValueError(
+            "ENABLE_MCP=true with both CLOUDFLARE_TEAM_DOMAIN and "
+            "OIDC_SERVER_METADATA_URL set: pick one auth model for /mcp"
+        )
+    if oidc and not s.OIDC_MCP_AUDIENCE:
+        raise ValueError(
+            "ENABLE_MCP=true with OIDC_SERVER_METADATA_URL set requires "
+            "OIDC_MCP_AUDIENCE to validate the token's `aud` claim"
+        )
 
 
 def assert_env_explicitly_set() -> None:
@@ -217,3 +298,5 @@ APP_NAME = settings.APP_NAME
 FASTAPI_SENTRY_DSN = settings.FASTAPI_SENTRY_DSN
 REACT_SENTRY_DSN = settings.REACT_SENTRY_DSN
 REQUIRE_DESCRIPTIONS = settings.REQUIRE_DESCRIPTIONS
+ENABLE_MCP = settings.ENABLE_MCP
+MCP_FALLBACK_SCOPES = settings.MCP_FALLBACK_SCOPES

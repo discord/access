@@ -121,6 +121,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             request_id=getattr(request.state, "request_id", uuid.uuid4().hex),
             user_agent=request.headers.get("user-agent"),
             ip=_client_ip(request),
+            source="web",
         )
         token = set_request_context(ctx)
         try:
@@ -149,7 +150,10 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
         path = request.url.path
-        if path.startswith("/api") and not path.startswith("/api/swagger-ui") and not path.startswith("/api/docs"):
+        is_api = path.startswith("/api") and not path.startswith("/api/swagger-ui") and not path.startswith("/api/docs")
+        # MCP responses are JSON-RPC over Streamable HTTP — never cacheable.
+        is_mcp = path == "/mcp" or path.startswith("/mcp/")
+        if is_api or is_mcp:
             response.headers["X-XSS-Protection"] = "0"
             response.headers["Cache-Control"] = "no-store, max-age=0"
             response.headers["Pragma"] = "no-cache"
