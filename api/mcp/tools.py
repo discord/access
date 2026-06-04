@@ -58,7 +58,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from mcp.types import ToolAnnotations
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.auth.permissions import can_manage_group
@@ -396,7 +396,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         )
         if q:
             like = f"%{q}%"
-            query = query.filter(_db_shim.or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
+            query = query.filter(or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
         if managed is not None:
             query = query.filter(OktaGroup.is_managed == managed)
 
@@ -440,7 +440,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         group = (
             db.query(OktaGroup)
             .options(*_group_load_options())
-            .filter(_db_shim.or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
+            .filter(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
             .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
             .first()
         )
@@ -466,7 +466,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         group = (
             db.query(OktaGroup)
             .filter(OktaGroup.deleted_at.is_(None))
-            .filter(_db_shim.or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
+            .filter(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
             .first()
         )
         if group is None:
@@ -475,9 +475,9 @@ def _register_group_tools(mcp: "FastMCP") -> None:
             db.query(OktaUserGroupMember)
             .with_entities(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
             .filter(
-                _db_shim.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
             .filter(OktaUserGroupMember.group_id == group.id)
@@ -516,7 +516,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         if owner_id:
             owner = (
                 db.query(OktaUser)
-                .filter(_db_shim.or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+                .filter(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
                 .order_by(nullsfirst(OktaUser.deleted_at.desc()))
                 .first()
             )
@@ -528,9 +528,9 @@ def _register_role_tools(mcp: "FastMCP") -> None:
                 .filter(OktaUserGroupMember.user_id == owner.id)
                 .filter(OktaUserGroupMember.is_owner.is_(True))
                 .filter(
-                    _db_shim.or_(
+                    or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
                 .all()
@@ -538,7 +538,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
             query = query.filter(RoleGroup.id.in_(owned_role_ids))
         if q:
             like = f"%{q}%"
-            query = query.filter(_db_shim.or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
+            query = query.filter(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
         page_data = _paginate_query(query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(RoleGroupListItem)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
@@ -572,7 +572,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         role = (
             db.query(RoleGroup)
             .options(*_group_load_options())
-            .filter(_db_shim.or_(RoleGroup.id == role_id_or_name, RoleGroup.name == role_id_or_name))
+            .filter(or_(RoleGroup.id == role_id_or_name, RoleGroup.name == role_id_or_name))
             .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
             .first()
         )
@@ -605,7 +605,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
         if q:
             like = f"%{q}%"
-            query = query.filter(_db_shim.or_(App.name.ilike(like), App.description.ilike(like)))
+            query = query.filter(or_(App.name.ilike(like), App.description.ilike(like)))
         page_data = _paginate_query(query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(AppSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
@@ -637,7 +637,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
             db.query(App)
             .options(*_app_load_options())
             .filter(App.deleted_at.is_(None))
-            .filter(_db_shim.or_(App.id == app_id_or_name, App.name == app_id_or_name))
+            .filter(or_(App.id == app_id_or_name, App.name == app_id_or_name))
             .first()
         )
         if app is None:
@@ -669,7 +669,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.filter(
-                _db_shim.or_(
+                or_(
                     OktaUser.email.ilike(like),
                     OktaUser.first_name.ilike(like),
                     OktaUser.last_name.ilike(like),
@@ -713,7 +713,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
                 selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
                 joinedload(OktaUser.manager),
             )
-            .filter(_db_shim.or_(OktaUser.id == user_id_or_email, OktaUser.email.ilike(user_id_or_email)))
+            .filter(or_(OktaUser.id == user_id_or_email, OktaUser.email.ilike(user_id_or_email)))
             .order_by(nullsfirst(OktaUser.deleted_at.desc()))
             .first()
         )
@@ -747,7 +747,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
         if q:
             like = f"%{q}%"
-            query = query.filter(_db_shim.or_(Tag.name.ilike(like), Tag.description.ilike(like)))
+            query = query.filter(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
         page_data = _paginate_query(query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(TagListItem)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
@@ -771,7 +771,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         tag = (
             db.query(Tag)
             .options(*_tag_load_options())
-            .filter(_db_shim.or_(Tag.id == tag_id_or_name, Tag.name == tag_id_or_name))
+            .filter(or_(Tag.id == tag_id_or_name, Tag.name == tag_id_or_name))
             .order_by(nullsfirst(Tag.deleted_at.desc()))
             .first()
         )
@@ -833,7 +833,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.filter(
-                _db_shim.or_(
+                or_(
                     AccessRequest.id.like(f"{q}%"),
                     AccessRequest.request_reason.ilike(like),
                 )
@@ -916,7 +916,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
             query = query.filter(RoleRequest.requested_group_id == requested_group_id)
         if q:
             like = f"%{q}%"
-            query = query.filter(_db_shim.or_(RoleRequest.id.like(f"{q}%"), RoleRequest.request_reason.ilike(like)))
+            query = query.filter(or_(RoleRequest.id.like(f"{q}%"), RoleRequest.request_reason.ilike(like)))
         page_data = _paginate_query(query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(RoleRequestSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
@@ -993,7 +993,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.filter(
-                _db_shim.or_(
+                or_(
                     GroupRequest.id.like(f"{q}%"),
                     GroupRequest.requested_group_name.ilike(like),
                     GroupRequest.request_reason.ilike(like),
@@ -1065,7 +1065,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
             # Accept email too — match by id or email.
             user = (
                 db.query(OktaUser)
-                .filter(_db_shim.or_(OktaUser.id == resolved_user_id, OktaUser.email.ilike(resolved_user_id)))
+                .filter(or_(OktaUser.id == resolved_user_id, OktaUser.email.ilike(resolved_user_id)))
                 .order_by(nullsfirst(OktaUser.deleted_at.desc()))
                 .first()
             )
@@ -1076,7 +1076,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         if group_id:
             group = (
                 db.query(OktaGroup)
-                .filter(_db_shim.or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+                .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
                 .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
                 .first()
             )
@@ -1089,9 +1089,9 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
 
         if active_only:
             query = query.filter(
-                _db_shim.or_(
+                or_(
                     OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > _db_shim.func.now(),
+                    OktaUserGroupMember.ended_at > func.now(),
                 )
             )
 
