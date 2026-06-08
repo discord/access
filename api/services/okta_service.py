@@ -308,9 +308,7 @@ class OktaService:
     def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
         async def _list_group_rules(query_params: dict[str, str]) -> list[OktaGroupRuleType]:
             async with self._okta_client() as client:
-                group_rules, resp, error = await OktaService._retry(
-                    client.list_group_rules, query_params=query_params
-                )
+                group_rules, resp, error = await OktaService._retry(client.list_group_rules, query_params=query_params)
 
                 if error is not None:
                     raise Exception(error)
