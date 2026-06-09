@@ -1,15 +1,23 @@
-"""RFC 822 datetime serializer + parser.
+"""Datetime serializer + parser.
 
-All datetime fields cross the wire as e.g. `"Sun, 26 Apr 2026 13:45:00 -0000"`,
-which the React frontend's parsers expect. POST_MIGRATION_TODO #5 tracks the
-move to ISO 8601 once the frontend is updated.
+All datetime fields cross the wire as ISO 8601 (e.g. `"2026-04-26T13:45:00Z"`),
+which is Pydantic's default. To smooth the cutover from the previous RFC 822
+wire format, `parse_datetime_value` is permissive on input — it still accepts
+RFC 822 / RFC 2822 strings as well as ISO 8601 strings — so any client still
+on the old format keeps working until it catches up.
 
 - `parse_datetime_value` accepts RFC 822 / RFC 2822 strings, ISO 8601 strings,
   and existing `datetime` / `date` objects, returning a `datetime` (or None).
-- `RFC822Datetime` / `RFC822DatetimeOpt` are Pydantic Annotated types that
-  apply `parse_datetime_value` as a `BeforeValidator` and emit RFC 822 on
-  serialization. Use them in any Pydantic model that round-trips a datetime
-  through the API.
+- `FlexibleDatetime` is a Pydantic Annotated type that applies
+  `parse_datetime_value` as a `BeforeValidator` and serializes to ISO 8601
+  with an explicit `Z` (UTC) marker. Use it in any Pydantic model that
+  round-trips a datetime through the API; wrap it in `Optional[...]` for
+  nullable fields.
+
+Stored values are naive UTC (see `_to_naive_utc`), so Pydantic's *default*
+serialization would emit them with no timezone marker
+(`2026-04-26T13:45:00`), which JS `Date` / dayjs parse as **browser-local**
+time. The `_to_iso_utc` serializer appends the `Z` so clients parse UTC.
 
 Routers that read raw `dict[str, Any]` bodies should call
 `parse_datetime_value(body.get("ending_at"))` to coerce the wire string into
@@ -66,21 +74,21 @@ def _to_naive_utc(value: datetime) -> datetime:
     return value
 
 
-def _rfc822(value: Optional[datetime]) -> Optional[str]:
+def _to_iso_utc(value: Optional[datetime]) -> Optional[str]:
+    """Serialize a (naive-UTC) datetime as an explicit-UTC ISO 8601 string
+    with a trailing `Z`, so clients parse it as UTC rather than browser-local
+    time."""
     if value is None:
         return None
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.strftime("%a, %d %b %Y %H:%M:%S %z")
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
 
 
-RFC822Datetime = Annotated[
+FlexibleDatetime = Annotated[
     datetime,
     BeforeValidator(parse_datetime_value),
-    PlainSerializer(_rfc822, when_used="json"),
-]
-RFC822DatetimeOpt = Annotated[
-    Optional[datetime],
-    BeforeValidator(parse_datetime_value),
-    PlainSerializer(_rfc822, when_used="json"),
+    PlainSerializer(_to_iso_utc, when_used="json"),
 ]

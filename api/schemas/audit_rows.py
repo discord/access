@@ -27,7 +27,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from api.schemas.core_schemas import OktaGroupTagMapDetail
-from api.schemas.rfc822 import RFC822DatetimeOpt
+from api.schemas.datetimes import FlexibleDatetime
 
 
 class _UserSummaryForAudit(BaseModel):
@@ -39,8 +39,8 @@ class _UserSummaryForAudit(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     display_name: Optional[str] = None
-    deleted_at: RFC822DatetimeOpt = None
-    created_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
+    created_at: Optional[FlexibleDatetime] = None
 
 
 class _AppRefForAudit(BaseModel):
@@ -48,7 +48,7 @@ class _AppRefForAudit(BaseModel):
 
     id: str
     name: Optional[str] = None
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 class _RoleGroupRefForAudit(BaseModel):
@@ -58,7 +58,7 @@ class _RoleGroupRefForAudit(BaseModel):
     type: str
     name: str
     is_managed: Optional[bool] = None
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 class _GroupRefForAudit(BaseModel):
@@ -71,7 +71,7 @@ class _GroupRefForAudit(BaseModel):
     name: str
     is_owner: Optional[bool] = None
     is_managed: Optional[bool] = None
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     # `app` is only injected for AppGroup rows.
     app: Optional[_AppRefForAudit] = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
@@ -106,16 +106,16 @@ class _RoleAssociatedMappingForAudit(BaseModel):
 
     id: int
     is_owner: bool
-    created_at: RFC822DatetimeOpt = None
-    ended_at: RFC822DatetimeOpt = None
+    created_at: Optional[FlexibleDatetime] = None
+    ended_at: Optional[FlexibleDatetime] = None
     active_group: Optional[_GroupRefForAudit] = None
 
 
 class _RoleGroupMappingForAudit(BaseModel):
     """Mirrors `_role_group_mapping_ref` at audit.py:158-165."""
 
-    created_at: RFC822DatetimeOpt = None
-    ended_at: RFC822DatetimeOpt = None
+    created_at: Optional[FlexibleDatetime] = None
+    ended_at: Optional[FlexibleDatetime] = None
     role_group: Optional[_RoleGroupRefForAudit] = None
 
 
@@ -129,9 +129,9 @@ class AuditUserGroupRow(BaseModel):
     is_owner: bool
     should_expire: Optional[bool] = None
     created_reason: str = ""
-    created_at: RFC822DatetimeOpt = None
-    updated_at: RFC822DatetimeOpt = None
-    ended_at: RFC822DatetimeOpt = None
+    created_at: Optional[FlexibleDatetime] = None
+    updated_at: Optional[FlexibleDatetime] = None
+    ended_at: Optional[FlexibleDatetime] = None
     user: Optional[_UserSummaryForAudit] = None
     group: Optional[_GroupRefForAudit] = None
     role_group_mapping: Optional[_RoleGroupMappingForAudit] = None
@@ -149,8 +149,8 @@ class AuditGroupRoleRow(BaseModel):
     is_owner: bool
     should_expire: Optional[bool] = None
     created_reason: str = ""
-    created_at: RFC822DatetimeOpt = None
-    ended_at: RFC822DatetimeOpt = None
+    created_at: Optional[FlexibleDatetime] = None
+    ended_at: Optional[FlexibleDatetime] = None
     group: Optional[_GroupRefForAudit] = None
     role_group: Optional[_RoleGroupRefForAudit] = None
     created_actor: Optional[_UserSummaryForAudit] = None

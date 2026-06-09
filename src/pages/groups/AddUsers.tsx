@@ -77,8 +77,6 @@ interface AddUsersForm {
   reason?: string;
 }
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
@@ -208,12 +206,12 @@ function AddUsersDialog(props: AddUsersDialogProps) {
       case 'indefinite':
         break;
       case 'custom':
-        groupUsers.users_added_ending_at = (usersForm.customUntil as unknown as Dayjs).format(RFC822_FORMAT);
+        groupUsers.users_added_ending_at = (usersForm.customUntil as unknown as Dayjs).toISOString();
         break;
       default:
         groupUsers.users_added_ending_at = dayjs()
           .add(parseInt(usersForm.until ?? '0', 10), 'seconds')
-          .format(RFC822_FORMAT);
+          .toISOString();
         break;
     }
 

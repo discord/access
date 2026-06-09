@@ -85,8 +85,6 @@ const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
   ownershipUntil: string | null;
@@ -475,15 +473,15 @@ export default function ReadGroupRequest() {
         break;
       case 'custom':
         if (responseForm.resolved_ownership_ending_at_custom) {
-          resolveRequest.resolved_ownership_ending_at = dayjs(responseForm.resolved_ownership_ending_at_custom).format(
-            RFC822_FORMAT,
-          );
+          resolveRequest.resolved_ownership_ending_at = dayjs(
+            responseForm.resolved_ownership_ending_at_custom,
+          ).toISOString();
         }
         break;
       default:
         resolveRequest.resolved_ownership_ending_at = dayjs()
           .add(parseInt(responseForm.resolved_ownership_ending_at, 10), 'seconds')
-          .format(RFC822_FORMAT);
+          .toISOString();
         break;
     }
 

@@ -106,8 +106,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 const UNTIL_ID_TO_LABELS: Record<string, string> = {
   '43200': '12 Hours',
   '432000': '5 Days',
@@ -366,12 +364,12 @@ export default function ReadRoleRequest() {
       case 'indefinite':
         break;
       case 'custom':
-        resolveRequest.ending_at = (responseForm.customUntil as unknown as Dayjs).format(RFC822_FORMAT);
+        resolveRequest.ending_at = (responseForm.customUntil as unknown as Dayjs).toISOString();
         break;
       default:
         resolveRequest.ending_at = dayjs()
           .add(parseInt(responseForm.until ?? '0', 10), 'seconds')
-          .format(RFC822_FORMAT);
+          .toISOString();
         break;
     }
 

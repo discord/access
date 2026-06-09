@@ -29,7 +29,7 @@ from api.schemas.core_schemas import (
     RoleRequestRequestedGroupRef,
     RoleRequestRequesterRoleRef,
 )
-from api.schemas.rfc822 import RFC822Datetime, RFC822DatetimeOpt
+from api.schemas.datetimes import FlexibleDatetime
 
 # Anchored at both ends so a name like "Bad Name!" can't slip past on the
 # strength of an unanchored prefix match.
@@ -60,7 +60,7 @@ class _AccessRequestOktaGroupRef(BaseModel):
     id: str
     type: Literal["okta_group"] = "okta_group"
     name: str
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
@@ -69,7 +69,7 @@ class _AccessRequestRoleGroupRef(BaseModel):
     id: str
     type: Literal["role_group"] = "role_group"
     name: str
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
     active_role_associated_group_member_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
     active_role_associated_group_owner_mappings: list[RoleGroupMapDetail] = Field(default_factory=list)
@@ -80,7 +80,7 @@ class _AccessRequestAppGroupRef(BaseModel):
     id: str
     type: Literal["app_group"] = "app_group"
     name: str
-    deleted_at: RFC822DatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     is_owner: bool = False
     app: Optional[AppIdRef] = None
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
@@ -109,14 +109,14 @@ class AccessRequestDetail(BaseModel):
     requested_group_id: Optional[str] = None
     request_ownership: bool = False
     request_reason: Optional[str] = ""
-    request_ending_at: RFC822DatetimeOpt = None
+    request_ending_at: Optional[FlexibleDatetime] = None
     status: str
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
-    resolved_at: RFC822DatetimeOpt = None
-    approval_ending_at: RFC822DatetimeOpt = None
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
+    resolved_at: Optional[FlexibleDatetime] = None
+    approval_ending_at: Optional[FlexibleDatetime] = None
+    created_at: FlexibleDatetime
+    updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
     active_requester: Optional[OktaUserSummary] = None
     requested_group: Optional[_RichRequestedGroupRef] = None
@@ -139,14 +139,14 @@ class AccessRequestSummary(BaseModel):
     requested_group_id: Optional[str] = None
     request_ownership: bool = False
     request_reason: Optional[str] = ""
-    request_ending_at: RFC822DatetimeOpt = None
+    request_ending_at: Optional[FlexibleDatetime] = None
     status: str
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
-    resolved_at: RFC822DatetimeOpt = None
-    approval_ending_at: RFC822DatetimeOpt = None
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
+    resolved_at: Optional[FlexibleDatetime] = None
+    approval_ending_at: Optional[FlexibleDatetime] = None
+    created_at: FlexibleDatetime
+    updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
     active_requester: Optional[OktaUserSummary] = None
     requested_group: Optional[GroupRef] = None
@@ -160,7 +160,7 @@ class CreateAccessRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: Optional[str] = ""
-    ending_at: Optional[RFC822DatetimeOpt] = None
+    ending_at: Optional[FlexibleDatetime] = None
 
 
 class ResolveAccessRequestBody(BaseModel):
@@ -172,7 +172,7 @@ class ResolveAccessRequestBody(BaseModel):
     # turns "false" into an APPROVED outcome.
     approved: StrictBool
     reason: Optional[str] = ""
-    ending_at: Optional[RFC822DatetimeOpt] = None
+    ending_at: Optional[FlexibleDatetime] = None
 
 
 # --- Role requests ----------------------------------------------------------
@@ -195,14 +195,14 @@ class RoleRequestDetail(BaseModel):
     requested_group_id: Optional[str] = None
     request_ownership: bool = False
     request_reason: Optional[str] = ""
-    request_ending_at: RFC822DatetimeOpt = None
+    request_ending_at: Optional[FlexibleDatetime] = None
     status: str
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
-    resolved_at: RFC822DatetimeOpt = None
-    approval_ending_at: RFC822DatetimeOpt = None
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
+    resolved_at: Optional[FlexibleDatetime] = None
+    approval_ending_at: Optional[FlexibleDatetime] = None
+    created_at: FlexibleDatetime
+    updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
     requester_role: Optional[RoleRequestRequesterRoleRef] = None
     # `active_requester_role` and `active_requested_group` use the lenient
@@ -231,14 +231,14 @@ class RoleRequestSummary(BaseModel):
     requested_group_id: Optional[str] = None
     request_ownership: bool = False
     request_reason: Optional[str] = ""
-    request_ending_at: RFC822DatetimeOpt = None
+    request_ending_at: Optional[FlexibleDatetime] = None
     status: str
     resolver_user_id: Optional[str] = None
     resolution_reason: Optional[str] = ""
-    resolved_at: RFC822DatetimeOpt = None
-    approval_ending_at: RFC822DatetimeOpt = None
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
+    resolved_at: Optional[FlexibleDatetime] = None
+    approval_ending_at: Optional[FlexibleDatetime] = None
+    created_at: FlexibleDatetime
+    updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
     requester_role: Optional[GroupRef] = None
     active_requester_role: Optional[GroupRef] = None
@@ -254,7 +254,7 @@ class CreateRoleRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: Optional[str] = ""
-    ending_at: Optional[RFC822DatetimeOpt] = None
+    ending_at: Optional[FlexibleDatetime] = None
 
 
 class ResolveRoleRequestBody(ResolveAccessRequestBody):
@@ -275,19 +275,19 @@ class GroupRequestDetail(BaseModel):
     requested_group_type: Optional[str] = None
     requested_app_id: Optional[str] = None
     requested_group_tags: list[str] = Field(default_factory=list)
-    requested_ownership_ending_at: RFC822DatetimeOpt = None
+    requested_ownership_ending_at: Optional[FlexibleDatetime] = None
     request_reason: Optional[str] = ""
     resolved_group_name: Optional[str] = ""
     resolved_group_description: Optional[str] = ""
     resolved_group_type: Optional[str] = ""
     resolved_app_id: Optional[str] = None
     resolved_group_tags: list[str] = Field(default_factory=list)
-    resolved_ownership_ending_at: RFC822DatetimeOpt = None
+    resolved_ownership_ending_at: Optional[FlexibleDatetime] = None
     resolution_reason: Optional[str] = ""
-    resolved_at: RFC822DatetimeOpt = None
+    resolved_at: Optional[FlexibleDatetime] = None
     approved_group_id: Optional[str] = None
-    created_at: RFC822Datetime
-    updated_at: RFC822Datetime
+    created_at: FlexibleDatetime
+    updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
     resolver: Optional[OktaUserSummary] = None
 
@@ -312,7 +312,7 @@ class _GroupRequestBodyBase(BaseModel):
     requested_group_name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
     requested_group_description: Optional[str] = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
-    requested_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
+    requested_ownership_ending_at: Optional[FlexibleDatetime] = None
     request_reason: Optional[str] = ""
 
     @model_validator(mode="after")
@@ -352,7 +352,7 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_group_type: Optional[str] = None
     resolved_app_id: Optional[str] = None
     resolved_group_tags: Optional[list[str]] = None
-    resolved_ownership_ending_at: Optional[RFC822DatetimeOpt] = None
+    resolved_ownership_ending_at: Optional[FlexibleDatetime] = None
 
 
 # --- Tags -------------------------------------------------------------------
@@ -603,7 +603,7 @@ class GroupMember(BaseModel):
     owners_to_remove: list[_OktaIdStr]
     members_should_expire: list[int] = Field(default_factory=list)
     owners_should_expire: list[int] = Field(default_factory=list)
-    users_added_ending_at: RFC822DatetimeOpt = None
+    users_added_ending_at: Optional[FlexibleDatetime] = None
     created_reason: Optional[str] = ""
 
 
@@ -623,5 +623,5 @@ class RoleMember(BaseModel):
     owner_groups_to_remove: list[_OktaIdStr]
     groups_should_expire: list[int] = Field(default_factory=list)
     owner_groups_should_expire: list[int] = Field(default_factory=list)
-    groups_added_ending_at: RFC822DatetimeOpt = None
+    groups_added_ending_at: Optional[FlexibleDatetime] = None
     created_reason: Optional[str] = ""
