@@ -48,18 +48,18 @@ export default function ListRoles() {
       setSearchInput(searchParams.get('q') ?? '');
     }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
-    setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetRoles({
-    queryParams: Object.assign({page: page, per_page: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
+    queryParams: Object.assign({page: page, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
   const {data: searchData} = useGetRoles({
-    queryParams: {page: 0, per_page: 10, q: searchInput},
+    queryParams: {page: 1, size: 10, q: searchInput},
   });
 
-  const rows = data?.results ?? [];
+  const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
 
   // If there's only one search result, just redirect to that role's page
@@ -72,7 +72,7 @@ export default function ListRoles() {
   // Avoid a layout jump when reaching the last page with empty rows.
   const emptyRows = rowsPerPage - rows.length;
 
-  const searchRows = searchData?.results ?? [];
+  const searchRows = searchData?.items ?? [];
 
   const handleChangePage = (event: React.MouseEvent<HTMLButtonElement> | null, newPage: number) => {
     setSearchParams((params) => {
@@ -85,7 +85,7 @@ export default function ListRoles() {
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSearchParams((params) => {
       params.set('page', '0');
-      params.set('per_page', event.target.value);
+      params.set('size', event.target.value);
       return params;
     });
     setRowsPerPage(parseInt(event.target.value, 10));

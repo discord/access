@@ -54,7 +54,7 @@ interface RoleMembersDialogProps {
 function RoleMembersDialog(props: RoleMembersDialogProps) {
   const [paginationModel, setPaginationModel] = React.useState({
     pageSize: 10,
-    page: 0,
+    page: 1,
   });
 
   const columns: GridColDef[] = [

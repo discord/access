@@ -292,7 +292,7 @@ export default function ReadRequest() {
     queryParams: {
       user_id: accessRequest.requester?.id ?? '',
       group_id: accessRequest.requested_group?.id ?? '',
-      per_page: 50,
+      size: 50,
       order_by: 'created_at',
       order_desc: true,
     },
@@ -301,7 +301,7 @@ export default function ReadRequest() {
   const {data: groupRoleAudits} = useGetGroupRoleAudits({
     queryParams: {
       group_id: accessRequest.requested_group?.id ?? '',
-      per_page: 50,
+      size: 50,
       order_by: 'created_at',
       order_desc: true,
     },
@@ -349,13 +349,13 @@ export default function ReadRequest() {
 
   // Filter audit data for the specific group and user
   const userGroupHistory =
-    userGroupAudits?.results?.filter(
+    userGroupAudits?.items?.filter(
       (audit) =>
         audit.group?.id === accessRequest.requested_group?.id && audit.user?.id === accessRequest.requester?.id,
     ) ?? [];
 
   // Get alternative role mappings for this group
-  const alternativeRoleMappings = groupRoleAudits?.results ?? [];
+  const alternativeRoleMappings = groupRoleAudits?.items ?? [];
 
   return (
     <React.Fragment>

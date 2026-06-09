@@ -8,6 +8,8 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
+
+from api.routers._route import ExcludeNoneAPIRoute
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst, or_
@@ -18,17 +20,19 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
+    RoleGroupListItem,
     GroupDetail,
     RoleMembersSummary,
-    RolePagination,
-    SearchRolePaginationQuery,
+    SearchRoleQuery,
 )
 from api.schemas.requests_schemas import RoleMember
 
-router = APIRouter(prefix="/api/roles", tags=["roles"])
+router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/roles", tags=["roles"])
 # `GroupDetail` is a discriminated union — see the same comment in
 # `api/routers/groups.py`.
 _role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
@@ -39,8 +43,8 @@ def list_roles(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchRolePaginationQuery, Query()],
-) -> RolePagination:
+    q_args: Annotated[SearchRoleQuery, Query()],
+) -> Page[RoleGroupListItem]:
     # Flask `RoleList.get()` `only=(id, type, name, description, created_at,
     # updated_at)` — `RoleGroupListItem` matches that shape exactly. We
     # deliberately don't reuse `_GROUP_LOAD_OPTIONS` here: those eager-loads
@@ -77,7 +81,7 @@ def list_roles(
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-    return paginate(request, query, RolePagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query)
 
 
 @router.get("/{role_id}", name="role_by_id")

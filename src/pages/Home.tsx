@@ -374,13 +374,13 @@ export default function Home() {
   }, []);
 
   const {data: accessRequestsData} = useGetRequests({
-    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
   const {data: roleRequestsData} = useGetRoleRequests({
-    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
   const {data: groupRequestsData} = useGetGroupRequests({
-    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 0, per_page: 1},
+    queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
 
   const {data: expiringGroupsData} = useGetUserGroupAudits({
@@ -389,14 +389,14 @@ export default function Home() {
       active: true,
       start_date: now,
       end_date: inOneWeek,
-      page: 0,
-      per_page: 1,
+      page: 1,
+      size: 1,
       direct: true,
       deleted: false,
     },
   });
   const {data: expiringRolesData} = useGetGroupRoleAudits({
-    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 0, per_page: 1},
+    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 1, size: 1},
   });
   const {data: myAccessExpiringData} = useGetUserGroupAudits({
     queryParams: {
@@ -404,14 +404,14 @@ export default function Home() {
       active: true,
       start_date: now,
       end_date: inOneWeek,
-      page: 0,
-      per_page: 1,
+      page: 1,
+      size: 1,
       direct: true,
       deleted: false,
     },
   });
   const {data: myRolesExpiringData} = useGetGroupRoleAudits({
-    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 0, per_page: 1},
+    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 1, size: 1},
   });
   const {data: urgentExpiringGroupsData} = useGetUserGroupAudits({
     queryParams: {
@@ -419,14 +419,14 @@ export default function Home() {
       active: true,
       start_date: now,
       end_date: inTwoDays,
-      page: 0,
-      per_page: 1,
+      page: 1,
+      size: 1,
       direct: true,
       deleted: false,
     },
   });
   const {data: urgentExpiringRolesData} = useGetGroupRoleAudits({
-    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 0, per_page: 1},
+    queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 1, size: 1},
   });
   const {data: urgentMyAccessData} = useGetUserGroupAudits({
     queryParams: {
@@ -434,14 +434,14 @@ export default function Home() {
       active: true,
       start_date: now,
       end_date: inTwoDays,
-      page: 0,
-      per_page: 1,
+      page: 1,
+      size: 1,
       direct: true,
       deleted: false,
     },
   });
   const {data: urgentMyRolesData} = useGetGroupRoleAudits({
-    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 0, per_page: 1},
+    queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 1, size: 1},
   });
 
   const statCounts: Record<string, number> = {

@@ -6,6 +6,8 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -16,16 +18,18 @@ from api.context import get_request_context
 from api.database import DbSession
 from api.models import AppTagMap, OktaUser, Tag
 from api.operations import CreateTag, DeleteTag
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page
 from api.routers._eager import group_tag_map_options
 from api.schemas import (
+    TagListItem,
     AuditLogSchema,
     CreateTagBody,
     DeleteMessage,
     EventType,
-    SearchTagPaginationQuery,
+    SearchTagQuery,
     TagDetail,
-    TagPagination,
     UpdateTagBody,
 )
 
@@ -38,7 +42,7 @@ _TAG_LOAD_OPTIONS = (
 )
 
 
-router = APIRouter(prefix="/api/tags", tags=["tags"])
+router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/tags", tags=["tags"])
 
 
 @router.get("", name="tags")
@@ -46,13 +50,13 @@ def list_tags(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchTagPaginationQuery, Query()],
-) -> TagPagination:
+    q_args: Annotated[SearchTagQuery, Query()],
+) -> Page[TagListItem]:
     query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
-    return paginate(request, query, TagPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query)
 
 
 @router.get("/{tag_id}", name="tag_by_id")

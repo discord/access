@@ -139,21 +139,21 @@ function GroupDialog(props: GroupDialogProps) {
 
   const {data: appSearchData} = useGetApps({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: appSearchInput,
     },
   });
-  const appSearchOptions = appSearchData?.results ?? [];
+  const appSearchOptions = appSearchData?.items ?? [];
 
   const {data: tagSearchData} = useGetTags({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: tagSearchInput,
     },
   });
-  const tagSearchOptions = tagSearchData?.results ?? [];
+  const tagSearchOptions = tagSearchData?.items ?? [];
 
   const submit = (group: PolymorphicGroup) => {
     setSubmitting(true);

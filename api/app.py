@@ -258,6 +258,12 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.include_router(tags.router)
     app.include_router(users.router)
 
+    # Wires up `fastapi_pagination` so the `Page[T]` return types resolve their
+    # `Params` dependency from query string. Must be after `include_router`.
+    from fastapi_pagination import add_pagination
+
+    add_pagination(app)
+
     # SPA: serve `build/` from a catch-all FastAPI route so static assets
     # go through the app-wide `require_authenticated` dependency (an
     # `app.mount(..., StaticFiles)` would be a Starlette sub-app that

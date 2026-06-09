@@ -70,7 +70,7 @@ export default function ExpiringRoless() {
       setSearchInput(searchParams.get('q') ?? '');
     }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
-    setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
     setFilterNeedsReview(searchParams.get('needs_review') !== 'false');
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setFilterAppOwnership(searchParams.get('app_owner') == 'true');
@@ -86,7 +86,7 @@ export default function ExpiringRoless() {
     isLoading: expiringGroupsIsLoading,
   } = useGetGroupRoleAudits({
     queryParams: Object.assign(
-      {page: page, per_page: rowsPerPage},
+      {page: page, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},
@@ -101,7 +101,7 @@ export default function ExpiringRoless() {
   });
 
   const {data: searchData} = useGetGroups({
-    queryParams: {page: 0, per_page: 10, q: searchInput},
+    queryParams: {page: 1, size: 10, q: searchInput},
   });
 
   if (isError) {
@@ -112,13 +112,13 @@ export default function ExpiringRoless() {
     return <Loading />;
   }
 
-  const rows = data?.results ?? [];
+  const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
 
   // Avoid a layout jump when reaching the last page with empty rows.
   const emptyRows = rowsPerPage - rows.length;
 
-  const searchRows = searchData?.results ?? [];
+  const searchRows = searchData?.items ?? [];
 
   const handleChangePage = (event: React.MouseEvent<HTMLButtonElement> | null, newPage: number) => {
     setSearchParams((params) => {
@@ -131,7 +131,7 @@ export default function ExpiringRoless() {
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSearchParams((params) => {
       params.set('page', '0');
-      params.set('per_page', event.target.value);
+      params.set('size', event.target.value);
       return params;
     });
     setRowsPerPage(parseInt(event.target.value, 10));

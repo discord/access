@@ -918,15 +918,15 @@ def test_get_all_group(client: TestClient, db: Db, access_app: App, url_for: Any
 
     results = rep.json()
     for group in groups:
-        assert any(u["id"] == group.id for u in results["results"])
+        assert any(u["id"] == group.id for u in results["items"])
 
     rep = client.get(groups_url, params={"q": "App-"})
     assert rep.status_code == 200
 
     results = rep.json()
-    assert len(results["results"]) == 4
+    assert len(results["items"]) == 4
     for group in app_groups:
-        assert any(u["id"] == group.id for u in results["results"])
+        assert any(u["id"] == group.id for u in results["items"])
 
 
 # Do not renew functionality test
@@ -1503,7 +1503,7 @@ def test_app_group_app_ref_includes_lifecycle_plugin(
     # GET /api/groups (list) — same field must appear on app-group rows.
     rep = client.get(url_for("api-groups.groups"))
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matched = next((r for r in rows if r["id"] == app_group.id), None)
     assert matched is not None
     assert matched["app"] is not None
@@ -1525,7 +1525,7 @@ def test_role_list_excludes_role_association_mappings(
 
     rep = client.get(url_for("api-roles.roles"))
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matched = next((r for r in rows if r["id"] == role_group.id), None)
     assert matched is not None
     assert "active_role_associated_group_member_mappings" not in matched

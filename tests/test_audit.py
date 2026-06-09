@@ -25,10 +25,10 @@ def test_user_audit_resolves_at_me(client: TestClient, db: Db, url_for: Any) -> 
     user_url = url_for("api-audit.users_and_groups")
     rep = client.get(
         user_url,
-        params={"user_id": "@me", "page": 0, "per_page": 20, "order_by": "created_at", "order_desc": "true"},
+        params={"user_id": "@me", "page": 1, "size": 20, "order_by": "created_at", "order_desc": "true"},
     )
     assert rep.status_code == 200, rep.text
-    assert "results" in rep.json()
+    assert "items" in rep.json()
 
 
 def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Db, url_for: Any) -> None:
@@ -39,7 +39,7 @@ def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Db, url_f
         {"role_owner_id": "@me"},
         {"owner_id": "@me"},
     ):
-        rep = client.get(url, params={**params, "page": 0, "per_page": 20})
+        rep = client.get(url, params={**params, "page": 1, "size": 20})
         assert rep.status_code == 200, rep.text
 
 
@@ -59,7 +59,7 @@ def test_user_audit_returns_nested_objects(
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert len(rows) >= 1
     row = rows[0]
     assert row["user"]["id"] == user.id
@@ -85,7 +85,7 @@ def test_group_audit_returns_nested_role_and_group(
 
     rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role_group.id})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert len(rows) >= 1
     row = rows[0]
     assert row["role_group"]["id"] == role_group.id
@@ -113,7 +113,7 @@ def test_user_audit_row_includes_group_active_group_tags(
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert len(rows) >= 1
     group_payload = rows[0]["group"]
     assert "active_group_tags" in group_payload
@@ -164,7 +164,7 @@ def test_get_user_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 10
+    assert len(data["items"]) == 10
     assert data["total"] == 10
 
     db.session.expunge_all()
@@ -173,7 +173,7 @@ def test_get_user_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 5
+    assert len(data["items"]) == 5
     assert data["total"] == 5
 
     db.session.expunge_all()
@@ -182,7 +182,7 @@ def test_get_user_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
 
@@ -241,7 +241,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -251,7 +251,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
     db.session.expunge_all()
@@ -260,7 +260,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -269,7 +269,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
     db.session.expunge_all()
@@ -278,7 +278,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -287,7 +287,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 1
+    assert len(data["items"]) == 1
     assert data["total"] == 1
 
     db.session.expunge_all()
@@ -296,7 +296,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -305,7 +305,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
     db.session.expunge_all()
@@ -314,7 +314,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -323,7 +323,7 @@ def test_get_group_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
 
@@ -378,7 +378,7 @@ def test_get_role_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 4
+    assert len(data["items"]) == 4
     assert data["total"] == 4
 
     db.session.expunge_all()
@@ -387,7 +387,7 @@ def test_get_role_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -396,7 +396,7 @@ def test_get_role_audit(
     assert rep.status_code == 200
 
     data = rep.json()
-    assert len(data["results"]) == 2
+    assert len(data["items"]) == 2
     assert data["total"] == 2
 
     db.session.expunge_all()
@@ -439,7 +439,7 @@ def test_audit_users_default_order_is_newest_first(client: TestClient, db: Db, u
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     seeded_rows = [r for r in rows if r["user_id"] in pinned]
     assert [r["user_id"] for r in seeded_rows] == [u_new.id, u_mid.id, u_old.id]
 
@@ -471,7 +471,7 @@ def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, 
 
     rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     seeded_rows = [r for r in rows if r["group_id"] in pinned]
     assert [r["group_id"] for r in seeded_rows] == [g_new.id, g_mid.id, g_old.id]
 
@@ -496,7 +496,7 @@ def test_users_audit_q_with_user_id_searches_only_groups(client: TestClient, db:
     # though the user's first_name is "Alice".
     rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id, "q": "Alice"})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matched_group_ids = {r["group_id"] for r in rows}
     assert matching_group.id in matched_group_ids
     assert other_group.id not in matched_group_ids
@@ -515,7 +515,7 @@ def test_users_audit_q_with_group_id_searches_only_users(client: TestClient, db:
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id, "q": "zlatan"})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matched_user_ids = {r["user_id"] for r in rows}
     assert matching_user.id in matched_user_ids
     assert other_user.id not in matched_user_ids
@@ -537,7 +537,7 @@ def test_groups_audit_q_with_role_id_searches_only_groups(client: TestClient, db
 
     rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id, "q": "Zebra"})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matched_group_ids = {r["group_id"] for r in rows}
     assert matching_group.id in matched_group_ids
     # `q="Zebra"` matches the role's name too, but with `role_id` pinned
@@ -566,7 +566,7 @@ def test_users_audit_owner_id_excludes_owner_self_membership(client: TestClient,
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"owner_id": owner.id})
     assert rep.status_code == 200
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     user_ids_in_response = {r["user_id"] for r in rows}
     assert owner.id not in user_ids_in_response
     assert other.id in user_ids_in_response
@@ -589,7 +589,7 @@ def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
 
     rep = client.get(url_for("api-audit.users_and_groups"))
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     role_rows = [r for r in rows if r.get("group", {}).get("id") == role.id]
     assert role_rows, "expected at least one row for the role group"
     sample = role_rows[0]["group"]
@@ -617,7 +617,7 @@ def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     role_rows = [r for r in rows if r.get("group", {}).get("id") == role.id]
     assert role_rows
     sample = role_rows[0]["group"]
@@ -647,7 +647,7 @@ def test_users_audit_direct_flag_reorders(client: TestClient, db: Db, url_for: A
         params={"direct": "true", "order_by": "moniker", "order_desc": "false"},
     )
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     seeded_emails = [
         r["user"]["email"] for r in rows if r["user"]["email"] in {"zara@example.com", "alpha@example.com"}
     ]
@@ -675,7 +675,7 @@ def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(client: Tes
         params={"user_id": user.id, "owner_id": owner.id, "q": "Zzqterm"},
     )
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert all(r["group"]["id"] != group.id for r in rows)
 
 
@@ -696,7 +696,7 @@ def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
         params={"user_id": user.id, "group_id": group.id, "q": "Qtfirst"},
     )
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert rows == []
 
 
@@ -718,7 +718,7 @@ def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_
         params={"role_id": role.id, "owner_id": owner.id, "q": "Zqx"},
     )
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     assert all(r.get("group", {}).get("id") != associated.id for r in rows)
 
 
@@ -739,7 +739,7 @@ def test_users_audit_returns_rows_when_user_is_soft_deleted(client: TestClient, 
 
     rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matching = [r for r in rows if r["user_id"] == user.id]
     assert len(matching) == 1
     row = matching[0]
@@ -766,7 +766,7 @@ def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(client: TestC
 
     rep = client.get(url_for("api-audit.groups_and_roles"), params={"group_id": group.id})
     assert rep.status_code == 200, rep.text
-    rows = rep.json()["results"]
+    rows = rep.json()["items"]
     matching = [r for r in rows if r["role_group_id"] == role.id]
     assert len(matching) == 1
     row = matching[0]

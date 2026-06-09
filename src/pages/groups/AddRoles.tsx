@@ -175,12 +175,12 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const {data: userSearchData} = useGetRoles({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: roleSearchInput,
     },
   });
-  const userSearchOptions = userSearchData?.results ?? [];
+  const userSearchOptions = userSearchData?.items ?? [];
 
   const submit = (rolesForm: AddRolesForm) => {
     setSubmitting(true);

@@ -411,14 +411,14 @@ def test_get_all_access_request(
 
     results = rep.json()
     for access_request in access_requests:
-        assert any(u["id"] == access_request.id for u in results["results"])
+        assert any(u["id"] == access_request.id for u in results["items"])
 
     rep = client.get(access_requests_url, params={"q": "pend"})
     assert rep.status_code == 200
 
     results = rep.json()
     for access_request in access_requests:
-        assert any(u["id"] == access_request.id for u in results["results"])
+        assert any(u["id"] == access_request.id for u in results["items"])
 
 
 def test_create_access_request_notification(
@@ -878,7 +878,7 @@ def test_q_search_covers_all_fields_via_http(
     requests_url = url_for("api-access-requests.access_requests")
 
     def ids(rep: Any) -> list[str]:
-        return [r["id"] for r in rep.json()["results"]]
+        return [r["id"] for r in rep.json()["items"]]
 
     # Requester email substring.
     rep = client.get(requests_url, params={"q": "zelda-target"})

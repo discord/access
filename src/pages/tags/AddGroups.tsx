@@ -64,13 +64,13 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
 
   const {data: groupSearchData} = useGetGroups({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       managed: true,
       q: groupSearchInput,
     },
   });
-  const groupSearchOptions = groupSearchData?.results ?? [];
+  const groupSearchOptions = groupSearchData?.items ?? [];
 
   const complete = (
     completedGroup: PolymorphicGroup | undefined,

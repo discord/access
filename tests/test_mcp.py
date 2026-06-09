@@ -241,8 +241,8 @@ def test_read_tool_requires_read_all_scope(
 
         reset_mcp_identity(token)
     payload = json.loads(result)
-    assert "results" in payload
-    assert isinstance(payload["results"], list)
+    assert "items" in payload
+    assert isinstance(payload["items"], list)
 
 
 def test_write_tool_requires_create_requests_scope(

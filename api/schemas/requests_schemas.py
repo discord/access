@@ -127,11 +127,11 @@ class AccessRequestDetail(BaseModel):
 
 class AccessRequestSummary(BaseModel):
     """Response for `GET /api/requests`, `POST /api/requests`, and
-    `PUT /api/requests/{id}`. Matches Flask's per-endpoint `only=` lists
-    via null-emission: scalar fields the frontend reads (resolution_reason,
-    request_reason, etc.) are emitted as `null` when absent. The
-    `requested_group` is the lightweight `GroupRef` — no group tags or
-    role-association mappings, which only the detail page renders."""
+    `PUT /api/requests/{id}`. The `requested_group` is the lightweight
+    `GroupRef` — no group tags or role-association mappings, which only
+    the detail page renders. Absent optional fields are omitted from the
+    response body (the ExcludeNoneAPIRoute default), so clients should
+    treat missing keys as None."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str

@@ -152,14 +152,14 @@ def test_get_all_user(client: TestClient, db: Db, url_for: Any) -> None:
 
     results = rep.json()
     for user in users:
-        assert any(u["id"] == user.id for u in results["results"])
+        assert any(u["id"] == user.id for u in results["items"])
 
     rep = client.get(users_url, params={"q": "a"})
     assert rep.status_code == 200
 
     results = rep.json()
     for user in users:
-        assert any(u["id"] == user.id for u in results["results"])
+        assert any(u["id"] == user.id for u in results["items"])
 
 
 def test_user_email_uniqueness(client: TestClient, db: Db) -> None:
@@ -200,7 +200,7 @@ def test_user_summary_includes_timestamps(client: TestClient, db: Db, user: Okta
 
     rep = client.get(url_for("api-users.users"))
     assert rep.status_code == 200
-    results = rep.json()["results"]
+    results = rep.json()["items"]
     assert results, "expected at least one user in the list"
     sample = next(r for r in results if r["id"] == user.id)
     assert "created_at" in sample

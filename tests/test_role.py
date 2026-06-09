@@ -359,14 +359,14 @@ def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
 
     results = rep.json()
     for group in groups:
-        assert any(u["id"] == group.id for u in results["results"])
+        assert any(u["id"] == group.id for u in results["items"])
 
     rep = client.get(groups_url, params={"q": "r"})
     assert rep.status_code == 200
 
     results = rep.json()
     for group in groups:
-        assert any(u["id"] == group.id for u in results["results"])
+        assert any(u["id"] == group.id for u in results["items"])
 
 
 def test_complex_role_modifications(
@@ -1566,7 +1566,7 @@ def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> 
     list_url = url_for("api-roles.roles")
     rep = client.get(list_url, params={"owner_id": owner.id})
     assert rep.status_code == 200
-    ids = [r["id"] for r in rep.json()["results"]]
+    ids = [r["id"] for r in rep.json()["items"]]
     assert role_a.id in ids
     assert role_b.id not in ids
 
