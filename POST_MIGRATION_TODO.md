@@ -61,13 +61,6 @@ Pydantic emits `None` fields as `"key": null` by default. Switch responses
 to `model_dump(exclude_none=True)` and update the frontend to handle missing
 keys as None.
 
-### 7. Adopt RFC 9457 problem-detail error format
-
-Today: `{"message": "..."}` (matches the legacy Flask envelope).
-Future: `{"type": "...", "title": "...", "status": 400, "detail": "..."}`
-(FastAPI / RFC 9457 standard). Update `api/exception_handlers.py` and the
-frontend.
-
 ### 8. Replace `paginate()` with `fastapi-pagination`
 
 Drop the hand-rolled `{total, pages, next, prev, results}` envelope in
