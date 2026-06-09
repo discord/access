@@ -22,7 +22,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.schemas.datetimes import FlexibleDatetime, FlexibleDatetimeOpt
+from api.schemas.datetimes import FlexibleDatetime
 
 
 # --- Tags -------------------------------------------------------------------
@@ -37,7 +37,7 @@ class TagDetail(BaseModel):
     enabled: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     # Resolved post-class via model_rebuild() — OktaGroupTagMapDetail is defined
     # below.
     active_group_tags: list["OktaGroupTagMapDetail"] = Field(default_factory=list)
@@ -73,7 +73,7 @@ class TagListItem(BaseModel):
 class OktaGroupTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: FlexibleDatetimeOpt = None
+    ended_at: Optional[FlexibleDatetime] = None
     active_tag: Optional[TagSummary] = None
     # Populated when the row is reached from the Tag side (`tag.active_group_tags`):
     active_group: Optional["_GroupRefForMembership"] = None
@@ -83,7 +83,7 @@ class OktaGroupTagMapDetail(BaseModel):
 class AppTagMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: FlexibleDatetimeOpt = None
+    ended_at: Optional[FlexibleDatetime] = None
     active_tag: Optional[TagSummary] = None
     # Populated when the row is reached from the Tag side
     # (`tag.active_app_tags`). Flask emitted `active_app.{id, name, description}`
@@ -106,7 +106,7 @@ class AppIdRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     name: Optional[str] = None
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     app_group_lifecycle_plugin: Optional[str] = None
 
 
@@ -117,7 +117,7 @@ class AppSummary(BaseModel):
     description: Optional[str] = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 class AppDetail(AppSummary):
@@ -151,9 +151,9 @@ class OktaUserSummary(BaseModel):
     # The list endpoint includes timestamps so the frontend can sort/group by
     # creation time. Flask exposed these via Marshmallow's `only=(...)` tuple;
     # leaving them off the Pydantic summary loses that capability.
-    created_at: FlexibleDatetimeOpt = None
-    updated_at: FlexibleDatetimeOpt = None
-    deleted_at: FlexibleDatetimeOpt = None
+    created_at: Optional[FlexibleDatetime] = None
+    updated_at: Optional[FlexibleDatetime] = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 def _filter_profile_attrs(value: Any) -> dict[str, Any]:
@@ -219,7 +219,7 @@ class _GroupRefForMembership(BaseModel):
     description: Optional[str] = None
     is_owner: Optional[bool] = None
     is_managed: Optional[bool] = None
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     app: Optional[AppIdRef] = None
 
 
@@ -229,13 +229,13 @@ class _RoleGroupRef(BaseModel):
     type: str
     name: str
     is_managed: Optional[bool] = None
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 class _RoleGroupMappingForMembership(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
-    ended_at: FlexibleDatetimeOpt = None
+    ended_at: Optional[FlexibleDatetime] = None
     active_role_group: Optional[_RoleGroupRef] = None
     role_group: Optional[_RoleGroupRef] = None
 
@@ -244,8 +244,8 @@ class OktaUserGroupMemberDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
-    updated_at: FlexibleDatetimeOpt = None
-    ended_at: FlexibleDatetimeOpt = None
+    updated_at: Optional[FlexibleDatetime] = None
+    ended_at: Optional[FlexibleDatetime] = None
     created_reason: Optional[str] = ""
     should_expire: Optional[bool] = None
     user: Optional[OktaUserSummary] = None
@@ -263,7 +263,7 @@ class RoleGroupMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
-    ended_at: FlexibleDatetimeOpt = None
+    ended_at: Optional[FlexibleDatetime] = None
     role_group: Optional[_RoleGroupRef] = None
     active_role_group: Optional[_RoleGroupRef] = None
     group: Optional[_GroupRefForMembership] = None
@@ -284,7 +284,7 @@ class _GroupBase(BaseModel):
     externally_managed_data: Optional[dict[str, Any]] = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
     active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
@@ -331,7 +331,7 @@ class AppGroupForAppDetail(BaseModel):
     externally_managed_data: Optional[dict[str, Any]] = None
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
     app_id: Optional[str] = None
     is_owner: bool = False
     plugin_data: Optional[dict[str, Any]] = None
@@ -410,7 +410,7 @@ class _GroupRefBase(BaseModel):
     name: str
     description: Optional[str] = ""
     is_managed: bool = True
-    deleted_at: FlexibleDatetimeOpt = None
+    deleted_at: Optional[FlexibleDatetime] = None
 
 
 class OktaGroupRef(_GroupRefBase):

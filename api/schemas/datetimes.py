@@ -8,10 +8,11 @@ on the old format keeps working until it catches up.
 
 - `parse_datetime_value` accepts RFC 822 / RFC 2822 strings, ISO 8601 strings,
   and existing `datetime` / `date` objects, returning a `datetime` (or None).
-- `FlexibleDatetime` / `FlexibleDatetimeOpt` are Pydantic Annotated types that
-  apply `parse_datetime_value` as a `BeforeValidator` and rely on Pydantic's
-  default ISO 8601 serialization. Use them in any Pydantic model that
-  round-trips a datetime through the API.
+- `FlexibleDatetime` is a Pydantic Annotated type that applies
+  `parse_datetime_value` as a `BeforeValidator` and relies on Pydantic's
+  default ISO 8601 serialization. Use it in any Pydantic model that
+  round-trips a datetime through the API; wrap it in `Optional[...]` for
+  nullable fields.
 
 Routers that read raw `dict[str, Any]` bodies should call
 `parse_datetime_value(body.get("ending_at"))` to coerce the wire string into
@@ -69,4 +70,3 @@ def _to_naive_utc(value: datetime) -> datetime:
 
 
 FlexibleDatetime = Annotated[datetime, BeforeValidator(parse_datetime_value)]
-FlexibleDatetimeOpt = Annotated[Optional[datetime], BeforeValidator(parse_datetime_value)]
