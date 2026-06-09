@@ -166,7 +166,7 @@ interface ResolveRequestForm {
   resolved_app?: App;
   resolved_ownership_ending_at?: string;
   resolved_ownership_ending_at_custom?: string;
-  resolution_reason?: string;
+  reason?: string;
 }
 
 export default function ReadGroupRequest() {
@@ -441,7 +441,7 @@ export default function ReadGroupRequest() {
         })()
       : 'indefinite',
     resolved_ownership_ending_at_custom: groupRequest.requested_ownership_ending_at ?? undefined,
-    resolution_reason: '',
+    reason: '',
   };
 
   const submit = (responseForm: ResolveRequestForm) => {
@@ -466,7 +466,7 @@ export default function ReadGroupRequest() {
       resolved_app_id:
         responseForm.resolved_group_type === 'app_group' ? responseForm.resolved_app?.id ?? '' : undefined,
       resolved_group_tags: selectedTags.map((t) => t.id),
-      resolution_reason: responseForm.resolution_reason ?? '',
+      reason: responseForm.reason ?? '',
     };
 
     switch (responseForm.resolved_ownership_ending_at) {
@@ -924,7 +924,7 @@ export default function ReadGroupRequest() {
                                     ? 'Why? (provide a reason)'
                                     : 'Why is this group creation approved or rejected? (provide a reason)'
                                 }
-                                name="resolution_reason"
+                                name="reason"
                                 multiline
                                 rows={4}
                                 validation={{maxLength: 1024}}

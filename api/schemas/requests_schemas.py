@@ -346,7 +346,7 @@ CreateGroupRequestBody = Annotated[
 class ResolveGroupRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     approved: StrictBool
-    resolution_reason: Optional[str] = ""
+    reason: Optional[str] = ""
     resolved_group_name: Optional[str] = None
     resolved_group_description: Optional[str] = None
     resolved_group_type: Optional[str] = None

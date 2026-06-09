@@ -76,24 +76,6 @@ Drop the hand-rolled `{total, pages, next, prev, results}` envelope in
 and consistent shape across endpoints for free. Wire shape changes; coordinate
 with frontend.
 
-### 22. Rename `resolution_reason` → `reason` on `ResolveGroupRequestBody`
-
-`PUT /api/group-requests/{id}` accepts `resolution_reason` while
-`PUT /api/access-requests/{id}` and `PUT /api/role-requests/{id}` both
-accept `reason`. Align on `reason` for the group-request resolve body
-to make the three resolve endpoints consistent.
-
-**Touches:**
-- `api/schemas/requests_schemas.py` — rename the field on
-  `ResolveGroupRequestBody`.
-- `api/routers/group_requests.py` — update the handler to read
-  `body.reason`.
-- Frontend client(s) posting to `PUT /api/group-requests/{id}` — switch
-  the body key.
-- Tests in `tests/test_group_request.py` that exercise the resolve PUT.
-
-Coordinate with frontend; this is a breaking wire-shape change.
-
 ---
 
 ## Auth
