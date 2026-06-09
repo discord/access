@@ -9,10 +9,15 @@ on the old format keeps working until it catches up.
 - `parse_datetime_value` accepts RFC 822 / RFC 2822 strings, ISO 8601 strings,
   and existing `datetime` / `date` objects, returning a `datetime` (or None).
 - `FlexibleDatetime` is a Pydantic Annotated type that applies
-  `parse_datetime_value` as a `BeforeValidator` and relies on Pydantic's
-  default ISO 8601 serialization. Use it in any Pydantic model that
+  `parse_datetime_value` as a `BeforeValidator` and serializes to ISO 8601
+  with an explicit `Z` (UTC) marker. Use it in any Pydantic model that
   round-trips a datetime through the API; wrap it in `Optional[...]` for
   nullable fields.
+
+Stored values are naive UTC (see `_to_naive_utc`), so Pydantic's *default*
+serialization would emit them with no timezone marker
+(`2026-04-26T13:45:00`), which JS `Date` / dayjs parse as **browser-local**
+time. The `_to_iso_utc` serializer appends the `Z` so clients parse UTC.
 
 Routers that read raw `dict[str, Any]` bodies should call
 `parse_datetime_value(body.get("ending_at"))` to coerce the wire string into
@@ -25,7 +30,7 @@ from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Annotated, Any, Optional
 
-from pydantic import BeforeValidator
+from pydantic import BeforeValidator, PlainSerializer
 
 
 def parse_datetime_value(value: Any) -> Optional[datetime]:
@@ -69,4 +74,21 @@ def _to_naive_utc(value: datetime) -> datetime:
     return value
 
 
-FlexibleDatetime = Annotated[datetime, BeforeValidator(parse_datetime_value)]
+def _to_iso_utc(value: Optional[datetime]) -> Optional[str]:
+    """Serialize a (naive-UTC) datetime as an explicit-UTC ISO 8601 string
+    with a trailing `Z`, so clients parse it as UTC rather than browser-local
+    time."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+FlexibleDatetime = Annotated[
+    datetime,
+    BeforeValidator(parse_datetime_value),
+    PlainSerializer(_to_iso_utc, when_used="json"),
+]
