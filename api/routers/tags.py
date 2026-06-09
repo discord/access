@@ -7,7 +7,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -42,7 +41,7 @@ _TAG_LOAD_OPTIONS = (
 )
 
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/tags", tags=["tags"])
+router = APIRouter(prefix="/api/tags", tags=["tags"])
 
 
 @router.get("", name="tags")

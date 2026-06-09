@@ -9,7 +9,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst, or_
@@ -32,7 +31,7 @@ from api.schemas import (
 )
 from api.schemas.requests_schemas import RoleMember
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/roles", tags=["roles"])
+router = APIRouter(prefix="/api/roles", tags=["roles"])
 # `GroupDetail` is a discriminated union — see the same comment in
 # `api/routers/groups.py`.
 _role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)

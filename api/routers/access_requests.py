@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
@@ -36,7 +35,7 @@ from api.schemas import (
     SearchAccessRequestQuery,
 )
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/requests", tags=["access-requests"])
+router = APIRouter(prefix="/api/requests", tags=["access-requests"])
 
 
 # Eager-load options for the *detail* GET (`AccessRequestDetail`). Chains the

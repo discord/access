@@ -6,7 +6,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import String, and_, cast, not_, or_
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
@@ -42,7 +41,7 @@ from api.schemas import (
     SearchRoleRequestQuery,
 )
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/role-requests", tags=["role-requests"])
+router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
 
 
 def _detail_load_options() -> tuple:

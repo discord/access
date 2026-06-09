@@ -16,7 +16,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
@@ -54,7 +53,7 @@ from api.schemas.audit_rows import (
 )
 from api.schemas.core_schemas import AppSummary, AppTagMapDetail, OktaGroupTagMapDetail, TagSummary
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/audit", tags=["audit"])
+router = APIRouter(prefix="/api/audit", tags=["audit"])
 
 
 # --- Resolution helpers -----------------------------------------------------

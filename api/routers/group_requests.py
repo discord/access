@@ -15,7 +15,6 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page
-from api.routers._route import ExcludeNoneAPIRoute
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
@@ -24,7 +23,7 @@ from api.schemas import (
 )
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/group-requests", tags=["group-requests"])
+router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
 
 
 def _load_options() -> tuple:

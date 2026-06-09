@@ -16,7 +16,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst, or_
@@ -67,7 +66,7 @@ from api.schemas.requests_schemas import (
 
 import copy
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/groups", tags=["groups"])
+router = APIRouter(prefix="/api/groups", tags=["groups"])
 
 ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup])
 

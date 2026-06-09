@@ -45,6 +45,18 @@ with the schema. 281/281 tests green.
 
 ---
 
+## Schemas / Wire Shape
+
+These are **breaking** for clients. Coordinate frontend changes.
+
+### 6. Stop emitting absent-as-`null`
+
+Pydantic emits `None` fields as `"key": null` by default. Switch responses
+to `model_dump(exclude_none=True)` and update the frontend to handle missing
+keys as None.
+
+---
+
 ## Auth
 
 ### 9. Cache JWKS lookups smarter

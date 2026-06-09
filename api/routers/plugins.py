@@ -6,7 +6,6 @@ from dataclasses import asdict
 
 from fastapi import APIRouter
 
-from api.routers._route import ExcludeNoneAPIRoute
 
 from api.auth.dependencies import CurrentUserId
 from api.plugins.app_group_lifecycle import (
@@ -25,7 +24,7 @@ from api.schemas import (
     AppGroupLifecyclePlugins,
 )
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/plugins", tags=["plugins"])
+router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 
 
 def _ensure_plugin(plugin_id: str) -> None:

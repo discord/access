@@ -17,13 +17,12 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from api.routers._route import ExcludeNoneAPIRoute
 from starlette.requests import Request
 
 from api.config import settings
 
 logger = logging.getLogger(__name__)
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/bugs", tags=["bugs"])
+router = APIRouter(prefix="/api/bugs", tags=["bugs"])
 
 _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"
 

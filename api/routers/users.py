@@ -29,14 +29,13 @@ from api.models import (
 )
 from api.pagination import Page
 from api.routers._eager import user_group_member_options
-from api.routers._route import ExcludeNoneAPIRoute
 from api.schemas import (
     OktaUserDetail,
     OktaUserSummary,
     SearchUserQuery,
 )
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/users", tags=["users"])
+router = APIRouter(prefix="/api/users", tags=["users"])
 
 ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
 

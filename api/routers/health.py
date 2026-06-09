@@ -9,11 +9,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from api.database import DbSession
-from api.routers._route import ExcludeNoneAPIRoute
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/healthz", tags=["health"])
+router = APIRouter(prefix="/api/healthz", tags=["health"])
 
 
 # Returns a `JSONResponse` directly because the success and failure paths

@@ -6,7 +6,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.routers._route import ExcludeNoneAPIRoute
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -58,7 +57,7 @@ APP_LOAD_OPTIONS = (
 )
 
 
-router = APIRouter(route_class=ExcludeNoneAPIRoute, prefix="/api/apps", tags=["apps"])
+router = APIRouter(prefix="/api/apps", tags=["apps"])
 
 
 @router.get("", name="apps")

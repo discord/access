@@ -2834,7 +2834,7 @@
           "updated_at"
         ],
         "title": "AccessRequestSummary",
-        "description": "Response for `GET /api/requests`, `POST /api/requests`, and\n`PUT /api/requests/{id}`. The `requested_group` is the lightweight\n`GroupRef` \u2014 no group tags or role-association mappings, which only\nthe detail page renders. Absent optional fields are omitted from the\nresponse body (the ExcludeNoneAPIRoute default), so clients should\ntreat missing keys as None."
+        "description": "Response for `GET /api/requests`, `POST /api/requests`, and\n`PUT /api/requests/{id}`. Matches Flask's per-endpoint `only=` lists\nvia null-emission: scalar fields the frontend reads (resolution_reason,\nrequest_reason, etc.) are emitted as `null` when absent. The\n`requested_group` is the lightweight `GroupRef` \u2014 no group tags or\nrole-association mappings, which only the detail page renders."
       },
       "AppDetail": {
         "properties": {
