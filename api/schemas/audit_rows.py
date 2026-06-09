@@ -27,7 +27,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from api.schemas.core_schemas import OktaGroupTagMapDetail
-from api.schemas.rfc822 import FlexibleDatetimeOpt
+from api.schemas.datetimes import FlexibleDatetimeOpt
 
 
 class _UserSummaryForAudit(BaseModel):

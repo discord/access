@@ -22,7 +22,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.schemas.rfc822 import FlexibleDatetime, FlexibleDatetimeOpt
+from api.schemas.datetimes import FlexibleDatetime, FlexibleDatetimeOpt
 
 
 # --- Tags -------------------------------------------------------------------
@@ -244,7 +244,7 @@ class OktaUserGroupMemberDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
-    updated_at: Optional[FlexibleDatetimeOpt] = None
+    updated_at: FlexibleDatetimeOpt = None
     ended_at: FlexibleDatetimeOpt = None
     created_reason: Optional[str] = ""
     should_expire: Optional[bool] = None

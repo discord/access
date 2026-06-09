@@ -29,7 +29,7 @@ from api.schemas.core_schemas import (
     RoleRequestRequestedGroupRef,
     RoleRequestRequesterRoleRef,
 )
-from api.schemas.rfc822 import FlexibleDatetime, FlexibleDatetimeOpt
+from api.schemas.datetimes import FlexibleDatetime, FlexibleDatetimeOpt
 
 # Anchored at both ends so a name like "Bad Name!" can't slip past on the
 # strength of an unanchored prefix match.
@@ -160,7 +160,7 @@ class CreateAccessRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: Optional[str] = ""
-    ending_at: Optional[FlexibleDatetimeOpt] = None
+    ending_at: FlexibleDatetimeOpt = None
 
 
 class ResolveAccessRequestBody(BaseModel):
@@ -172,7 +172,7 @@ class ResolveAccessRequestBody(BaseModel):
     # turns "false" into an APPROVED outcome.
     approved: StrictBool
     reason: Optional[str] = ""
-    ending_at: Optional[FlexibleDatetimeOpt] = None
+    ending_at: FlexibleDatetimeOpt = None
 
 
 # --- Role requests ----------------------------------------------------------
@@ -254,7 +254,7 @@ class CreateRoleRequestBody(BaseModel):
     group_id: str
     group_owner: bool = False
     reason: Optional[str] = ""
-    ending_at: Optional[FlexibleDatetimeOpt] = None
+    ending_at: FlexibleDatetimeOpt = None
 
 
 class ResolveRoleRequestBody(ResolveAccessRequestBody):
@@ -312,7 +312,7 @@ class _GroupRequestBodyBase(BaseModel):
     requested_group_name: str = Field(pattern=_GROUP_NAME_PATTERN_STR, min_length=1, max_length=_GROUP_NAME_MAX_LENGTH)
     requested_group_description: Optional[str] = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
-    requested_ownership_ending_at: Optional[FlexibleDatetimeOpt] = None
+    requested_ownership_ending_at: FlexibleDatetimeOpt = None
     request_reason: Optional[str] = ""
 
     @model_validator(mode="after")
@@ -352,7 +352,7 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_group_type: Optional[str] = None
     resolved_app_id: Optional[str] = None
     resolved_group_tags: Optional[list[str]] = None
-    resolved_ownership_ending_at: Optional[FlexibleDatetimeOpt] = None
+    resolved_ownership_ending_at: FlexibleDatetimeOpt = None
 
 
 # --- Tags -------------------------------------------------------------------
