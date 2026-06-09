@@ -5807,7 +5807,7 @@
             "type": "boolean",
             "title": "Approved"
           },
-          "resolution_reason": {
+          "reason": {
             "anyOf": [
               {
                 "type": "string"
@@ -5816,7 +5816,7 @@
                 "type": "null"
               }
             ],
-            "title": "Resolution Reason",
+            "title": "Reason",
             "default": ""
           },
           "resolved_group_name": {
