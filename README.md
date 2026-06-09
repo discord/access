@@ -50,7 +50,7 @@ VITE_API_SERVER_URL=
 
 > **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the backend on port 6060.
 
-Create the Python virtual environment. Access can run on Python 3.11 and above:
+Create the Python virtual environment. Access is built and tested against Python 3.13:
 
 ```
 python3 -m venv venv
@@ -451,11 +451,16 @@ Access uses the [Python pluggy framework](https://pluggy.readthedocs.io/en/lates
 
 ### Creating a Plugin
 
-Plugins in Access follow the conventions defined by the [Python pluggy framework](https://pluggy.readthedocs.io/en/latest/).
+Plugins in Access follow the conventions defined by the [Python pluggy framework](https://pluggy.readthedocs.io/en/latest/). Access defines several hook specifications you can implement; runnable example plugins for each live under [examples/plugins](https://github.com/discord/access/tree/main/examples/plugins):
 
-An example implementation of a notification plugin is included in [examples/plugins/notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications), which can be extended to send messages using custom Python code. It implements the `NotificationPluginSpec` found in [notifications.py](https://github.com/discord/access/blob/main/api/plugins/notifications.py)
+| Plugin type | Hook spec | Example(s) |
+|-------------|-----------|------------|
+| **Notifications** — send messages (Email, SMS, Discord, Slack, …) when access requests are made and resolved | [`NotificationPluginSpec`](https://github.com/discord/access/blob/main/api/plugins/notifications.py) | [notifications](https://github.com/discord/access/tree/main/examples/plugins/notifications), [notifications_slack](https://github.com/discord/access/tree/main/examples/plugins/notifications_slack) |
+| **Conditional access** — conditionally approve or deny requests | [`ConditionalAccessPluginSpec`](https://github.com/discord/access/blob/main/api/plugins/conditional_access.py) | [conditional_access](https://github.com/discord/access/tree/main/examples/plugins/conditional_access) |
+| **Metrics reporter** — emit counters, gauges, histograms, and timers to an external metrics backend | [`MetricsReporterPluginSpec`](https://github.com/discord/access/blob/main/api/plugins/metrics_reporter.py) | [datadog_metrics_reporter](https://github.com/discord/access/tree/main/examples/plugins/datadog_metrics_reporter) |
+| **App group lifecycle** — expose configurable properties and react to the creation/deletion of app-owned groups | [`AppGroupLifecyclePluginSpec`](https://github.com/discord/access/blob/main/api/plugins/app_group_lifecycle.py) | [app_group_lifecycle_audit_logger](https://github.com/discord/access/tree/main/examples/plugins/app_group_lifecycle_audit_logger) |
 
-There's also an example implementation of a conditional access plugin in [examples/plugins/conditional_access](https://github.com/discord/access/tree/main/examples/plugins/conditional_access), which can be extended to conditionally approve or deny requests. It implements the `ConditionalAccessPluginSpec` found in [requests.py](https://github.com/discord/access/blob/main/api/plugins/conditional_access.py).
+Plugins can also extend the `access` CLI with new commands via setuptools entry points — see [health_check_plugin](https://github.com/discord/access/tree/main/examples/plugins/health_check_plugin), which adds an `access health` command.
 
 ### Installing a Plugin in the Docker Container
 
@@ -471,17 +476,6 @@ RUN pip install ./notifications
 
 WORKDIR /app
 ```
-
-## TODO
-
-Here are some of the features we're potentially planning to add to Access:
-
-- A Group Lifecycle and User Lifecycle plugin framework
-- Support for Google Groups and Github Teams via Group Lifecycle plugins
-- Group (and Role) creation requests
-- Role membership requests, so Role owners can request to add their Role to a Group
-- OktaApp model with many-to-many relationship to App for automatically assigning AppGroups to Okta application tiles
-- A webhook to synchronize group memberships and disabling users in real-time from Okta
 
 ## License
 
