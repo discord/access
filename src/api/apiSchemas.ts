@@ -424,6 +424,10 @@ export type ResolveRoleRequest = {
 export type ResolveGroupRequest = {
   approved: boolean;
   /**
+   * @maxLength 1024
+   */
+  reason?: string;
+  /**
    * @maxLength 255
    */
   resolved_group_name?: string;
@@ -445,10 +449,6 @@ export type ResolveGroupRequest = {
    */
   resolved_ownership_ending_at?: string;
   resolved_group_tags?: string[];
-  /**
-   * @maxLength 1024
-   */
-  resolution_reason?: string;
 };
 
 export type GroupRoleAuditPagination = {

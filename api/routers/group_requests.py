@@ -274,7 +274,7 @@ def put_group_request(
 
     db.commit()
 
-    resolution_reason = body.resolution_reason or ""
+    resolution_reason = body.reason or ""
     if body.approved:
         ApproveGroupRequest(
             group_request=gr,
