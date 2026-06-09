@@ -1,15 +1,17 @@
-"""RFC 822 datetime serializer + parser.
+"""Datetime serializer + parser.
 
-All datetime fields cross the wire as e.g. `"Sun, 26 Apr 2026 13:45:00 -0000"`,
-which the React frontend's parsers expect. POST_MIGRATION_TODO #5 tracks the
-move to ISO 8601 once the frontend is updated.
+All datetime fields cross the wire as ISO 8601 (e.g. `"2026-04-26T13:45:00Z"`),
+which is Pydantic's default. To smooth the cutover from the previous RFC 822
+wire format, `parse_datetime_value` is permissive on input — it still accepts
+RFC 822 / RFC 2822 strings as well as ISO 8601 strings — so any client still
+on the old format keeps working until it catches up.
 
 - `parse_datetime_value` accepts RFC 822 / RFC 2822 strings, ISO 8601 strings,
   and existing `datetime` / `date` objects, returning a `datetime` (or None).
-- `RFC822Datetime` / `RFC822DatetimeOpt` are Pydantic Annotated types that
-  apply `parse_datetime_value` as a `BeforeValidator` and emit RFC 822 on
-  serialization. Use them in any Pydantic model that round-trips a datetime
-  through the API.
+- `FlexibleDatetime` / `FlexibleDatetimeOpt` are Pydantic Annotated types that
+  apply `parse_datetime_value` as a `BeforeValidator` and rely on Pydantic's
+  default ISO 8601 serialization. Use them in any Pydantic model that
+  round-trips a datetime through the API.
 
 Routers that read raw `dict[str, Any]` bodies should call
 `parse_datetime_value(body.get("ending_at"))` to coerce the wire string into
@@ -22,7 +24,7 @@ from datetime import date, datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Annotated, Any, Optional
 
-from pydantic import BeforeValidator, PlainSerializer
+from pydantic import BeforeValidator
 
 
 def parse_datetime_value(value: Any) -> Optional[datetime]:
@@ -66,21 +68,5 @@ def _to_naive_utc(value: datetime) -> datetime:
     return value
 
 
-def _rfc822(value: Optional[datetime]) -> Optional[str]:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.strftime("%a, %d %b %Y %H:%M:%S %z")
-
-
-RFC822Datetime = Annotated[
-    datetime,
-    BeforeValidator(parse_datetime_value),
-    PlainSerializer(_rfc822, when_used="json"),
-]
-RFC822DatetimeOpt = Annotated[
-    Optional[datetime],
-    BeforeValidator(parse_datetime_value),
-    PlainSerializer(_rfc822, when_used="json"),
-]
+FlexibleDatetime = Annotated[datetime, BeforeValidator(parse_datetime_value)]
+FlexibleDatetimeOpt = Annotated[Optional[datetime], BeforeValidator(parse_datetime_value)]

@@ -52,8 +52,6 @@ const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 const UNTIL_ID_TO_LABELS: Record<string, string> = {
   '43200': '12 Hours',
   '432000': '5 Days',
@@ -202,12 +200,12 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       case 'indefinite':
         break;
       case 'custom':
-        body.requested_ownership_ending_at = (formData.customOwnershipUntil as unknown as Dayjs).format(RFC822_FORMAT);
+        body.requested_ownership_ending_at = (formData.customOwnershipUntil as unknown as Dayjs).toISOString();
         break;
       default:
         body.requested_ownership_ending_at = dayjs()
           .add(parseInt(formData.ownershipUntil ?? '0', 10), 'seconds')
-          .format(RFC822_FORMAT);
+          .toISOString();
         break;
     }
 

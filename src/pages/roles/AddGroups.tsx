@@ -78,8 +78,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
 const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
   Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
@@ -198,12 +196,12 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
       case 'indefinite':
         break;
       case 'custom':
-        roleMembers.groups_added_ending_at = (groupsForm.customUntil as unknown as Dayjs).format(RFC822_FORMAT);
+        roleMembers.groups_added_ending_at = (groupsForm.customUntil as unknown as Dayjs).toISOString();
         break;
       default:
         roleMembers.groups_added_ending_at = dayjs()
           .add(parseInt(until ?? '0', 10), 'seconds')
-          .format(RFC822_FORMAT);
+          .toISOString();
         break;
     }
 

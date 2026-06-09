@@ -86,8 +86,6 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 );
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-const RFC822_FORMAT = 'ddd, DD MMM YYYY HH:mm:ss ZZ';
-
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;
   rows: OktaUserGroupMember[];
@@ -436,12 +434,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         case 'indefinite':
           break;
         case 'custom':
-          groupUsers.users_added_ending_at = (requestForm.customUntil as unknown as Dayjs).format(RFC822_FORMAT);
+          groupUsers.users_added_ending_at = (requestForm.customUntil as unknown as Dayjs).toISOString();
           break;
         default:
           groupUsers.users_added_ending_at = dayjs()
             .add(parseInt(until ?? '0', 10), 'seconds')
-            .format(RFC822_FORMAT);
+            .toISOString();
           break;
       }
 

@@ -49,12 +49,6 @@ with the schema. 281/281 tests green.
 
 These are **breaking** for clients. Coordinate frontend changes.
 
-### 5. Normalize datetime format to ISO 8601
-
-Marshmallow defaulted to RFC822 (`"Sun, 26 Apr 2026 13:45:00 -0000"`); we
-preserved that with `RFC822Datetime`. Pydantic's default is ISO 8601 which
-is more universally parseable. Frontend needs to update its parsers.
-
 ### 6. Stop emitting absent-as-`null`
 
 Pydantic emits `None` fields as `"key": null` by default. Switch responses
