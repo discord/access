@@ -796,12 +796,14 @@ def test_put_app_logs_audit_on_rename(
 def test_post_app_validation_via_http(client: TestClient, db: Db, url_for: Any) -> None:
     """Body validation enforced at the HTTP layer (not just Pydantic-level).
     The project's request_validation_handler converts 422 → 400 with the
-    `{"message": ...}` envelope."""
+    RFC 9457 problem-detail envelope."""
     apps_url = url_for("api-apps.apps")
 
     rep = client.post(apps_url, json={"name": ""})
     assert rep.status_code == 400
-    assert "message" in rep.json()
+    body = rep.json()
+    assert body["status"] == 400
+    assert "detail" in body
 
     rep = client.post(apps_url, json={"name": "MyApp", "description": "x" * 1025})
     assert rep.status_code == 400

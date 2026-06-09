@@ -315,8 +315,8 @@ class TestPluginAPIEndpoints:
         `{"error": "..."}` (the React client reads the `error` field).
         The plugin router raises `PluginNotFoundError`, which the
         exception handler in `api/exception_handlers.py` serializes with
-        the `error` envelope — distinct from the global `{"message": ...}`
-        shape used by every other HTTPException."""
+        the `error` envelope — distinct from the global RFC 9457
+        problem-detail envelope used by every other HTTPException."""
         for endpoint in (
             "api-plugins.app_group_lifecycle_plugin_app_config_props",
             "api-plugins.app_group_lifecycle_plugin_group_config_props",

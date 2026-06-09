@@ -4,8 +4,20 @@ const baseUrl = import.meta.env.VITE_API_SERVER_URL;
 
 export type ErrorWrapper<TError> = TError | {status: 'unknown'; payload: string};
 
+// RFC 9457 problem-detail envelope. `detail` is the human-readable message
+// the React client surfaces; `title`, `status`, `type` are RFC standard.
+// Validation errors carry an extra non-standard `errors[]` list.
 export type ErrorMessage = {
-  message: string;
+  type?: string;
+  title?: string;
+  status?: number;
+  detail?: string;
+  errors?: Array<{
+    type?: string;
+    loc?: Array<string | number>;
+    msg?: string;
+    ctx?: Record<string, unknown>;
+  }>;
 };
 
 export type ApiFetcherOptions<TBody, THeaders, TQueryParams, TPathParams> = {
@@ -70,9 +82,11 @@ export async function apiFetch<
       payload:
         e instanceof Error
           ? `Network error (${e.message})`
-          : (e as ErrorMessage).message != null
-            ? (e as ErrorMessage).message
-            : 'Network error',
+          : (e as ErrorMessage).detail != null
+            ? (e as ErrorMessage).detail!
+            : (e as ErrorMessage).title != null
+              ? (e as ErrorMessage).title!
+              : 'Network error',
     };
   }
 }
