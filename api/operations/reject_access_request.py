@@ -3,10 +3,10 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from fastapi import HTTPException
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.models.access_request import get_all_possible_request_approvers
@@ -57,7 +57,7 @@ class RejectAccessRequest:
         # rather than silently no-op so a stale/concurrent rejection surfaces
         # as a conflict instead of looking like a success.
         if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
-            raise HTTPException(409, "Access request is no longer pending")
+            raise ConflictError("Access request is no longer pending")
 
         self.access_request.status = AccessRequestStatus.REJECTED
         self.access_request.resolved_at = func.now()

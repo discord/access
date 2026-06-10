@@ -4,8 +4,9 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from fastapi import HTTPException
 from sqlalchemy.orm import joinedload, selectin_polymorphic
+
+from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
 
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
@@ -62,7 +63,7 @@ class ApproveAccessRequest:
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
         if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
-            raise HTTPException(409, "Access request is no longer pending")
+            raise ConflictError("Access request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.access_request.requester_user_id == self.approver_id:
@@ -81,13 +82,13 @@ class ApproveAccessRequest:
         # Don't allow approving a request if the requester is deleted
         requester = db.session.get(OktaUser, self.access_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
-            raise HTTPException(410, "The requester no longer exists")
+            raise ResourceGoneError("The requester no longer exists")
 
         # Don't allow approving a request for a deleted or unmanaged group
         if self.access_request.active_requested_group is None:
-            raise HTTPException(410, "The requested group no longer exists")
+            raise ResourceGoneError("The requested group no longer exists")
         if not self.access_request.active_requested_group.is_managed:
-            raise HTTPException(400, "Groups not managed by Access cannot be modified")
+            raise InvalidRequestError("Groups not managed by Access cannot be modified")
 
         # Now handled inside ModifyGroupUsers
         # self.access_request.status = AccessRequestStatus.APPROVED

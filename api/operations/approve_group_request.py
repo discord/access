@@ -3,10 +3,10 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
+from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -76,7 +76,7 @@ class ApproveGroupRequest:
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
-            raise HTTPException(409, "Group request is no longer pending")
+            raise ConflictError("Group request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.group_request.requester_user_id == self.approver_id and not self.bypass_self_approval:

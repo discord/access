@@ -2,10 +2,10 @@ from typing import Optional
 
 import logging
 
-from fastapi import HTTPException
 from sqlalchemy import func
 from api.context import get_request_context
 
+from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.models.access_request import get_all_possible_request_approvers
@@ -55,7 +55,7 @@ class RejectGroupRequest:
         # Already resolved — raise rather than silently no-op so a stale/
         # concurrent rejection surfaces as a conflict instead of a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
-            raise HTTPException(409, "Group request is no longer pending")
+            raise ConflictError("Group request is no longer pending")
 
         resolved_app_id = (
             self.group_request.resolved_app_id

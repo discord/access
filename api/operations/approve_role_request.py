@@ -4,8 +4,9 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from fastapi import HTTPException
 from sqlalchemy.orm import joinedload, selectin_polymorphic
+
+from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
 
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
@@ -61,7 +62,7 @@ class ApproveRoleRequest:
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
         if self.role_request.status != AccessRequestStatus.PENDING or self.role_request.resolved_at is not None:
-            raise HTTPException(409, "Role request is no longer pending")
+            raise ConflictError("Role request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.role_request.requester_user_id == self.approver_id:
@@ -80,13 +81,13 @@ class ApproveRoleRequest:
         # Don't allow approving a request if the requester role is deleted
         requester = db.session.get(RoleGroup, self.role_request.requester_role_id)
         if requester is None or requester.deleted_at is not None:
-            raise HTTPException(410, "The requester role no longer exists")
+            raise ResourceGoneError("The requester role no longer exists")
 
         # Don't allow approving a request for a deleted or unmanaged group
         if self.role_request.active_requested_group is None:
-            raise HTTPException(410, "The requested group no longer exists")
+            raise ResourceGoneError("The requested group no longer exists")
         if not self.role_request.active_requested_group.is_managed:
-            raise HTTPException(400, "Groups not managed by Access cannot be modified")
+            raise InvalidRequestError("Groups not managed by Access cannot be modified")
 
         db.session.commit()
 

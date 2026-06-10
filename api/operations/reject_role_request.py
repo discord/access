@@ -3,10 +3,10 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from fastapi import HTTPException
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
 from api.models.access_request import get_all_possible_request_approvers
@@ -55,7 +55,7 @@ class RejectRoleRequest:
         # rather than silently no-op so a stale/concurrent rejection surfaces
         # as a conflict instead of looking like a success.
         if self.role_request.status != AccessRequestStatus.PENDING or self.role_request.resolved_at is not None:
-            raise HTTPException(409, "Role request is no longer pending")
+            raise ConflictError("Role request is no longer pending")
 
         self.role_request.status = AccessRequestStatus.REJECTED
         self.role_request.resolved_at = func.now()

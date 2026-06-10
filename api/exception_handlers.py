@@ -29,6 +29,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from api.auth.dependencies import OIDCRedirectRequired
+from api.exceptions import AccessException
 from api.plugins.app_group_lifecycle import PluginNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,12 @@ async def plugin_not_found_handler(request: Request, exc: PluginNotFoundError) -
     return JSONResponse({"error": f"Plugin '{exc.plugin_id}' not found"}, status_code=404)
 
 
+async def access_exception_handler(request: Request, exc: AccessException) -> JSONResponse:
+    # Domain errors raised by the operations layer. Mapped to the shared RFC
+    # 9457 envelope using the status code the exception carries.
+    return _problem(status_code=exc.status_code, detail=exc.detail)
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse | HTMLResponse:
     logger.exception("Unhandled exception", exc_info=exc)
     if _is_api(request):
@@ -186,4 +193,5 @@ def install(app: FastAPI) -> None:
     app.add_exception_handler(ValidationError, pydantic_validation_handler)  # type: ignore[arg-type]
     app.add_exception_handler(OIDCRedirectRequired, oidc_redirect_handler)  # type: ignore[arg-type]
     app.add_exception_handler(PluginNotFoundError, plugin_not_found_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(AccessException, access_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)

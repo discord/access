@@ -6,27 +6,31 @@ return the request object unchanged with no error and, for several guards, no
 status flip. This both confuses callers and (under concurrency) lets a stale
 approval slip a second grant past the router's pre-check.
 
-These tests encode the agreed contract for the fix:
-  - already-resolved approve/reject  -> HTTPException 409 (Conflict)
-  - deleted requester / deleted-or-unmanaged target -> HTTPException 400/410
+These tests encode the contract for the fix. Operations raise `AccessException`
+subclasses (decoupled from FastAPI; mapped to HTTP by api.exception_handlers):
+  - already-resolved approve/reject  -> ConflictError (409)
+  - deleted requester / deleted-or-unmanaged target -> 410 / 400
   - a stale approval (request resolved between load and execute) must conflict
     and must NOT create a grant.
 
-They are RED until the fix lands (the operations currently raise nothing). The
-true two-connection duplicate-row race can only be reproduced against Postgres;
-the single-connection sqlite harness shares one connection, so these simulate
-the stale/already-resolved state deterministically instead.
+The true two-connection duplicate-row race can only be reproduced against
+Postgres; the single-connection sqlite harness shares one connection, so these
+simulate the stale/already-resolved state deterministically instead.
 """
 
+import asyncio
 import uuid
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI
 from okta.models import Group
 from pytest_mock import MockerFixture
 from sqlalchemy import func, or_
+from starlette.requests import Request
 
 from api.config import settings
+from api.exception_handlers import access_exception_handler
+from api.exceptions import AccessException, ConflictError, InvalidRequestError, ResourceGoneError
 from api.extensions import Db
 from api.models import (
     AccessRequest,
@@ -102,7 +106,7 @@ def test_approve_already_resolved_access_request_conflicts(db: Db, user: OktaUse
     assert _active_direct_member_count(db, user_id=user.id, group_id=okta_group.id) == 1
 
     # A second approval of the now-APPROVED request must conflict, not no-op.
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         ApproveAccessRequest(access_request=request.id, approver_user=owner, approval_reason="again").execute()
     assert exc.value.status_code == 409
 
@@ -127,7 +131,7 @@ def test_reject_already_resolved_access_request_conflicts(db: Db, user: OktaUser
     ApproveAccessRequest(access_request=request.id, approver_user=owner, approval_reason="ok").execute()
 
     # Rejecting an already-approved request must conflict, not silently no-op.
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         RejectAccessRequest(
             access_request=request.id,
             rejection_reason="too late",
@@ -154,7 +158,7 @@ def test_approve_access_request_with_deleted_requester_errors(db: Db, user: Okta
     user.deleted_at = func.now()
     db.session.commit()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         ApproveAccessRequest(access_request=request.id, approver_user=owner, approval_reason="ok").execute()
     assert exc.value.status_code in (400, 410)
 
@@ -185,7 +189,7 @@ def test_approve_access_request_with_unmanaged_group_errors(db: Db, user: OktaUs
     okta_group.is_managed = False
     db.session.commit()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         ApproveAccessRequest(access_request=request.id, approver_user=owner, approval_reason="ok").execute()
     assert exc.value.status_code in (400, 410)
     assert _active_direct_member_count(db, user_id=user.id, group_id=okta_group.id) == 0
@@ -220,7 +224,7 @@ def test_stale_resolution_then_approve_conflicts_without_granting(
     )
     db.session.commit()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         op.execute()
     assert exc.value.status_code == 409
 
@@ -265,7 +269,7 @@ def test_approve_already_resolved_role_request_conflicts(
     )
     assert active_maps == 1
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         ApproveRoleRequest(role_request=request.id, approver_user=owner, approval_reason="again").execute()
     assert exc.value.status_code == 409
 
@@ -291,6 +295,30 @@ def test_approve_already_resolved_group_request_conflicts(db: Db, user: OktaUser
 
     ApproveGroupRequest(group_request=request.id, approver_user=owner, approval_reason="ok").execute()
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(AccessException) as exc:
         ApproveGroupRequest(group_request=request.id, approver_user=owner, approval_reason="again").execute()
     assert exc.value.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# AccessException -> HTTP mapping
+# ---------------------------------------------------------------------------
+
+
+def test_access_exception_handler_maps_status_and_envelope() -> None:
+    req = Request({"type": "http", "method": "GET", "path": "/api/x", "headers": [], "query_string": b""})
+    cases = [
+        (ConflictError("nope"), 409),
+        (ResourceGoneError("gone"), 410),
+        (InvalidRequestError("bad"), 400),
+        (AccessException("teapot", status_code=418), 418),  # constructor override
+    ]
+    for exc, expected in cases:
+        resp = asyncio.run(access_exception_handler(req, exc))
+        assert resp.status_code == expected
+        assert resp.media_type == "application/problem+json"
+
+
+def test_access_exception_handler_is_registered(app: FastAPI) -> None:
+    # Guards against the handler silently falling through to the 500 catch-all.
+    assert app.exception_handlers.get(AccessException) is access_exception_handler
