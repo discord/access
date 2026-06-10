@@ -557,7 +557,7 @@ def _build_app_with(
 
 
 def _has_trusted_host_middleware(app: FastAPI) -> bool:
-    return any(m.cls is TrustedHostMiddleware for m in app.user_middleware)
+    return any(m.cls.__name__ == TrustedHostMiddleware.__name__ for m in app.user_middleware)
 
 
 def test_request_with_allowed_host_passes(oidc_client: TestClient) -> None:
@@ -579,9 +579,7 @@ def test_login_redirect_uri_derived_from_host(oidc_client: TestClient) -> None:
     assert "https://testserver/oidc/authorize" in response.headers["location"]
 
 
-def test_overwrite_redirect_uri_pins_callback(
-    oidc_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_overwrite_redirect_uri_pins_callback(oidc_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "OIDC_OVERWRITE_REDIRECT_URI", "https://pinned.example.com/oidc/authorize")
     response = oidc_client.get("/oidc/login")
     assert "https://pinned.example.com/oidc/authorize" in response.headers["location"]
