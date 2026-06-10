@@ -14,8 +14,10 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
 )
 from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.reject_role_request import RejectRoleRequest
 
 logger = logging.getLogger(__name__)
 
@@ -109,5 +111,32 @@ class UnmanageGroup:
                 RejectAccessRequest(
                     access_request=obsolete_access_request,
                     rejection_reason="Closed because the requested group is no longer managed by Access",
+                    current_user_id=self.current_user_id,
+                ).execute()
+
+        # Reject all pending role requests touching this group, either as the
+        # requested target or as the requester role. Left pending, they would
+        # silently no-op in ApproveRoleRequest now but become approvable again
+        # if the group is later re-managed by the syncer.
+        obsolete_role_requests = (
+            db.session.query(RoleRequest)
+            .filter(
+                or_(
+                    RoleRequest.requested_group_id == self.group.id,
+                    RoleRequest.requester_role_id == self.group.id,
+                )
+            )
+            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+            .filter(RoleRequest.resolved_at.is_(None))
+            .all()
+        )
+        for obsolete_role_request in obsolete_role_requests:
+            logger.info(
+                f"Rejecting obsolete role request {obsolete_role_request.id} for unmanaged group {self.group.id}"
+            )
+            if not dry_run:
+                RejectRoleRequest(
+                    role_request=obsolete_role_request,
+                    rejection_reason="Closed because a group in this role request is no longer managed by Access",
                     current_user_id=self.current_user_id,
                 ).execute()
