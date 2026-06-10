@@ -511,27 +511,27 @@ def test_get_all_role_request(
 
     results = rep.json()
     for request in role_requests:
-        assert any(u["id"] == request.id for u in results["results"])
+        assert any(u["id"] == request.id for u in results["items"])
 
     rep = client.get(role_requests_url, params={"q": "pend"})
     assert rep.status_code == 200
 
     results = rep.json()
     for request in role_requests:
-        assert any(u["id"] == request.id for u in results["results"])
+        assert any(u["id"] == request.id for u in results["items"])
 
     # Should be able to query by requester role and requested group
     rep = client.get(role_requests_url, params={"q": role_requests[0].requester_role.name})
     assert rep.status_code == 200
 
     results = rep.json()
-    assert any(u["id"] == role_requests[0].id for u in results["results"])
+    assert any(u["id"] == role_requests[0].id for u in results["items"])
 
     rep = client.get(role_requests_url, params={"q": role_requests[0].requested_group.name})
     assert rep.status_code == 200
 
     results = rep.json()
-    assert any(u["id"] == role_requests[0].id for u in results["results"])
+    assert any(u["id"] == role_requests[0].id for u in results["items"])
 
 
 def test_create_role_request_notification(
@@ -1379,7 +1379,7 @@ def test_role_request_list_filters_via_http(client: TestClient, db: Db, url_for:
     list_url = url_for("api-role-requests.role_requests")
 
     def ids(rep: Any) -> list[str]:
-        return [r["id"] for r in rep.json()["results"]]
+        return [r["id"] for r in rep.json()["items"]]
 
     rep = client.get(list_url, params={"status": "PENDING"})
     assert rep.status_code == 200

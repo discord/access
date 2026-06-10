@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+
 from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
@@ -22,15 +23,16 @@ from api.models import (
     RoleGroup,
 )
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.schemas import (
     AccessRequestDetail,
-    AccessRequestPagination,
     AccessRequestSummary,
     CreateAccessRequestBody,
     ResolveAccessRequestBody,
-    SearchAccessRequestPaginationQuery,
+    SearchAccessRequestQuery,
 )
 
 router = APIRouter(prefix="/api/requests", tags=["access-requests"])
@@ -79,8 +81,8 @@ def list_access_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchAccessRequestPaginationQuery, Query()],
-) -> AccessRequestPagination:
+    q_args: Annotated[SearchAccessRequestQuery, Query()],
+) -> Page[AccessRequestSummary]:
     query = db.query(AccessRequest).options(*_summary_load_options()).order_by(AccessRequest.created_at.desc())
 
     # Honored search filters: status, requester_user_id, requested_group_id,
@@ -191,7 +193,7 @@ def list_access_requests(
                 )
             )
         )
-    return paginate(request, query, AccessRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(AccessRequestSummary))
 
 
 @router.get("/{access_request_id}", name="access_request_by_id")

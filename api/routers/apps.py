@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
 from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -21,16 +22,18 @@ from api.models import (
     AppTagMap,
     OktaGroup,
 )
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page, validated
 from api.routers._eager import (
     user_group_member_options,
 )
 from api.schemas import (
+    AppSummary,
     AppDetail,
-    AppPagination,
     CreateAppBody,
     DeleteMessage,
-    SearchAppPaginationQuery,
+    SearchAppQuery,
     UpdateAppBody,
 )
 
@@ -62,13 +65,13 @@ def list_apps(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchAppPaginationQuery, Query()],
-) -> AppPagination:
+    q_args: Annotated[SearchAppQuery, Query()],
+) -> Page[AppSummary]:
     query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(request, query, AppPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(AppSummary))
 
 
 @router.get("/{app_id}", name="app_by_id")

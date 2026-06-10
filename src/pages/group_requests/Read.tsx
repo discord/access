@@ -232,11 +232,11 @@ export default function ReadGroupRequest() {
     );
   }, [admin, ownRequest, requestedGroupType, requestedAppData, currentUser.id]);
 
-  const {data: ownedAppsData} = useGetApps({queryParams: {page: 0, per_page: 100, q: ''}}, {enabled: isAppOwner});
+  const {data: ownedAppsData} = useGetApps({queryParams: {page: 1, size: 100, q: ''}}, {enabled: isAppOwner});
 
   const ownedAppIds = React.useMemo<Set<string>>(() => {
     const ids = new Set<string>();
-    for (const app of ownedAppsData?.results ?? []) {
+    for (const app of ownedAppsData?.items ?? []) {
       const owns = (app.active_owner_app_groups ?? []).some((appGroup) =>
         (appGroup.active_user_ownerships ?? []).some((membership) => membership.active_user?.id === currentUser.id),
       );
@@ -254,11 +254,11 @@ export default function ReadGroupRequest() {
   const canResolve = canApprove || ownRequest;
 
   const {data: appSearchData} = useGetApps({
-    queryParams: {page: 0, per_page: 10, q: appSearchInput},
+    queryParams: {page: 1, size: 10, q: appSearchInput},
   });
 
   const appSearchOptions = React.useMemo<App[]>(() => {
-    const results = appSearchData?.results ?? [];
+    const results = appSearchData?.items ?? [];
     if (isAppOwner) {
       return results.filter((app) => app.id != null && ownedAppIds.has(app.id));
     }
@@ -266,26 +266,26 @@ export default function ReadGroupRequest() {
   }, [appSearchData, isAppOwner, ownedAppIds]);
 
   const {data: tagSearchData} = useGetTags({
-    queryParams: {page: 0, per_page: 10, q: tagSearchInput},
+    queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
-  const tagSearchOptions = tagSearchData?.results ?? [];
+  const tagSearchOptions = tagSearchData?.items ?? [];
 
   const {data: allTagsForSeeding} = useGetTags(
-    {queryParams: {page: 0, per_page: 100, q: ''}},
+    {queryParams: {page: 1, size: 100, q: ''}},
     {enabled: requestedTagNames.length > 0},
   );
   const [tagsSeeded, setTagsSeeded] = React.useState(false);
   React.useEffect(() => {
-    if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.results) {
-      const matched = allTagsForSeeding.results.filter((t) => requestedTagNames.includes(t.id));
+    if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.items) {
+      const matched = allTagsForSeeding.items.filter((t) => requestedTagNames.includes(t.id));
       setSelectedTags(matched);
       setTagsSeeded(true);
     }
   }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
 
   const requestedTags = React.useMemo<Tag[]>(() => {
-    if (!allTagsForSeeding?.results) return [];
-    return allTagsForSeeding.results.filter((t) => requestedTagNames.includes(t.id));
+    if (!allTagsForSeeding?.items) return [];
+    return allTagsForSeeding.items.filter((t) => requestedTagNames.includes(t.id));
   }, [allTagsForSeeding, requestedTagNames]);
 
   const resolvedTagIds: string[] =
@@ -293,12 +293,12 @@ export default function ReadGroupRequest() {
       ? groupRequest.resolved_group_tags
       : [];
   const {data: allTagsForResolved} = useGetTags(
-    {queryParams: {page: 0, per_page: 100, q: ''}},
+    {queryParams: {page: 1, size: 100, q: ''}},
     {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
   );
   const resolvedTags = React.useMemo<Tag[]>(() => {
-    if (!allTagsForResolved?.results) return [];
-    return allTagsForResolved.results.filter((t) => resolvedTagIds.includes(t.id));
+    if (!allTagsForResolved?.items) return [];
+    return allTagsForResolved.items.filter((t) => resolvedTagIds.includes(t.id));
   }, [allTagsForResolved, resolvedTagIds]);
 
   const complete = (

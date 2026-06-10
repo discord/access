@@ -21,7 +21,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {displayGroupType} from '../../helpers';
+import {displayGroupType, emptyTableRows, perPage} from '../../helpers';
 import {displayUserName} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import {useGetRoleById, useGetGroupRoleAudits, useGetGroups} from '../../api/apiComponents';
@@ -63,7 +63,7 @@ export default function AuditRole() {
     setFilterActive(searchParams.get('active') == null ? null : searchParams.get('active') == 'true');
     setFilterOwner(searchParams.get('owner') == null ? null : searchParams.get('owner') == 'true');
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
-    setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
   const {
@@ -80,7 +80,7 @@ export default function AuditRole() {
     isLoading: userAuditIsLoading,
   } = useGetGroupRoleAudits({
     queryParams: Object.assign(
-      {role_id: id ?? '', page: page, per_page: rowsPerPage},
+      {role_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},
@@ -90,7 +90,7 @@ export default function AuditRole() {
   });
 
   const {data: searchData} = useGetGroups({
-    queryParams: {page: 0, per_page: 10, q: searchInput},
+    queryParams: {page: 1, size: 10, q: searchInput},
   });
 
   if (isError) {
@@ -103,13 +103,13 @@ export default function AuditRole() {
 
   const role = roleData ?? ({} as RoleGroup);
 
-  const rows = data?.results ?? [];
+  const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = rowsPerPage - rows.length;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
-  const searchRows = searchData?.results ?? [];
+  const searchRows = searchData?.items ?? [];
 
   const handleSortChange = (property: OrderBy) => (event: React.MouseEvent<unknown>) => {
     const isAsc = orderBy === property && orderDirection === 'asc';
@@ -133,7 +133,7 @@ export default function AuditRole() {
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSearchParams((params) => {
       params.set('page', '0');
-      params.set('per_page', event.target.value);
+      params.set('size', event.target.value);
       return params;
     });
     setRowsPerPage(parseInt(event.target.value, 10));
@@ -341,7 +341,7 @@ export default function AuditRole() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={7}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

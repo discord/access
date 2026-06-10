@@ -2069,7 +2069,7 @@ def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for
     list_url = url_for("api-group-requests.group_requests")
 
     def ids(rep: Any) -> list[str]:
-        return [r["id"] for r in rep.json()["results"]]
+        return [r["id"] for r in rep.json()["items"]]
 
     rep = client.get(list_url, params={"status": "PENDING"})
     assert rep.status_code == 200

@@ -219,23 +219,23 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   const {data: roleSearchData} = useGetRoles({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: roleSearchInput,
       owner_id: '@me',
     },
   });
-  let roleSearchOptions = roleSearchData?.results ?? [];
+  let roleSearchOptions = roleSearchData?.items ?? [];
 
   const {data: groupSearchData} = useGetGroups({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: groupSearchInput,
       managed: true,
     },
   });
-  const groupSearchOptions = groupSearchData?.results ?? [];
+  const groupSearchOptions = groupSearchData?.items ?? [];
 
   const updateUntil = (group: PolymorphicGroup | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);

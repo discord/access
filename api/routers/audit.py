@@ -15,10 +15,10 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
+
 from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
-from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
@@ -32,13 +32,13 @@ from api.models import (
     RoleGroup,
     RoleGroupMap,
 )
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page
 from api.schemas import (
     AuditOrderBy,
-    GroupRoleAuditPagination,
-    SearchGroupRoleAuditPaginationQuery,
-    SearchUserGroupAuditPaginationQuery,
-    UserGroupAuditPagination,
+    SearchGroupRoleAuditQuery,
+    SearchUserGroupAuditQuery,
 )
 from api.schemas.audit_rows import (
     AuditGroupRoleRow,
@@ -273,11 +273,10 @@ def _audit_group_role_row(rgm: RoleGroupMap) -> AuditGroupRoleRow:
 
 @router.get("/users", name="users_and_groups")
 def users_and_groups(
-    request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchUserGroupAuditPaginationQuery, Query()],
-) -> UserGroupAuditPagination:
+    q_args: Annotated[SearchUserGroupAuditQuery, Query()],
+) -> Page[AuditUserGroupRow]:
     user_id = _resolve_me(q_args.user_id, current_user_id)
     owner_id = _resolve_me(q_args.owner_id, current_user_id)
     user = _resolve_user(db, user_id)
@@ -497,21 +496,18 @@ def users_and_groups(
             query = query.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc())
 
     return paginate(
-        request,
+        db,
         query,
-        UserGroupAuditPagination,
-        item_factory=lambda m: _audit_user_group_row(m, include_role_associations),
-        extract=lambda: (q_args.page, q_args.per_page),
+        transformer=lambda items: [_audit_user_group_row(m, include_role_associations) for m in items],
     )
 
 
 @router.get("/groups", name="groups_and_roles")
 def groups_and_roles(
-    request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchGroupRoleAuditPaginationQuery, Query()],
-) -> GroupRoleAuditPagination:
+    q_args: Annotated[SearchGroupRoleAuditQuery, Query()],
+) -> Page[AuditGroupRoleRow]:
     from api.auth.permissions import is_access_admin
 
     role_id = _resolve_me(q_args.role_id, current_user_id)
@@ -726,9 +722,7 @@ def groups_and_roles(
     query = query.order_by(*_groups_audit_ordering())
 
     return paginate(
-        request,
+        db,
         query,
-        GroupRoleAuditPagination,
-        item_factory=_audit_group_role_row,
-        extract=lambda: (q_args.page, q_args.per_page),
+        transformer=lambda items: [_audit_group_role_row(rgm) for rgm in items],
     )

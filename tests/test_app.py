@@ -530,14 +530,14 @@ def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
 
     results = rep.json()
     for app in apps:
-        assert any(u["id"] == app.id for u in results["results"])
+        assert any(u["id"] == app.id for u in results["items"])
 
     rep = client.get(apps_url, params={"q": "a"})
     assert rep.status_code == 200
 
     results = rep.json()
     for app in apps:
-        assert any(u["id"] == app.id for u in results["results"])
+        assert any(u["id"] == app.id for u in results["items"])
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
@@ -842,6 +842,6 @@ def test_get_apps_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
     rep = client.get(apps_url, params={"q": "ZelaPayments"})
     assert rep.status_code == 200
-    names = [a["name"] for a in rep.json()["results"]]
+    names = [a["name"] for a in rep.json()["items"]]
     assert "ZelaPaymentsApp" in names
     assert "LoggingApp" not in names

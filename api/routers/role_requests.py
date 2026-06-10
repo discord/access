@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+
 from sqlalchemy import String, and_, cast, not_, or_
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
@@ -24,7 +25,9 @@ from api.models import (
 )
 from api.models.tag import coalesce_constraints
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page, validated
 from api.routers._eager import (
     group_tag_map_options,
     polymorphic_group_options,
@@ -34,9 +37,8 @@ from api.schemas import (
     CreateRoleRequestBody,
     ResolveRoleRequestBody,
     RoleRequestDetail,
-    RoleRequestPagination,
     RoleRequestSummary,
-    SearchRoleRequestPaginationQuery,
+    SearchRoleRequestQuery,
 )
 
 router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
@@ -86,8 +88,8 @@ def list_role_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchRoleRequestPaginationQuery, Query()],
-) -> RoleRequestPagination:
+    q_args: Annotated[SearchRoleRequestQuery, Query()],
+) -> Page[RoleRequestSummary]:
     from api.auth.permissions import is_access_admin
 
     query = db.query(RoleRequest).options(*_summary_load_options()).order_by(RoleRequest.created_at.desc())
@@ -331,7 +333,7 @@ def list_role_requests(
             )
         )
 
-    return paginate(request, query, RoleRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(RoleRequestSummary))
 
 
 @router.get("/{role_request_id}", name="role_request_by_id")

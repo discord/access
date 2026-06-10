@@ -1,5 +1,6 @@
 # FastAPI
 fastapi==0.136.1
+fastapi-pagination==0.15.13
 uvicorn[standard]==0.46.0
 gunicorn==23.0.0
 itsdangerous==2.2.0

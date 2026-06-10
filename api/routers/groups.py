@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
+
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
 from sqlalchemy import func, nullsfirst, or_
@@ -38,7 +39,9 @@ from api.operations import (
     ModifyGroupUsers,
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.pagination import paginate
+from fastapi_pagination.ext.sqlalchemy import paginate
+
+from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
     group_tag_map_options,
@@ -46,12 +49,12 @@ from api.routers._eager import (
     user_group_member_options,
 )
 from api.schemas import (
+    GroupSummary,
     CreateGroupBody,
     DeleteMessage,
     GroupDetail,
     GroupMembersSummary,
-    GroupPagination,
-    SearchGroupPaginationQuery,
+    SearchGroupQuery,
     UpdateGroupBody,
 )
 from api.schemas.requests_schemas import (
@@ -101,8 +104,8 @@ def list_groups(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchGroupPaginationQuery, Query()],
-) -> GroupPagination:
+    q_args: Annotated[SearchGroupQuery, Query()],
+) -> Page[GroupSummary]:
     query = (
         db.query(OktaGroup)
         .options(
@@ -123,7 +126,7 @@ def list_groups(
     if q_args.managed is not None:
         query = query.filter(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(request, query, GroupPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(GroupSummary))
 
 
 @router.get("/{group_id}", name="group_by_id")

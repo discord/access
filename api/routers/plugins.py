@@ -6,6 +6,7 @@ from dataclasses import asdict
 
 from fastapi import APIRouter
 
+
 from api.auth.dependencies import CurrentUserId
 from api.plugins.app_group_lifecycle import (
     PluginNotFoundError,

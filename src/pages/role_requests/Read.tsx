@@ -332,12 +332,12 @@ export default function ReadRoleRequest() {
     queryParams: {
       role_id: roleRequest.requester_role?.id ?? '',
       group_id: roleRequest.requested_group?.id ?? '',
-      per_page: 50,
+      size: 50,
       order_by: 'created_at',
       order_desc: true,
     },
   });
-  const groupRoleAudits = groupRoleAuditsData?.results ?? [];
+  const groupRoleAudits = groupRoleAuditsData?.items ?? [];
 
   if (isError) {
     return <NotFound />;

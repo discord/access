@@ -179,12 +179,12 @@ function AddUsersDialog(props: AddUsersDialogProps) {
 
   const {data: userSearchData} = useGetUsers({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: userSearchInput,
     },
   });
-  const userSearchOptions = userSearchData?.results ?? [];
+  const userSearchOptions = userSearchData?.items ?? [];
 
   const submit = (usersForm: AddUsersForm) => {
     setSubmitting(true);

@@ -104,12 +104,12 @@ function AppDialog(props: AppDialogProps) {
 
   const {data: tagSearchData} = useGetTags({
     queryParams: {
-      page: 0,
-      per_page: 10,
+      page: 1,
+      size: 10,
       q: tagSearchInput,
     },
   });
-  const tagSearchOptions = tagSearchData?.results ?? [];
+  const tagSearchOptions = tagSearchData?.items ?? [];
 
   const submit = (app: App) => {
     setSubmitting(true);

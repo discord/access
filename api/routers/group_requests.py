@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import String, and_, cast, or_
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
@@ -13,13 +14,12 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
-from api.pagination import paginate
+from api.pagination import Page, validated
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
-    GroupRequestPagination,
     ResolveGroupRequestBody,
-    SearchGroupRequestPaginationQuery,
+    SearchGroupRequestQuery,
 )
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
@@ -41,8 +41,8 @@ def list_group_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchGroupRequestPaginationQuery, Query()],
-) -> GroupRequestPagination:
+    q_args: Annotated[SearchGroupRequestQuery, Query()],
+) -> Page[GroupRequestDetail]:
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
@@ -144,7 +144,7 @@ def list_group_requests(
             )
         )
 
-    return paginate(request, query, GroupRequestPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(GroupRequestDetail))
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")

@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, HTTPException
+
 from starlette.requests import Request
 
 from api.config import settings

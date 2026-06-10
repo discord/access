@@ -193,15 +193,15 @@ def test_get_all_tag(client: TestClient, db: Db, url_for: Any) -> None:
 
     results = rep.json()
     for tag in tags:
-        assert any(u["id"] == tag.id for u in results["results"])
+        assert any(u["id"] == tag.id for u in results["items"])
 
     rep = client.get(tags_url, params={"q": "Tag-"})
     assert rep.status_code == 200
 
     results = rep.json()
-    assert len(results["results"]) == 3
+    assert len(results["items"]) == 3
     for tag in tags:
-        assert any(u["id"] == tag.id for u in results["results"])
+        assert any(u["id"] == tag.id for u in results["items"])
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
@@ -368,7 +368,7 @@ def test_get_tags_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
     tags_url = url_for("api-tags.tags")
     rep = client.get(tags_url, params={"q": "ZelaTag"})
     assert rep.status_code == 200
-    names = [t["name"] for t in rep.json()["results"]]
+    names = [t["name"] for t in rep.json()["items"]]
     assert "ZelaTagOne" in names
     assert "OtherTag" not in names
 
@@ -439,7 +439,7 @@ def test_list_tags_search_matches_description(client: TestClient, db: Db, url_fo
     tags_url = url_for("api-tags.tags")
     rep = client.get(tags_url, params={"q": "needle"})
     assert rep.status_code == 200
-    ids = [t["id"] for t in rep.json()["results"]]
+    ids = [t["id"] for t in rep.json()["items"]]
     assert desc_only.id in ids
     assert name_only.id not in ids
 
@@ -461,7 +461,7 @@ def test_list_tags_response_is_summary_shape(
     tags_url = url_for("api-tags.tags")
     rep = client.get(tags_url)
     assert rep.status_code == 200
-    items = rep.json()["results"]
+    items = rep.json()["items"]
     matched = [item for item in items if item["id"] == tag.id]
     assert len(matched) == 1
     item = matched[0]

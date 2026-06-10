@@ -13,7 +13,7 @@ import type {ClientErrorStatus, ServerErrorStatus} from './apiUtils';
 
 export type GetAppsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
 };
 
@@ -173,7 +173,7 @@ export const usePutAppById = (
 
 export type GetGroupRoleAuditsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   owner?: boolean;
   active?: boolean;
@@ -231,7 +231,7 @@ export const useGetGroupRoleAudits = <TData = Schemas.GroupRoleAuditPagination>(
 
 export type GetUserGroupAuditsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   owner?: boolean;
   active?: boolean;
@@ -289,7 +289,7 @@ export const useGetUserGroupAudits = <TData = Schemas.UserGroupAuditPagination>(
 
 export type GetGroupsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   managed?: boolean;
 };
@@ -531,7 +531,7 @@ export const usePutGroupMembersById = (
 
 export type GetRequestsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   requester_user_id?: string;
@@ -684,7 +684,7 @@ export const useResolveRequestById = (
 
 export type GetRoleRequestsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   requester_role_id?: string;
@@ -846,7 +846,7 @@ export const useResolveRoleRequestById = (
 
 export type GetGroupRequestsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   status?: 'PENDING' | 'APPROVED' | 'REJECTED';
   requester_user_id?: string;
@@ -1006,7 +1006,7 @@ export const useResolveGroupRequestById = (
 
 export type GetRolesQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
   owner_id?: string;
 };
@@ -1152,7 +1152,7 @@ export const usePutRoleMembersById = (
 
 export type GetTagsQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
 };
 
@@ -1312,7 +1312,7 @@ export const usePutTagById = (
 
 export type GetUsersQueryParams = {
   page?: number;
-  per_page?: number;
+  size?: number;
   q?: string;
 };
 

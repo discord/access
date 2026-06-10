@@ -51,17 +51,11 @@ export type AccessRequest = {
 };
 
 export type AccessRequestPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: AccessRequest[];
+  items?: AccessRequest[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type App = {
@@ -135,17 +129,11 @@ export type AppGroup = OktaGroup & {
 };
 
 export type AppPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: App[];
+  items?: App[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type AppTagMap = {
@@ -253,17 +241,11 @@ export type GroupMember = {
 };
 
 export type GroupPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: PolymorphicGroup[];
+  items?: PolymorphicGroup[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type OktaGroup = {
@@ -452,17 +434,11 @@ export type ResolveGroupRequest = {
 };
 
 export type GroupRoleAuditPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: RoleGroupMap[];
+  items?: RoleGroupMap[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type RoleGroup = OktaGroup & {
@@ -528,17 +504,11 @@ export type RoleMember = {
 };
 
 export type RolePagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: RoleGroup[];
+  items?: RoleGroup[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type RoleRequest = {
@@ -591,17 +561,11 @@ export type RoleRequest = {
 };
 
 export type RoleRequestPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: RoleRequest[];
+  items?: RoleRequest[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type GroupRequest = {
@@ -677,17 +641,11 @@ export type GroupRequest = {
 };
 
 export type GroupRequestPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: GroupRequest[];
+  items?: GroupRequest[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type Tag = {
@@ -721,45 +679,27 @@ export type Tag = {
 };
 
 export type TagPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: Tag[];
+  items?: Tag[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type UserGroupAuditPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: OktaUserGroupMember[];
+  items?: OktaUserGroupMember[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type UserPagination = {
-  /**
-   * @format url
-   */
-  next?: string;
-  pages?: number;
-  /**
-   * @format url
-   */
-  prev?: string;
-  results?: OktaUser[];
+  items?: OktaUser[];
   total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
 };
 
 export type AppGroupLifecyclePluginMetadata = {

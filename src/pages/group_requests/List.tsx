@@ -27,7 +27,7 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateGroupRequest from './Create';
 import {useGetGroupRequests} from '../../api/apiComponents';
-import {displayUserName, perPage} from '../../helpers';
+import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
@@ -62,12 +62,12 @@ export default function ListGroupRequests() {
       setSearchInput(searchParams.get('q') ?? '');
     }
     setPage(parseInt(searchParams.get('page') ?? '0', 10));
-    setRowsPerPage(parseInt(searchParams.get('per_page') ?? '20', 10));
+    setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetGroupRequests({
     queryParams: Object.assign(
-      {page: page, per_page: rowsPerPage},
+      {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
       assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},
@@ -77,10 +77,10 @@ export default function ListGroupRequests() {
   });
 
   const {data: searchData} = useGetGroupRequests({
-    queryParams: {page: 0, per_page: 10, q: searchInput},
+    queryParams: {page: 1, size: 10, q: searchInput},
   });
 
-  const rows = data?.results ?? [];
+  const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
 
   // If there's only one search result, just redirect to that request page
@@ -91,9 +91,9 @@ export default function ListGroupRequests() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = rowsPerPage - rows.length;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
-  const searchRows = searchData?.results ?? [];
+  const searchRows = searchData?.items ?? [];
 
   const handleChangePage = (event: React.MouseEvent<HTMLButtonElement> | null, newPage: number) => {
     setSearchParams((params) => {
@@ -106,7 +106,7 @@ export default function ListGroupRequests() {
   const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSearchParams((params) => {
       params.set('page', '0');
-      params.set('per_page', event.target.value);
+      params.set('size', event.target.value);
       return params;
     });
     setRowsPerPage(parseInt(event.target.value, 10));

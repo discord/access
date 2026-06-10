@@ -10,12 +10,12 @@ from __future__ import annotations
 import re
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
+from fastapi_pagination.ext.sqlalchemy import paginate
 from sqlalchemy import cast, func, nullsfirst, or_
 from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
-from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.config import settings
@@ -27,12 +27,12 @@ from api.models import (
     OktaUser,
     RoleGroup,
 )
-from api.pagination import paginate
+from api.pagination import Page, validated
 from api.routers._eager import user_group_member_options
 from api.schemas import (
     OktaUserDetail,
-    SearchUserPaginationQuery,
-    UserPagination,
+    OktaUserSummary,
+    SearchUserQuery,
 )
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -42,11 +42,10 @@ ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
 
 @router.get("", name="users")
 def list_users(
-    request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
-    q_args: Annotated[SearchUserPaginationQuery, Query()],
-) -> UserPagination:
+    q_args: Annotated[SearchUserQuery, Query()],
+) -> Page[OktaUserSummary]:
     query = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).order_by(func.lower(OktaUser.email))
 
     if q_args.q:
@@ -96,7 +95,7 @@ def list_users(
                 )
             )
 
-    return paginate(request, query, UserPagination, extract=lambda: (q_args.page, q_args.per_page))
+    return paginate(db, query, transformer=validated(OktaUserSummary))
 
 
 @router.get("/{user_id}", name="user_by_id")
