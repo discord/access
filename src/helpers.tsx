@@ -1,16 +1,6 @@
 import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap, OktaUserGroupMember} from './api/apiSchemas';
 
-export const perPage: Array<number | {label: string; value: number}> = [5, 10, 20, 50, {label: 'All', value: -1}];
-
-// Mirrors MAX_SIZE in api/pagination.py. MUI's "All" rows-per-page option uses
-// the -1 sentinel; the backend rejects size < 1 (and size > the cap), so map
-// both to the cap at the call boundary. This matches the old paginate(), which
-// clamped per_page=-1 (and any oversized value) to MAX_SIZE.
-export const MAX_PAGE_SIZE = 1000;
-
-export function pageSizeParam(rowsPerPage: number): number {
-  return rowsPerPage < 1 || rowsPerPage > MAX_PAGE_SIZE ? MAX_PAGE_SIZE : rowsPerPage;
-}
+export const perPage: number[] = [5, 10, 20, 50, 200, 1000];
 
 export function displayGroupType(group: PolymorphicGroup | undefined) {
   if (group == undefined || group.type == undefined) {

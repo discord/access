@@ -36,7 +36,7 @@ import Ending from '../../components/Ending';
 import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {pageSizeParam, displayUserName, perPage} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'ended_at';
@@ -85,7 +85,7 @@ export default function ExpiringGroups() {
     isLoading: expiringGroupsIsLoading,
   } = useGetUserGroupAudits({
     queryParams: Object.assign(
-      {page: page + 1, size: pageSizeParam(rowsPerPage)},
+      {page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},

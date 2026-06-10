@@ -25,7 +25,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {pageSizeParam, displayUserName} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 import {useGetGroupById, useGetUserGroupAudits, useGetUsers} from '../../api/apiComponents';
 import {PolymorphicGroup} from '../../api/apiSchemas';
 import NotFound from '../NotFound';
@@ -84,7 +84,7 @@ export default function AuditGroup() {
     isLoading: userAuditIsLoading,
   } = useGetUserGroupAudits({
     queryParams: Object.assign(
-      {group_id: id ?? '', page: page + 1, size: pageSizeParam(rowsPerPage)},
+      {group_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},
@@ -378,7 +378,7 @@ export default function AuditGroup() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={9}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

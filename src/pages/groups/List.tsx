@@ -20,7 +20,7 @@ import TextField from '@mui/material/TextField';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
-import {pageSizeParam, displayGroupType, perPage} from '../../helpers';
+import {displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
@@ -49,10 +49,7 @@ export default function ListGroups() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetGroups({
-    queryParams: Object.assign(
-      {page: page + 1, size: pageSizeParam(rowsPerPage)},
-      searchQuery == null ? null : {q: searchQuery},
-    ),
+    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
   const {data: searchData} = useGetGroups({

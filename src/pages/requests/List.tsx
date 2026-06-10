@@ -27,7 +27,7 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
-import {pageSizeParam, displayUserName, perPage} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
@@ -66,7 +66,7 @@ export default function ListRequests() {
 
   const {data, error, isLoading} = useGetRequests({
     queryParams: Object.assign(
-      {page: page + 1, size: pageSizeParam(rowsPerPage)},
+      {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
       assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},

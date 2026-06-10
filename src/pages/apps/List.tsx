@@ -22,7 +22,7 @@ import Typography from '@mui/material/Typography';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateApp from './CreateUpdate';
-import {pageSizeParam, perPage} from '../../helpers';
+import {perPage} from '../../helpers';
 import {useGetApps} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
@@ -51,10 +51,7 @@ export default function ListApps() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetApps({
-    queryParams: Object.assign(
-      {page: page + 1, size: pageSizeParam(rowsPerPage)},
-      searchQuery == null ? null : {q: searchQuery},
-    ),
+    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
   const {data: searchData} = useGetApps({

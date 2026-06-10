@@ -21,7 +21,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {displayGroupType, pageSizeParam} from '../../helpers';
+import {displayGroupType, perPage} from '../../helpers';
 import {displayUserName} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import {useGetRoleById, useGetGroupRoleAudits, useGetGroups} from '../../api/apiComponents';
@@ -80,7 +80,7 @@ export default function AuditRole() {
     isLoading: userAuditIsLoading,
   } = useGetGroupRoleAudits({
     queryParams: Object.assign(
-      {role_id: id ?? '', page: page + 1, size: pageSizeParam(rowsPerPage)},
+      {role_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},
@@ -341,7 +341,7 @@ export default function AuditRole() {
           <TableFooter>
             <TableRow>
               <TablePagination
-                rowsPerPageOptions={[5, 10, 20]}
+                rowsPerPageOptions={perPage}
                 colSpan={7}
                 count={totalRows}
                 rowsPerPage={rowsPerPage}

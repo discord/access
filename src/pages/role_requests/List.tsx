@@ -27,7 +27,7 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateRoleRequest from './Create';
 import {useGetRoleRequests} from '../../api/apiComponents';
-import {pageSizeParam, displayUserName, perPage} from '../../helpers';
+import {displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
@@ -76,7 +76,7 @@ export default function ListRoleRequests() {
 
   const {data, error, isLoading} = useGetRoleRequests({
     queryParams: Object.assign(
-      {page: page + 1, size: pageSizeParam(rowsPerPage)},
+      {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
       requesterRoleId == null ? null : {requester_role_id: requesterRoleId},
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
