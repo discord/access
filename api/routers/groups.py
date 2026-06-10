@@ -41,7 +41,7 @@ from api.operations import (
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
     group_tag_map_options,
@@ -126,7 +126,7 @@ def list_groups(
     if q_args.managed is not None:
         query = query.filter(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(GroupSummary))
 
 
 @router.get("/{group_id}", name="group_by_id")

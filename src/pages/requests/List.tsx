@@ -66,7 +66,7 @@ export default function ListRequests() {
 
   const {data, error, isLoading} = useGetRequests({
     queryParams: Object.assign(
-      {page: page, size: rowsPerPage},
+      {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
       requesterUserId == null ? null : {requester_user_id: requesterUserId},
       assigneeUserId == null ? null : {assignee_user_id: assigneeUserId},

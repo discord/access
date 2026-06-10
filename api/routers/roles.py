@@ -21,7 +21,7 @@ from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, Role
 from api.operations import ModifyRoleGroups
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     RoleGroupListItem,
@@ -80,7 +80,7 @@ def list_roles(
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(RoleGroupListItem))
 
 
 @router.get("/{role_id}", name="role_by_id")

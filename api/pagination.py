@@ -10,12 +10,15 @@ pages}`. Page numbers are 1-indexed (the standard).
 
 from __future__ import annotations
 
-from typing import TypeVar
+from collections.abc import Callable, Sequence
+from functools import lru_cache
+from typing import Any, TypeVar
 
 from fastapi import Query
 from fastapi_pagination import Page as _BasePage
 from fastapi_pagination.customization import CustomizedPage, UseParams
 from fastapi_pagination.default import Params as _DefaultParams
+from pydantic import TypeAdapter
 
 DEFAULT_SIZE = 50
 MAX_SIZE = 1000
@@ -37,9 +40,30 @@ Page = CustomizedPage[
 ]
 
 
+@lru_cache(maxsize=None)
+def _adapter(model: type) -> TypeAdapter[Any]:
+    return TypeAdapter(model)
+
+
+def validated(model: type) -> Callable[[Sequence[Any]], list[Any]]:
+    """Build a `fastapi-pagination` `transformer=` that validates each ORM row
+    through `model` with `from_attributes=True`.
+
+    This reproduces the eager-load safety net the hand-rolled `paginate()` had:
+    validation runs here in the handler (session open), so an un-eager-loaded
+    `lazy="raise_on_sql"` relationship surfaces as `InvalidRequestError` at the
+    pagination boundary — caught by the test suite — instead of lazily loading
+    during FastAPI's response serialization. The resulting `Page.items` are
+    already-validated model instances, so the later serialization is a no-op
+    re-dump."""
+    adapter = _adapter(model)
+    return lambda rows: [adapter.validate_python(row, from_attributes=True) for row in rows]
+
+
 __all__ = [
     "DEFAULT_SIZE",
     "MAX_SIZE",
     "Page",
     "PageParams",
+    "validated",
 ]

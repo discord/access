@@ -52,7 +52,7 @@ export default function ListRoles() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetRoles({
-    queryParams: Object.assign({page: page, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
+    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
   const {data: searchData} = useGetRoles({

@@ -27,7 +27,7 @@ from api.models import (
     OktaUser,
     RoleGroup,
 )
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers._eager import user_group_member_options
 from api.schemas import (
     OktaUserDetail,
@@ -95,7 +95,7 @@ def list_users(
                 )
             )
 
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(OktaUserSummary))
 
 
 @router.get("/{user_id}", name="user_by_id")

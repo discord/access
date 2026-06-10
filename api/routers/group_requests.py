@@ -14,7 +14,7 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
@@ -144,7 +144,7 @@ def list_group_requests(
             )
         )
 
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(GroupRequestDetail))
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")

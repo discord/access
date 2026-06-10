@@ -51,7 +51,7 @@ export default function ListApps() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetApps({
-    queryParams: Object.assign({page: page, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
+    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
   const {data: searchData} = useGetApps({

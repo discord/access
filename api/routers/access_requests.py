@@ -25,7 +25,7 @@ from api.models import (
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.schemas import (
     AccessRequestDetail,
@@ -193,7 +193,7 @@ def list_access_requests(
                 )
             )
         )
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(AccessRequestSummary))
 
 
 @router.get("/{access_request_id}", name="access_request_by_id")

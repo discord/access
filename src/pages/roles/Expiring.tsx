@@ -86,7 +86,7 @@ export default function ExpiringRoless() {
     isLoading: expiringGroupsIsLoading,
   } = useGetGroupRoleAudits({
     queryParams: Object.assign(
-      {page: page, size: rowsPerPage},
+      {page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},

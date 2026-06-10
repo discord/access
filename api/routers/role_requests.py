@@ -27,7 +27,7 @@ from api.models.tag import coalesce_constraints
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers._eager import (
     group_tag_map_options,
     polymorphic_group_options,
@@ -333,7 +333,7 @@ def list_role_requests(
             )
         )
 
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(RoleRequestSummary))
 
 
 @router.get("/{role_request_id}", name="role_request_by_id")

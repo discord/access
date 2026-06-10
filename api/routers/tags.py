@@ -19,7 +19,7 @@ from api.models import AppTagMap, OktaUser, Tag
 from api.operations import CreateTag, DeleteTag
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options
 from api.schemas import (
     TagListItem,
@@ -55,7 +55,7 @@ def list_tags(
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(TagListItem))
 
 
 @router.get("/{tag_id}", name="tag_by_id")

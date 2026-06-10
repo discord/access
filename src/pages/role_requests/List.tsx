@@ -76,7 +76,7 @@ export default function ListRoleRequests() {
 
   const {data, error, isLoading} = useGetRoleRequests({
     queryParams: Object.assign(
-      {page: page, size: rowsPerPage},
+      {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
       requesterRoleId == null ? null : {requester_role_id: requesterRoleId},
       requesterUserId == null ? null : {requester_user_id: requesterUserId},

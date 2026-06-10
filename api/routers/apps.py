@@ -24,7 +24,7 @@ from api.models import (
 )
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page
+from api.pagination import Page, validated
 from api.routers._eager import (
     user_group_member_options,
 )
@@ -71,7 +71,7 @@ def list_apps(
     if q_args.q:
         like = f"%{q_args.q}%"
         query = query.filter(or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(db, query)
+    return paginate(db, query, transformer=validated(AppSummary))
 
 
 @router.get("/{app_id}", name="app_by_id")
