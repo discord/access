@@ -1487,5 +1487,5 @@ def test_put_role_request_pending_check_includes_resolved_at(
 
     put_url = url_for("api-role-requests.role_request_by_id_put", role_request_id=rr.id)
     rep = client.put(put_url, json={"approved": False, "reason": "no"})
-    assert rep.status_code == 400
+    assert rep.status_code == 409
     assert "is not pending" in rep.text

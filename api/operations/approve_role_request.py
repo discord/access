@@ -6,6 +6,8 @@ import logging
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
+
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.operations.constraints import CheckForReason
@@ -24,10 +26,15 @@ class ApproveRoleRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
+        # Lock the request row for the transaction so concurrent approvers
+        # can't both pass the pending-state guard and double-grant. `of=` keeps
+        # FOR UPDATE off the joinedloads' nullable outer-join sides (Postgres
+        # rejects that); no-op on SQLite.
         self.role_request = (
             db.session.query(RoleRequest)
             .options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
             .filter(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
+            .with_for_update(of=RoleRequest)
             .first()
         )
 
@@ -51,9 +58,11 @@ class ApproveRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> RoleRequest:
-        # Don't allow approving a request that is already resolved
+        # Don't allow approving a request that is already resolved. Raise
+        # rather than silently no-op so a stale/concurrent approval surfaces
+        # as a conflict instead of looking like a success.
         if self.role_request.status != AccessRequestStatus.PENDING or self.role_request.resolved_at is not None:
-            return self.role_request
+            raise ConflictError("Role request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.role_request.requester_user_id == self.approver_id:
@@ -72,13 +81,13 @@ class ApproveRoleRequest:
         # Don't allow approving a request if the requester role is deleted
         requester = db.session.get(RoleGroup, self.role_request.requester_role_id)
         if requester is None or requester.deleted_at is not None:
-            return self.role_request
+            raise ResourceGoneError("The requester role no longer exists")
 
-        # Don't allow approving a request for an a deleted or unmanaged group
+        # Don't allow approving a request for a deleted or unmanaged group
         if self.role_request.active_requested_group is None:
-            return self.role_request
+            raise ResourceGoneError("The requested group no longer exists")
         if not self.role_request.active_requested_group.is_managed:
-            return self.role_request
+            raise InvalidRequestError("Groups not managed by Access cannot be modified")
 
         db.session.commit()
 

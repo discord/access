@@ -6,6 +6,7 @@ from api.context import get_request_context
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
+from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.models.access_request import get_all_possible_request_approvers
@@ -23,10 +24,13 @@ class RejectAccessRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
-        if isinstance(access_request, str):
-            self.access_request = db.session.get(AccessRequest, access_request)
-        else:
-            self.access_request = access_request
+        # Lock the request row so a reject can't race a concurrent approve/
+        # reject; both serialize on this row and the loser hits the resolved
+        # guard. No-op on SQLite.
+        request_id = access_request if isinstance(access_request, str) else access_request.id
+        self.access_request = (
+            db.session.query(AccessRequest).filter(AccessRequest.id == request_id).with_for_update().first()
+        )
 
         if current_user_id is None:
             self.rejecter_id = None
@@ -49,9 +53,11 @@ class RejectAccessRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> AccessRequest:
-        # Don't allow approving a request that is already resolved
+        # Don't allow rejecting a request that is already resolved. Raise
+        # rather than silently no-op so a stale/concurrent rejection surfaces
+        # as a conflict instead of looking like a success.
         if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
-            return self.access_request
+            raise ConflictError("Access request is no longer pending")
 
         self.access_request.status = AccessRequestStatus.REJECTED
         self.access_request.resolved_at = func.now()

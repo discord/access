@@ -432,7 +432,7 @@ def put_role_request(
             raise HTTPException(400, err_message)
 
     if rr.status != AccessRequestStatus.PENDING or rr.resolved_at is not None:
-        raise HTTPException(400, "Role request is not pending")
+        raise HTTPException(409, "Role request is not pending")
     if body.approved:
         if not rr.requested_group.is_managed:
             raise HTTPException(400, "Groups not managed by Access cannot be modified")
