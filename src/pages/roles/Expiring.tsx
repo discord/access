@@ -35,7 +35,7 @@ import Ending from '../../components/Ending';
 import Loading from '../../components/Loading';
 import Started from '../../components/Started';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
-import {displayUserName, perPage} from '../../helpers';
+import {pageSizeParam, displayUserName, perPage} from '../../helpers';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 
 type OrderBy = 'moniker' | 'ended_at';
@@ -86,7 +86,7 @@ export default function ExpiringRoless() {
     isLoading: expiringGroupsIsLoading,
   } = useGetGroupRoleAudits({
     queryParams: Object.assign(
-      {page: page + 1, size: rowsPerPage},
+      {page: page + 1, size: pageSizeParam(rowsPerPage)},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},

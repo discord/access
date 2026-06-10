@@ -15,7 +15,7 @@ import TablePagination from '@mui/material/TablePagination';
 import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
-import {displayUserName, perPage} from '../../helpers';
+import {pageSizeParam, displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
@@ -40,7 +40,10 @@ export default function ListUsers() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetUsers({
-    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
+    queryParams: Object.assign(
+      {page: page + 1, size: pageSizeParam(rowsPerPage)},
+      searchQuery == null ? null : {q: searchQuery},
+    ),
   });
 
   const {data: searchData} = useGetUsers({

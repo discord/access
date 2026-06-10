@@ -23,7 +23,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {displayGroupType, displayUserName} from '../../helpers';
+import {pageSizeParam, displayGroupType, displayUserName} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import {useGetUserById, useGetUserGroupAudits, useGetGroups} from '../../api/apiComponents';
 import {OktaUser} from '../../api/apiSchemas';
@@ -82,7 +82,7 @@ export default function AuditUser() {
     isLoading: userAuditIsLoading,
   } = useGetUserGroupAudits({
     queryParams: Object.assign(
-      {user_id: id ?? '', page: page + 1, size: rowsPerPage},
+      {user_id: id ?? '', page: page + 1, size: pageSizeParam(rowsPerPage)},
       orderBy == null ? null : {order_by: orderBy},
       orderDirection == null ? null : {order_desc: orderDirection == 'desc' ? 'true' : 'false'},
       searchQuery == null ? null : {q: searchQuery},

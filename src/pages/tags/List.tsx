@@ -20,7 +20,7 @@ import Box from '@mui/material/Box';
 import {useCurrentUser} from '../../authentication';
 import CreateUpdateTag from './CreateUpdate';
 import ChangeTitle from '../../tab-title';
-import {perPage} from '../../helpers';
+import {pageSizeParam, perPage} from '../../helpers';
 import {useGetTags} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
@@ -48,7 +48,10 @@ export default function ListTags() {
   }, [searchParams]);
 
   const {data, error, isLoading} = useGetTags({
-    queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
+    queryParams: Object.assign(
+      {page: page + 1, size: pageSizeParam(rowsPerPage)},
+      searchQuery == null ? null : {q: searchQuery},
+    ),
   });
 
   const {data: searchData} = useGetTags({
