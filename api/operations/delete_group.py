@@ -19,8 +19,10 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
 )
 from api.operations.reject_access_request import RejectAccessRequest
+from api.operations.reject_role_request import RejectRoleRequest
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
@@ -230,6 +232,27 @@ class DeleteGroup:
             RejectAccessRequest(
                 access_request=obsolete_access_request,
                 rejection_reason="Closed because the requested group was deleted",
+                current_user_id=self.current_user_id,
+            ).execute()
+
+        # Reject all pending role requests touching this group, either as the
+        # requested target or as the requester role.
+        obsolete_role_requests = (
+            db.session.query(RoleRequest)
+            .filter(
+                or_(
+                    RoleRequest.requested_group_id == self.group.id,
+                    RoleRequest.requester_role_id == self.group.id,
+                )
+            )
+            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+            .filter(RoleRequest.resolved_at.is_(None))
+            .all()
+        )
+        for obsolete_role_request in obsolete_role_requests:
+            RejectRoleRequest(
+                role_request=obsolete_role_request,
+                rejection_reason="Closed because a group in this role request was deleted",
                 current_user_id=self.current_user_id,
             ).execute()
 
