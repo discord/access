@@ -236,9 +236,7 @@ class DeleteGroup:
             ).execute()
 
         # Reject all pending role requests touching this group, either as the
-        # requested target or as the requester role. Left pending, they would
-        # silently no-op in ApproveRoleRequest now but become approvable again
-        # if the group is later resurrected by the syncer (same id).
+        # requested target or as the requester role.
         obsolete_role_requests = (
             db.session.query(RoleRequest)
             .filter(

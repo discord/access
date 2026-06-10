@@ -115,9 +115,7 @@ class UnmanageGroup:
                 ).execute()
 
         # Reject all pending role requests touching this group, either as the
-        # requested target or as the requester role. Left pending, they would
-        # silently no-op in ApproveRoleRequest now but become approvable again
-        # if the group is later re-managed by the syncer.
+        # requested target or as the requester role.
         obsolete_role_requests = (
             db.session.query(RoleRequest)
             .filter(

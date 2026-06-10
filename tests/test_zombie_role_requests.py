@@ -1,16 +1,14 @@
-"""Spec tests: unmanage_group / delete_group must reject pending RoleRequests.
+"""unmanage_group / delete_group must reject pending RoleRequests for the group.
 
-Both operations reject pending AccessRequests for the affected group but ignore
-pending RoleRequests, leaving them PENDING. ApproveRoleRequest then silently
-no-ops while the group is unmanaged/deleted, but the syncer can re-manage a
-group (update_okta_group re-derives is_managed) or resurrect a soft-deleted one
-(clears deleted_at on the same id), at which point the leftover RoleRequest
-becomes approvable under whatever tag/constraint state exists at that later
-moment.
+Guards against a leftover RoleRequest surviving the operation in PENDING. If one
+did, it would be invisible until the syncer re-managed the group (re-derives
+is_managed) or resurrected a soft-deleted one (clears deleted_at on the same
+id), at which point it would become approvable under whatever tag/constraint
+state existed at that later moment.
 
-These encode the fix contract: pending RoleRequests touching the group must be
-rejected, both where the group is the requested target and (when the group is a
-role) where it is the requester role. RED until the rejection loop is added.
+These assert that pending RoleRequests touching the group are resolved at
+unmanage/delete time, both where the group is the requested target and (when the
+group is a role) where it is the requester role.
 """
 
 import pytest
