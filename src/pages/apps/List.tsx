@@ -69,7 +69,7 @@ export default function ListApps() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = rowsPerPage - rows.length;
+  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
 
   const searchRows = searchData?.items ?? [];
 
