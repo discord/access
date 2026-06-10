@@ -190,6 +190,16 @@ SECRET_KEY=<YOUR_SECRET_KEY>
 OIDC_CLIENT_SECRETS=./client_secrets.json or '{"secrets":..'
 ```
 
+When deployed behind a proxy or load balancer, also pin the OIDC callback and
+validate the Host header so the `redirect_uri` sent to your IdP cannot be
+poisoned by a spoofed `Host`:
+```
+# Fixed callback URL; matches the Sign-in redirect URI registered above
+OIDC_OVERWRITE_REDIRECT_URI=https://<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>/oidc/authorize
+# Comma-separated Host header allowlist (required outside development/test)
+ALLOWED_HOSTS=<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>
+```
+
 #### Cloudflare Access
 
 To use Cloudflare Access authentication, set up a
@@ -249,6 +259,8 @@ The `.env.production` file is where you configure the application.
 - `CLOUDFLARE_APPLICATION_AUDIENCE`: Specifies the Audience Tag used by [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/).
 - `SECRET_KEY`: Specifies the secret key used to sign the OIDC session cookie. WARNING: Ensure this is something secure you can generate a good secret key using `python -c 'import secrets; print(secrets.token_hex())'`.
 - `OIDC_CLIENT_SECRETS`: Specifies the path to your client_secrets.json file or if you prefer, inline the entire JSON string.
+- `ALLOWED_HOSTS`: **[REQUIRED for OIDC deployments outside development/test; recommended otherwise]** Comma-separated allowlist of `Host` header values accepted by the app (wildcards like `*.example.com` supported). Rejects spoofed `Host` headers, which would otherwise poison URLs derived from the request (notably the OIDC `redirect_uri`). Cloudflare Access deployments don't hit that path and aren't required to set it, but it remains useful defense-in-depth. Set to your public host, e.g. `access.example.com`.
+- `OIDC_OVERWRITE_REDIRECT_URI`: **[OPTIONAL, recommended for OIDC behind a proxy]** Pins the OIDC callback URL handed to your IdP instead of deriving it from the request `Host` header. Set to your registered sign-in redirect URI, e.g. `https://access.example.com/oidc/authorize`.
 - `ENABLE_MCP`: **[OPTIONAL]** Set to `true` to mount the embedded Model Context Protocol server at `/mcp`. Off by default. See [MCP Server (optional)](#mcp-server-optional) below.
 - `MCP_FALLBACK_SCOPES`: **[OPTIONAL]** Comma-separated scopes granted to MCP tokens that carry no `scope` claim. Defaults to `read_all,create_requests` (read + filing requests). Set to `read_all` for read-only MCP sessions, or `""` to fail closed. Only relevant when `ENABLE_MCP=true`.
 - `OIDC_MCP_AUDIENCE`: **[REQUIRED when `ENABLE_MCP=true` and `OIDC_SERVER_METADATA_URL` is set]** The OAuth audience to validate against the `aud` claim on incoming MCP bearer tokens. Typically the OAuth client identifier of the MCP application registered with your IdP, e.g. `access-mcp`.

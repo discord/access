@@ -18,6 +18,7 @@ import itsdangerous
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import RedirectResponse
 
 from api import app as app_module
@@ -93,6 +94,14 @@ def _install_oidc_settings(env: str) -> None:
     settings.SECRET_KEY = TEST_SECRET_KEY
     settings.OIDC_CLIENT_SECRETS = STUB_OIDC_CLIENT_SECRETS
     settings.CLOUDFLARE_TEAM_DOMAIN = None
+    # The TestClient talks to host "testserver"; allow it so the
+    # TrustedHostMiddleware guard (required for OIDC outside dev/test) is
+    # satisfied and requests aren't rejected as spoofed-Host.
+    settings.ALLOWED_HOSTS = "testserver"
+    # Keep MCP out of these apps: they build their own app per test and the
+    # TestClient re-enters the lifespan, which the MCP session manager only
+    # tolerates once per process. MCP is covered by test_mcp.py.
+    settings.ENABLE_MCP = False
     # Suppress create_app's `db.init_app(build_engine())` branch — the `db`
     # fixture has already bound an in-memory engine with the seeded schema,
     # and rebinding here would point queries at an empty DB.
@@ -151,6 +160,8 @@ def oidc_app(
         settings.CLOUDFLARE_TEAM_DOMAIN,
         settings.SQLALCHEMY_DATABASE_URI,
         settings.CLOUDSQL_CONNECTION_NAME,
+        settings.ALLOWED_HOSTS,
+        settings.ENABLE_MCP,
     )
     saved_clients = dict(oidc_module.oauth._clients)
     saved_registry = dict(oidc_module.oauth._registry)
@@ -168,6 +179,8 @@ def oidc_app(
             settings.CLOUDFLARE_TEAM_DOMAIN,
             settings.SQLALCHEMY_DATABASE_URI,
             settings.CLOUDSQL_CONNECTION_NAME,
+            settings.ALLOWED_HOSTS,
+            settings.ENABLE_MCP,
         ) = saved
         _restore_oidc_registry(saved_clients, saved_registry)
 
@@ -200,6 +213,8 @@ def dev_oidc_app(
         settings.CLOUDFLARE_TEAM_DOMAIN,
         settings.SQLALCHEMY_DATABASE_URI,
         settings.CLOUDSQL_CONNECTION_NAME,
+        settings.ALLOWED_HOSTS,
+        settings.ENABLE_MCP,
     )
     saved_clients = dict(oidc_module.oauth._clients)
     saved_registry = dict(oidc_module.oauth._registry)
@@ -217,6 +232,8 @@ def dev_oidc_app(
             settings.CLOUDFLARE_TEAM_DOMAIN,
             settings.SQLALCHEMY_DATABASE_URI,
             settings.CLOUDSQL_CONNECTION_NAME,
+            settings.ALLOWED_HOSTS,
+            settings.ENABLE_MCP,
         ) = saved
         _restore_oidc_registry(saved_clients, saved_registry)
 
@@ -496,3 +513,105 @@ def test_session_cookie_flags_in_dev_omit_secure(dev_oidc_client: TestClient) ->
     assert "httponly" in set_cookie
     assert "samesite=lax" in set_cookie
     assert "secure" not in set_cookie
+
+
+# ---------------------------------------------------------------------------
+# Host-header validation (TrustedHostMiddleware) and redirect_uri derivation
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def installed_oidc_mock(oidc_mock: SimpleNamespace) -> Generator[None, None, None]:
+    # create_app -> register_oidc runs before the TrustedHost guard, so the
+    # mock must be installed even for the cases that expect a raise, to keep
+    # registration off the network.
+    saved_clients = dict(oidc_module.oauth._clients)
+    saved_registry = dict(oidc_module.oauth._registry)
+    _install_oidc_mock(oidc_mock)
+    try:
+        yield
+    finally:
+        _restore_oidc_registry(saved_clients, saved_registry)
+
+
+def _build_app_with(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    env: str,
+    oidc: bool,
+    cf: bool,
+    allowed_hosts: str,
+) -> FastAPI:
+    monkeypatch.setenv("ENV", env)
+    monkeypatch.setattr(settings, "ENV", env)
+    monkeypatch.setattr(settings, "SECRET_KEY", TEST_SECRET_KEY if oidc else None)
+    monkeypatch.setattr(settings, "OIDC_CLIENT_SECRETS", STUB_OIDC_CLIENT_SECRETS if oidc else None)
+    monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "team.cloudflareaccess.com" if cf else None)
+    monkeypatch.setattr(settings, "ALLOWED_HOSTS", allowed_hosts)
+    # Don't let create_app rebind the engine; the `db` fixture owns it.
+    monkeypatch.setattr(settings, "SQLALCHEMY_DATABASE_URI", None)
+    monkeypatch.setattr(settings, "CLOUDSQL_CONNECTION_NAME", None)
+    # Keep MCP out of these throwaway apps (see _install_oidc_settings).
+    monkeypatch.setattr(settings, "ENABLE_MCP", False)
+    return create_app(testing=False)
+
+
+def _has_trusted_host_middleware(app: FastAPI) -> bool:
+    return any(m.cls is TrustedHostMiddleware for m in app.user_middleware)
+
+
+def test_request_with_allowed_host_passes(oidc_client: TestClient) -> None:
+    response = oidc_client.get("/oidc/login", headers={"host": "testserver"})
+    assert response.status_code == 302
+
+
+def test_request_with_spoofed_host_rejected(oidc_client: TestClient) -> None:
+    # ALLOWED_HOSTS is "testserver" (set by the fixture); a spoofed Host is
+    # rejected by TrustedHostMiddleware before any route runs.
+    response = oidc_client.get("/oidc/login", headers={"host": "evil.example.com"})
+    assert response.status_code == 400
+
+
+def test_login_redirect_uri_derived_from_host(oidc_client: TestClient) -> None:
+    # The authorize_redirect mock echoes the redirect_uri into the IdP URL.
+    # With no OIDC_OVERWRITE_REDIRECT_URI, it is built from the request host.
+    response = oidc_client.get("/oidc/login")
+    assert "https://testserver/oidc/authorize" in response.headers["location"]
+
+
+def test_overwrite_redirect_uri_pins_callback(
+    oidc_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "OIDC_OVERWRITE_REDIRECT_URI", "https://pinned.example.com/oidc/authorize")
+    response = oidc_client.get("/oidc/login")
+    assert "https://pinned.example.com/oidc/authorize" in response.headers["location"]
+
+
+def test_create_app_requires_allowed_hosts_for_oidc_outside_dev(
+    monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
+) -> None:
+    with pytest.raises(ValueError, match="ALLOWED_HOSTS"):
+        _build_app_with(monkeypatch, env="staging", oidc=True, cf=False, allowed_hosts="")
+
+
+def test_create_app_oidc_dev_allowed_without_allowed_hosts(
+    monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
+) -> None:
+    app = _build_app_with(monkeypatch, env="development", oidc=True, cf=False, allowed_hosts="")
+    assert not _has_trusted_host_middleware(app)
+
+
+def test_create_app_cloudflare_outside_dev_not_required(
+    monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path
+) -> None:
+    # Cloudflare deployment (no OIDC) doesn't hit the redirect_uri path, so the
+    # guard doesn't fire even outside dev/test with ALLOWED_HOSTS unset.
+    app = _build_app_with(monkeypatch, env="staging", oidc=False, cf=True, allowed_hosts="")
+    assert not _has_trusted_host_middleware(app)
+
+
+def test_create_app_adds_trusted_host_middleware_when_set(
+    monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
+) -> None:
+    app = _build_app_with(monkeypatch, env="staging", oidc=True, cf=False, allowed_hosts="access.example.com")
+    assert _has_trusted_host_middleware(app)

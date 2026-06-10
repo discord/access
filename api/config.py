@@ -57,6 +57,12 @@ class Settings(BaseSettings):
 
     CLIENT_ORIGIN_URL: Optional[str] = None
 
+    # Comma-separated Host header allowlist for TrustedHostMiddleware
+    # (wildcards like "*.example.com" supported). Guards Host-derived URLs such
+    # as the OIDC redirect_uri. Empty disables the check; create_app() requires
+    # it for OIDC deployments outside development/test.
+    ALLOWED_HOSTS: str = ""
+
     # Okta
     OKTA_DOMAIN: Optional[str] = None
     OKTA_API_TOKEN: Optional[str] = None
@@ -89,6 +95,9 @@ class Settings(BaseSettings):
     OIDC_CLIENT_SECRETS: Union[None, str, dict[str, Any]] = None
     OIDC_INTROSPECTION_AUTH_METHOD: str = "client_secret_post"
     OIDC_CLOCK_SKEW: int = 60
+    # Fixed IdP callback URL. When unset, it is derived from the request Host
+    # header (poisonable if the IdP's redirect-URI allowlist is loose).
+    # Recommended behind a proxy; complements ALLOWED_HOSTS.
     OIDC_OVERWRITE_REDIRECT_URI: Optional[str] = None
     OIDC_SCOPES: str = "openid email"
     OIDC_SERVER_METADATA_URL: Optional[str] = None
@@ -172,6 +181,10 @@ class Settings(BaseSettings):
         if "Manager" in attrs:
             attrs.remove("Manager")
         return attrs
+
+    @property
+    def trusted_hosts(self) -> list[str]:
+        return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
 
     @property
     def app_creator_ids(self) -> list[str]:

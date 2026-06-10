@@ -78,6 +78,9 @@ def _is_safe_next(next_url: Optional[str]) -> bool:
 
 @_router.get("/login", name="oidc_login")
 async def login(request: Request, next: Optional[str] = None) -> RedirectResponse:
+    # The url_for fallback derives the callback from the inbound Host header.
+    # ALLOWED_HOSTS (TrustedHostMiddleware) guards that surface; set
+    # OIDC_OVERWRITE_REDIRECT_URI to pin a fixed callback behind a proxy.
     redirect_uri = settings.OIDC_OVERWRITE_REDIRECT_URI or str(request.url_for("oidc_authorize"))
     if _is_safe_next(next):
         request.session["oidc_next"] = next
