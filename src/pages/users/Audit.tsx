@@ -23,7 +23,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {displayGroupType, displayUserName, perPage} from '../../helpers';
+import {emptyTableRows, displayGroupType, displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import {useGetUserById, useGetUserGroupAudits, useGetGroups} from '../../api/apiComponents';
 import {OktaUser} from '../../api/apiSchemas';
@@ -109,7 +109,7 @@ export default function AuditUser() {
   const totalRows = data?.total ?? 0;
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 

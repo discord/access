@@ -27,7 +27,7 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateRequest from './Create';
 import {useGetRequests} from '../../api/apiComponents';
-import {displayUserName, perPage} from '../../helpers';
+import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
@@ -90,7 +90,7 @@ export default function ListRequests() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 

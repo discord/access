@@ -20,7 +20,7 @@ import TextField from '@mui/material/TextField';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
-import {displayGroupType, perPage} from '../../helpers';
+import {emptyTableRows, displayGroupType, perPage} from '../../helpers';
 import {useGetGroups} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
@@ -67,7 +67,7 @@ export default function ListGroups() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 

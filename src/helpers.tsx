@@ -2,6 +2,15 @@ import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap, OktaUserGroupMember} f
 
 export const perPage: number[] = [5, 10, 20, 50, 200, 1000];
 
+// Number of blank filler rows used to pad a paginated table to a consistent
+// height, avoiding a layout jump when paging to a shorter last page. Only past
+// the first page (the first/only page has no earlier height to match) and only
+// for the smaller page sizes — padding a 200/1000-row page would leave a huge
+// empty gap below the data.
+export function emptyTableRows(page: number, rowsPerPage: number, rowCount: number): number {
+  return page > 0 && rowsPerPage <= 50 ? rowsPerPage - rowCount : 0;
+}
+
 export function displayGroupType(group: PolymorphicGroup | undefined) {
   if (group == undefined || group.type == undefined) {
     return '';

@@ -15,7 +15,7 @@ import TablePagination from '@mui/material/TablePagination';
 import {useGetUsers} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
-import {displayUserName, perPage} from '../../helpers';
+import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
 import TableTopBar, {renderUserOption, TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
@@ -58,7 +58,7 @@ export default function ListUsers() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 

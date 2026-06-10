@@ -25,7 +25,7 @@ import ToggleButton from '@mui/material/ToggleButton';
 
 import dayjs from 'dayjs';
 
-import {displayUserName, perPage} from '../../helpers';
+import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import {useGetGroupById, useGetUserGroupAudits, useGetUsers} from '../../api/apiComponents';
 import {PolymorphicGroup} from '../../api/apiSchemas';
 import NotFound from '../NotFound';
@@ -111,7 +111,7 @@ export default function AuditGroup() {
   const totalRows = data?.total ?? 0;
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 

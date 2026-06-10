@@ -22,7 +22,7 @@ import Typography from '@mui/material/Typography';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from '../groups/CreateUpdate';
-import {perPage} from '../../helpers';
+import {emptyTableRows, perPage} from '../../helpers';
 import {useGetRoles} from '../../api/apiComponents';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
@@ -70,7 +70,7 @@ export default function ListRoles() {
   }
 
   // Avoid a layout jump when reaching the last page with empty rows.
-  const emptyRows = page > 0 ? rowsPerPage - rows.length : 0;
+  const emptyRows = emptyTableRows(page, rowsPerPage, rows.length);
 
   const searchRows = searchData?.items ?? [];
 
