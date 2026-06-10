@@ -52,7 +52,19 @@ register(TagFactory, "tag")
 
 @pytest.fixture(scope="session")
 def app(request: pytest.FixtureRequest) -> FastAPI:
-    fastapi_app = create_app(testing=True)
+    # Build the shared app with MCP disabled regardless of the ambient
+    # ENABLE_MCP (e.g. a local .env that sets it true). This app is
+    # session-scoped, but the `client` fixture re-enters its lifespan on
+    # every test, and the MCP StreamableHTTPSessionManager's run() may only
+    # be entered once per process — an MCP-enabled shared app would crash
+    # every test after the first. MCP is exercised by test_mcp.py, which
+    # builds its own app and manages the singleton.
+    prev_mcp = settings.ENABLE_MCP
+    settings.ENABLE_MCP = False
+    try:
+        fastapi_app = create_app(testing=True)
+    finally:
+        settings.ENABLE_MCP = prev_mcp
     require_descriptions = getattr(request, "param", False)
     settings.REQUIRE_DESCRIPTIONS = require_descriptions
     fastapi_app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
