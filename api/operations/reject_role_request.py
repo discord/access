@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from fastapi import HTTPException
 from sqlalchemy import func, nullsfirst
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
@@ -23,10 +24,11 @@ class RejectRoleRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
-        if isinstance(role_request, str):
-            self.role_request = db.session.get(RoleRequest, role_request)
-        else:
-            self.role_request = role_request
+        # Lock the request row so a reject can't race a concurrent approve/
+        # reject; both serialize on this row and the loser hits the resolved
+        # guard. No-op on SQLite.
+        request_id = role_request if isinstance(role_request, str) else role_request.id
+        self.role_request = db.session.query(RoleRequest).filter(RoleRequest.id == request_id).with_for_update().first()
 
         if current_user_id is None:
             self.rejecter_id = None
@@ -49,9 +51,11 @@ class RejectRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> RoleRequest:
-        # Don't allow approving a request that is already resolved
+        # Don't allow rejecting a request that is already resolved. Raise
+        # rather than silently no-op so a stale/concurrent rejection surfaces
+        # as a conflict instead of looking like a success.
         if self.role_request.status != AccessRequestStatus.PENDING or self.role_request.resolved_at is not None:
-            return self.role_request
+            raise HTTPException(409, "Role request is no longer pending")
 
         self.role_request.status = AccessRequestStatus.REJECTED
         self.role_request.resolved_at = func.now()

@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
@@ -38,10 +39,15 @@ class ApproveGroupRequest:
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
+        # Lock the request row for the transaction so concurrent approvers
+        # can't both pass the pending-state guard and double-create the group.
+        # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
+        # (Postgres rejects that); no-op on SQLite.
         self.group_request = (
             db.session.query(GroupRequest)
             .options(joinedload(GroupRequest.active_requester))
             .filter(GroupRequest.id == (group_request if isinstance(group_request, str) else group_request.id))
+            .with_for_update(of=GroupRequest)
             .first()
         )
 
@@ -66,15 +72,20 @@ class ApproveGroupRequest:
         if self.group_request is None:
             return None
 
-        # Don't allow approving a request that is already resolved
+        # Don't allow approving a request that is already resolved. Raise
+        # rather than silently no-op so a stale/concurrent approval surfaces
+        # as a conflict instead of looking like a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
-            return self.group_request
+            raise HTTPException(409, "Group request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.group_request.requester_user_id == self.approver_id and not self.bypass_self_approval:
             return self.group_request
 
-        # Don't allow approving a request if the requester is deleted
+        # Don't allow approving a request if the requester is deleted. (Note:
+        # a deleted requester usually can't even load above — active_requester
+        # is an inner join filtering deleted_at — so this is a belt-and-braces
+        # check that mirrors the historical no-op rather than a 4xx path.)
         requester = db.session.get(OktaUser, self.group_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             return self.group_request

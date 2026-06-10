@@ -247,7 +247,7 @@ def put_group_request(
             raise HTTPException(403, "Current user is not allowed to perform this action")
 
     if gr.status != AccessRequestStatus.PENDING or gr.resolved_at is not None:
-        raise HTTPException(400, "Group request is not pending")
+        raise HTTPException(409, "Group request is not pending")
 
     if body.approved and not is_access_admin(db, current_user_id):
         type_changed = body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type

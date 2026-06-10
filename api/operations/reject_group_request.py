@@ -2,6 +2,7 @@ from typing import Optional
 
 import logging
 
+from fastapi import HTTPException
 from sqlalchemy import func
 from api.context import get_request_context
 
@@ -23,10 +24,13 @@ class RejectGroupRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
-        if isinstance(group_request, str):
-            self.group_request = db.session.get(GroupRequest, group_request)
-        else:
-            self.group_request = group_request
+        # Lock the request row so a reject can't race a concurrent approve/
+        # reject; both serialize on this row and the loser hits the resolved
+        # guard. No-op on SQLite.
+        request_id = group_request if isinstance(group_request, str) else group_request.id
+        self.group_request = (
+            db.session.query(GroupRequest).filter(GroupRequest.id == request_id).with_for_update().first()
+        )
 
         if current_user_id is None:
             self.rejecter_id = None
@@ -48,9 +52,10 @@ class RejectGroupRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> GroupRequest:
-        # Already resolved
+        # Already resolved — raise rather than silently no-op so a stale/
+        # concurrent rejection surfaces as a conflict instead of a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
-            return self.group_request
+            raise HTTPException(409, "Group request is no longer pending")
 
         resolved_app_id = (
             self.group_request.resolved_app_id

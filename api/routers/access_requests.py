@@ -289,7 +289,7 @@ def put_access_request(
             raise HTTPException(400, err_message)
 
     if ar.status != AccessRequestStatus.PENDING or ar.resolved_at is not None:
-        raise HTTPException(400, "Access request is not pending")
+        raise HTTPException(409, "Access request is not pending")
 
     if body.approved:
         if not ar.requested_group.is_managed:

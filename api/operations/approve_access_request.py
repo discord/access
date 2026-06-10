@@ -4,6 +4,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from fastapi import HTTPException
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
@@ -24,10 +25,16 @@ class ApproveAccessRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
+        # Lock the request row for the duration of the transaction so two
+        # concurrent approvers can't both pass the pending-state guard below
+        # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
+        # joinedload's nullable outer-join side (Postgres rejects that); it's
+        # a no-op on SQLite.
         self.access_request = (
             db.session.query(AccessRequest)
             .options(joinedload(AccessRequest.active_requested_group))
             .filter(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
+            .with_for_update(of=AccessRequest)
             .first()
         )
 
@@ -51,9 +58,11 @@ class ApproveAccessRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> AccessRequest:
-        # Don't allow approving a request that is already resolved
+        # Don't allow approving a request that is already resolved. Raise
+        # rather than silently no-op so a stale/concurrent approval surfaces
+        # as a conflict instead of looking like a success.
         if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
-            return self.access_request
+            raise HTTPException(409, "Access request is no longer pending")
 
         # Don't allow requester to approve their own request
         if self.access_request.requester_user_id == self.approver_id:
@@ -72,13 +81,13 @@ class ApproveAccessRequest:
         # Don't allow approving a request if the requester is deleted
         requester = db.session.get(OktaUser, self.access_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
-            return self.access_request
+            raise HTTPException(410, "The requester no longer exists")
 
-        # Don't allow approving a request for an a deleted or unmanaged group
+        # Don't allow approving a request for a deleted or unmanaged group
         if self.access_request.active_requested_group is None:
-            return self.access_request
+            raise HTTPException(410, "The requested group no longer exists")
         if not self.access_request.active_requested_group.is_managed:
-            return self.access_request
+            raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
         # Now handled inside ModifyGroupUsers
         # self.access_request.status = AccessRequestStatus.APPROVED
