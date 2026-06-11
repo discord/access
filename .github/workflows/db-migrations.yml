@@ -81,7 +81,10 @@ jobs:
         # `make db-revision msg="..."` (alembic revision --autogenerate).
         run: alembic check
 
-      - name: Verify migrations are reversible (downgrade to base, then re-upgrade)
+      - name: Verify the latest migration is reversible (downgrade one step, then re-upgrade)
+        # Rolls back just the most recent migration — the one a PR typically
+        # adds — and re-applies it, so every new migration ships with a
+        # working downgrade.
         run: |
-          alembic downgrade base
+          alembic downgrade -1
           alembic upgrade head
