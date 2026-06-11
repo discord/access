@@ -14,6 +14,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 20
+      # Node 20 bundles npm 10, which ignores the v12 install defaults in
+      # .npmrc. Upgrade to an npm that enforces them. (--engine-strict=false so
+      # this bootstrap step itself isn't gated by package.json "engines".)
+      - name: Upgrade npm to enforce npm v12 install defaults
+        run: npm install -g npm@11.16.0 --engine-strict=false
       - name: Install dependencies
         run: npm ci
       - name: Check prettier formatting

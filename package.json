@@ -31,6 +31,15 @@
     "test": "vitest",
     "prepare": "husky install"
   },
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.16.0"
+  },
+  "allowScripts": {
+    "@sentry/cli": true,
+    "esbuild": true,
+    "fsevents": true
+  },
   "browserslist": {
     "production": [
       ">0.2%",

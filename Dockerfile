@@ -6,7 +6,10 @@ ARG PUSH_SENTRY_RELEASE="false"
 FROM node:22-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
-COPY index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
+# node:22 bundles npm 10, which ignores the v12 install defaults in .npmrc.
+# Upgrade before copying the project so this step isn't gated by "engines".
+RUN npm install -g npm@11.16.0
+COPY .npmrc index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
 COPY ./config ./config
