@@ -98,10 +98,9 @@ class AppTagMapDetail(BaseModel):
 class AppIdRef(BaseModel):
     """Inline reference to an App by id (used in compact group views).
 
-    Flask `AppGroupSchema.app = Nested(AppSchema, only=("id", "name",
-    "deleted_at", "app_group_lifecycle_plugin"))` exposed the lifecycle
-    plugin id on every embedded app reference so the React frontend can
-    dispatch on plugin behaviour without a follow-up `/api/apps/{id}` fetch.
+    Exposes the lifecycle plugin id on every embedded app reference so the
+    React frontend can dispatch on plugin behaviour without a follow-up
+    `/api/apps/{id}` fetch.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -176,9 +175,8 @@ def _filter_profile_attrs(value: Any) -> dict[str, Any]:
 class OktaUserManagerRef(OktaUserSummary):
     """Embedded manager reference inside `OktaUserDetail`.
 
-    Flask's `OktaUserSchema.manager = Nested(OktaUserSchema, exclude=(...))`
-    retained `profile` (filtered to `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The
-    React user-detail page reads `manager.profile.Title` to render the
+    Retains `profile` (filtered to `USER_DISPLAY_CUSTOM_ATTRIBUTES`) so the
+    React user-detail page can read `manager.profile.Title` to render the
     manager's job title alongside their name."""
 
     profile: dict[str, Any] = Field(default_factory=dict)
@@ -333,12 +331,10 @@ class AppGroupDetail(_GroupBase):
 class AppGroupForAppDetail(BaseModel):
     """Slimmer shape used inside `AppDetail.active_*_app_groups`.
 
-    Flask's `AppResource.get()` excluded `active_role_member_mappings`,
-    `active_role_owner_mappings`, and `active_group_tags` on the nested
-    app-groups via dotted-path entries in `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS`.
-    The outer `AppGroupDetail` retains them for direct
-    `GET /api/groups/{id}` calls; this variant drops them when the same
-    rows are embedded inside an `AppDetail` payload."""
+    Drops `active_role_member_mappings`, `active_role_owner_mappings`, and
+    `active_group_tags` on the nested app-groups. The outer `AppGroupDetail`
+    retains them for direct `GET /api/groups/{id}` calls; this variant omits
+    them when the same rows are embedded inside an `AppDetail` payload."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -410,12 +406,12 @@ GroupSummary = TypeAliasType(
 
 
 class RoleGroupListItem(BaseModel):
-    """Slim row shape for `GET /api/roles`.
+    """Slim row shape for `GET /api/roles` (id, type, name, description,
+    created_at, updated_at).
 
-    Flask `RoleList.get()` `only=(id, type, name, description, created_at,
-    updated_at)`. The role-list page does not render tags or role
-    associations, so we pay neither the loader cost nor the JSON bloat
-    from emitting them on every row."""
+    The role-list page does not render tags or role associations, so we pay
+    neither the loader cost nor the JSON bloat from emitting them on every
+    row."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str

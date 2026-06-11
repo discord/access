@@ -6,13 +6,12 @@
 /**
  * Response for `GET /api/requests/{id}` only.
  *
- * Flask `AccessRequestResource.get()` `only=` retains a richer
- * `requested_group` projection (group tags + role-association mappings on
- * role groups, plus `app`/`is_owner` on app groups). We split the detail
- * shape from the list/POST/PUT shape (`AccessRequestSummary`) because
- * SQLAlchemy `lazy="raise_on_sql"` won't let one Pydantic model
- * conditionally include the relationships at runtime — the eager-loads
- * differ per endpoint.
+ * Retains a richer `requested_group` projection (group tags +
+ * role-association mappings on role groups, plus `app`/`is_owner` on app
+ * groups). We split the detail shape from the list/POST/PUT shape
+ * (`AccessRequestSummary`) because SQLAlchemy `lazy="raise_on_sql"` won't let
+ * one Pydantic model conditionally include the relationships at runtime — the
+ * eager-loads differ per endpoint.
  */
 export type AccessRequestDetail = {
   id: string;
@@ -59,11 +58,10 @@ export type AccessRequestDetail = {
 
 /**
  * Response for `GET /api/requests`, `POST /api/requests`, and
- * `PUT /api/requests/{id}`. Matches Flask's per-endpoint `only=` lists
- * via null-emission: scalar fields the frontend reads (resolution_reason,
- * request_reason, etc.) are emitted as `null` when absent. The
- * `requested_group` is the lightweight `GroupRef` — no group tags or
- * role-association mappings, which only the detail page renders.
+ * `PUT /api/requests/{id}`. Scalar fields the frontend reads
+ * (resolution_reason, request_reason, etc.) are emitted as `null` when
+ * absent. The `requested_group` is the lightweight `GroupRef` — no group
+ * tags or role-association mappings, which only the detail page renders.
  */
 export type AccessRequestSummary = {
   id: string;
@@ -155,12 +153,10 @@ export type AppGroupDetail = {
 /**
  * Slimmer shape used inside `AppDetail.active_*_app_groups`.
  *
- * Flask's `AppResource.get()` excluded `active_role_member_mappings`,
- * `active_role_owner_mappings`, and `active_group_tags` on the nested
- * app-groups via dotted-path entries in `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS`.
- * The outer `AppGroupDetail` retains them for direct
- * `GET /api/groups/{id}` calls; this variant drops them when the same
- * rows are embedded inside an `AppDetail` payload.
+ * Drops `active_role_member_mappings`, `active_role_owner_mappings`, and
+ * `active_group_tags` on the nested app-groups. The outer `AppGroupDetail`
+ * retains them for direct `GET /api/groups/{id}` calls; this variant omits
+ * them when the same rows are embedded inside an `AppDetail` payload.
  */
 export type AppGroupForAppDetail = {
   id: string;
@@ -277,10 +273,9 @@ export type AppGroupSummary = {
 /**
  * Inline reference to an App by id (used in compact group views).
  *
- * Flask `AppGroupSchema.app = Nested(AppSchema, only=("id", "name",
- * "deleted_at", "app_group_lifecycle_plugin"))` exposed the lifecycle
- * plugin id on every embedded app reference so the React frontend can
- * dispatch on plugin behaviour without a follow-up `/api/apps/{id}` fetch.
+ * Exposes the lifecycle plugin id on every embedded app reference so the
+ * React frontend can dispatch on plugin behaviour without a follow-up
+ * `/api/apps/{id}` fetch.
  */
 export type AppIdRef = {
   id: string;
@@ -645,9 +640,8 @@ export type OktaUserGroupMemberDetail = {
 /**
  * Embedded manager reference inside `OktaUserDetail`.
  *
- * Flask's `OktaUserSchema.manager = Nested(OktaUserSchema, exclude=(...))`
- * retained `profile` (filtered to `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The
- * React user-detail page reads `manager.profile.Title` to render the
+ * Retains `profile` (filtered to `USER_DISPLAY_CUSTOM_ATTRIBUTES`) so the
+ * React user-detail page can read `manager.profile.Title` to render the
  * manager's job title alongside their name.
  */
 export type OktaUserManagerRef = {
@@ -923,8 +917,8 @@ export type PluginStatusProp = {
  * Declared here so routers can advertise it via `responses={...}`; the
  * generated TypeScript client then types its `*Error` payloads against this
  * shape. Mirrors the hand-written `ErrorMessage` type in
- * `src/api/apiFetcher.ts`. All fields are optional on the wire (`type`
- * carries the RFC default, the rest are populated per error).
+ * `src/api/apiFetcher.ts`. Every field is optional (`type` carries the RFC
+ * default, the rest are populated per error).
  */
 export type ProblemDetail = {
   /**
@@ -1011,12 +1005,12 @@ export type RoleGroupDetail = {
 };
 
 /**
- * Slim row shape for `GET /api/roles`.
+ * Slim row shape for `GET /api/roles` (id, type, name, description,
+ * created_at, updated_at).
  *
- * Flask `RoleList.get()` `only=(id, type, name, description, created_at,
- * updated_at)`. The role-list page does not render tags or role
- * associations, so we pay neither the loader cost nor the JSON bloat
- * from emitting them on every row.
+ * The role-list page does not render tags or role associations, so we pay
+ * neither the loader cost nor the JSON bloat from emitting them on every
+ * row.
  */
 export type RoleGroupListItem = {
   id: string;

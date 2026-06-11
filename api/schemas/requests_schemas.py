@@ -95,13 +95,12 @@ _RichRequestedGroupRef = Annotated[
 class AccessRequestDetail(BaseModel):
     """Response for `GET /api/requests/{id}` only.
 
-    Flask `AccessRequestResource.get()` `only=` retains a richer
-    `requested_group` projection (group tags + role-association mappings on
-    role groups, plus `app`/`is_owner` on app groups). We split the detail
-    shape from the list/POST/PUT shape (`AccessRequestSummary`) because
-    SQLAlchemy `lazy="raise_on_sql"` won't let one Pydantic model
-    conditionally include the relationships at runtime — the eager-loads
-    differ per endpoint."""
+    Retains a richer `requested_group` projection (group tags +
+    role-association mappings on role groups, plus `app`/`is_owner` on app
+    groups). We split the detail shape from the list/POST/PUT shape
+    (`AccessRequestSummary`) because SQLAlchemy `lazy="raise_on_sql"` won't let
+    one Pydantic model conditionally include the relationships at runtime — the
+    eager-loads differ per endpoint."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -127,11 +126,10 @@ class AccessRequestDetail(BaseModel):
 
 class AccessRequestSummary(BaseModel):
     """Response for `GET /api/requests`, `POST /api/requests`, and
-    `PUT /api/requests/{id}`. Matches Flask's per-endpoint `only=` lists
-    via null-emission: scalar fields the frontend reads (resolution_reason,
-    request_reason, etc.) are emitted as `null` when absent. The
-    `requested_group` is the lightweight `GroupRef` — no group tags or
-    role-association mappings, which only the detail page renders."""
+    `PUT /api/requests/{id}`. Scalar fields the frontend reads
+    (resolution_reason, request_reason, etc.) are emitted as `null` when
+    absent. The `requested_group` is the lightweight `GroupRef` — no group
+    tags or role-association mappings, which only the detail page renders."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
