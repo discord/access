@@ -20,16 +20,25 @@ import Typography from '@mui/material/Typography';
 import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
 
 import {
-  useGetApps,
-  useGetTags,
-  useCreateGroup,
-  usePutGroupById,
-  CreateGroupError,
-  PutGroupByIdError,
-  CreateGroupVariables,
-  PutGroupByIdVariables,
+  useApps,
+  useTags,
+  useGroupsCreate,
+  useGroupByIdPut,
+  GroupsCreateError,
+  GroupByIdPutError,
+  GroupsCreateVariables,
+  GroupByIdPutVariables,
+  GroupsCreateRequestBody,
+  GroupByIdPutRequestBody,
 } from '../../api/apiComponents';
-import {PolymorphicGroup, AppGroup, App, OktaUser, Tag, OktaGroupTagMap} from '../../api/apiSchemas';
+import {
+  GroupDetail,
+  AppGroupDetail,
+  AppDetail,
+  OktaUserDetail,
+  TagSummary,
+  OktaGroupTagMapDetail,
+} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
@@ -37,7 +46,7 @@ import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupL
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
   setOpen(open: boolean): any;
-  group?: PolymorphicGroup;
+  group?: GroupDetail;
 }
 
 function GroupButton(props: GroupButtonProps) {
@@ -57,11 +66,11 @@ function GroupButton(props: GroupButtonProps) {
 }
 
 interface GroupDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
   setOpen(open: boolean): any;
-  app?: App;
-  group?: PolymorphicGroup;
+  app?: AppDetail;
+  group?: GroupDetail;
   app_owner_group?: boolean;
 }
 
@@ -88,31 +97,31 @@ function GroupDialog(props: GroupDialogProps) {
   const defaultTags =
     props.group && props.group.active_group_tags && props.group.active_group_tags.length > 0
       ? props.group.active_group_tags
-          .filter((tagMap: OktaGroupTagMap) => tagMap.active_app_tag_mapping == null)
-          .map((tagMap: OktaGroupTagMap) => tagMap.active_tag!)
+          .filter((tagMap: OktaGroupTagMapDetail) => tagMap.active_app_tag_mapping == null)
+          .map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!)
       : [];
-  const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>(defaultTags);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagSummary>>(defaultTags);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
-  const initialAppName = props.app?.name ?? (props.group as AppGroup)?.app?.name ?? '';
+  const initialAppName = props.app?.name ?? (props.group as AppGroupDetail)?.app?.name ?? '';
   const [appName, setAppName] = React.useState(initialAppName);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
   const appGroupLifecyclePluginId = React.useMemo(() => {
     if (groupType !== 'app_group') return null;
-    const app = props.app ?? (props.group as AppGroup)?.app;
+    const app = props.app ?? (props.group as AppGroupDetail)?.app;
     return (app as any)?.app_group_lifecycle_plugin || null;
   }, [groupType, props.app, props.group]);
 
   const isAllowedToConfigureAppGroupLifecyclePlugin =
     isAccessAdmin(props.currentUser) ||
-    isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? (props.group as AppGroup)?.app?.id ?? '');
+    isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? (props.group as AppGroupDetail)?.app?.id ?? '');
 
   const complete = (
-    completedGroup: PolymorphicGroup | undefined,
-    error: CreateGroupError | PutGroupByIdError | null,
-    variables: CreateGroupVariables | PutGroupByIdVariables,
+    completedGroup: GroupDetail | undefined,
+    error: GroupsCreateError | GroupByIdPutError | null,
+    variables: GroupsCreateVariables | GroupByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -130,14 +139,14 @@ function GroupDialog(props: GroupDialogProps) {
     }
   };
 
-  const createGroup = useCreateGroup({
+  const createGroup = useGroupsCreate({
     onSettled: complete,
   });
-  const updateGroup = usePutGroupById({
+  const updateGroup = useGroupByIdPut({
     onSettled: complete,
   });
 
-  const {data: appSearchData} = useGetApps({
+  const {data: appSearchData} = useApps({
     queryParams: {
       page: 1,
       size: 10,
@@ -146,7 +155,7 @@ function GroupDialog(props: GroupDialogProps) {
   });
   const appSearchOptions = appSearchData?.items ?? [];
 
-  const {data: tagSearchData} = useGetTags({
+  const {data: tagSearchData} = useTags({
     queryParams: {
       page: 1,
       size: 10,
@@ -155,14 +164,14 @@ function GroupDialog(props: GroupDialogProps) {
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const submit = (group: PolymorphicGroup) => {
+  const submit = (group: GroupByIdPutRequestBody) => {
     setSubmitting(true);
 
     if (props.group) {
-      group.tags_to_add = selectedTags.filter((x) => !defaultTags.includes(x)).map((tag: Tag) => tag.id);
-      group.tags_to_remove = defaultTags.filter((x) => !selectedTags.includes(x)).map((tag: Tag) => tag.id);
+      group.tags_to_add = selectedTags.filter((x) => !defaultTags.includes(x)).map((tag: TagSummary) => tag.id);
+      group.tags_to_remove = defaultTags.filter((x) => !selectedTags.includes(x)).map((tag: TagSummary) => tag.id);
     } else {
-      group.tags_to_add = selectedTags.map((tag: Tag) => tag.id);
+      group.tags_to_add = selectedTags.map((tag: TagSummary) => tag.id);
     }
 
     switch (group.type) {
@@ -172,15 +181,15 @@ function GroupDialog(props: GroupDialogProps) {
         group.name = ROLE_GROUP_PREFIX + group.name;
         break;
       case 'app_group':
-        const appGroup = group as AppGroup;
+        const appGroup = group as AppGroupDetail;
         appGroup.app_id = appGroup.app?.id ?? '';
         appGroup.name = APP_GROUP_PREFIX + (appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
         break;
     }
-    delete (group as AppGroup).app;
+    delete (group as AppGroupDetail).app;
 
     if (props.group == null) {
-      createGroup.mutate({body: group});
+      createGroup.mutate({body: group as GroupsCreateRequestBody});
     } else {
       updateGroup.mutate({
         body: group,
@@ -193,12 +202,12 @@ function GroupDialog(props: GroupDialogProps) {
 
   return (
     <Dialog open onClose={() => props.setOpen(false)}>
-      <FormContainer<PolymorphicGroup>
+      <FormContainer<GroupDetail>
         defaultValues={
           props.app != null || props.group?.type == 'app_group'
             ? {
                 type: defaultGroupType,
-                app: props.app ?? (props.group as AppGroup)?.app ?? {},
+                app: props.app ?? (props.group as AppGroupDetail)?.app ?? {},
                 name:
                   props.group?.name.substring(
                     (APP_GROUP_PREFIX + initialAppName + APP_NAME_APP_GROUP_SEPARATOR).length,
@@ -260,7 +269,7 @@ function GroupDialog(props: GroupDialogProps) {
                   <Typography noWrap={true} variant="h6">
                     {groupType == 'role_group'
                       ? ROLE_GROUP_PREFIX
-                      : APP_GROUP_PREFIX + (appName == '' ? '<App>' : appName) + APP_NAME_APP_GROUP_SEPARATOR}
+                      : APP_GROUP_PREFIX + (appName == '' ? '<AppDetail>' : appName) + APP_NAME_APP_GROUP_SEPARATOR}
                   </Typography>
                 </Box>
               ) : null}
@@ -340,8 +349,8 @@ function GroupDialog(props: GroupDialogProps) {
               onChange={(event, newValue) => {
                 setSelectedTags(newValue);
               }}
-              renderTags={(value: Tag[], getTagProps) =>
-                value.map((option: Tag, index: number) => (
+              renderTags={(value: TagSummary[], getTagProps) =>
+                value.map((option: TagSummary, index: number) => (
                   <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
                 ))
               }
@@ -372,10 +381,10 @@ function GroupDialog(props: GroupDialogProps) {
 }
 
 interface CreateUpdateGroupProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   defaultGroupType?: 'okta_group' | 'app_group' | 'role_group';
-  app?: App;
-  group?: PolymorphicGroup;
+  app?: AppDetail;
+  group?: GroupDetail;
 }
 
 export default function CreateUpdateGroup(props: CreateUpdateGroupProps) {
@@ -383,7 +392,7 @@ export default function CreateUpdateGroup(props: CreateUpdateGroupProps) {
 
   const defaultGroupType = props.defaultGroupType ?? 'okta_group';
   const create = props.group == null;
-  const owner_app_group = props.group?.type == 'app_group' && (props.group as AppGroup).is_owner;
+  const owner_app_group = props.group?.type == 'app_group' && (props.group as AppGroupDetail).is_owner;
 
   if (create) {
     if (!(isAccessAdmin(props.currentUser) || isAppOwnerGroupOwner(props.currentUser, props.app?.id ?? ''))) {

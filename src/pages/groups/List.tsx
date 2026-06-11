@@ -21,7 +21,8 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from './CreateUpdate';
 import {emptyTableRows, displayGroupType, perPage} from '../../helpers';
-import {useGetGroups} from '../../api/apiComponents';
+import {useGroups} from '../../api/apiComponents';
+import {GroupSummary} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
@@ -48,11 +49,11 @@ export default function ListGroups() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetGroups({
+  const {data, error, isLoading} = useGroups({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
-  const {data: searchData} = useGetGroups({
+  const {data: searchData} = useGroups({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -116,7 +117,7 @@ export default function ListGroups() {
           </Button>
           <CreateUpdateGroup currentUser={currentUser}></CreateUpdateGroup>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: GroupSummary) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -131,7 +132,7 @@ export default function ListGroups() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: GroupSummary) => (
               <LinkTableRow to={`/groups/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>{displayGroupType(row)}</TableCell>

@@ -1,7 +1,12 @@
-import type {QueryKey, UseQueryOptions} from '@tanstack/react-query';
-import {QueryOperation} from './apiComponents';
+import {skipToken, type DefaultError, type QueryKey, type UseQueryOptions} from '@tanstack/react-query';
+import type {QueryOperation} from './apiComponents';
 
-export type ApiContext = {
+export type ApiContext<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+> = {
   fetcherOptions: {
     /**
      * Headers to inject in the fetcher
@@ -16,13 +21,13 @@ export type ApiContext = {
     /**
      * Set this to `false` to disable automatic refetching when the query mounts or changes query keys.
      * Defaults to `true`.
+     *
+     * Note: react-query 5.101 doesn't export the `Enabled<...>` helper type the
+     * codegen template assumes, so this is narrowed to `boolean` (the only form
+     * the app uses).
      */
     enabled?: boolean;
   };
-  /**
-   * Query key manager.
-   */
-  queryKeyFn: (operation: QueryOperation) => QueryKey;
 };
 
 /**
@@ -32,33 +37,36 @@ export type ApiContext = {
  */
 export function useApiContext<
   TQueryFnData = unknown,
-  TError = unknown,
+  TError = DefaultError,
   TData = TQueryFnData,
   TQueryKey extends QueryKey = QueryKey,
->(_queryOptions?: Omit<UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>, 'queryKey' | 'queryFn'>): ApiContext {
+>(
+  _queryOptions?: Omit<UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>, 'queryKey' | 'queryFn'>,
+): ApiContext<TQueryFnData, TError, TData, TQueryKey> {
   return {
     fetcherOptions: {},
     queryOptions: {},
-    queryKeyFn: (operation) => {
-      const queryKey: unknown[] = hasPathParams(operation)
-        ? operation.path
-            .split('/')
-            .filter(Boolean)
-            .map((i) => resolvePathParam(i, operation.variables.pathParams))
-        : operation.path.split('/').filter(Boolean);
-
-      if (hasQueryParams(operation)) {
-        queryKey.push(operation.variables.queryParams);
-      }
-
-      if (hasBody(operation)) {
-        queryKey.push(operation.variables.body);
-      }
-
-      return queryKey;
-    },
   };
 }
+
+export const queryKeyFn = (operation: QueryOperation): QueryKey => {
+  const queryKey: unknown[] = hasPathParams(operation)
+    ? operation.path
+        .split('/')
+        .filter(Boolean)
+        .map((i) => resolvePathParam(i, operation.variables.pathParams))
+    : operation.path.split('/').filter(Boolean);
+
+  if (hasQueryParams(operation)) {
+    queryKey.push(operation.variables.queryParams);
+  }
+
+  if (hasBody(operation)) {
+    queryKey.push(operation.variables.body);
+  }
+
+  return queryKey;
+};
 
 // Helpers
 const resolvePathParam = (key: string, pathParams: Record<string, string>) => {
@@ -73,7 +81,8 @@ const hasPathParams = (
 ): operation is QueryOperation & {
   variables: {pathParams: Record<string, string>};
 } => {
-  return Boolean((operation.variables as any).pathParams);
+  if (operation.variables === skipToken) return false;
+  return 'variables' in operation && 'pathParams' in operation.variables;
 };
 
 const hasBody = (
@@ -81,7 +90,8 @@ const hasBody = (
 ): operation is QueryOperation & {
   variables: {body: Record<string, unknown>};
 } => {
-  return Boolean((operation.variables as any).body);
+  if (operation.variables === skipToken) return false;
+  return 'variables' in operation && 'body' in operation.variables;
 };
 
 const hasQueryParams = (
@@ -89,5 +99,6 @@ const hasQueryParams = (
 ): operation is QueryOperation & {
   variables: {queryParams: Record<string, unknown>};
 } => {
-  return Boolean((operation.variables as any).queryParams);
+  if (operation.variables === skipToken) return false;
+  return 'variables' in operation && 'queryParams' in operation.variables;
 };

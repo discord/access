@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing_extensions import TypeAliasType
 
 from api.schemas.datetimes import FlexibleDatetime
 
@@ -223,7 +224,7 @@ class _GroupRefForMembership(BaseModel):
     app: Optional[AppIdRef] = None
 
 
-class _RoleGroupRef(BaseModel):
+class _RoleGroupMembershipRef(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     type: str
@@ -236,18 +237,28 @@ class _RoleGroupMappingForMembership(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     created_at: FlexibleDatetime
     ended_at: Optional[FlexibleDatetime] = None
-    active_role_group: Optional[_RoleGroupRef] = None
-    role_group: Optional[_RoleGroupRef] = None
+    active_role_group: Optional[_RoleGroupMembershipRef] = None
+    role_group: Optional[_RoleGroupMembershipRef] = None
 
 
 class OktaUserGroupMemberDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    # `id`, `created_actor`, and `ended_actor` are read by the React renewal /
+    # audit views (e.g. `BulkRenewal.tsx` uses `id` as a row key and
+    # `created_actor` for the "added by" column). They were on the Flask wire
+    # but dropped in the migration; restored here for wire compatibility. The
+    # actor relationships are `lazy="raise_on_sql"`, so any route emitting this
+    # schema must eager-load them — see `user_group_member_options` in
+    # `api/routers/_eager.py`.
+    id: int
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
     updated_at: Optional[FlexibleDatetime] = None
     ended_at: Optional[FlexibleDatetime] = None
     created_reason: Optional[str] = ""
     should_expire: Optional[bool] = None
+    created_actor: Optional[OktaUserSummary] = None
+    ended_actor: Optional[OktaUserSummary] = None
     user: Optional[OktaUserSummary] = None
     active_user: Optional[OktaUserSummary] = None
     group: Optional[_GroupRefForMembership] = None
@@ -261,11 +272,21 @@ class OktaUserGroupMemberDetail(BaseModel):
 
 class RoleGroupMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    # `id`, `should_expire`, `created_reason`, and the actor relationships are
+    # read by the role renewal / audit views (`BulkRenewal.tsx`). They were on
+    # the Flask wire but dropped in the migration; restored for wire
+    # compatibility. The actor relationships are `lazy="raise_on_sql"` and must
+    # be eager-loaded — see `role_group_map_options` in `api/routers/_eager.py`.
+    id: int
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
     ended_at: Optional[FlexibleDatetime] = None
-    role_group: Optional[_RoleGroupRef] = None
-    active_role_group: Optional[_RoleGroupRef] = None
+    created_reason: Optional[str] = ""
+    should_expire: Optional[bool] = None
+    created_actor: Optional[OktaUserSummary] = None
+    ended_actor: Optional[OktaUserSummary] = None
+    role_group: Optional[_RoleGroupMembershipRef] = None
+    active_role_group: Optional[_RoleGroupMembershipRef] = None
     group: Optional[_GroupRefForMembership] = None
     active_group: Optional[_GroupRefForMembership] = None
 
@@ -340,10 +361,17 @@ class AppGroupForAppDetail(BaseModel):
     active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
 
 
-GroupDetail = Annotated[
-    Union[OktaGroupDetail, RoleGroupDetail, AppGroupDetail],
-    Field(discriminator="type"),
-]
+# Named via `TypeAliasType` so FastAPI emits a single `GroupDetail` schema
+# (a `$ref`) instead of an inline `anyOf`; this gives the OpenAPI→TypeScript
+# codegen a clean reusable union type. Purely a naming hint — validation and
+# wire shape are identical to the bare `Annotated[Union[...]]`.
+GroupDetail = TypeAliasType(
+    "GroupDetail",
+    Annotated[
+        Union[OktaGroupDetail, RoleGroupDetail, AppGroupDetail],
+        Field(discriminator="type"),
+    ],
+)
 
 
 # --- Group summaries (list endpoints) --------------------------------------
@@ -375,10 +403,13 @@ class AppGroupSummary(_GroupSummaryBase):
     app: Optional[AppIdRef] = None
 
 
-GroupSummary = Annotated[
-    Union[OktaGroupSummary, RoleGroupSummary, AppGroupSummary],
-    Field(discriminator="type"),
-]
+GroupSummary = TypeAliasType(
+    "GroupSummary",
+    Annotated[
+        Union[OktaGroupSummary, RoleGroupSummary, AppGroupSummary],
+        Field(discriminator="type"),
+    ],
+)
 
 
 class RoleGroupListItem(BaseModel):
@@ -428,10 +459,13 @@ class AppGroupRef(_GroupRefBase):
     app: Optional[AppIdRef] = None
 
 
-GroupRef = Annotated[
-    Union[OktaGroupRef, RoleGroupRef, AppGroupRef],
-    Field(discriminator="type"),
-]
+GroupRef = TypeAliasType(
+    "GroupRef",
+    Annotated[
+        Union[OktaGroupRef, RoleGroupRef, AppGroupRef],
+        Field(discriminator="type"),
+    ],
+)
 
 
 # Wider polymorphic refs surfaced inside `RoleRequestDetail`. The role-request
@@ -457,10 +491,13 @@ class RoleRequestRequestedAppGroupRef(_GroupRefBase):
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
-RoleRequestRequestedGroupRef = Annotated[
-    Union[RoleRequestRequestedOktaGroupRef, RoleRequestRequestedAppGroupRef],
-    Field(discriminator="type"),
-]
+RoleRequestRequestedGroupRef = TypeAliasType(
+    "RoleRequestRequestedGroupRef",
+    Annotated[
+        Union[RoleRequestRequestedOktaGroupRef, RoleRequestRequestedAppGroupRef],
+        Field(discriminator="type"),
+    ],
+)
 
 
 # --- Members views (list-of-IDs response shapes) ----------------------------
@@ -483,11 +520,31 @@ class RoleMembersSummary(BaseModel):
 # --- Error envelope ---------------------------------------------------------
 
 
-class ErrorMessage(BaseModel):
-    """Wire shape emitted by `api/exception_handlers.py`. Declared here so
-    routes can advertise it via `responses={...}` for OpenAPI codegen."""
+class ProblemDetailError(BaseModel):
+    """One entry in the non-standard `errors` extension that validation
+    problems carry (see `_validation_errors` in `api/exception_handlers.py`)."""
 
-    message: str
+    type: Optional[str] = None
+    loc: Optional[list[Union[str, int]]] = None
+    msg: Optional[str] = None
+    ctx: Optional[dict[str, Any]] = None
+
+
+class ProblemDetail(BaseModel):
+    """RFC 9457 problem-detail envelope emitted for every HTTP error by
+    `api/exception_handlers.py` (Content-Type `application/problem+json`).
+
+    Declared here so routers can advertise it via `responses={...}`; the
+    generated TypeScript client then types its `*Error` payloads against this
+    shape. Mirrors the hand-written `ErrorMessage` type in
+    `src/api/apiFetcher.ts`. All fields are optional on the wire (`type`
+    carries the RFC default, the rest are populated per error)."""
+
+    type: str = "about:blank"
+    title: Optional[str] = None
+    status: Optional[int] = None
+    detail: Optional[str] = None
+    errors: Optional[list[ProblemDetailError]] = None
 
 
 # Manage forward refs after all classes are defined

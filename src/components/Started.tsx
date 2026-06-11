@@ -1,18 +1,18 @@
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 
-import {OktaUserGroupMember, RoleGroupMap} from '../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleGroupMapDetail, AuditUserGroupRow, AuditGroupRoleRow} from '../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
 
-function selectFirstTime(
-  a: OktaUserGroupMember | RoleGroupMap,
-  b: OktaUserGroupMember | RoleGroupMap,
-): OktaUserGroupMember | RoleGroupMap {
-  if (a.created_at === undefined) {
+// All the row shapes whose start time we render carry a nullable `created_at`.
+type MembershipLike = OktaUserGroupMemberDetail | RoleGroupMapDetail | AuditUserGroupRow | AuditGroupRoleRow;
+
+function selectFirstTime(a: MembershipLike, b: MembershipLike): MembershipLike {
+  if (a.created_at == null) {
     return a;
   }
-  if (b.created_at === undefined) {
+  if (b.created_at == null) {
     return b;
   }
   if (a.created_at < b.created_at) {
@@ -23,7 +23,7 @@ function selectFirstTime(
 }
 
 interface StartedProps {
-  memberships: Array<OktaUserGroupMember | RoleGroupMap>;
+  memberships: Array<MembershipLike>;
 }
 
 export default function Started(props: StartedProps) {

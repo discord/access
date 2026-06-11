@@ -31,8 +31,15 @@ import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName, minTagTimeGroups, requiredReasonGroups} from '../../helpers';
 
-import {usePutGroupMembersById, PutGroupMembersByIdError, PutGroupMembersByIdVariables} from '../../api/apiComponents';
-import {GroupMember, OktaUserGroupMember, PolymorphicGroup, RoleGroupMap, RoleGroup} from '../../api/apiSchemas';
+import {useGroupMembersByIdPut, GroupMembersByIdPutError, GroupMembersByIdPutVariables} from '../../api/apiComponents';
+import {
+  GroupMember,
+  GroupMembersSummary,
+  GroupRefForMembership,
+  OktaUserGroupMemberDetail,
+  RoleGroupMapDetail,
+  RoleGroupDetail,
+} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 import accessConfig from '../../config/accessConfig';
 
@@ -49,7 +56,11 @@ interface Data {
   status: string;
 }
 
-function createData(row: OktaUserGroupMember, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
+function createData(
+  row: OktaUserGroupMemberDetail,
+  selected: number | undefined,
+  renewValue: 'yes' | 'no' | '' = '',
+): Data {
   const highlight = row.id == selected ? 'Selected-' : '';
   return {
     id: row.id,
@@ -74,8 +85,8 @@ function createData(row: OktaUserGroupMember, selected: number | undefined, rene
 }
 
 interface CreateRequestForm {
-  selectedYes: OktaUserGroupMember[];
-  selectedNo: OktaUserGroupMember[];
+  selectedYes: OktaUserGroupMemberDetail[];
+  selectedNo: OktaUserGroupMemberDetail[];
   customUntil?: string;
   reason?: string;
 }
@@ -88,7 +99,7 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index
 
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;
-  rows: OktaUserGroupMember[];
+  rows: OktaUserGroupMemberDetail[];
   select?: number;
 }
 
@@ -119,11 +130,11 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     return initialStates;
   });
 
-  const [selectedYes, setSelectedYes] = React.useState<OktaUserGroupMember[]>(() =>
+  const [selectedYes, setSelectedYes] = React.useState<OktaUserGroupMemberDetail[]>(() =>
     props.select !== undefined ? props.rows.filter((r) => r.id === props.select) : [],
   );
 
-  const [selectedNo, setSelectedNo] = React.useState<OktaUserGroupMember[]>(() =>
+  const [selectedNo, setSelectedNo] = React.useState<OktaUserGroupMemberDetail[]>(() =>
     props.rows.filter((row) => row.should_expire),
   );
 
@@ -200,7 +211,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     },
   ];
 
-  const updateUntil = (memberships: OktaUserGroupMember[]) => {
+  const updateUntil = (memberships: OktaUserGroupMemberDetail[]) => {
     // Only calculate time limit for memberships selected for renewal (yes)
     const renewalMemberships = memberships.filter((m) => toggleStates[m.id] === 'yes');
 
@@ -212,21 +223,21 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
 
     const ownedGroups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
-        curr.is_owner ? all.add(curr.group) : null;
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
+        curr.is_owner && curr.group ? all.add(curr.group) : null;
         return all;
-      }, new Set<PolymorphicGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
     const memberGroups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
-        !curr.is_owner ? all.add(curr.group) : null;
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
+        !curr.is_owner && curr.group ? all.add(curr.group) : null;
         return all;
-      }, new Set<PolymorphicGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
-    const owner_member = renewalMemberships.reduce((all, curr) => {
-      return all.add(curr.is_owner);
+    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: OktaUserGroupMemberDetail) => {
+      return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
     let time: number | null = null;
@@ -274,7 +285,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
-  const updateRequiredReason = (memberships: OktaUserGroupMember[]) => {
+  const updateRequiredReason = (memberships: OktaUserGroupMemberDetail[]) => {
     // Only calculate required reason for memberships selected for renewal (yes)
     const renewalMemberships = memberships.filter((m) => toggleStates[m.id] === 'yes');
 
@@ -284,43 +295,43 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
 
     const ownedGroups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
-        curr.is_owner ? all.add(curr.group) : null;
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
+        curr.is_owner && curr.group ? all.add(curr.group) : null;
         return all;
-      }, new Set<PolymorphicGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
     const memberGroups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
-        !curr.is_owner ? all.add(curr.group) : null;
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
+        !curr.is_owner && curr.group ? all.add(curr.group) : null;
         return all;
-      }, new Set<PolymorphicGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
     // get role groups where renewing memberships only (not ownerships)
-    const roleGroupMems = memberGroups.filter((group) => group.type == 'role_group');
+    const roleGroupMems = memberGroups.filter((group: GroupRefForMembership) => group.type == 'role_group');
 
     // role group ownerships
-    const roleGroupOwnerGroups: PolymorphicGroup[] = (roleGroupMems as RoleGroup[])
-      .reduce((out, rg) => {
+    const roleGroupOwnerGroups: GroupRefForMembership[] = (roleGroupMems as unknown as RoleGroupDetail[])
+      .reduce((out: RoleGroupMapDetail[], rg: RoleGroupDetail) => {
         rg.active_role_associated_group_owner_mappings
           ? (out = out.concat(rg.active_role_associated_group_owner_mappings))
           : null;
         return out;
-      }, new Array<RoleGroupMap>())
-      .map((rgm) => rgm.active_group!);
+      }, new Array<RoleGroupMapDetail>())
+      .map((rgm: RoleGroupMapDetail) => rgm.active_group!);
 
     // role group memberships
-    const roleGroupMemberGroups: PolymorphicGroup[] = (roleGroupMems as RoleGroup[])
-      .reduce((out, rg) => {
+    const roleGroupMemberGroups: GroupRefForMembership[] = (roleGroupMems as unknown as RoleGroupDetail[])
+      .reduce((out: RoleGroupMapDetail[], rg: RoleGroupDetail) => {
         rg.active_role_associated_group_member_mappings
           ? (out = out.concat(rg.active_role_associated_group_member_mappings))
           : null;
         return out;
-      }, new Array<RoleGroupMap>())
-      .map((rgm) => rgm.active_group!);
+      }, new Array<RoleGroupMapDetail>())
+      .map((rgm: RoleGroupMapDetail) => rgm.active_group!);
 
-    const owner_member = renewalMemberships.reduce((all, curr) => {
+    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: OktaUserGroupMemberDetail) => {
       return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
@@ -347,9 +358,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   }, [selectedYes, selectedNo, toggleStates]);
 
   const complete = (
-    completedUsersChange: GroupMember | undefined,
-    error: PutGroupMembersByIdError | null,
-    variables: PutGroupMembersByIdVariables,
+    completedUsersChange: GroupMembersSummary | undefined,
+    error: GroupMembersByIdPutError | null,
+    variables: GroupMembersByIdPutVariables,
     context: any,
   ) => {
     if (error != null) {
@@ -376,7 +387,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   }, [groupUpdatesCompleted, groupUpdatesErrored]);
 
-  const putGroupUsers = usePutGroupMembersById({
+  const putGroupUsers = useGroupMembersByIdPut({
     onSettled: complete,
   });
 
@@ -396,20 +407,20 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     // group selectedYes OktaUserGroupMembers by group
     // creates map { group ids : {'owner' : [user ids], 'member' : [user ids]} }
     const grouped = selectedYes.reduce(
-      (groups, item) => {
-        (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user.id);
+      (groups: Record<string, Record<string, string[]>>, item: OktaUserGroupMemberDetail) => {
+        (groups[item.group?.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.user?.id!);
         return groups;
       },
       {} as Record<string, Record<string, string[]>>,
     );
 
     // group selectedNo OktaUserGroupMembers by group
-    // creates map { group ids : [OktaUserGroupMember] }
+    // creates map { group ids : [OktaUserGroupMemberDetail] }
     // only include if access is active and decision has not already been made
     const doNotRenew = selectedNo.reduce(
-      (groups, item) => {
+      (groups: Record<string, Record<string, number[]>>, item: OktaUserGroupMemberDetail) => {
         if (!item.should_expire && dayjs(item.ended_at) >= dayjs()) {
-          (groups[item.group.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
+          (groups[item.group?.id!] ||= {owner: [], member: []})[item.is_owner ? 'owner' : 'member'].push(item.id);
         }
         return groups;
       },
@@ -584,7 +595,7 @@ function BulkRenewalButton(props: BulkRenewalButtonProps) {
 }
 
 interface BulkRenewalProps {
-  rows: OktaUserGroupMember[];
+  rows: OktaUserGroupMemberDetail[];
   select?: number;
   ownAccess?: boolean;
   rereview?: boolean;

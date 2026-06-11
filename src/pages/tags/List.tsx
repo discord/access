@@ -21,7 +21,8 @@ import {useCurrentUser} from '../../authentication';
 import CreateUpdateTag from './CreateUpdate';
 import ChangeTitle from '../../tab-title';
 import {emptyTableRows, perPage} from '../../helpers';
-import {useGetTags} from '../../api/apiComponents';
+import {useTags} from '../../api/apiComponents';
+import {TagListItem} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import MarkdownDescription from '../../components/MarkdownDescription';
@@ -47,11 +48,11 @@ export default function ListTags() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetTags({
+  const {data, error, isLoading} = useTags({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
-  const {data: searchData} = useGetTags({
+  const {data: searchData} = useTags({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -112,7 +113,7 @@ export default function ListTags() {
         <TableTopBar title="Tags">
           <CreateUpdateTag currentUser={currentUser}></CreateUpdateTag>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: TagListItem) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -126,7 +127,7 @@ export default function ListTags() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: TagListItem) => (
               <TableRow key={row.id}>
                 <TableCell>
                   <Link to={`/tags/${row.name}`} sx={{textDecoration: 'none', color: 'inherit'}} component={RouterLink}>

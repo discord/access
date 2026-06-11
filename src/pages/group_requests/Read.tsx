@@ -46,15 +46,22 @@ import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 
 import {
-  ResolveGroupRequestByIdError,
-  ResolveGroupRequestByIdVariables,
-  useGetAppById,
-  useGetApps,
-  useGetGroupRequestById,
-  useGetTags,
-  useResolveGroupRequestById,
+  GroupRequestByIdPutError,
+  GroupRequestByIdPutVariables,
+  useAppById,
+  useApps,
+  useGroupRequestById,
+  useTags,
+  useGroupRequestByIdPut,
 } from '../../api/apiComponents';
-import {App, GroupRequest, ResolveGroupRequest, Tag} from '../../api/apiSchemas';
+import {
+  AppDetail,
+  AppGroupForAppDetail,
+  GroupRequestDetail,
+  OktaUserGroupMemberDetail,
+  ResolveGroupRequestBody,
+  TagListItem,
+} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
 import {displayUserName, minTagTime} from '../../helpers';
@@ -161,7 +168,7 @@ interface ResolveRequestForm {
   resolved_group_name: string;
   resolved_group_description: string;
   resolved_group_type: string;
-  resolved_app?: App;
+  resolved_app?: AppDetail;
   resolved_ownership_ending_at?: string;
   resolved_ownership_ending_at_custom?: string;
   reason?: string;
@@ -180,17 +187,17 @@ export default function ReadGroupRequest() {
   const [groupType, setGroupType] = React.useState<string>('okta_group');
   const [appName, setAppName] = React.useState('');
   const [appSearchInput, setAppSearchInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Tag[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagListItem[]>([]);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
 
   const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
 
-  const {data, isError, isLoading} = useGetGroupRequestById({
+  const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
   });
 
-  const groupRequest: GroupRequest = data ?? ({} as GroupRequest);
+  const groupRequest: GroupRequestDetail = data ?? ({} as GroupRequestDetail);
 
   const ownRequest = groupRequest.requester?.id == currentUser.id;
 
@@ -211,7 +218,7 @@ export default function ReadGroupRequest() {
     }
   }, [data, typesSeeded]);
 
-  const {data: requestedAppData, isLoading: isAppLoading} = useGetAppById(
+  const {data: requestedAppData, isLoading: isAppLoading} = useAppById(
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
@@ -227,18 +234,22 @@ export default function ReadGroupRequest() {
     if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppData) {
       return false;
     }
-    return (requestedAppData.active_owner_app_groups ?? []).some((appGroup) =>
-      (appGroup.active_user_ownerships ?? []).some((membership) => membership.active_user?.id === currentUser.id),
+    return (requestedAppData.active_owner_app_groups ?? []).some((appGroup: AppGroupForAppDetail) =>
+      (appGroup.active_user_ownerships ?? []).some(
+        (membership: OktaUserGroupMemberDetail) => membership.active_user?.id === currentUser.id,
+      ),
     );
   }, [admin, ownRequest, requestedGroupType, requestedAppData, currentUser.id]);
 
-  const {data: ownedAppsData} = useGetApps({queryParams: {page: 1, size: 100, q: ''}}, {enabled: isAppOwner});
+  const {data: ownedAppsData} = useApps({queryParams: {page: 1, size: 100, q: ''}}, {enabled: isAppOwner});
 
   const ownedAppIds = React.useMemo<Set<string>>(() => {
     const ids = new Set<string>();
     for (const app of ownedAppsData?.items ?? []) {
-      const owns = (app.active_owner_app_groups ?? []).some((appGroup) =>
-        (appGroup.active_user_ownerships ?? []).some((membership) => membership.active_user?.id === currentUser.id),
+      const owns = ((app as AppDetail).active_owner_app_groups ?? []).some((appGroup: AppGroupForAppDetail) =>
+        (appGroup.active_user_ownerships ?? []).some(
+          (membership: OktaUserGroupMemberDetail) => membership.active_user?.id === currentUser.id,
+        ),
       );
       if (owns && app.id) {
         ids.add(app.id);
@@ -253,58 +264,58 @@ export default function ReadGroupRequest() {
   const canApprove = (admin || isAppOwner) && !ownRequest;
   const canResolve = canApprove || ownRequest;
 
-  const {data: appSearchData} = useGetApps({
+  const {data: appSearchData} = useApps({
     queryParams: {page: 1, size: 10, q: appSearchInput},
   });
 
-  const appSearchOptions = React.useMemo<App[]>(() => {
+  const appSearchOptions = React.useMemo<AppDetail[]>(() => {
     const results = appSearchData?.items ?? [];
     if (isAppOwner) {
-      return results.filter((app) => app.id != null && ownedAppIds.has(app.id));
+      return results.filter((app: AppDetail) => app.id != null && ownedAppIds.has(app.id));
     }
     return results;
   }, [appSearchData, isAppOwner, ownedAppIds]);
 
-  const {data: tagSearchData} = useGetTags({
+  const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const {data: allTagsForSeeding} = useGetTags(
+  const {data: allTagsForSeeding} = useTags(
     {queryParams: {page: 1, size: 100, q: ''}},
     {enabled: requestedTagNames.length > 0},
   );
   const [tagsSeeded, setTagsSeeded] = React.useState(false);
   React.useEffect(() => {
     if (!tagsSeeded && requestedTagNames.length > 0 && allTagsForSeeding?.items) {
-      const matched = allTagsForSeeding.items.filter((t) => requestedTagNames.includes(t.id));
+      const matched = allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
       setSelectedTags(matched);
       setTagsSeeded(true);
     }
   }, [allTagsForSeeding, tagsSeeded, requestedTagNames.length]);
 
-  const requestedTags = React.useMemo<Tag[]>(() => {
+  const requestedTags = React.useMemo<TagListItem[]>(() => {
     if (!allTagsForSeeding?.items) return [];
-    return allTagsForSeeding.items.filter((t) => requestedTagNames.includes(t.id));
+    return allTagsForSeeding.items.filter((t: TagListItem) => requestedTagNames.includes(t.id));
   }, [allTagsForSeeding, requestedTagNames]);
 
   const resolvedTagIds: string[] =
     Array.isArray(groupRequest.resolved_group_tags) && groupRequest.resolved_group_tags.length > 0
       ? groupRequest.resolved_group_tags
       : [];
-  const {data: allTagsForResolved} = useGetTags(
+  const {data: allTagsForResolved} = useTags(
     {queryParams: {page: 1, size: 100, q: ''}},
     {enabled: groupRequest.status === 'APPROVED' && resolvedTagIds.length > 0},
   );
-  const resolvedTags = React.useMemo<Tag[]>(() => {
+  const resolvedTags = React.useMemo<TagListItem[]>(() => {
     if (!allTagsForResolved?.items) return [];
-    return allTagsForResolved.items.filter((t) => resolvedTagIds.includes(t.id));
+    return allTagsForResolved.items.filter((t: TagListItem) => resolvedTagIds.includes(t.id));
   }, [allTagsForResolved, resolvedTagIds]);
 
   const complete = (
-    completedRequest: ResolveGroupRequest | undefined,
-    error: ResolveGroupRequestByIdError | null,
-    variables: ResolveGroupRequestByIdVariables,
+    completedRequest: GroupRequestDetail | undefined,
+    error: GroupRequestByIdPutError | null,
+    variables: GroupRequestByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -315,7 +326,7 @@ export default function ReadGroupRequest() {
     }
   };
 
-  const putResolveRequest = useResolveGroupRequestById({
+  const putResolveRequest = useGroupRequestByIdPut({
     onSettled: complete,
   });
 
@@ -335,7 +346,7 @@ export default function ReadGroupRequest() {
 
     type ApprovedField =
       | {kind: 'text'; label: string; value: string; changed: boolean; from?: string}
-      | {kind: 'tags'; label: string; resolvedTags: Tag[]; changed: boolean; requestedTagNames: string[]};
+      | {kind: 'tags'; label: string; resolvedTags: TagListItem[]; changed: boolean; requestedTagNames: string[]};
 
     const resolvedOwnership = groupRequest.resolved_ownership_ending_at || null;
     const requestedOwnership = groupRequest.requested_ownership_ending_at || null;
@@ -456,7 +467,7 @@ export default function ReadGroupRequest() {
         break;
     }
 
-    const resolveRequest: ResolveGroupRequest = {
+    const resolveRequest: ResolveGroupRequestBody = {
       approved: approved ?? false,
       resolved_group_name: resolvedName,
       resolved_group_description: responseForm.resolved_group_description,
@@ -597,7 +608,7 @@ export default function ReadGroupRequest() {
             <Timeline sx={{[`& .${timelineOppositeContentClasses.root}`]: {flex: 0.1}}}>
               <TimelineItem>
                 <TimelineOppositeContent sx={{m: 'auto 0'}} align="right">
-                  <span title={groupRequest.created_at}>
+                  <span title={groupRequest.created_at ?? undefined}>
                     {dayjs(groupRequest.created_at).startOf('second').fromNow()}
                   </span>
                 </TimelineOppositeContent>
@@ -776,11 +787,12 @@ export default function ReadGroupRequest() {
                                           options={appSearchOptions}
                                           required
                                           autocompleteProps={{
-                                            getOptionLabel: (option: App) => option.name,
-                                            isOptionEqualToValue: (option: App, value: App) => option.id == value.id,
+                                            getOptionLabel: (option: AppDetail) => option.name,
+                                            isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>
+                                              option.id == value.id,
                                             onInputChange: (_event: React.SyntheticEvent, newInputValue: string) =>
                                               setAppSearchInput(newInputValue),
-                                            onChange: (_event: React.SyntheticEvent, value: App | null) =>
+                                            onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
                                               setAppName(value?.name ?? ''),
                                             disabled: !admin,
                                           }}
@@ -797,7 +809,7 @@ export default function ReadGroupRequest() {
                                           {groupType == 'role_group'
                                             ? ROLE_GROUP_PREFIX
                                             : APP_GROUP_PREFIX +
-                                              (appName == '' ? '<App>' : appName) +
+                                              (appName == '' ? '<AppDetail>' : appName) +
                                               APP_NAME_APP_GROUP_SEPARATOR}
                                         </Typography>
                                       </Box>
@@ -880,11 +892,11 @@ export default function ReadGroupRequest() {
                                         multiple
                                         options={tagSearchOptions}
                                         value={selectedTags}
-                                        getOptionLabel={(option: Tag) => option.name}
+                                        getOptionLabel={(option: TagListItem) => option.name}
                                         onInputChange={(_event, newInputValue) => setTagSearchInput(newInputValue)}
                                         onChange={(_event, newValue) => setSelectedTags(newValue)}
-                                        renderTags={(value: Tag[], getTagProps) =>
-                                          value.map((option: Tag, index: number) => (
+                                        renderTags={(value: TagListItem[], getTagProps) =>
+                                          value.map((option: TagListItem, index: number) => (
                                             <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
                                           ))
                                         }

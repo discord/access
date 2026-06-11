@@ -11,13 +11,13 @@ import DeleteIcon from '@mui/icons-material/DeleteForever';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {useDeleteTagById, DeleteTagByIdError, DeleteTagByIdVariables} from '../../api/apiComponents';
-import {Tag, OktaUser} from '../../api/apiSchemas';
+import {useTagByIdDelete, TagByIdDeleteError, TagByIdDeleteVariables} from '../../api/apiComponents';
+import {TagDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 
 interface TagDialogProps {
   setOpen(open: boolean): any;
-  tag: Tag;
+  tag: TagDetail;
 }
 
 function TagDialog(props: TagDialogProps) {
@@ -27,9 +27,9 @@ function TagDialog(props: TagDialogProps) {
   const [submitting, setSubmitting] = React.useState(false);
 
   const complete = (
-    deletedTag: Tag | undefined,
-    error: DeleteTagByIdError | null,
-    variables: DeleteTagByIdVariables,
+    deletedTag: DeleteMessage | undefined,
+    error: TagByIdDeleteError | null,
+    variables: TagByIdDeleteVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -41,7 +41,7 @@ function TagDialog(props: TagDialogProps) {
     }
   };
 
-  const deleteTag = useDeleteTagById({
+  const deleteTag = useTagByIdDelete({
     onSettled: complete,
   });
 
@@ -72,8 +72,8 @@ function TagDialog(props: TagDialogProps) {
 }
 
 interface DeleteTagProps {
-  currentUser: OktaUser;
-  tag: Tag;
+  currentUser: OktaUserDetail;
+  tag: TagDetail;
 }
 
 export default function DeleteTag(props: DeleteTagProps) {

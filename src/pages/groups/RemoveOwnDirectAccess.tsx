@@ -9,12 +9,12 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {PutGroupMembersByIdError, PutGroupMembersByIdVariables, usePutGroupMembersById} from '../../api/apiComponents';
-import {GroupMember, PolymorphicGroup} from '../../api/apiSchemas';
+import {GroupMembersByIdPutError, GroupMembersByIdPutVariables, useGroupMembersByIdPut} from '../../api/apiComponents';
+import {GroupMember, GroupMembersSummary, GroupDetail} from '../../api/apiSchemas';
 
 export interface RemoveOwnDirectAccessDialogParameters {
   userId: string;
-  group: PolymorphicGroup;
+  group: GroupDetail;
   owner: boolean;
 }
 
@@ -29,9 +29,9 @@ export default function RemoveOwnDirectAccessDialog(props: RemoveOwnDirectAccess
   const [submitting, setSubmitting] = React.useState(false);
 
   const complete = (
-    completedUsersChange: GroupMember | undefined,
-    error: PutGroupMembersByIdError | null,
-    variables: PutGroupMembersByIdVariables,
+    completedUsersChange: GroupMembersSummary | undefined,
+    error: GroupMembersByIdPutError | null,
+    variables: GroupMembersByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -43,7 +43,7 @@ export default function RemoveOwnDirectAccessDialog(props: RemoveOwnDirectAccess
     }
   };
 
-  const putGroupUsers = usePutGroupMembersById({
+  const putGroupUsers = useGroupMembersByIdPut({
     onSettled: complete,
   });
 

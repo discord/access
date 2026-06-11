@@ -1,15 +1,15 @@
 import * as Sentry from '@sentry/react';
 
-import {useGetUserById} from './api/apiComponents';
+import {useUserById} from './api/apiComponents';
 
-import {OktaUser} from './api/apiSchemas';
+import {OktaUserDetail} from './api/apiSchemas';
 
 export function useCurrentUser() {
-  const {data: currentUserData} = useGetUserById({
+  const {data: currentUserData} = useUserById({
     pathParams: {userId: '@me'},
   });
 
-  const currentUser = currentUserData ?? ({} as OktaUser);
+  const currentUser = currentUserData ?? ({} as OktaUserDetail);
 
   if (currentUser.id && currentUser.email) {
     Sentry.setUser({

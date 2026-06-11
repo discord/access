@@ -31,12 +31,20 @@ import {
 } from 'react-hook-form-mui';
 
 import {
-  useGetUsers,
-  usePutGroupMembersById,
-  PutGroupMembersByIdError,
-  PutGroupMembersByIdVariables,
+  useUsers,
+  useGroupMembersByIdPut,
+  GroupMembersByIdPutError,
+  GroupMembersByIdPutVariables,
 } from '../../api/apiComponents';
-import {PolymorphicGroup, GroupMember, OktaUser, RoleGroup, OktaGroup, AppGroup} from '../../api/apiSchemas';
+import {
+  GroupDetail,
+  GroupMember,
+  GroupMembersSummary,
+  GroupRefForMembership,
+  OktaUserDetail,
+  RoleGroupDetail,
+  RoleGroupMapDetail,
+} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {
   displayUserName,
@@ -65,9 +73,9 @@ function AddUsersButton(props: AddUsersButtonProps) {
 }
 
 interface AddUsersDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   owner: boolean;
-  group: PolymorphicGroup;
+  group: GroupDetail;
   setOpen(open: boolean): any;
 }
 
@@ -88,7 +96,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
 
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [userSearchInput, setUserSearchInput] = React.useState('');
-  const [users, setUsers] = React.useState<Array<OktaUser>>([]);
+  const [users, setUsers] = React.useState<Array<OktaUserDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -109,19 +117,19 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   );
 
   if (props.group.type == 'role_group' && !props.owner) {
-    const active_groups_owners = (props.group as RoleGroup).active_role_associated_group_owner_mappings?.reduce(
-      (out, curr) => {
+    const active_groups_owners = (props.group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
+      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
-    const active_groups_members = (props.group as RoleGroup).active_role_associated_group_member_mappings?.reduce(
-      (out, curr) => {
+    const active_groups_members = (props.group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
+      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
 
     reason =
@@ -159,9 +167,9 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   }
 
   const complete = (
-    completedUsersChange: GroupMember | undefined,
-    error: PutGroupMembersByIdError | null,
-    variables: PutGroupMembersByIdVariables,
+    completedUsersChange: GroupMembersSummary | undefined,
+    error: GroupMembersByIdPutError | null,
+    variables: GroupMembersByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -173,11 +181,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
     }
   };
 
-  const putGroupUsers = usePutGroupMembersById({
+  const putGroupUsers = useGroupMembersByIdPut({
     onSettled: complete,
   });
 
-  const {data: userSearchData} = useGetUsers({
+  const {data: userSearchData} = useUsers({
     queryParams: {
       page: 1,
       size: 10,
@@ -376,8 +384,8 @@ function AddUsersDialog(props: AddUsersDialogProps) {
 }
 
 interface AddUsersProps {
-  currentUser: OktaUser;
-  group: PolymorphicGroup;
+  currentUser: OktaUserDetail;
+  group: GroupDetail;
   owner?: boolean;
 }
 

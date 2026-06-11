@@ -19,21 +19,21 @@ import IconButton from '@mui/material/IconButton';
 import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
 
 import {
-  useCreateTag,
-  usePutTagById,
-  CreateTagError,
-  PutTagByIdError,
-  CreateTagVariables,
-  PutTagByIdVariables,
+  useTagsCreate,
+  useTagByIdPut,
+  TagsCreateError,
+  TagByIdPutError,
+  TagsCreateVariables,
+  TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
-import {OktaUser, Tag} from '../../api/apiSchemas';
+import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
 interface TagButtonProps {
   setOpen(open: boolean): any;
-  tag?: Tag;
+  tag?: TagDetail;
 }
 
 function TagButton(props: TagButtonProps) {
@@ -64,9 +64,9 @@ interface CreateTagForm {
 }
 
 interface TagDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  tag?: Tag;
+  tag?: TagDetail;
 }
 
 function TagDialog(props: TagDialogProps) {
@@ -86,9 +86,9 @@ function TagDialog(props: TagDialogProps) {
   const [daysOwner, setDaysOwner] = React.useState<number | undefined>(defaultDaysOwner);
 
   const complete = (
-    completedTag: Tag | undefined,
-    error: CreateTagError | PutTagByIdError | null,
-    variables: CreateTagVariables | PutTagByIdVariables,
+    completedTag: TagDetail | undefined,
+    error: TagsCreateError | TagByIdPutError | null,
+    variables: TagsCreateVariables | TagByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -104,10 +104,10 @@ function TagDialog(props: TagDialogProps) {
     }
   };
 
-  const createTag = useCreateTag({
+  const createTag = useTagsCreate({
     onSettled: complete,
   });
-  const updateTag = usePutTagById({
+  const updateTag = useTagByIdPut({
     onSettled: complete,
   });
 
@@ -118,7 +118,7 @@ function TagDialog(props: TagDialogProps) {
       name: tagForm.name,
       description: tagForm.description,
       enabled: tagForm.enabled == 'enabled',
-    } as Tag;
+    } as TagDetail;
 
     const constraints: Record<string, number | boolean> = {};
     if (daysMember) {
@@ -389,8 +389,8 @@ function TagDialog(props: TagDialogProps) {
 }
 
 interface CreateUpdateTagProps {
-  currentUser: OktaUser;
-  tag?: Tag;
+  currentUser: OktaUserDetail;
+  tag?: TagDetail;
 }
 
 export default function CreateUpdateTag(props: CreateUpdateTagProps) {

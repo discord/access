@@ -38,6 +38,8 @@ def user_group_member_options() -> tuple:
     return (
         joinedload(OktaUserGroupMember.user),
         joinedload(OktaUserGroupMember.active_user),
+        joinedload(OktaUserGroupMember.created_actor),
+        joinedload(OktaUserGroupMember.ended_actor),
         selectinload(OktaUserGroupMember.group).options(*polymorphic_group_options()),
         selectinload(OktaUserGroupMember.active_group).options(*polymorphic_group_options()),
         joinedload(OktaUserGroupMember.role_group_mapping).options(
@@ -56,6 +58,8 @@ def role_group_map_options() -> tuple:
     return (
         joinedload(RoleGroupMap.role_group),
         joinedload(RoleGroupMap.active_role_group),
+        joinedload(RoleGroupMap.created_actor),
+        joinedload(RoleGroupMap.ended_actor),
         selectinload(RoleGroupMap.group).options(*polymorphic_group_options()),
         selectinload(RoleGroupMap.active_group).options(*polymorphic_group_options()),
     )

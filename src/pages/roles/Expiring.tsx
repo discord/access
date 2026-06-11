@@ -26,7 +26,8 @@ import dayjs, {Dayjs} from 'dayjs';
 import BulkRenewal from './BulkRenewal';
 import NotFound from '../NotFound';
 import CreateRoleRequest from '../role_requests/Create';
-import {useGetGroupRoleAudits, useGetGroups} from '../../api/apiComponents';
+import {useGroupsAndRoles, useGroups} from '../../api/apiComponents';
+import {AuditGroupRoleRow, GroupDetail, GroupSummary, RoleGroupDetail, RoleGroupMapDetail} from '../../api/apiSchemas';
 import ChangeTitle from '../../tab-title';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
@@ -84,7 +85,7 @@ export default function ExpiringRoless() {
     data,
     isError,
     isLoading: expiringGroupsIsLoading,
-  } = useGetGroupRoleAudits({
+  } = useGroupsAndRoles({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -100,7 +101,7 @@ export default function ExpiringRoless() {
     ),
   });
 
-  const {data: searchData} = useGetGroups({
+  const {data: searchData} = useGroups({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -235,7 +236,11 @@ export default function ExpiringRoless() {
       <ChangeTitle title="Expiring Roles" />
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Roles">
-          <BulkRenewal rows={rows.filter((row) => canManageGroup(currentUser, row.group))} />
+          <BulkRenewal
+            rows={rows.filter((row: AuditGroupRoleRow) =>
+              canManageGroup(currentUser, row.group as GroupDetail | undefined),
+            )}
+          />
           <Tooltip title="Show access that still needs review or all expiring access.">
             <ToggleButtonGroup size="small" exclusive value={filterNeedsReview} onChange={handleNeedsReviewOrAll}>
               <ToggleButton value={true}>Pending</ToggleButton>
@@ -282,7 +287,7 @@ export default function ExpiringRoless() {
             }}
           />
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: GroupSummary) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -319,7 +324,7 @@ export default function ExpiringRoless() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AuditGroupRoleRow) => (
               <TableRow
                 key={row.id}
                 sx={{
@@ -375,7 +380,7 @@ export default function ExpiringRoless() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row]} />
+                  <Started memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -395,24 +400,26 @@ export default function ExpiringRoless() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row]} />
+                  <Ending memberships={[row] as unknown as Array<RoleGroupMapDetail>} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
-                {ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
+                {ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (
                   <TableCell align="center">
                     <BulkRenewal
-                      rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+                      rows={rows.filter((row: AuditGroupRoleRow) =>
+                        canManageGroup(currentUser, row.group as GroupDetail | undefined),
+                      )}
                       select={row.id}
-                      rereview={row.should_expire}
+                      rereview={row.should_expire ?? undefined}
                     />
                   </TableCell>
-                ) : roleOwnerId || canManageGroup(currentUser, row.role_group) ? (
+                ) : roleOwnerId || canManageGroup(currentUser, row.role_group as GroupDetail | undefined) ? (
                   <TableCell align="center">
                     <CreateRoleRequest
                       currentUser={currentUser}
                       enabled
-                      role={row.role_group}
-                      group={row.group}
+                      role={row.role_group as RoleGroupDetail | undefined}
+                      group={row.group as GroupDetail | undefined}
                       owner={row.is_owner}
                       renew></CreateRoleRequest>
                   </TableCell>

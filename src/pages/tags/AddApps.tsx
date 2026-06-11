@@ -22,8 +22,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import {FormContainer, SelectElement, AutocompleteElement} from 'react-hook-form-mui';
 
-import {useGetApps, usePutAppById, PutAppByIdError, PutAppByIdVariables} from '../../api/apiComponents';
-import {App, OktaUser, Tag} from '../../api/apiSchemas';
+import {useApps, useAppByIdPut, AppByIdPutError, AppByIdPutVariables} from '../../api/apiComponents';
+import {AppDetail, OktaUserDetail, TagDetail, UpdateAppBody} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 
 interface AddAppsButtonProps {
@@ -39,8 +39,8 @@ function AddAppsButton(props: AddAppsButtonProps) {
 }
 
 interface AddAppsDialogProps {
-  currentUser: OktaUser;
-  tag: Tag;
+  currentUser: OktaUserDetail;
+  tag: TagDetail;
   setOpen(open: boolean): any;
 }
 
@@ -52,11 +52,11 @@ function AddAppsDialog(props: AddAppsDialogProps) {
   const [appUpdatesErrored, setAppUpdatesErrored] = React.useState(0);
 
   const [appSearchInput, setAppSearchInput] = React.useState('');
-  const [apps, setApps] = React.useState<Array<App>>([]);
+  const [apps, setApps] = React.useState<Array<AppDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const {data: appSearchData} = useGetApps({
+  const {data: appSearchData} = useApps({
     queryParams: {
       page: 1,
       size: 10,
@@ -66,9 +66,9 @@ function AddAppsDialog(props: AddAppsDialogProps) {
   const appSearchOptions = appSearchData?.items ?? [];
 
   const complete = (
-    completedApp: App | undefined,
-    error: PutAppByIdError | null,
-    variables: PutAppByIdVariables,
+    completedApp: AppDetail | undefined,
+    error: AppByIdPutError | null,
+    variables: AppByIdPutVariables,
     context: any,
   ) => {
     if (error != null) {
@@ -95,7 +95,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
     }
   }, [appUpdatesCompleted, appUpdatesErrored]);
 
-  const updateApp = usePutAppById({
+  const updateApp = useAppByIdPut({
     onSettled: complete,
   });
 
@@ -104,7 +104,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
     setNumUpdates(apps.length);
 
     for (var i = 0; i < apps.length; i++) {
-      let app: App = {
+      let app: UpdateAppBody = {
         name: apps[i].name,
         description: apps[i].description,
         tags_to_add: [props.tag.id],
@@ -205,8 +205,8 @@ function AddAppsDialog(props: AddAppsDialogProps) {
 }
 
 interface AddAppsProps {
-  currentUser: OktaUser;
-  tag: Tag;
+  currentUser: OktaUserDetail;
+  tag: TagDetail;
 }
 
 export default function AddApps(props: AddAppsProps) {

@@ -13,8 +13,8 @@ import Link from '@mui/material/Avatar';
 
 import ExternalIcon from '@mui/icons-material/Outbound';
 
-import {useGetGroupById} from '../../api/apiComponents';
-import {PolymorphicGroup} from '../../api/apiSchemas';
+import {useGroupById} from '../../api/apiComponents';
+import {GroupDetail} from '../../api/apiSchemas';
 import AvatarButton from '../../components/AvatarButton';
 
 interface ExternallyManagedButtonProps {
@@ -31,7 +31,7 @@ interface RuleLinksProps {
 }
 
 function RuleLinks(props: RuleLinksProps) {
-  const {data, isError, isLoading} = useGetGroupById({
+  const {data, isError, isLoading} = useGroupById({
     pathParams: {groupId: props.groupId},
   });
 
@@ -40,13 +40,13 @@ function RuleLinks(props: RuleLinksProps) {
       {!isError && !isLoading ? (
         <Link
           key={props.groupId}
-          to={`/groups/${(data ?? ({} as PolymorphicGroup)).name}`}
+          to={`/groups/${(data ?? ({} as GroupDetail)).name}`}
           sx={{
             textDecoration: 'none',
             paddingLeft: '4px',
           }}
           component={RouterLink}>
-          {(props.index ? ', ' : '') + (data ?? ({} as PolymorphicGroup)).name}
+          {(props.index ? ', ' : '') + (data ?? ({} as GroupDetail)).name}
         </Link>
       ) : (
         <>{props.groupId}</>
@@ -103,7 +103,7 @@ function RuleFormatting(props: RuleFormattingProps) {
 }
 
 interface ExternallyManagedDialogProps {
-  group: PolymorphicGroup;
+  group: GroupDetail;
   setOpen(open: boolean): any;
 }
 
@@ -132,7 +132,7 @@ function ExternallyManagedDialog(props: ExternallyManagedDialogProps) {
 }
 
 interface ExternallyManagedProps {
-  group: PolymorphicGroup;
+  group: GroupDetail;
 }
 
 export default function ExternallyManaged(props: ExternallyManagedProps) {

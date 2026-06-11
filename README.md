@@ -92,14 +92,14 @@ Go to [http://localhost:3000/](http://localhost:3000/) to view the React SPA.
 
 #### Generating Typescript React Query API Client
 
-We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a Typescript React-Query v4 API Fetch Client based on our OpenAPI schema, which FastAPI auto-publishes at [http://localhost:6060/api/openapi.json](http://localhost:6060/api/openapi.json) when running in development mode. The codegen config is in [openapi-codegen.config.ts](openapi-codegen.config.ts):
+We use [openapi-codegen](https://github.com/fabien0102/openapi-codegen) to generate a TypeScript React-Query (v5) API client — typed schemas, fetchers, and hooks — from our OpenAPI schema, which FastAPI auto-publishes at [http://localhost:6060/api/openapi.json](http://localhost:6060/api/openapi.json) when running in development mode (`ENV=development`). The codegen CLI and generator are pinned in `devDependencies` and the config in [openapi-codegen.config.ts](openapi-codegen.config.ts) points at that live URL, so to regenerate after a backend schema change just run the dev backend and then:
 
 ```
-npm install @openapi-codegen/cli
-npm install @openapi-codegen/typescript
-npm install --only=dev
-npx openapi-codegen gen api
+npm install
+npm run codegen
 ```
+
+Re-running codegen overwrites the generated files (`src/api/apiComponents.ts`, `apiSchemas.ts`) but preserves the hand-customized `apiFetcher.ts`, `apiContext.ts`, and `apiUtils.ts`.
 
 ## Tests
 

@@ -33,8 +33,14 @@ import {displayUserName, minTagTimeGroups, ownerCantAddSelfGroups, requiredReaso
 
 import {useCurrentUser} from '../../authentication';
 
-import {usePutRoleMembersById, PutRoleMembersByIdError, PutRoleMembersByIdVariables} from '../../api/apiComponents';
-import {RoleMember, RoleGroupMap, OktaGroup, AppGroup} from '../../api/apiSchemas';
+import {useRoleMembersByIdPut, RoleMembersByIdPutError, RoleMembersByIdPutVariables} from '../../api/apiComponents';
+import {
+  GroupRefForMembership,
+  OktaUserGroupMemberDetail,
+  RoleGroupMapDetail,
+  RoleMember,
+  RoleMembersSummary,
+} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 import accessConfig from '../../config/accessConfig';
@@ -52,7 +58,7 @@ interface Data {
   status: string;
 }
 
-function createData(row: RoleGroupMap, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
+function createData(row: RoleGroupMapDetail, selected: number | undefined, renewValue: 'yes' | 'no' | '' = ''): Data {
   const highlight = row.id == selected ? 'Selected-' : '';
   return {
     id: row.id!,
@@ -77,8 +83,8 @@ function createData(row: RoleGroupMap, selected: number | undefined, renewValue:
 }
 
 interface CreateRequestForm {
-  selectedYes: RoleGroupMap[];
-  selectedNo: RoleGroupMap[];
+  selectedYes: RoleGroupMapDetail[];
+  selectedNo: RoleGroupMapDetail[];
   customUntil?: string;
   reason?: string;
 }
@@ -90,7 +96,7 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index
 
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;
-  rows: RoleGroupMap[];
+  rows: RoleGroupMapDetail[];
   select?: number;
 }
 
@@ -125,11 +131,11 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     return initialStates;
   });
 
-  const [selectedYes, setSelectedYes] = React.useState<RoleGroupMap[]>(() =>
+  const [selectedYes, setSelectedYes] = React.useState<RoleGroupMapDetail[]>(() =>
     props.select !== undefined ? props.rows.filter((r) => r.id === props.select) : [],
   );
 
-  const [selectedNo, setSelectedNo] = React.useState<RoleGroupMap[]>(() =>
+  const [selectedNo, setSelectedNo] = React.useState<RoleGroupMapDetail[]>(() =>
     props.rows.filter((row) => row.should_expire),
   );
 
@@ -141,7 +147,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   });
 
   const role_memberships =
-    currentUser.active_group_memberships?.reduce((out, curr) => {
+    currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
       curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
       return out;
     }, new Set<string>()) ?? new Set<string>();
@@ -239,7 +245,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
       );
     }, false);
 
-  const updateUntil = (memberships: RoleGroupMap[]) => {
+  const updateUntil = (memberships: RoleGroupMapDetail[]) => {
     // Only calculate time limit for memberships selected for renewal (yes)
     const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
 
@@ -251,12 +257,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
 
     const groups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: RoleGroupMapDetail) => {
         return all.add(curr.group!);
-      }, new Set<OktaGroup | AppGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
-    const owner_member = renewalMemberships.reduce((all, curr) => {
+    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: RoleGroupMapDetail) => {
       return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
@@ -304,7 +310,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   };
 
-  const updateRequiredReason = (memberships: RoleGroupMap[]) => {
+  const updateRequiredReason = (memberships: RoleGroupMapDetail[]) => {
     // Only calculate required reason for memberships selected for renewal (yes)
     const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
 
@@ -314,12 +320,12 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
 
     const groups = Array.from(
-      renewalMemberships.reduce((all, curr) => {
+      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: RoleGroupMapDetail) => {
         return all.add(curr.group!);
-      }, new Set<OktaGroup | AppGroup>()),
+      }, new Set<GroupRefForMembership>()),
     );
 
-    const owner_member = renewalMemberships.reduce((all, curr) => {
+    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: RoleGroupMapDetail) => {
       return all.add(curr.is_owner!);
     }, new Set<boolean>());
 
@@ -338,9 +344,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   }, [selectedYes, selectedNo, toggleStates]);
 
   const complete = (
-    completedUsersChange: RoleMember | undefined,
-    error: PutRoleMembersByIdError | null,
-    variables: PutRoleMembersByIdVariables,
+    completedUsersChange: RoleMembersSummary | undefined,
+    error: RoleMembersByIdPutError | null,
+    variables: RoleMembersByIdPutVariables,
     context: any,
   ) => {
     if (error != null) {
@@ -367,7 +373,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     }
   }, [groupUpdatesCompleted, groupUpdatesErrored]);
 
-  const putGroupUsers = usePutRoleMembersById({
+  const putGroupUsers = useRoleMembersByIdPut({
     onSettled: complete,
   });
 
@@ -436,7 +442,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     );
 
     // group selectedNo RoleGroupMaps by group
-    // creates map { role ids : [RoleGroupMap] }
+    // creates map { role ids : [RoleGroupMapDetail] }
     // only include if access is active and decision has not already been made
     const doNotRenew = selectedNo.reduce(
       (groups, item) => {
@@ -621,7 +627,7 @@ function BulkRenewalButton(props: BulkRenewalButtonProps) {
 }
 
 interface BulkRenewalProps {
-  rows: RoleGroupMap[];
+  rows: RoleGroupMapDetail[];
   select?: number;
   rereview?: boolean;
 }

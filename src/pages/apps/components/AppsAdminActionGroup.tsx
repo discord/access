@@ -2,15 +2,15 @@ import {Autocomplete, Button, Grid, Paper, TextField, Box} from '@mui/material';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import CreateUpdateGroup from '../../groups/CreateUpdate';
-import {OktaUser, App, AppGroup} from '../../../api/apiSchemas';
+import {OktaUserDetail, AppDetail, AppGroupDetail} from '../../../api/apiSchemas';
 import {renderUserOption} from '../../../components/TableTopBar';
 import {displayUserName, sortGroupMemberRecords} from '../../../helpers';
 import React from 'react';
 
 interface AppsAdminActionGroupProps {
-  currentUser: OktaUser;
-  app: App;
-  onSearchSubmit?: (appGroup: AppGroup[], isActive: boolean) => void;
+  currentUser: OktaUserDetail;
+  app: AppDetail;
+  onSearchSubmit?: (appGroup: AppGroupDetail[], isActive: boolean) => void;
   onToggleExpand?: (expanded: boolean) => void;
   isExpanded?: boolean;
 }
@@ -18,8 +18,8 @@ interface AppsAdminActionGroupProps {
 export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.memo(
   ({currentUser, app, onSearchSubmit, onToggleExpand, isExpanded = false}) => {
     const {allMembers, memberGroups, sortedUserOptions} = React.useMemo(() => {
-      const allMembers: Record<string, OktaUser> = {};
-      const memberGroups: Record<string, AppGroup[]> = {};
+      const allMembers: Record<string, OktaUserDetail> = {};
+      const memberGroups: Record<string, AppGroupDetail[]> = {};
 
       (app.active_non_owner_app_groups ?? []).forEach((appGroup) => {
         [appGroup.active_user_ownerships, appGroup.active_user_memberships].forEach((memberList) => {
@@ -64,7 +64,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
         onSearchSubmitRef.current?.(fallback, false);
         return;
       }
-      const matchedById: Record<string, AppGroup> = {};
+      const matchedById: Record<string, AppGroupDetail> = {};
       Object.values(allMembersRef.current).forEach((user) => {
         const name = displayUserName(user).toLowerCase();
         const email = user.email.toLowerCase();

@@ -10,7 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import TablePagination from '@mui/material/TablePagination';
 import Typography from '@mui/material/Typography';
 
-import {OktaUserGroupMember, RoleGroupMap} from '../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleGroupMapDetail} from '../api/apiSchemas';
 import {displayUserName} from '../helpers';
 import Started from './Started';
 import Ending from './Ending';
@@ -18,8 +18,8 @@ import InlineReason from './InlineReason';
 import AccessMethodChip from './AccessMethodChip';
 import TablePaginationActions from './actions/TablePaginationActions';
 
-// Accept both OktaUserGroupMember[] and RoleGroupMap[]
-type AccessAuditEntry = OktaUserGroupMember | RoleGroupMap;
+// Accept both OktaUserGroupMemberDetail[] and RoleGroupMapDetail[]
+type AccessAuditEntry = OktaUserGroupMemberDetail | RoleGroupMapDetail;
 
 interface AccessHistoryTableProps {
   accessEntries: AccessAuditEntry[];

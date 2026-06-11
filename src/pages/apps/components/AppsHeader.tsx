@@ -1,7 +1,7 @@
 import {Grid, Paper, Typography, Box, Chip, Stack, Tooltip, Divider} from '@mui/material';
 import CreateUpdateApp from '../CreateUpdate';
 import DeleteApp from '../Delete';
-import {App, OktaUser} from '../../../api/apiSchemas';
+import {AppDetail, OktaUserDetail} from '../../../api/apiSchemas';
 import {useNavigate} from 'react-router-dom';
 import React from 'react';
 
@@ -10,8 +10,8 @@ import {isAccessAdmin, isAppOwnerGroupOwner} from '../../../authorization';
 import MarkdownDescription from '../../../components/MarkdownDescription';
 
 interface AppsHeaderProps {
-  app: App;
-  currentUser: OktaUser;
+  app: AppDetail;
+  currentUser: OktaUserDetail;
 }
 
 export const AppsHeader: React.FC<AppsHeaderProps> = React.memo(({app, currentUser}) => {

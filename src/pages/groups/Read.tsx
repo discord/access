@@ -42,14 +42,17 @@ import Loading from '../../components/Loading';
 import Ending from '../../components/Ending';
 import MarkdownDescription from '../../components/MarkdownDescription';
 import {groupBy, displayGroupType, displayUserName} from '../../helpers';
-import {useGetAppById, useGetGroupById, usePutGroupMembersById} from '../../api/apiComponents';
+import {useAppById, useGroupById, useGroupMembersByIdPut} from '../../api/apiComponents';
 import {
-  App,
-  PolymorphicGroup,
-  OktaUserGroupMember,
-  RoleGroupMap,
-  AppGroup,
-  RoleGroup,
+  AppDetail,
+  AppGroupForAppDetail,
+  GroupDetail,
+  GroupRefForMembership,
+  OktaGroupTagMapDetail,
+  OktaUserGroupMemberDetail,
+  RoleGroupMapDetail,
+  AppGroupDetail,
+  RoleGroupDetail,
   GroupMember,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
@@ -61,8 +64,8 @@ import MembershipChip from '../../components/MembershipChip';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
 
 function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   // compare using the email of the user for the membership list
   let aEmail = aUsers[0].active_user?.email ?? '';
@@ -70,7 +73,7 @@ function sortGroupMembers(
   return aEmail.localeCompare(bEmail);
 }
 
-function sortOktaUserGroupMembers(aMember: OktaUserGroupMember, bMember: OktaUserGroupMember): number {
+function sortOktaUserGroupMembers(aMember: OktaUserGroupMemberDetail, bMember: OktaUserGroupMemberDetail): number {
   // compare using the name of the active role group, treating no active role group as the first element
   let aName = aMember.active_role_group_mapping?.active_role_group?.name ?? '';
   let bName = bMember.active_role_group_mapping?.active_role_group?.name ?? '';
@@ -78,8 +81,8 @@ function sortOktaUserGroupMembers(aMember: OktaUserGroupMember, bMember: OktaUse
 }
 
 function sortRoleGroups(
-  [aGroupId, aGroups]: [string, Array<RoleGroupMap>],
-  [bGroupId, bGroups]: [string, Array<RoleGroupMap>],
+  [aGroupId, aGroups]: [string, Array<RoleGroupMapDetail>],
+  [bGroupId, bGroups]: [string, Array<RoleGroupMapDetail>],
 ): number {
   let aName = aGroups[0].active_group?.name ?? '';
   let bName = bGroups[0].active_group?.name ?? '';
@@ -100,16 +103,16 @@ export default function ReadGroup() {
   const [removeOwnDirectAccessDialogParameters, setRemoveOwnDirectAccessDialogParameters] =
     React.useState<RemoveOwnDirectAccessDialogParameters>({} as RemoveOwnDirectAccessDialogParameters);
 
-  const {data, isError, isLoading} = useGetGroupById({
+  const {data, isError, isLoading} = useGroupById({
     pathParams: {groupId: id ?? ''},
   });
 
-  const group = data ?? ({} as PolymorphicGroup);
+  const group = data ?? ({} as GroupDetail);
 
-  const {data: appData} = useGetAppById(
+  const {data: appData} = useAppById(
     {
       pathParams: {
-        appId: ((group ?? {}) as AppGroup).app?.id ?? '',
+        appId: ((group ?? {}) as AppGroupDetail).app?.id ?? '',
       },
     },
     {
@@ -117,9 +120,9 @@ export default function ReadGroup() {
     },
   );
 
-  const app = appData ?? ({} as App);
+  const app = appData ?? ({} as AppDetail);
 
-  const putGroupUsers = usePutGroupMembersById({
+  const putGroupUsers = useGroupMembersByIdPut({
     onSuccess: () => navigate(0),
   });
 
@@ -132,37 +135,43 @@ export default function ReadGroup() {
   }
 
   const appOwnershipsArray = (app.active_owner_app_groups ?? [])
-    .map((appGroup) => appGroup.active_user_ownerships ?? [])
+    .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_ownerships ?? [])
     .flat();
   // set of app owner ids
-  const appOwnershipSet: Set<string> = appOwnershipsArray.reduce((out, user) => {
-    out.add(user.active_user!.id);
-    return out;
-  }, new Set<string>());
+  const appOwnershipSet: Set<string> = appOwnershipsArray.reduce(
+    (out: Set<string>, user: OktaUserGroupMemberDetail) => {
+      out.add(user.active_user!.id);
+      return out;
+    },
+    new Set<string>(),
+  );
 
-  const directRoleOwnerships: Set<string> = (group.active_user_ownerships ?? []).reduce((out, user) => {
-    out.add(user.active_user!.id);
-    return out;
-  }, new Set<string>());
+  const directRoleOwnerships: Set<string> = (group.active_user_ownerships ?? []).reduce(
+    (out: Set<string>, user: OktaUserGroupMemberDetail) => {
+      out.add(user.active_user!.id);
+      return out;
+    },
+    new Set<string>(),
+  );
 
-  let allOwnerships: Set<OktaUserGroupMember> = new Set(group.active_user_ownerships ?? []);
-  appOwnershipsArray.forEach((user) => {
+  let allOwnerships: Set<OktaUserGroupMemberDetail> = new Set(group.active_user_ownerships ?? []);
+  appOwnershipsArray.forEach((user: OktaUserGroupMemberDetail) => {
     directRoleOwnerships.has(user.active_user!.id) ? null : allOwnerships.add(user);
   });
 
-  let ownerships = groupBy(Array.from(allOwnerships), (m) => m.active_user?.id);
+  let ownerships = groupBy(Array.from(allOwnerships), (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  const memberships = groupBy(group.active_user_memberships, (m) => m.active_user?.id);
+  const memberships = groupBy(group.active_user_memberships, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  let role_associated_group_owners: Record<string, RoleGroupMap[]> = {};
-  let role_associated_group_members: Record<string, RoleGroupMap[]> = {};
+  let role_associated_group_owners: Record<string, RoleGroupMapDetail[]> = {};
+  let role_associated_group_members: Record<string, RoleGroupMapDetail[]> = {};
   if (group.type == 'role_group') {
     role_associated_group_owners = groupBy(
-      (group as RoleGroup).active_role_associated_group_owner_mappings,
+      (group as RoleGroupDetail).active_role_associated_group_owner_mappings,
       (g) => g.active_group?.id,
     );
     role_associated_group_members = groupBy(
-      (group as RoleGroup).active_role_associated_group_member_mappings,
+      (group as RoleGroupDetail).active_role_associated_group_member_mappings,
       (g) => g.active_group?.id,
     );
   }
@@ -189,7 +198,7 @@ export default function ReadGroup() {
     });
   };
 
-  const removeGroupFromRole = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
+  const removeGroupFromRole = (removeGroup: GroupDetail, fromRole: RoleGroupDetail, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({
       group: removeGroup,
       role: fromRole,
@@ -198,7 +207,7 @@ export default function ReadGroup() {
     setRemoveGroupsFromRoleDialogOpen(true);
   };
 
-  const removeOwnDirectAccess = (id: string, fromGroup: PolymorphicGroup, owner: boolean) => {
+  const removeOwnDirectAccess = (id: string, fromGroup: GroupDetail, owner: boolean) => {
     setRemoveOwnDirectAccessDialogParameters({
       userId: id,
       group: fromGroup,
@@ -223,7 +232,7 @@ export default function ReadGroup() {
                       icon={group.type === 'role_group' ? <RoleIcon /> : <GroupIcon />}
                       text={displayGroupType(group)}
                     />
-                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroup} />}
+                    {group.type == 'app_group' && <AppLinkButton group={group as AppGroupDetail} />}
                     {!group.is_managed && <ExternallyManaged group={group} />}
                   </Stack>
                   <Stack
@@ -245,7 +254,7 @@ export default function ReadGroup() {
                     </Typography>
                     <MarkdownDescription description={group.description} />
                     <Box>
-                      {group.active_group_tags?.map((tagMap) => (
+                      {group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => (
                         <Chip
                           key={'tag' + tagMap.active_tag!.id}
                           label={tagMap.active_tag!.name}
@@ -354,7 +363,7 @@ export default function ReadGroup() {
                       {Object.keys(role_associated_group_owners).length > 0 ? (
                         Object.entries(role_associated_group_owners)
                           .sort(sortRoleGroups)
-                          .map(([groupId, groups]: [string, Array<RoleGroupMap>]) => (
+                          .map(([groupId, groups]: [string, Array<RoleGroupMapDetail>]) => (
                             <TableRow key={'roleownersgroups' + groupId}>
                               <TableCell>
                                 <Link
@@ -373,13 +382,14 @@ export default function ReadGroup() {
                               <TableCell>
                                 <Ending memberships={groups} />
                               </TableCell>
-                              {groupOwner || canManageGroup(currentUser, groups[0].active_group) ? (
+                              {groupOwner ||
+                              canManageGroup(currentUser, groups[0].active_group as GroupDetail | undefined) ? (
                                 <TableCell>
                                   <IconButton
                                     size="small"
                                     onClick={() =>
                                       removeGroupFromRole(
-                                        groups[0].active_group ?? ({} as PolymorphicGroup),
+                                        (groups[0].active_group as GroupDetail | undefined) ?? ({} as GroupDetail),
                                         group,
                                         true,
                                       )
@@ -440,7 +450,7 @@ export default function ReadGroup() {
                       {Object.keys(role_associated_group_members).length > 0 ? (
                         Object.entries(role_associated_group_members)
                           .sort(sortRoleGroups)
-                          .map(([groupId, groups]: [string, Array<RoleGroupMap>]) => (
+                          .map(([groupId, groups]: [string, Array<RoleGroupMapDetail>]) => (
                             <TableRow key={'rolemembergroup' + groupId}>
                               <TableCell>
                                 <Link
@@ -459,13 +469,14 @@ export default function ReadGroup() {
                               <TableCell>
                                 <Ending memberships={groups} />
                               </TableCell>
-                              {groupOwner || canManageGroup(currentUser, groups[0].active_group) ? (
+                              {groupOwner ||
+                              canManageGroup(currentUser, groups[0].active_group as GroupDetail | undefined) ? (
                                 <TableCell>
                                   <IconButton
                                     size="small"
                                     onClick={() =>
                                       removeGroupFromRole(
-                                        groups[0].active_group ?? ({} as PolymorphicGroup),
+                                        (groups[0].active_group as GroupDetail | undefined) ?? ({} as GroupDetail),
                                         group,
                                         false,
                                       )
@@ -561,7 +572,7 @@ export default function ReadGroup() {
                   {Object.keys(ownerships).length > 0 ? (
                     Object.entries(ownerships)
                       .sort(sortGroupMembers)
-                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                         <TableRow key={'owner' + userId}>
                           <TableCell>
                             <Link
@@ -598,7 +609,7 @@ export default function ReadGroup() {
                             <TableCell>
                               <Stack direction="row" spacing={1}>
                                 {appOwnershipSet.has(userId) &&
-                                !(group.type == 'app_group' && (group as AppGroup).is_owner) ? (
+                                !(group.type == 'app_group' && (group as AppGroupDetail).is_owner) ? (
                                   <Chip
                                     key={'owners' + userId + app.name}
                                     label={app.name}
@@ -727,7 +738,7 @@ export default function ReadGroup() {
                   {Object.keys(memberships).length > 0 ? (
                     Object.entries(memberships)
                       .sort(sortGroupMembers)
-                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                         <TableRow key={'member' + userId}>
                           <TableCell>
                             <Link

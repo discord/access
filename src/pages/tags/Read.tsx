@@ -25,8 +25,16 @@ import DeleteIcon from '@mui/icons-material/Close';
 import Disabled from '@mui/icons-material/PauseCircle';
 import Enabled from '@mui/icons-material/TaskAlt';
 
-import {useGetTagById, usePutGroupById, usePutAppById} from '../../api/apiComponents';
-import {App, AppGroup, PolymorphicGroup, Tag} from '../../api/apiSchemas';
+import {useTagById, useGroupByIdPut, useAppByIdPut, GroupByIdPutRequestBody} from '../../api/apiComponents';
+import {
+  AppDetail,
+  AppGroupDetail,
+  AppTagMapDetail,
+  GroupDetail,
+  OktaGroupTagMapDetail,
+  TagDetail,
+  UpdateAppBody,
+} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
@@ -46,15 +54,15 @@ export default function ReadTag() {
   const {id} = useParams();
   const navigate = useNavigate();
 
-  const {data, isError, isLoading} = useGetTagById({
+  const {data, isError, isLoading} = useTagById({
     pathParams: {tagId: id ?? ''},
   });
 
-  const updateApp = usePutAppById({
+  const updateApp = useAppByIdPut({
     onSuccess: () => navigate(0),
   });
 
-  const updateGroup = usePutGroupById({
+  const updateGroup = useGroupByIdPut({
     onSuccess: () => navigate(0),
   });
 
@@ -66,10 +74,10 @@ export default function ReadTag() {
     return <Loading />;
   }
 
-  const tag = data ?? ({} as Tag);
+  const tag = data ?? ({} as TagDetail);
 
-  const removeTagFromApp = (appToRemove: App, tagId: string) => {
-    let app: App = {
+  const removeTagFromApp = (appToRemove: AppDetail, tagId: string) => {
+    let app: UpdateAppBody = {
       name: appToRemove.name,
       description: appToRemove.description,
       tags_to_remove: [tagId],
@@ -81,13 +89,13 @@ export default function ReadTag() {
     });
   };
 
-  const removeTagFromGroup = (groupToRemove: PolymorphicGroup, tagId: string) => {
-    let group: PolymorphicGroup = {
+  const removeTagFromGroup = (groupToRemove: GroupDetail, tagId: string) => {
+    let group = {
       name: groupToRemove.name,
       description: groupToRemove.description,
       type: groupToRemove.type,
       tags_to_remove: [tagId],
-    };
+    } as GroupByIdPutRequestBody;
 
     switch (groupToRemove.type) {
       case 'okta_group':
@@ -95,8 +103,8 @@ export default function ReadTag() {
       case 'role_group':
         break;
       case 'app_group':
-        const appGroup = group as AppGroup;
-        appGroup.app_id = (groupToRemove as AppGroup).app?.id ?? '';
+        const appGroup = group as AppGroupDetail;
+        appGroup.app_id = (groupToRemove as AppGroupDetail).app?.id ?? '';
         break;
     }
 
@@ -266,7 +274,7 @@ export default function ReadTag() {
                 </TableHead>
                 <TableBody>
                   {tag.active_app_tags && tag.active_app_tags.length > 0 ? (
-                    tag.active_app_tags.map((tagMap) => (
+                    tag.active_app_tags.map((tagMap: AppTagMapDetail) => (
                       <TableRow key={'taggedapps' + tagMap.active_app?.id}>
                         <TableCell colSpan={2}>
                           <Link
@@ -341,7 +349,7 @@ export default function ReadTag() {
                 </TableHead>
                 <TableBody>
                   {tag.active_group_tags && tag.active_group_tags.length > 0 ? (
-                    tag.active_group_tags.map((tagMap) => (
+                    tag.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => (
                       <TableRow
                         key={
                           'taggedgroups' + tagMap.active_group?.id + (tagMap.active_app_tag_mapping ? 'app' : 'direct')
@@ -368,7 +376,7 @@ export default function ReadTag() {
                           {tagMap.active_app_tag_mapping ? (
                             <Chip
                               key={'group' + tagMap.active_group?.id}
-                              label={(tagMap.active_group as AppGroup).app?.name}
+                              label={(tagMap.active_group as AppGroupDetail).app?.name}
                               color="primary"
                               variant="outlined"
                             />
@@ -378,7 +386,11 @@ export default function ReadTag() {
                         </TableCell>
                         <TableCell align="right">
                           {isAccessAdmin(currentUser) && !tagMap.active_app_tag_mapping ? (
-                            <IconButton size="small" onClick={() => removeTagFromGroup(tagMap.active_group!, tag.id)}>
+                            <IconButton
+                              size="small"
+                              onClick={() =>
+                                removeTagFromGroup(tagMap.active_group! as unknown as GroupDetail, tag.id)
+                              }>
                               <DeleteIcon />
                             </IconButton>
                           ) : null}

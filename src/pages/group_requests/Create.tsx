@@ -28,13 +28,21 @@ import {
 } from 'react-hook-form-mui';
 
 import {
-  useCreateGroupRequest,
-  useGetApps,
-  useGetTags,
-  CreateGroupRequestError,
-  CreateGroupRequestVariables,
+  useGroupRequestsCreate,
+  useApps,
+  useTags,
+  GroupRequestsCreateError,
+  GroupRequestsCreateVariables,
 } from '../../api/apiComponents';
-import {App, AppGroup, OktaUser, PolymorphicGroup, GroupRequest, Tag} from '../../api/apiSchemas';
+import {
+  AppDetail,
+  AppGroupDetail,
+  AppSummary,
+  OktaUserDetail,
+  GroupDetail,
+  GroupRequestDetail,
+  TagDetail,
+} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 
@@ -66,7 +74,7 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({
 
 interface CreateGroupRequestForm {
   type: 'okta_group' | 'app_group' | 'role_group';
-  app?: App;
+  app?: AppDetail;
   name: string;
   description?: string;
   ownershipUntil?: string;
@@ -91,7 +99,7 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
 }
 
 interface CreateRequestContainerProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): void;
 }
 
@@ -99,19 +107,19 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
   const [groupType, setGroupType] = React.useState<'okta_group' | 'app_group' | 'role_group'>('okta_group');
-  const [selectedApp, setSelectedApp] = React.useState<App | null>(null);
+  const [selectedApp, setSelectedApp] = React.useState<AppDetail | null>(null);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>([]);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>([]);
   const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
   const complete = (
-    completedRequest: GroupRequest | undefined,
-    error: CreateGroupRequestError | null,
-    variables: CreateGroupRequestVariables,
+    completedRequest: GroupRequestDetail | undefined,
+    error: GroupRequestsCreateError | null,
+    variables: GroupRequestsCreateVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -123,9 +131,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     }
   };
 
-  const createRequest = useCreateGroupRequest({onSettled: complete});
+  const createRequest = useGroupRequestsCreate({onSettled: complete});
 
-  const {data: appSearchData} = useGetApps({
+  const {data: appSearchData} = useApps({
     queryParams: {page: 1, size: 10, q: appSearchInput},
   });
   const appSearchOptions = appSearchData?.items ?? [];
@@ -138,15 +146,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     return withoutPrefix.slice(0, sepIdx);
   }, [groupType, nameInput]);
 
-  const {data: detectedAppData} = useGetApps({
+  const {data: detectedAppData} = useApps({
     queryParams: {page: 1, size: 10, q: detectedAppName},
   });
   const detectedApp = React.useMemo(
-    () => detectedAppData?.items?.find((app) => app.name === detectedAppName) ?? null,
+    () => detectedAppData?.items?.find((app: AppSummary) => app.name === detectedAppName) ?? null,
     [detectedAppName, detectedAppData],
   );
 
-  const {data: tagSearchData} = useGetTags({
+  const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
@@ -195,6 +203,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       request_reason: formData.reason ?? '',
       requested_group_tags: selectedTags.map((t) => t.id),
     } as Parameters<typeof createRequest.mutate>[0]['body'];
+
+    if (body == null) {
+      setSubmitting(false);
+      return;
+    }
 
     switch (formData.ownershipUntil) {
       case 'indefinite':
@@ -263,7 +276,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                   {groupType == 'role_group'
                     ? ROLE_GROUP_PREFIX
                     : APP_GROUP_PREFIX +
-                      (selectedApp?.name == null ? '<App>' : selectedApp.name) +
+                      (selectedApp?.name == null ? '<AppDetail>' : selectedApp.name) +
                       APP_NAME_APP_GROUP_SEPARATOR}
                 </Typography>
               </Box>
@@ -313,8 +326,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             getOptionLabel={(option) => option.name}
             onInputChange={(_event, newVal) => setTagSearchInput(newVal)}
             onChange={(_event, newVal) => setSelectedTags(newVal)}
-            renderTags={(value: Tag[], getTagProps) =>
-              value.map((option: Tag, index: number) => (
+            renderTags={(value: TagDetail[], getTagProps) =>
+              value.map((option: TagDetail, index: number) => (
                 <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
               ))
             }
@@ -373,7 +386,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 }
 
 interface CreateRequestDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): void;
 }
 
@@ -386,7 +399,7 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 }
 
 interface CreateRequestProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   open?: boolean;
   setOpen?: (open: boolean) => void;
 }

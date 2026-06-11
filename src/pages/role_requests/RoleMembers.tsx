@@ -24,7 +24,7 @@ import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName} from '../../helpers';
 
-import {OktaUserGroupMember, RoleGroup} from '../../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleGroupDetail} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 
 interface UserData {
@@ -34,7 +34,7 @@ interface UserData {
   ending: string;
 }
 
-function createUserData(row: OktaUserGroupMember): UserData {
+function createUserData(row: OktaUserGroupMemberDetail): UserData {
   return {
     id: row.active_user!.id,
     userName: displayUserName(row.active_user),
@@ -45,7 +45,7 @@ function createUserData(row: OktaUserGroupMember): UserData {
 
 interface RoleMembersDialogProps {
   setOpen(open: boolean): any;
-  rows: OktaUserGroupMember[];
+  rows: OktaUserGroupMemberDetail[];
   roleName: string;
   groupName: string;
   owner: boolean;
@@ -119,7 +119,7 @@ function RoleMembersButton(props: BulkRenewalButtonProps) {
 }
 
 interface RoleMembersProps {
-  rows: OktaUserGroupMember[];
+  rows: OktaUserGroupMemberDetail[];
   roleName: string;
   groupName: string;
   owner: boolean;

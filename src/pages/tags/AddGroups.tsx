@@ -22,8 +22,14 @@ import CircularProgress from '@mui/material/CircularProgress';
 
 import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
 
-import {useGetGroups, usePutGroupById, PutGroupByIdError, PutGroupByIdVariables} from '../../api/apiComponents';
-import {PolymorphicGroup, OktaUser, Tag, AppGroup} from '../../api/apiSchemas';
+import {
+  useGroups,
+  useGroupByIdPut,
+  GroupByIdPutError,
+  GroupByIdPutVariables,
+  GroupByIdPutRequestBody,
+} from '../../api/apiComponents';
+import {GroupDetail, OktaUserDetail, TagDetail, AppGroupDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 
 interface AddGroupsButtonProps {
@@ -39,8 +45,8 @@ function AddGroupsButton(props: AddGroupsButtonProps) {
 }
 
 interface AddGroupsDialogProps {
-  currentUser: OktaUser;
-  tag: Tag;
+  currentUser: OktaUserDetail;
+  tag: TagDetail;
   setOpen(open: boolean): any;
 }
 
@@ -58,11 +64,11 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const [groupUpdatesErrored, setGroupUpdatesErrored] = React.useState(0);
 
   const [groupSearchInput, setGroupSearchInput] = React.useState('');
-  const [groups, setGroups] = React.useState<Array<PolymorphicGroup>>([]);
+  const [groups, setGroups] = React.useState<Array<GroupDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  const {data: groupSearchData} = useGetGroups({
+  const {data: groupSearchData} = useGroups({
     queryParams: {
       page: 1,
       size: 10,
@@ -73,9 +79,9 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const groupSearchOptions = groupSearchData?.items ?? [];
 
   const complete = (
-    completedGroup: PolymorphicGroup | undefined,
-    error: PutGroupByIdError | null,
-    variables: PutGroupByIdVariables,
+    completedGroup: GroupDetail | undefined,
+    error: GroupByIdPutError | null,
+    variables: GroupByIdPutVariables,
     context: any,
   ) => {
     if (error != null) {
@@ -102,7 +108,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     }
   }, [groupUpdatesCompleted, groupUpdatesErrored]);
 
-  const updateGroup = usePutGroupById({
+  const updateGroup = useGroupByIdPut({
     onSettled: complete,
   });
 
@@ -111,15 +117,15 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     setNumUpdates(groups.length);
 
     for (var i = 0; i < groups.length; i++) {
-      let group: PolymorphicGroup = {
+      let group = {
         name: groups[i].name,
         description: groups[i].description,
         type: groups[i].type,
         tags_to_add: [props.tag.id],
-      };
+      } as GroupByIdPutRequestBody;
 
       if (groups[i].type == 'app_group') {
-        (group as AppGroup).app_id = (groups[i] as AppGroup).app!.id!;
+        (group as AppGroupDetail).app_id = (groups[i] as AppGroupDetail).app!.id!;
       }
 
       updateGroup.mutate({
@@ -223,8 +229,8 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
 }
 
 interface AddGroupsProps {
-  currentUser: OktaUser;
-  tag: Tag;
+  currentUser: OktaUserDetail;
+  tag: TagDetail;
 }
 
 export default function AddGroups(props: AddGroupsProps) {

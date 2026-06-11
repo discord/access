@@ -26,16 +26,16 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateRoleRequest from './Create';
-import {useGetRoleRequests} from '../../api/apiComponents';
+import {useRoleRequests} from '../../api/apiComponents';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
-import {OktaUserGroupMember} from '../../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleRequestSummary} from '../../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
 
-function userOwnsRoles(user: OktaUserGroupMember[]): boolean {
+function userOwnsRoles(user: OktaUserGroupMemberDetail[]): boolean {
   return user.reduce((out, ownership) => {
     return out || ownership.active_group?.type == 'role_group';
   }, false);
@@ -74,7 +74,7 @@ export default function ListRoleRequests() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetRoleRequests({
+  const {data, error, isLoading} = useRoleRequests({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
@@ -86,7 +86,7 @@ export default function ListRoleRequests() {
     ),
   });
 
-  const {data: searchData} = useGetRoleRequests({
+  const {data: searchData} = useRoleRequests({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -169,7 +169,7 @@ export default function ListRoleRequests() {
           <StatusFilter value={statusFilter} onChange={handleStatusFilter} />
           <TableTopBarAutocomplete
             options={searchRows.map(
-              (row) =>
+              (row: RoleRequestSummary) =>
                 row.id +
                 ';' +
                 displayUserName(row.requester) +
@@ -218,7 +218,7 @@ export default function ListRoleRequests() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: RoleRequestSummary) => (
               <TableRow
                 key={row.id}
                 sx={{
@@ -313,7 +313,7 @@ export default function ListRoleRequests() {
                     to={`/role-requests/${row.id}`}
                     sx={{textDecoration: 'none', color: 'inherit'}}
                     component={RouterLink}>
-                    <span title={row.created_at}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
+                    <span title={row.created_at ?? undefined}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
                   </Link>
                 </TableCell>
                 <TableCell>

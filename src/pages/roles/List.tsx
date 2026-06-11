@@ -23,7 +23,8 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateGroup from '../groups/CreateUpdate';
 import {emptyTableRows, perPage} from '../../helpers';
-import {useGetRoles} from '../../api/apiComponents';
+import {useRoles} from '../../api/apiComponents';
+import {RoleGroupListItem} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
@@ -51,11 +52,11 @@ export default function ListRoles() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetRoles({
+  const {data, error, isLoading} = useRoles({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
-  const {data: searchData} = useGetRoles({
+  const {data: searchData} = useRoles({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -119,7 +120,7 @@ export default function ListRoles() {
           </Button>
           <CreateUpdateGroup defaultGroupType="role_group" currentUser={currentUser}></CreateUpdateGroup>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: RoleGroupListItem) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -133,7 +134,7 @@ export default function ListRoles() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: RoleGroupListItem) => (
               <LinkTableRow to={`/roles/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>

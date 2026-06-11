@@ -25,8 +25,8 @@ import dayjs from 'dayjs';
 
 import {emptyTableRows, displayGroupType, displayUserName, perPage} from '../../helpers';
 import ChangeTitle from '../../tab-title';
-import {useGetUserById, useGetUserGroupAudits, useGetGroups} from '../../api/apiComponents';
-import {OktaUser} from '../../api/apiSchemas';
+import {useUserById, useUsersAndGroups, useGroups} from '../../api/apiComponents';
+import {OktaUserDetail, AuditUserGroupRow, GroupSummary} from '../../api/apiSchemas';
 import NotFound from '../NotFound';
 import CreatedReason from '../../components/CreatedReason';
 import Loading from '../../components/Loading';
@@ -72,7 +72,7 @@ export default function AuditUser() {
     data: userData,
     isError,
     isLoading: userIsLoading,
-  } = useGetUserById({
+  } = useUserById({
     pathParams: {userId: id ?? ''},
   });
 
@@ -80,7 +80,7 @@ export default function AuditUser() {
     data,
     error,
     isLoading: userAuditIsLoading,
-  } = useGetUserGroupAudits({
+  } = useUsersAndGroups({
     queryParams: Object.assign(
       {user_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -91,7 +91,7 @@ export default function AuditUser() {
     ),
   });
 
-  const {data: searchData} = useGetGroups({
+  const {data: searchData} = useGroups({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -103,7 +103,7 @@ export default function AuditUser() {
     return <Loading />;
   }
 
-  const user = userData ?? ({} as OktaUser);
+  const user = userData ?? ({} as OktaUserDetail);
 
   const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
@@ -205,7 +205,7 @@ export default function AuditUser() {
             <ToggleButton value={false}>Inactive</ToggleButton>
           </ToggleButtonGroup>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: GroupSummary) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -248,7 +248,7 @@ export default function AuditUser() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AuditUserGroupRow) => (
               <TableRow
                 key={row.id}
                 sx={{

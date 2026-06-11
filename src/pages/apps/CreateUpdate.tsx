@@ -18,22 +18,29 @@ import TextField from '@mui/material/TextField';
 import {FormContainer, TextFieldElement} from 'react-hook-form-mui';
 
 import {
-  useCreateApp,
-  useGetTags,
-  usePutAppById,
-  CreateAppError,
-  PutAppByIdError,
-  CreateAppVariables,
-  PutAppByIdVariables,
+  useAppsCreate,
+  useTags,
+  useAppByIdPut,
+  AppsCreateError,
+  AppByIdPutError,
+  AppsCreateVariables,
+  AppByIdPutVariables,
 } from '../../api/apiComponents';
-import {App, AppTagMap, OktaUser, Tag} from '../../api/apiSchemas';
+import {
+  AppDetail,
+  AppTagMapDetail,
+  CreateAppBody,
+  OktaUserDetail,
+  TagSummary,
+  UpdateAppBody,
+} from '../../api/apiSchemas';
 import {isAccessAdmin, isAppOwnerGroupOwner, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 
 interface AppButtonProps {
   setOpen(open: boolean): any;
-  app?: App;
+  app?: AppDetail;
 }
 
 function AppButton(props: AppButtonProps) {
@@ -53,9 +60,9 @@ function AppButton(props: AppButtonProps) {
 }
 
 interface AppDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  app?: App;
+  app?: AppDetail;
   access_app?: boolean;
 }
 
@@ -64,9 +71,9 @@ function AppDialog(props: AppDialogProps) {
 
   const defaultTags =
     props.app && props.app.active_app_tags && props.app.active_app_tags.length > 0
-      ? props.app.active_app_tags.map((tagMap: AppTagMap) => tagMap.active_tag!)
+      ? props.app.active_app_tags.map((tagMap: AppTagMapDetail) => tagMap.active_tag!)
       : [];
-  const [selectedTags, setSelectedTags] = React.useState<Array<Tag>>(defaultTags);
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagSummary>>(defaultTags);
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
@@ -77,9 +84,9 @@ function AppDialog(props: AppDialogProps) {
   const isAllowedToConfigureAppGroupLifecyclePlugin = isAccessAdmin(props.currentUser);
 
   const complete = (
-    completedApp: App | undefined,
-    error: CreateAppError | PutAppByIdError | null,
-    variables: CreateAppVariables | PutAppByIdVariables,
+    completedApp: AppDetail | undefined,
+    error: AppsCreateError | AppByIdPutError | null,
+    variables: AppsCreateVariables | AppByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -95,14 +102,14 @@ function AppDialog(props: AppDialogProps) {
     }
   };
 
-  const createApp = useCreateApp({
+  const createApp = useAppsCreate({
     onSettled: complete,
   });
-  const updateApp = usePutAppById({
+  const updateApp = useAppByIdPut({
     onSettled: complete,
   });
 
-  const {data: tagSearchData} = useGetTags({
+  const {data: tagSearchData} = useTags({
     queryParams: {
       page: 1,
       size: 10,
@@ -111,14 +118,14 @@ function AppDialog(props: AppDialogProps) {
   });
   const tagSearchOptions = tagSearchData?.items ?? [];
 
-  const submit = (app: App) => {
+  const submit = (app: UpdateAppBody) => {
     setSubmitting(true);
 
     if (props.app) {
-      app.tags_to_add = selectedTags.filter((x) => !defaultTags.includes(x)).map((tag: Tag) => tag.id);
-      app.tags_to_remove = defaultTags.filter((x) => !selectedTags.includes(x)).map((tag: Tag) => tag.id);
+      app.tags_to_add = selectedTags.filter((x) => !defaultTags.includes(x)).map((tag: TagSummary) => tag.id);
+      app.tags_to_remove = defaultTags.filter((x) => !selectedTags.includes(x)).map((tag: TagSummary) => tag.id);
     } else {
-      app.tags_to_add = selectedTags.map((tag: Tag) => tag.id);
+      app.tags_to_add = selectedTags.map((tag: TagSummary) => tag.id);
     }
 
     if (isAllowedToConfigureAppGroupLifecyclePlugin) {
@@ -126,7 +133,7 @@ function AppDialog(props: AppDialogProps) {
     }
 
     if (props.app == null) {
-      createApp.mutate({body: app});
+      createApp.mutate({body: app as CreateAppBody});
     } else {
       updateApp.mutate({
         body: app,
@@ -139,7 +146,7 @@ function AppDialog(props: AppDialogProps) {
 
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
-      <FormContainer<App>
+      <FormContainer<AppDetail>
         defaultValues={{
           name: props.app?.name ?? '',
           description: props.app?.description ?? '',
@@ -209,8 +216,8 @@ function AppDialog(props: AppDialogProps) {
               onChange={(event, newValue) => {
                 setSelectedTags(newValue);
               }}
-              renderTags={(value: Tag[], getTagProps) =>
-                value.map((option: Tag, index: number) => (
+              renderTags={(value: TagSummary[], getTagProps) =>
+                value.map((option: TagSummary, index: number) => (
                   <Chip variant="outlined" label={option.name} {...getTagProps({index})} />
                 ))
               }
@@ -242,8 +249,8 @@ function AppDialog(props: AppDialogProps) {
 }
 
 interface CreateUpdateAppProps {
-  currentUser: OktaUser;
-  app?: App;
+  currentUser: OktaUserDetail;
+  app?: AppDetail;
 }
 
 export default function CreateUpdateApp(props: CreateUpdateAppProps) {

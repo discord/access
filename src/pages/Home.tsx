@@ -35,12 +35,13 @@ import CreateAccessRequest from './requests/Create';
 import CreateRoleRequest from './role_requests/Create';
 import CreateGroupRequest from './group_requests/Create';
 import {
-  useGetRequests,
-  useGetRoleRequests,
-  useGetGroupRequests,
-  useGetUserGroupAudits,
-  useGetGroupRoleAudits,
+  useAccessRequests,
+  useRoleRequests,
+  useGroupRequests,
+  useUsersAndGroups,
+  useGroupsAndRoles,
 } from '../api/apiComponents';
+import {OktaUserGroupMemberDetail} from '../api/apiSchemas';
 
 interface StatConfig {
   id: string;
@@ -373,17 +374,17 @@ export default function Home() {
     return [t, t + 7 * 24 * 60 * 60, t + 2 * 24 * 60 * 60];
   }, []);
 
-  const {data: accessRequestsData} = useGetRequests({
+  const {data: accessRequestsData} = useAccessRequests({
     queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
-  const {data: roleRequestsData} = useGetRoleRequests({
+  const {data: roleRequestsData} = useRoleRequests({
     queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
-  const {data: groupRequestsData} = useGetGroupRequests({
+  const {data: groupRequestsData} = useGroupRequests({
     queryParams: {assignee_user_id: '@me', status: 'PENDING', page: 1, size: 1},
   });
 
-  const {data: expiringGroupsData} = useGetUserGroupAudits({
+  const {data: expiringGroupsData} = useUsersAndGroups({
     queryParams: {
       owner_id: '@me',
       active: true,
@@ -395,10 +396,10 @@ export default function Home() {
       deleted: false,
     },
   });
-  const {data: expiringRolesData} = useGetGroupRoleAudits({
+  const {data: expiringRolesData} = useGroupsAndRoles({
     queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 1, size: 1},
   });
-  const {data: myAccessExpiringData} = useGetUserGroupAudits({
+  const {data: myAccessExpiringData} = useUsersAndGroups({
     queryParams: {
       user_id: '@me',
       active: true,
@@ -410,10 +411,10 @@ export default function Home() {
       deleted: false,
     },
   });
-  const {data: myRolesExpiringData} = useGetGroupRoleAudits({
+  const {data: myRolesExpiringData} = useGroupsAndRoles({
     queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inOneWeek, page: 1, size: 1},
   });
-  const {data: urgentExpiringGroupsData} = useGetUserGroupAudits({
+  const {data: urgentExpiringGroupsData} = useUsersAndGroups({
     queryParams: {
       owner_id: '@me',
       active: true,
@@ -425,10 +426,10 @@ export default function Home() {
       deleted: false,
     },
   });
-  const {data: urgentExpiringRolesData} = useGetGroupRoleAudits({
+  const {data: urgentExpiringRolesData} = useGroupsAndRoles({
     queryParams: {owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 1, size: 1},
   });
-  const {data: urgentMyAccessData} = useGetUserGroupAudits({
+  const {data: urgentMyAccessData} = useUsersAndGroups({
     queryParams: {
       user_id: '@me',
       active: true,
@@ -440,7 +441,7 @@ export default function Home() {
       deleted: false,
     },
   });
-  const {data: urgentMyRolesData} = useGetGroupRoleAudits({
+  const {data: urgentMyRolesData} = useGroupsAndRoles({
     queryParams: {role_owner_id: '@me', active: true, start_date: now, end_date: inTwoDays, page: 1, size: 1},
   });
 
@@ -486,7 +487,9 @@ export default function Home() {
   const sectionW = lockedSectionWidth.current;
   // Filter out items with zero counts (action items always show)
   const userOwnsRoles =
-    currentUser.active_group_ownerships?.some((m) => (m.active_group ?? m.group)?.type === 'role_group') ?? false;
+    currentUser.active_group_ownerships?.some(
+      (m: OktaUserGroupMemberDetail) => (m.active_group ?? m.group)?.type === 'role_group',
+    ) ?? false;
   const filteredStats = STAT_CONFIGS.filter((s) => {
     if (s.id === 'make-role-request' && !userOwnsRoles) return false;
     return s.isAction || (statCounts[s.id] ?? 0) > 0;

@@ -3,8 +3,8 @@ import {defineConfig} from '@openapi-codegen/cli';
 export default defineConfig({
   api: {
     from: {
-      relativePath: 'api/swagger.json',
-      source: 'file',
+      source: 'url',
+      url: 'http://localhost:6060/api/openapi.json',
     },
     outputDir: 'src/api',
     to: async (context) => {

@@ -30,16 +30,21 @@ import {
   ToggleButtonGroupElement,
 } from 'react-hook-form-mui';
 
-import {useGetGroups, useCreateRequest, CreateRequestError, CreateRequestVariables} from '../../api/apiComponents';
 import {
-  PolymorphicGroup,
-  CreateAccessRequest,
-  OktaUser,
-  OktaGroup,
-  AppGroup,
-  AccessRequest,
-  RoleGroup,
-  RoleGroupMap,
+  useGroups,
+  useAccessRequestsCreate,
+  AccessRequestsCreateError,
+  AccessRequestsCreateVariables,
+} from '../../api/apiComponents';
+import {
+  GroupDetail,
+  CreateAccessRequestBody,
+  OktaUserDetail,
+  OktaGroupDetail,
+  AppGroupDetail,
+  AccessRequestDetail,
+  RoleGroupDetail,
+  RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 import {minTagTime, minTagTimeGroups} from '../../helpers';
@@ -49,7 +54,7 @@ dayjs.extend(IsSameOrBefore);
 
 interface CreateRequestButtonProps {
   setOpen(open: boolean): any;
-  group?: PolymorphicGroup;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
   expired?: boolean;
@@ -74,31 +79,31 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
 }
 
 interface RecommendRolesContainerProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
   setRecommendRoles(open: boolean): any;
-  setGroup(group: PolymorphicGroup): any;
+  setGroup(group: GroupDetail): any;
   setOwner(owner: boolean): any;
-  group: PolymorphicGroup;
+  group: GroupDetail;
   owner: boolean;
 }
 
-function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMap): boolean {
+function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMapDetail): boolean {
   return roleGroupMap.active_role_group?.is_managed ?? false;
 }
 
-function sortRoleGroupMap(aMap: RoleGroupMap, bMap: RoleGroupMap): number {
+function sortRoleGroupMap(aMap: RoleGroupMapDetail, bMap: RoleGroupMapDetail): number {
   let aName = aMap.active_role_group?.name ?? '';
   let bName = bMap.active_role_group?.name ?? '';
   return aName.localeCompare(bName);
 }
 
 function RecommendRolesContainer(props: RecommendRolesContainerProps) {
-  const mappings =
-    (props.owner ? props.group.active_role_owner_mappings : props.group.active_role_member_mappings) ?? [];
+  const group = props.group as OktaGroupDetail;
+  const mappings = (props.owner ? group.active_role_owner_mappings : group.active_role_member_mappings) ?? [];
 
-  const requestRole = (roleGroup: RoleGroup) => {
-    props.setGroup(roleGroup);
+  const requestRole = (roleGroup: RoleGroupDetail) => {
+    props.setGroup(roleGroup as GroupDetail);
     // When requesting a recommended role, only request to be a member
     // as that is how to become either an owner or member of the associated group
     props.setOwner(false);
@@ -124,13 +129,17 @@ function RecommendRolesContainer(props: RecommendRolesContainerProps) {
             {mappings
               .filter(filterManagedRoleGroupMap)
               .sort(sortRoleGroupMap)
-              .map((mapping) => (
+              .map((mapping: RoleGroupMapDetail) => (
                 <React.Fragment key={mapping.active_role_group?.id ?? ''}>
                   <ListItem
                     secondaryAction={
                       <Button
                         variant="contained"
-                        onClick={() => requestRole(mapping.active_role_group ?? ({} as RoleGroup))}>
+                        onClick={() =>
+                          requestRole(
+                            (mapping.active_role_group as unknown as RoleGroupDetail) ?? ({} as RoleGroupDetail),
+                          )
+                        }>
                         Request
                       </Button>
                     }>
@@ -155,14 +164,14 @@ function RecommendRolesContainer(props: RecommendRolesContainerProps) {
   );
 }
 interface CreateRequestContainerProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  group?: PolymorphicGroup;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
 interface CreateRequestForm {
-  group: PolymorphicGroup;
+  group: GroupDetail;
   until?: string;
   customUntil?: string;
   ownerOrMember: string;
@@ -220,7 +229,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [groupSearchInput, setGroupSearchInput] = React.useState(props.group?.name ?? '');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [selectedGroup, setSelectedGroup] = React.useState<PolymorphicGroup | null>(props.group ?? null);
+  const [selectedGroup, setSelectedGroup] = React.useState<GroupDetail | null>(props.group ?? null);
   const [owner, setOwner] = React.useState<boolean>(props.owner ?? false);
 
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
@@ -230,9 +239,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
   const complete = (
-    completedRequest: AccessRequest | undefined,
-    error: CreateRequestError | null,
-    variables: CreateRequestVariables,
+    completedRequest: AccessRequestDetail | undefined,
+    error: AccessRequestsCreateError | null,
+    variables: AccessRequestsCreateVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -244,11 +253,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     }
   };
 
-  const createRequest = useCreateRequest({
+  const createRequest = useAccessRequestsCreate({
     onSettled: complete,
   });
 
-  const {data: groupSearchData} = useGetGroups({
+  const {data: groupSearchData} = useGroups({
     queryParams: {
       page: 1,
       size: 10,
@@ -258,7 +267,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   });
   const groupSearchOptions = groupSearchData?.items ?? [];
 
-  const updateUntil = (group: PolymorphicGroup | null = selectedGroup, ownerOrMember: boolean = owner) => {
+  const updateUntil = (group: GroupDetail | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);
     setOwner(ownerOrMember);
     let time: number | null = null;
@@ -291,7 +300,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       group_id: requestForm.group.id,
       group_owner: props.owner != null ? props.owner : requestForm.ownerOrMember == 'owner',
       reason: requestForm.reason ?? '',
-    } as CreateAccessRequest;
+    } as CreateAccessRequestBody;
 
     switch (requestForm.until) {
       case 'indefinite':
@@ -464,15 +473,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 }
 
 interface CreateRequestDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  group?: PolymorphicGroup;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
-  const [group, setGroup] = React.useState<PolymorphicGroup | undefined>(props.group);
+  const [group, setGroup] = React.useState<GroupDetail | undefined>(props.group);
   const [owner, setOwner] = React.useState<boolean | undefined>(props.owner);
   const [recommendRoles, setRecommendRoles] = React.useState<boolean>(
     props.group != null
@@ -489,7 +498,7 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
         <RecommendRolesContainer
           {...props}
           setRecommendRoles={setRecommendRoles}
-          group={props.group ?? ({} as PolymorphicGroup)}
+          group={props.group ?? ({} as GroupDetail)}
           owner={props.owner ?? false}
           setGroup={setGroup}
           setOwner={setOwner}
@@ -502,8 +511,8 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 }
 
 interface CreateRequestProps {
-  currentUser: OktaUser;
-  group?: PolymorphicGroup;
+  currentUser: OktaUserDetail;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
   expired?: boolean;
