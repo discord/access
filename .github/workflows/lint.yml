@@ -1,8 +1,10 @@
 name: Linting and formatting checks
 
 on:
-  - push
-  - pull_request
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   node-lint:
