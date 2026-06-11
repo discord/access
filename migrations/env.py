@@ -6,6 +6,7 @@ import logging
 from logging.config import fileConfig
 
 from alembic import context
+from sqlalchemy import JSON
 
 from api.config import settings
 from api.database import build_engine
@@ -34,6 +35,20 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
+    """Suppress spurious JSON type-change diffs during autogenerate/check.
+
+    Postgres reflects JSON columns with an explicit ``astext_type`` that the
+    models' ``JSON`` (and the ``JSONB`` variant, a subclass) don't carry, so
+    `alembic check` reports a phantom type change. Treat any JSON-family pair
+    as equal; fall back to Alembic's default comparison for everything else
+    by returning ``None``.
+    """
+    if isinstance(inspected_type, JSON) and isinstance(metadata_type, JSON):
+        return False
+    return None
+
+
 def run_migrations_online() -> None:
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, "autogenerate", False):
@@ -48,6 +63,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             process_revision_directives=process_revision_directives,
+            compare_type=compare_type,
             render_as_batch=connection.dialect.name == "sqlite",
         )
         with context.begin_transaction():
