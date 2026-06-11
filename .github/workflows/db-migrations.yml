@@ -1,8 +1,10 @@
 name: Database migrations
 
 on:
-  - push
-  - pull_request
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   migrations:
