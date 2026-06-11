@@ -245,11 +245,9 @@ class OktaUserGroupMemberDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     # `id`, `created_actor`, and `ended_actor` are read by the React renewal /
     # audit views (e.g. `BulkRenewal.tsx` uses `id` as a row key and
-    # `created_actor` for the "added by" column). They were on the Flask wire
-    # but dropped in the migration; restored here for wire compatibility. The
-    # actor relationships are `lazy="raise_on_sql"`, so any route emitting this
-    # schema must eager-load them — see `user_group_member_options` in
-    # `api/routers/_eager.py`.
+    # `created_actor` for the "added by" column). The actor relationships are
+    # `lazy="raise_on_sql"`, so any route emitting this schema must eager-load
+    # them — see `user_group_member_options` in `api/routers/_eager.py`.
     id: int
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
@@ -273,10 +271,9 @@ class OktaUserGroupMemberDetail(BaseModel):
 class RoleGroupMapDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     # `id`, `should_expire`, `created_reason`, and the actor relationships are
-    # read by the role renewal / audit views (`BulkRenewal.tsx`). They were on
-    # the Flask wire but dropped in the migration; restored for wire
-    # compatibility. The actor relationships are `lazy="raise_on_sql"` and must
-    # be eager-loaded — see `role_group_map_options` in `api/routers/_eager.py`.
+    # read by the role renewal / audit views (`BulkRenewal.tsx`). The actor
+    # relationships are `lazy="raise_on_sql"` and must be eager-loaded — see
+    # `role_group_map_options` in `api/routers/_eager.py`.
     id: int
     is_owner: Optional[bool] = None
     created_at: FlexibleDatetime
@@ -537,8 +534,8 @@ class ProblemDetail(BaseModel):
     Declared here so routers can advertise it via `responses={...}`; the
     generated TypeScript client then types its `*Error` payloads against this
     shape. Mirrors the hand-written `ErrorMessage` type in
-    `src/api/apiFetcher.ts`. All fields are optional on the wire (`type`
-    carries the RFC default, the rest are populated per error)."""
+    `src/api/apiFetcher.ts`. Every field is optional (`type` carries the RFC
+    default, the rest are populated per error)."""
 
     type: str = "about:blank"
     title: Optional[str] = None
