@@ -1,0 +1,87 @@
+name: Database migrations
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  migrations:
+    # Exercise the migrations against both databases Access supports:
+    # PostgreSQL in production and SQLite for local development. Nothing
+    # else in CI runs the migrations — the test suite builds its schema
+    # straight from the models via create_all().
+    name: migrations (${{ matrix.database }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: "3.13"
+            database: postgresql
+            database-uri: postgresql+pg8000://postgres:postgres@localhost:5432/postgres
+          - python-version: "3.13"
+            database: sqlite
+            database-uri: sqlite:///migrations_ci.db
+
+    services:
+      postgres:
+        # Docker Hub image. Started for every leg of the matrix; the SQLite
+        # leg simply doesn't connect to it.
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          # Maps tcp port 5432 on service container to the host
+          - 5432:5432
+
+    # `migrations/env.py` reads the SQLAlchemy URL from DATABASE_URI.
+    env:
+      DATABASE_URI: ${{ matrix.database-uri }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Check for a single migration head
+        # Two migrations that branch from the same parent produce divergent
+        # heads that won't apply cleanly. Fail loudly so they get merged.
+        run: |
+          heads="$(alembic heads)"
+          echo "$heads"
+          count="$(printf '%s\n' "$heads" | grep -c '(head)')"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly one migration head but found $count. Two migrations likely branched from the same parent; reconcile them with 'alembic merge'."
+            exit 1
+          fi
+
+      - name: Apply all migrations (alembic upgrade head)
+        run: alembic upgrade head
+
+      - name: Verify models and migrations are in sync (alembic check)
+        # `alembic check` autogenerates a diff between the SQLAlchemy models
+        # and the migrated schema. A non-empty diff means a model changed
+        # without a matching migration — generate one with
+        # `make db-revision msg="..."` (alembic revision --autogenerate).
+        run: alembic check
+
+      - name: Verify migrations are reversible (downgrade to base, then re-upgrade)
+        run: |
+          alembic downgrade base
+          alembic upgrade head
