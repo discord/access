@@ -102,14 +102,6 @@ Kubernetes Deployment and CronJobs already documents this pattern.)
 
 ## Tooling
 
-### 13. OpenAPI client codegen
-
-FastAPI auto-publishes `/api/openapi.json` (when `DEBUG=true`). Run
-`npx openapi-codegen gen api` against the new spec and replace any
-hand-written API client code in the frontend with the generated types
-and React-Query hooks. The codegen config in `openapi-codegen.config.ts`
-is already pointed at the new endpoint.
-
 ### 14. Strict type checking on routers + schemas
 
 Enforce `pyright` / `mypy` strict mode on `api/routers/` and `api/schemas/`.

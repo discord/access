@@ -57,24 +57,28 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
-  useGetRoleRequestById,
-  useGetGroupById,
-  useGetAppById,
-  useResolveRoleRequestById,
-  ResolveRoleRequestByIdError,
-  ResolveRoleRequestByIdVariables,
-  useGetGroupRoleAudits,
+  useRoleRequestById,
+  useGroupById,
+  useAppById,
+  useRoleRequestByIdPut,
+  RoleRequestByIdPutError,
+  RoleRequestByIdPutVariables,
+  useGroupsAndRoles,
 } from '../../api/apiComponents';
 import {
-  App,
-  AppGroup,
-  OktaGroup,
-  OktaUserGroupMember,
-  PolymorphicGroup,
-  ResolveRoleRequest,
-  RoleGroup,
-  RoleRequest,
-  Tag,
+  AppDetail,
+  AppGroupDetail,
+  AppGroupForAppDetail,
+  GroupRefForMembership,
+  OktaUserGroupMemberDetail,
+  OktaUserSummary,
+  GroupDetail,
+  RoleGroupDetail,
+  RoleRequestDetail,
+  RoleRequestSummary,
+  ResolveRoleRequestBody,
+  OktaGroupTagMapDetail,
+  TagSummary,
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
@@ -86,8 +90,8 @@ dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
 
 function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   let aEmail = aUsers[0].active_user?.email ?? '';
   let bEmail = bUsers[0].active_user?.email ?? '';
@@ -126,7 +130,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(roleRequest: RoleRequest) {
+function ComputeConstraints(roleRequest: RoleRequestDetail) {
   const group = roleRequest.requested_group ?? null;
 
   if (group == null) {
@@ -134,29 +138,29 @@ function ComputeConstraints(roleRequest: RoleRequest) {
   }
 
   let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
+    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
     roleRequest.request_ownership!,
   );
 
   let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap) => tagMap.active_tag!) : [],
+    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
     roleRequest.request_ownership!,
   );
 
-  if (group.type == 'role_group' && !roleRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroup).active_role_associated_group_owner_mappings?.reduce(
+  if ((group.type as string) == 'role_group' && !roleRequest.request_ownership) {
+    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
       (out, curr) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
-    const active_groups_members = (group as RoleGroup).active_role_associated_group_member_mappings?.reduce(
+    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
       (out, curr) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
 
     reason =
@@ -180,11 +184,11 @@ export default function ReadRoleRequest() {
   const [approved, setApproved] = React.useState<boolean | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  const {data, isError, isLoading} = useGetRoleRequestById({
+  const {data, isError, isLoading} = useRoleRequestById({
     pathParams: {roleRequestId: id ?? ''},
   });
 
-  const roleRequest = data ?? ({} as RoleRequest);
+  const roleRequest = data ?? ({} as RoleRequestDetail);
 
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
@@ -203,17 +207,23 @@ export default function ReadRoleRequest() {
 
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
-    ?.map((group) => group.active_group!.id)
+    ?.map((group: OktaUserGroupMemberDetail) => group.active_group!.id)
     .includes(roleRequest.requested_group?.id);
-  const roleMembers = roleRequest.requester_role?.active_user_memberships?.map((user) => user.active_user!.id) ?? [];
-  const tags: Tag[] = (roleRequest.requested_group?.active_group_tags ?? []).reduce((out, t) => {
-    if (t.active_tag) {
-      out.push(t.active_tag);
-      return out;
-    } else {
-      return out;
-    }
-  }, new Array<Tag>());
+  const roleMembers =
+    roleRequest.requester_role?.active_user_memberships?.map(
+      (user: OktaUserGroupMemberDetail) => user.active_user!.id,
+    ) ?? [];
+  const tags: TagSummary[] = (roleRequest.requested_group?.active_group_tags ?? []).reduce(
+    (out: TagSummary[], t: OktaGroupTagMapDetail) => {
+      if (t.active_tag) {
+        out.push(t.active_tag);
+        return out;
+      } else {
+        return out;
+      }
+    },
+    new Array<TagSummary>(),
+  );
   const tagged =
     (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
     (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
@@ -222,9 +232,9 @@ export default function ReadRoleRequest() {
   const requestedGroupManager = manager && !blocked;
 
   const complete = (
-    completedAccessRequest: ResolveRoleRequest | undefined,
-    error: ResolveRoleRequestByIdError | null,
-    variables: ResolveRoleRequestByIdVariables,
+    completedAccessRequest: RoleRequestSummary | undefined,
+    error: RoleRequestByIdPutError | null,
+    variables: RoleRequestByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -235,11 +245,11 @@ export default function ReadRoleRequest() {
     }
   };
 
-  const putResolveRequest = useResolveRoleRequestById({
+  const putResolveRequest = useRoleRequestByIdPut({
     onSettled: complete,
   });
 
-  const {data: groupData} = useGetGroupById(
+  const {data: groupData} = useGroupById(
     {
       pathParams: {groupId: roleRequest.requested_group?.id ?? ''},
     },
@@ -248,7 +258,7 @@ export default function ReadRoleRequest() {
     },
   );
 
-  const group = groupData ?? ({} as PolymorphicGroup);
+  const group = groupData ?? ({} as GroupDetail);
 
   const constraints = ComputeConstraints(roleRequest);
 
@@ -281,16 +291,16 @@ export default function ReadRoleRequest() {
     }));
   }
 
-  let ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+  let ownerships = groupBy(group.active_user_ownerships, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
   const ownerIds = Object.keys(ownerships);
 
   // If Access admin and all group owners are blocked, add a note
   const adminNoteForBlocked = tagged && admin && ownerIds.every((v) => roleMembers.includes(v)) && ownerIds.length > 0;
 
-  const {data: appData} = useGetAppById(
+  const {data: appData} = useAppById(
     {
       pathParams: {
-        appId: ((roleRequest.requested_group ?? {}) as AppGroup).app?.id ?? '',
+        appId: ((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.id ?? '',
       },
     },
     {
@@ -298,14 +308,14 @@ export default function ReadRoleRequest() {
     },
   );
 
-  const app = appData ?? ({} as App);
+  const app = appData ?? ({} as AppDetail);
 
   const appOwnershipsArray = (app.active_owner_app_groups ?? [])
-    .map((appGroup) => appGroup.active_user_ownerships ?? [])
+    .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_ownerships ?? [])
     .flat();
-  const appOwnerships = groupBy(appOwnershipsArray, (m) => m.active_user?.id);
+  const appOwnerships = groupBy(appOwnershipsArray, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  const {data: accessAppData} = useGetAppById(
+  const {data: accessAppData} = useAppById(
     {
       pathParams: {
         appId: ACCESS_APP_RESERVED_NAME,
@@ -320,15 +330,17 @@ export default function ReadRoleRequest() {
     },
   );
 
-  const accessApp = accessAppData ?? ({} as App);
+  const accessApp = accessAppData ?? ({} as AppDetail);
 
   const accessAppOwnerships = groupBy(
-    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
-    (m) => m.active_user?.id,
+    (accessApp.active_owner_app_groups ?? [])
+      .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_memberships ?? [])
+      .flat(),
+    (m: OktaUserGroupMemberDetail) => m.active_user?.id,
   );
 
   // Fetch role/group audit data for the requester role and requested group
-  const {data: groupRoleAuditsData} = useGetGroupRoleAudits({
+  const {data: groupRoleAuditsData} = useGroupsAndRoles({
     queryParams: {
       role_id: roleRequest.requester_role?.id ?? '',
       group_id: roleRequest.requested_group?.id ?? '',
@@ -358,7 +370,7 @@ export default function ReadRoleRequest() {
     const resolveRequest = {
       approved: approved ?? false,
       reason: responseForm.reason ?? '',
-    } as ResolveRoleRequest;
+    } as ResolveRoleRequestBody;
 
     switch (responseForm.until) {
       case 'indefinite':
@@ -834,7 +846,7 @@ export default function ReadRoleRequest() {
                             </Typography>
                           </Paper>
                           {roleRequest.requested_group?.type != 'app_group' ||
-                          !(roleRequest.requested_group as AppGroup).is_owner ? (
+                          !(roleRequest.requested_group as AppGroupDetail).is_owner ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="group owners">
                                 <TableHead>
@@ -866,7 +878,7 @@ export default function ReadRoleRequest() {
                                   {ownerIds.length > 0 ? (
                                     Object.entries(ownerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link
@@ -912,7 +924,7 @@ export default function ReadRoleRequest() {
                                   <TableRow>
                                     <TableCell colSpan={3}>
                                       <Typography variant="h6" color="text.accent">
-                                        {((roleRequest.requested_group ?? {}) as AppGroup).app?.name}
+                                        {((roleRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
                                     </TableCell>
@@ -937,7 +949,7 @@ export default function ReadRoleRequest() {
                                   {Object.keys(appOwnerships).length > 0 ? (
                                     Object.entries(appOwnerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link
@@ -1009,7 +1021,7 @@ export default function ReadRoleRequest() {
                                   {Object.keys(accessAppOwnerships).length > 0 ? (
                                     Object.entries(accessAppOwnerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link

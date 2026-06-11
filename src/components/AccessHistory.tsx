@@ -2,7 +2,7 @@ import React from 'react';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
-import {OktaUserGroupMember, RoleGroupMap} from '../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleGroupMapDetail} from '../api/apiSchemas';
 import AccessHistoryTable from './AccessHistoryTable';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import Accordion from '@mui/material/Accordion';
@@ -10,7 +10,7 @@ import AccordionSummary from '@mui/material/AccordionSummary';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
-type AccessAuditEntry = OktaUserGroupMember | RoleGroupMap;
+type AccessAuditEntry = OktaUserGroupMemberDetail | RoleGroupMapDetail;
 
 type SubjectType = 'user' | 'role';
 
@@ -19,7 +19,7 @@ interface AccessHistoryProps {
   subjectName: string;
   groupName: string;
   auditHistory: AccessAuditEntry[];
-  alternativeRoleMappings?: RoleGroupMap[];
+  alternativeRoleMappings?: RoleGroupMapDetail[];
 }
 
 export default function AccessHistory({

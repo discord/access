@@ -12,7 +12,7 @@
     "@mui/x-data-grid": "^6.18.4",
     "@mui/x-date-pickers": "^6.18.4",
     "@sentry/react": "^8.34.0",
-    "@tanstack/react-query": "^4.33.0",
+    "@tanstack/react-query": "^5.101.0",
     "dayjs": "^1.11.10",
     "env-cmd": "^10.1.0",
     "react": "^18.0.0",
@@ -25,6 +25,7 @@
   },
   "scripts": {
     "tsc": "./node_modules/.bin/tsc",
+    "codegen": "openapi-codegen gen api",
     "start": "vite",
     "build": "env-cmd -f .env.production vite build",
     "preview": "vite preview",
@@ -44,6 +45,8 @@
     ]
   },
   "devDependencies": {
+    "@openapi-codegen/cli": "^3.1.0",
+    "@openapi-codegen/typescript": "^11.1.0",
     "@sentry/vite-plugin": "^4.0.2",
     "@testing-library/jest-dom": "^6.6.4",
     "@testing-library/react": "^14.2.2",

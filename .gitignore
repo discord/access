@@ -10,6 +10,8 @@ instance/*
 .env
 # Port handoff for Claude Code Desktop Preview (see .claude/launch.json)
 .claude/.api-port
+# Ephemeral OpenAPI spec dumped by the client-drift CI check / local codegen
+/openapi.json
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

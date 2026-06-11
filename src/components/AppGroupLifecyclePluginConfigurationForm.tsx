@@ -17,11 +17,11 @@ import FormControlLabel from '@mui/material/FormControlLabel';
 import {useFormContext, Controller} from 'react-hook-form';
 
 import {
-  useGetAppGroupLifecyclePlugins,
-  useGetAppGroupLifecyclePluginAppConfigProperties,
-  useGetAppGroupLifecyclePluginGroupConfigProperties,
+  useAppGroupLifecyclePlugins,
+  useAppGroupLifecyclePluginAppConfigProps,
+  useAppGroupLifecyclePluginGroupConfigProps,
 } from '../api/apiComponents';
-import {AppGroupLifecyclePluginConfigProperty} from '../api/apiSchemas';
+import {PluginConfigProp, PluginInfo} from '../api/apiSchemas';
 
 type PluginConfiguration = {
   [propertyId: string]: any;
@@ -52,15 +52,7 @@ interface AppGroupLifecyclePluginConfigurationFormProps {
 /**
  * Renders a single configuration field based on its schema
  */
-function ConfigField({
-  property,
-  value,
-  fieldName,
-}: {
-  property: AppGroupLifecyclePluginConfigProperty;
-  value: any;
-  fieldName: string;
-}) {
+function ConfigField({property, value, fieldName}: {property: PluginConfigProp; value: any; fieldName: string}) {
   const {register, control} = useFormContext();
 
   switch (property.type) {
@@ -120,12 +112,10 @@ export default function AppGroupLifecyclePluginConfigurationForm({
   currentConfig = {},
   onPluginChange,
 }: AppGroupLifecyclePluginConfigurationFormProps) {
-  const {data: plugins, isLoading: pluginsLoading} = useGetAppGroupLifecyclePlugins();
+  const {data: plugins, isLoading: pluginsLoading} = useAppGroupLifecyclePlugins({});
 
   const useConfigPropertiesHook =
-    entityType === 'app'
-      ? useGetAppGroupLifecyclePluginAppConfigProperties
-      : useGetAppGroupLifecyclePluginGroupConfigProperties;
+    entityType === 'app' ? useAppGroupLifecyclePluginAppConfigProps : useAppGroupLifecyclePluginGroupConfigProps;
 
   const {data: configProperties, isLoading: configLoading} = useConfigPropertiesHook(
     {pathParams: {pluginId: selectedPluginId || ''}},
@@ -134,7 +124,7 @@ export default function AppGroupLifecyclePluginConfigurationForm({
 
   const selectedPlugin = React.useMemo(() => {
     if (!plugins || !selectedPluginId) return null;
-    return plugins.find((p) => p.id === selectedPluginId) || null;
+    return plugins.find((p: PluginInfo) => p.id === selectedPluginId) || null;
   }, [plugins, selectedPluginId]);
 
   const handlePluginSelectionChange = (event: SelectChangeEvent<string>) => {
@@ -167,7 +157,7 @@ export default function AppGroupLifecyclePluginConfigurationForm({
             <MenuItem value="">
               <em>None</em>
             </MenuItem>
-            {plugins.map((plugin) => (
+            {plugins.map((plugin: PluginInfo) => (
               <MenuItem key={plugin.id} value={plugin.id}>
                 {plugin.display_name}
               </MenuItem>
@@ -209,7 +199,7 @@ export default function AppGroupLifecyclePluginConfigurationForm({
                   return (
                     <ConfigField
                       key={propertyId}
-                      property={property}
+                      property={property as PluginConfigProp}
                       value={currentConfig[propertyId]}
                       fieldName={fieldName}
                     />

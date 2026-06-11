@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 // Cache plugin metadata indefinitely since it doesn't change while the app is running
 queryClient.setQueryDefaults(['api', 'plugins'], {
   staleTime: Infinity,
-  cacheTime: Infinity,
+  gcTime: Infinity,
   refetchOnMount: false,
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,

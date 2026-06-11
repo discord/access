@@ -1,10 +1,10 @@
 import React from 'react';
 import Chip from '@mui/material/Chip';
 import {useNavigate} from 'react-router-dom';
-import {RoleGroupMap} from '../api/apiSchemas';
+import {RoleGroupMapDetail} from '../api/apiSchemas';
 
 interface AccessMethodChipProps {
-  roleGroupMapping?: RoleGroupMap | null;
+  roleGroupMapping?: RoleGroupMapDetail | null;
 }
 
 export default function AccessMethodChip({roleGroupMapping}: AccessMethodChipProps) {

@@ -31,12 +31,20 @@ import {
 } from 'react-hook-form-mui';
 
 import {
-  useGetRoles,
-  usePutRoleMembersById,
-  PutRoleMembersByIdError,
-  PutRoleMembersByIdVariables,
+  useRoles,
+  useRoleMembersByIdPut,
+  RoleMembersByIdPutError,
+  RoleMembersByIdPutVariables,
 } from '../../api/apiComponents';
-import {PolymorphicGroup, RoleGroup, RoleMember, OktaUser} from '../../api/apiSchemas';
+import {
+  GroupDetail,
+  GroupRefForMembership,
+  OktaUserGroupMemberDetail,
+  RoleGroupDetail,
+  RoleMember,
+  RoleMembersSummary,
+  OktaUserDetail,
+} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTime, ownerCantAddSelf, requiredReason} from '../../helpers';
 import {useCurrentUser} from '../../authentication';
@@ -58,16 +66,16 @@ function AddRolesButton(props: AddRolesButtonProps) {
 }
 
 interface AddRolesDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   owner: boolean;
-  group: PolymorphicGroup;
+  group: GroupDetail;
   setOpen(open: boolean): any;
 }
 
 interface AddRolesForm {
   until?: string;
   customUntil?: string;
-  user?: OktaUser;
+  user?: OktaUserDetail;
   reason?: string;
 }
 
@@ -89,15 +97,15 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const currentUserRoleMembershipIds =
     currentUser.active_group_memberships
-      ?.map((membership) => membership.active_group)
-      .reduce((out, curr) => {
+      ?.map((membership: OktaUserGroupMemberDetail) => membership.active_group)
+      .reduce((out: string[], curr: GroupRefForMembership | null | undefined) => {
         curr != null && curr.type == 'role_group' ? out.push(curr.id!) : null;
         return out;
       }, new Array<string>()) ?? [];
 
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
   const [roleSearchInput, setRoleSearchInput] = React.useState('');
-  const [roles, setRoles] = React.useState<Array<RoleGroup>>([]);
+  const [roles, setRoles] = React.useState<Array<RoleGroupDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -141,9 +149,9 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   }
 
   const complete = (
-    completedUsersChange: RoleMember | undefined,
-    error: PutRoleMembersByIdError | null,
-    variables: PutRoleMembersByIdVariables,
+    completedUsersChange: RoleMembersSummary | undefined,
+    error: RoleMembersByIdPutError | null,
+    variables: RoleMembersByIdPutVariables,
     context: any,
   ) => {
     if (error != null) {
@@ -169,11 +177,11 @@ function AddRolesDialog(props: AddRolesDialogProps) {
     }
   }, [rolesUpdatesCompleted, rolesUpdatesErrored]);
 
-  const putGroupUsers = usePutRoleMembersById({
+  const putGroupUsers = useRoleMembersByIdPut({
     onSettled: complete,
   });
 
-  const {data: userSearchData} = useGetRoles({
+  const {data: userSearchData} = useRoles({
     queryParams: {
       page: 1,
       size: 10,
@@ -226,7 +234,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   };
 
   // Determine if a role should be disabled
-  const isOptionDisabled = (option: RoleGroup) => {
+  const isOptionDisabled = (option: RoleGroupDetail) => {
     // Already in the list to be added
     if (roles.map((group) => group.id).includes(option.id)) {
       return true;
@@ -402,8 +410,8 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 }
 
 interface AddRolesProps {
-  currentUser: OktaUser;
-  group: PolymorphicGroup;
+  currentUser: OktaUserDetail;
+  group: GroupDetail;
   owner?: boolean;
 }
 

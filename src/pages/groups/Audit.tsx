@@ -26,8 +26,8 @@ import ToggleButton from '@mui/material/ToggleButton';
 import dayjs from 'dayjs';
 
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
-import {useGetGroupById, useGetUserGroupAudits, useGetUsers} from '../../api/apiComponents';
-import {PolymorphicGroup} from '../../api/apiSchemas';
+import {useGroupById, useUsersAndGroups, useUsers} from '../../api/apiComponents';
+import {GroupDetail, AuditUserGroupRow, OktaUserSummary} from '../../api/apiSchemas';
 import NotFound from '../NotFound';
 import ChangeTitle from '../../tab-title';
 import CreatedReason from '../../components/CreatedReason';
@@ -74,7 +74,7 @@ export default function AuditGroup() {
     data: groupData,
     isError,
     isLoading: userIsLoading,
-  } = useGetGroupById({
+  } = useGroupById({
     pathParams: {groupId: id ?? ''},
   });
 
@@ -82,7 +82,7 @@ export default function AuditGroup() {
     data,
     error,
     isLoading: userAuditIsLoading,
-  } = useGetUserGroupAudits({
+  } = useUsersAndGroups({
     queryParams: Object.assign(
       {group_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -93,7 +93,7 @@ export default function AuditGroup() {
     ),
   });
 
-  const {data: searchData} = useGetUsers({
+  const {data: searchData} = useUsers({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -105,7 +105,7 @@ export default function AuditGroup() {
     return <Loading />;
   }
 
-  const group = groupData ?? ({} as PolymorphicGroup);
+  const group = groupData ?? ({} as GroupDetail);
 
   const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
@@ -208,7 +208,7 @@ export default function AuditGroup() {
             <ToggleButton value={false}>Inactive</ToggleButton>
           </ToggleButtonGroup>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            options={searchRows.map((row: OktaUserSummary) => displayUserName(row) + ';' + row.email.toLowerCase())}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => {
               setSearchInput(newInputValue?.split(';')[0] ?? '');
@@ -254,7 +254,7 @@ export default function AuditGroup() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AuditUserGroupRow) => (
               <TableRow
                 key={row.id}
                 sx={{

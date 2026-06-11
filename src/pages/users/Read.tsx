@@ -38,8 +38,14 @@ import Typography from '@mui/material/Typography';
 
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
-import {useGetUserById, usePutGroupMembersById} from '../../api/apiComponents';
-import {AppGroup, OktaUser, OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../../api/apiSchemas';
+import {useUserById, useGroupMembersByIdPut} from '../../api/apiComponents';
+import {
+  AppGroupDetail,
+  OktaUserDetail,
+  OktaUserGroupMemberDetail,
+  GroupDetail,
+  RoleGroupDetail,
+} from '../../api/apiSchemas';
 import UserAvatar from './UserAvatar';
 import NotFound from '../NotFound';
 import Ending from '../../components/Ending';
@@ -52,8 +58,8 @@ import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MembershipChip from '../../components/MembershipChip';
 
 function sortUserGroups(
-  [aGroupId, aGroups]: [string, Array<OktaUserGroupMember>],
-  [bGroupId, bGroups]: [string, Array<OktaUserGroupMember>],
+  [aGroupId, aGroups]: [string, Array<OktaUserGroupMemberDetail>],
+  [bGroupId, bGroups]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   let aName = aGroups[0].active_group?.name ?? '';
   let bName = bGroups[0].active_group?.name ?? '';
@@ -61,15 +67,15 @@ function sortUserGroups(
 }
 
 interface PartitionedGroups {
-  roles: Record<string, OktaUserGroupMember[]>;
-  appGroups: Record<string, OktaUserGroupMember[]>;
-  standardGroups: Record<string, OktaUserGroupMember[]>;
+  roles: Record<string, OktaUserGroupMemberDetail[]>;
+  appGroups: Record<string, OktaUserGroupMemberDetail[]>;
+  standardGroups: Record<string, OktaUserGroupMemberDetail[]>;
 }
 
-function partitionByType(members: OktaUserGroupMember[] | undefined): PartitionedGroups {
-  const roles: OktaUserGroupMember[] = [];
-  const appGroups: OktaUserGroupMember[] = [];
-  const standardGroups: OktaUserGroupMember[] = [];
+function partitionByType(members: OktaUserGroupMemberDetail[] | undefined): PartitionedGroups {
+  const roles: OktaUserGroupMemberDetail[] = [];
+  const appGroups: OktaUserGroupMemberDetail[] = [];
+  const standardGroups: OktaUserGroupMemberDetail[] = [];
 
   for (const m of members ?? []) {
     const type = m.active_group?.type;
@@ -92,14 +98,14 @@ function partitionByType(members: OktaUserGroupMember[] | undefined): Partitione
 interface AppSubGroup {
   appId: string;
   appName: string;
-  groups: Record<string, OktaUserGroupMember[]>;
+  groups: Record<string, OktaUserGroupMemberDetail[]>;
 }
 
-function groupByApp(appGroupsById: Record<string, OktaUserGroupMember[]>): AppSubGroup[] {
+function groupByApp(appGroupsById: Record<string, OktaUserGroupMemberDetail[]>): AppSubGroup[] {
   const byApp: Record<string, AppSubGroup> = {};
 
   for (const [groupId, members] of Object.entries(appGroupsById)) {
-    const appGroup = members[0].active_group as AppGroup;
+    const appGroup = members[0].active_group as AppGroupDetail;
     const appId = appGroup?.app?.id ?? '';
     const appName = appGroup?.app?.name ?? '';
 
@@ -113,7 +119,7 @@ function groupByApp(appGroupsById: Record<string, OktaUserGroupMember[]>): AppSu
 }
 
 interface ProfileToCardProps {
-  user: OktaUser;
+  user: OktaUserDetail;
 }
 
 function ProfileToCard({user}: ProfileToCardProps) {
@@ -141,7 +147,7 @@ function ProfileToCard({user}: ProfileToCardProps) {
 }
 
 interface ReportingToCardProps {
-  user: OktaUser;
+  user: OktaUserDetail;
 }
 
 function ReportingToCard({user}: ReportingToCardProps) {
@@ -183,12 +189,12 @@ function ReportingToCard({user}: ReportingToCardProps) {
 
 interface GroupTableProps {
   title: string;
-  groups: Record<string, OktaUserGroupMember[]>;
-  user: OktaUser;
+  groups: Record<string, OktaUserGroupMemberDetail[]>;
+  user: OktaUserDetail;
   owner: boolean;
   filterGroupName?: string | null;
-  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
-  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
+  onClickRemoveGroupFromRole: (removeGroup: GroupDetail, fromRole: RoleGroupDetail, owner: boolean) => void;
+  onClickRemoveDirectAccess: (id: string, fromGroup: GroupDetail, owner: boolean) => void;
 }
 
 function GroupTable({
@@ -202,7 +208,7 @@ function GroupTable({
 }: GroupTableProps) {
   const navigate = useNavigate();
 
-  const putGroupUsers = usePutGroupMembersById({
+  const putGroupUsers = useGroupMembersByIdPut({
     onSuccess: () => navigate(0),
   });
 
@@ -251,7 +257,7 @@ function GroupTable({
           {filteredEntries.length > 0 ? (
             filteredEntries
               .sort(sortUserGroups)
-              .map(([groupId, groupMembers]: [string, Array<OktaUserGroupMember>]) => (
+              .map(([groupId, groupMembers]: [string, Array<OktaUserGroupMemberDetail>]) => (
                 <TableRow key={groupId}>
                   <TableCell>
                     <Link
@@ -283,12 +289,16 @@ function GroupTable({
                           <MembershipChip
                             key={group.active_role_group_mapping?.active_role_group?.name ?? ''}
                             okta_user_group_member={group}
-                            group={group.active_group}
+                            group={group.active_group as unknown as GroupDetail}
                             removeRoleGroup={(roleGroup) => {
-                              onClickRemoveGroupFromRole(group.active_group!, roleGroup, owner);
+                              onClickRemoveGroupFromRole(
+                                group.active_group! as unknown as GroupDetail,
+                                roleGroup,
+                                owner,
+                              );
                             }}
                             removeDirectAccessAsUser={() => {
-                              onClickRemoveDirectAccess(user.id, group.active_group!, owner);
+                              onClickRemoveDirectAccess(user.id, group.active_group! as unknown as GroupDetail, owner);
                             }}
                             removeDirectAccessAsGroupManager={() => {
                               removeUserFromGroup(group.active_group!.id ?? '');
@@ -313,12 +323,12 @@ function GroupTable({
 }
 
 interface SideBySideTablesProps {
-  ownerships: Record<string, OktaUserGroupMember[]>;
-  memberships: Record<string, OktaUserGroupMember[]>;
-  user: OktaUser;
+  ownerships: Record<string, OktaUserGroupMemberDetail[]>;
+  memberships: Record<string, OktaUserGroupMemberDetail[]>;
+  user: OktaUserDetail;
   filterGroupName?: string | null;
-  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
-  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
+  onClickRemoveGroupFromRole: (removeGroup: GroupDetail, fromRole: RoleGroupDetail, owner: boolean) => void;
+  onClickRemoveDirectAccess: (id: string, fromGroup: GroupDetail, owner: boolean) => void;
 }
 
 function SideBySideTables({
@@ -359,14 +369,14 @@ function SideBySideTables({
 
 interface CollapsibleSectionProps {
   summaryLeft: React.ReactNode;
-  ownerships: Record<string, OktaUserGroupMember[]>;
-  memberships: Record<string, OktaUserGroupMember[]>;
-  user: OktaUser;
+  ownerships: Record<string, OktaUserGroupMemberDetail[]>;
+  memberships: Record<string, OktaUserGroupMemberDetail[]>;
+  user: OktaUserDetail;
   filterGroupName?: string | null;
   expanded: boolean;
   onToggle: (event: React.SyntheticEvent, expanded: boolean) => void;
-  onClickRemoveGroupFromRole: (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => void;
-  onClickRemoveDirectAccess: (id: string, fromGroup: PolymorphicGroup, owner: boolean) => void;
+  onClickRemoveGroupFromRole: (removeGroup: GroupDetail, fromRole: RoleGroupDetail, owner: boolean) => void;
+  onClickRemoveDirectAccess: (id: string, fromGroup: GroupDetail, owner: boolean) => void;
 }
 
 function CollapsibleSection({
@@ -413,8 +423,8 @@ function CollapsibleSection({
 }
 
 function sectionContainsGroupName(
-  ownerships: Record<string, OktaUserGroupMember[]>,
-  memberships: Record<string, OktaUserGroupMember[]>,
+  ownerships: Record<string, OktaUserGroupMemberDetail[]>,
+  memberships: Record<string, OktaUserGroupMemberDetail[]>,
   groupName: string | null,
 ): boolean {
   const q = groupName?.trim().toLowerCase() ?? '';
@@ -425,7 +435,7 @@ function sectionContainsGroupName(
 
 function collectGroupNames(ownerPartitions: PartitionedGroups, memberPartitions: PartitionedGroups): string[] {
   const names = new Set<string>();
-  const visit = (groupsById: Record<string, OktaUserGroupMember[]>) => {
+  const visit = (groupsById: Record<string, OktaUserGroupMemberDetail[]>) => {
     for (const members of Object.values(groupsById)) {
       const name = members[0]?.active_group?.name;
       if (name) names.add(name);
@@ -457,7 +467,7 @@ export default function ReadUser() {
   const [isExpandedAll, setIsExpandedAll] = React.useState(false);
   const [userToggleMap, setUserToggleMap] = React.useState<Record<string, boolean>>({});
 
-  const {data, isError, isLoading} = useGetUserById({
+  const {data, isError, isLoading} = useUserById({
     pathParams: {userId: id ?? ''},
   });
 
@@ -469,7 +479,7 @@ export default function ReadUser() {
     return <Loading />;
   }
 
-  const user = data ?? ({} as OktaUser);
+  const user = data ?? ({} as OktaUserDetail);
 
   const ownerPartitions = partitionByType(user.active_group_ownerships);
   const memberPartitions = partitionByType(user.active_group_memberships);
@@ -481,8 +491,8 @@ export default function ReadUser() {
     {
       appId: string;
       appName: string;
-      ownerships: Record<string, OktaUserGroupMember[]>;
-      memberships: Record<string, OktaUserGroupMember[]>;
+      ownerships: Record<string, OktaUserGroupMemberDetail[]>;
+      memberships: Record<string, OktaUserGroupMemberDetail[]>;
     }
   >();
   for (const entry of ownerAppsByApp) {
@@ -513,7 +523,7 @@ export default function ReadUser() {
     ? allAppEntries.filter((entry) => sectionContainsGroupName(entry.ownerships, entry.memberships, searchSelection))
     : allAppEntries;
 
-  const showRemoveGroupFromRoleDialog = (removeGroup: PolymorphicGroup, fromRole: RoleGroup, owner: boolean) => {
+  const showRemoveGroupFromRoleDialog = (removeGroup: GroupDetail, fromRole: RoleGroupDetail, owner: boolean) => {
     setRemoveGroupsFromRoleDialogParameters({
       group: removeGroup,
       role: fromRole,
@@ -522,7 +532,7 @@ export default function ReadUser() {
     setRemoveGroupsFromRoleDialogOpen(true);
   };
 
-  const removeOwnDirectAccess = (id: string, fromGroup: PolymorphicGroup, owner: boolean) => {
+  const removeOwnDirectAccess = (id: string, fromGroup: GroupDetail, owner: boolean) => {
     setRemoveOwnDirectAccessDialogParameters({
       userId: id,
       group: fromGroup,

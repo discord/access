@@ -1,4 +1,20 @@
-import {PolymorphicGroup, OktaUser, Tag, OktaGroupTagMap, OktaUserGroupMember} from './api/apiSchemas';
+import {
+  OktaUserDetail,
+  OktaUserSummary,
+  TagSummary,
+  OktaGroupTagMapDetail,
+  OktaUserGroupMemberDetail,
+} from './api/apiSchemas';
+
+// The nested group shapes the helpers below operate on all carry a `type`
+// discriminator and an `active_group_tags` list, but appear in several
+// generated variants (GroupDetail, GroupSummary, GroupRef, GroupRefForMembership).
+// These structural aliases accept any of them.
+type GroupTypeLike = {type?: string | null};
+// `id` is required (and present on every group variant) so this isn't a "weak
+// type" — that lets the slimmer `GroupRefForMembership` (which carries no
+// `active_group_tags`) be passed too; it simply contributes no tags.
+type GroupWithTags = {id: string; active_group_tags?: OktaGroupTagMapDetail[] | null};
 
 export const perPage: number[] = [5, 10, 20, 50, 200, 1000];
 
@@ -11,7 +27,7 @@ export function emptyTableRows(page: number, rowsPerPage: number, rowCount: numb
   return page > 0 && rowsPerPage <= 50 ? rowsPerPage - rowCount : 0;
 }
 
-export function displayGroupType(group: PolymorphicGroup | undefined) {
+export function displayGroupType(group: GroupTypeLike | null | undefined) {
   if (group == undefined || group.type == undefined) {
     return '';
   }
@@ -27,7 +43,7 @@ export function displayGroupType(group: PolymorphicGroup | undefined) {
     .join(' ');
 }
 
-export function displayUserName(user: OktaUser | undefined) {
+export function displayUserName(user: OktaUserSummary | null | undefined) {
   if (user == undefined) {
     return '';
   }
@@ -54,33 +70,33 @@ export function groupBy<T>(xs: T[] | undefined, keyFn: (item: T) => string | und
   );
 }
 
-export function getActiveTagsFromGroups(groups: PolymorphicGroup[]) {
+export function getActiveTagsFromGroups(groups: GroupWithTags[]) {
   return Array.from(
     groups.reduce((allTags, curr) => {
       if (curr.active_group_tags) {
-        const groupTags = curr.active_group_tags.map((t: OktaGroupTagMap) => t.active_tag!);
+        const groupTags = curr.active_group_tags.map((t: OktaGroupTagMapDetail) => t.active_tag!);
         groupTags.forEach((item) => allTags.add(item));
         return allTags;
       } else return allTags;
-    }, new Set<Tag>()),
+    }, new Set<TagSummary>()),
   );
 }
 
 // returns true if targetTag is set to true at least once in the tag list
-function checkBooleanTag(tags: Tag[] | undefined, targetTag: string) {
+function checkBooleanTag(tags: TagSummary[] | undefined, targetTag: string) {
   if (!tags) return false;
 
-  return tags.reduce((out: boolean, curr: Tag) => {
+  return tags.reduce((out: boolean, curr: TagSummary) => {
     if (curr.enabled && curr.constraints && Object.keys(curr.constraints).includes(targetTag)) {
       return out || curr.constraints![targetTag];
     } else return out;
   }, false);
 }
 
-export function minTagTime(tags: Tag[], owner: boolean) {
+export function minTagTime(tags: TagSummary[], owner: boolean) {
   if (owner) {
     const timeLimited = tags.filter(
-      (tag: Tag) => tag.enabled && tag.constraints && Object.keys(tag.constraints).includes('owner_time_limit'),
+      (tag: TagSummary) => tag.enabled && tag.constraints && Object.keys(tag.constraints).includes('owner_time_limit'),
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
@@ -89,7 +105,7 @@ export function minTagTime(tags: Tag[], owner: boolean) {
       : null;
   } else {
     const timeLimited = tags.filter(
-      (tag: Tag) => tag.enabled && tag.constraints && Object.keys(tag.constraints).includes('member_time_limit'),
+      (tag: TagSummary) => tag.enabled && tag.constraints && Object.keys(tag.constraints).includes('member_time_limit'),
     );
     return timeLimited.length > 0
       ? timeLimited.reduce((prev, curr) => {
@@ -99,21 +115,21 @@ export function minTagTime(tags: Tag[], owner: boolean) {
   }
 }
 
-export function minTagTimeGroups(groups: PolymorphicGroup[], owner: boolean) {
+export function minTagTimeGroups(groups: GroupWithTags[], owner: boolean) {
   return minTagTime(getActiveTagsFromGroups(groups), owner);
 }
 
-export function requiredReason(tags: Tag[] | undefined, owner: boolean) {
+export function requiredReason(tags: TagSummary[] | undefined, owner: boolean) {
   if (!tags) return false;
 
   return owner ? checkBooleanTag(tags, 'require_owner_reason') : checkBooleanTag(tags, 'require_member_reason');
 }
 
-export function requiredReasonGroups(groups: PolymorphicGroup[], owner: boolean) {
+export function requiredReasonGroups(groups: GroupWithTags[], owner: boolean) {
   return requiredReason(getActiveTagsFromGroups(groups), owner);
 }
 
-export function ownerCantAddSelf(tags: Tag[] | undefined, owner: boolean) {
+export function ownerCantAddSelf(tags: TagSummary[] | undefined, owner: boolean) {
   if (!tags) return false;
 
   return owner
@@ -121,20 +137,20 @@ export function ownerCantAddSelf(tags: Tag[] | undefined, owner: boolean) {
     : checkBooleanTag(tags, 'disallow_self_add_membership');
 }
 
-export function ownerCantAddSelfGroups(groups: PolymorphicGroup[], owner: boolean) {
+export function ownerCantAddSelfGroups(groups: GroupWithTags[], owner: boolean) {
   return ownerCantAddSelf(getActiveTagsFromGroups(groups), owner);
 }
 
 export function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   let aEmail = aUsers[0].active_user?.email ?? '';
   let bEmail = bUsers[0].active_user?.email ?? '';
   return aEmail.localeCompare(bEmail);
 }
 
-export function sortGroupMemberRecords(users: Record<string, OktaUser>): OktaUser[] {
+export function sortGroupMemberRecords(users: Record<string, OktaUserDetail>): OktaUserDetail[] {
   const usersArray = Object.values(users); // Convert the object to an array
   usersArray.sort((a, b) => {
     const nameA = `${a.first_name} ${a.last_name}`;
@@ -145,7 +161,7 @@ export function sortGroupMemberRecords(users: Record<string, OktaUser>): OktaUse
 }
 
 export function groupMemberships(
-  memberships: Array<OktaUserGroupMember> | undefined,
-): Record<string, Array<OktaUserGroupMember>> {
+  memberships: Array<OktaUserGroupMemberDetail> | undefined,
+): Record<string, Array<OktaUserGroupMemberDetail>> {
   return groupBy(memberships ?? [], (membership) => membership.active_user?.id ?? '');
 }

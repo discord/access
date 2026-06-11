@@ -13,9 +13,10 @@ import sys
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
 
 from api import exception_handlers, middleware
@@ -23,11 +24,75 @@ from api.config import settings
 from api.database import build_engine
 from api.extensions import db
 from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
+from api.schemas.core_schemas import ProblemDetail
 from api.services import okta
 
 logger = logging.getLogger(__name__)
 
 BUILD_DIR = Path(__file__).resolve().parent.parent / "build"
+
+
+def _operation_id_from_route_name(route: APIRoute) -> str:
+    """Derive each operation's OpenAPI ``operationId`` from its explicit ``name=``.
+
+    FastAPI's default ``generate_unique_id`` mangles the path and method into
+    the id (``apps_api_apps_get``), which the OpenAPI → TypeScript codegen turns
+    into ugly hook names. Every API route already sets a unique, semantic
+    ``name=`` (``apps``, ``app_by_id``, ``apps_create``, …), so using it verbatim
+    yields clean generated hooks (``useApps``, ``useAppById``, ``useAppsCreate``)."""
+    return route.name
+
+
+# Shared RFC 9457 error response, advertised on every router so the generated
+# TypeScript client types its ``*Error`` payloads against ``ProblemDetail``
+# instead of falling back to the success schema. The runtime envelope is built
+# in ``api/exception_handlers.py``.
+DEFAULT_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    "default": {
+        "model": ProblemDetail,
+        "description": "RFC 9457 problem-detail error response.",
+    },
+}
+
+
+def _flatten_query_param_models(openapi_schema: dict[str, Any]) -> None:
+    """Expand object-typed query parameters into one param per model field.
+
+    Our list endpoints take their filters as a Pydantic model
+    (``q_args: Annotated[SearchAppQuery, Query()]``), which FastAPI normally
+    flattens into individual query params (``?q=…``). ``fastapi_pagination``'s
+    ``add_pagination`` rewrites the route signature in a way that defeats that
+    flattening, leaving a single object-typed ``q_args`` param (a ``$ref``) in
+    the spec — even though at runtime FastAPI still reads the flat params. That
+    misleads the OpenAPI→TypeScript codegen into emitting a nested, wrongly
+    serialized ``q_args`` object. Rewrite the spec to match the wire: replace
+    each object-schema query param with one param per field of the referenced
+    model.
+    """
+    schemas = openapi_schema.get("components", {}).get("schemas", {})
+    for path_item in openapi_schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if not isinstance(operation, dict) or "parameters" not in operation:
+                continue
+            flattened: list[dict[str, Any]] = []
+            for param in operation["parameters"]:
+                ref = param.get("schema", {}).get("$ref") if param.get("in") == "query" else None
+                model = schemas.get(ref.rsplit("/", 1)[-1]) if ref else None
+                props = model.get("properties") if model else None
+                if model and props:
+                    required = set(model.get("required", []))
+                    for field_name, field_schema in props.items():
+                        flattened.append(
+                            {
+                                "name": field_name,
+                                "in": "query",
+                                "required": field_name in required,
+                                "schema": field_schema,
+                            }
+                        )
+                else:
+                    flattened.append(param)
+            operation["parameters"] = flattened
 
 
 def _configure_logging() -> None:
@@ -155,6 +220,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # too, so static assets are inside the gate.
         dependencies=[Depends(require_authenticated)],
         lifespan=lifespan,
+        # Clean operationIds (from each route's `name=`) so the generated
+        # TypeScript client gets readable hook names. See the function docstring.
+        generate_unique_id_function=_operation_id_from_route_name,
     )
 
     # Bind the SQLAlchemy engine to the session facade. In tests the `db`
@@ -264,24 +332,36 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         users,
     )
 
-    app.include_router(health.router)
-    app.include_router(access_requests.router)
-    app.include_router(apps.router)
-    app.include_router(audit.router)
-    app.include_router(bugs.router)
-    app.include_router(group_requests.router)
-    app.include_router(groups.router)
-    app.include_router(plugins.router)
-    app.include_router(role_requests.router)
-    app.include_router(roles.router)
-    app.include_router(tags.router)
-    app.include_router(users.router)
+    app.include_router(health.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(access_requests.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(apps.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(audit.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(bugs.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(group_requests.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(groups.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(plugins.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(role_requests.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(roles.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(tags.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(users.router, responses=DEFAULT_ERROR_RESPONSES)
 
     # Wires up `fastapi_pagination` so the `Page[T]` return types resolve their
     # `Params` dependency from query string. Must be after `include_router`.
     from fastapi_pagination import add_pagination
 
     add_pagination(app)
+
+    # Patch OpenAPI generation to undo `add_pagination`'s flattening regression
+    # on Pydantic-model query params (see `_flatten_query_param_models`). Wraps
+    # the default `app.openapi`, mutating the (cached) schema in place.
+    _default_openapi = app.openapi
+
+    def _patched_openapi() -> dict[str, Any]:
+        schema = _default_openapi()
+        _flatten_query_param_models(schema)
+        return schema
+
+    app.openapi = _patched_openapi  # type: ignore[method-assign]
 
     # SPA: serve `build/` from a catch-all FastAPI route so static assets
     # go through the app-wide `require_authenticated` dependency (an

@@ -12,7 +12,8 @@ import TableRow from '@mui/material/TableRow';
 import TableFooter from '@mui/material/TableFooter';
 import TablePagination from '@mui/material/TablePagination';
 
-import {useGetUsers} from '../../api/apiComponents';
+import {useUsers} from '../../api/apiComponents';
+import {OktaUserSummary} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import UserAvatar from './UserAvatar';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
@@ -39,11 +40,11 @@ export default function ListUsers() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetUsers({
+  const {data, error, isLoading} = useUsers({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
-  const {data: searchData} = useGetUsers({
+  const {data: searchData} = useUsers({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -104,7 +105,7 @@ export default function ListUsers() {
       <TableContainer component={Paper}>
         <TableTopBar title="Users">
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            options={searchRows.map((row: OktaUserSummary) => displayUserName(row) + ';' + row.email.toLowerCase())}
             onInputChange={(event, newInputValue) => {
               setSearchInput(newInputValue?.split(';')[0] ?? '');
             }}
@@ -123,7 +124,7 @@ export default function ListUsers() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: OktaUserSummary) => (
               <LinkTableRow to={`/users/${row.email.toLowerCase()}`} key={row.id}>
                 <TableCell>
                   <UserAvatar name={displayUserName(row)} size={24} variant={'body1'} />

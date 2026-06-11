@@ -24,8 +24,8 @@ import dayjs from 'dayjs';
 import {displayGroupType, emptyTableRows, perPage} from '../../helpers';
 import {displayUserName} from '../../helpers';
 import ChangeTitle from '../../tab-title';
-import {useGetRoleById, useGetGroupRoleAudits, useGetGroups} from '../../api/apiComponents';
-import {RoleGroup} from '../../api/apiSchemas';
+import {useRoleById, useGroupsAndRoles, useGroups} from '../../api/apiComponents';
+import {RoleGroupDetail, AuditGroupRoleRow, GroupSummary} from '../../api/apiSchemas';
 import NotFound from '../NotFound';
 import CreatedReason from '../../components/CreatedReason';
 import Loading from '../../components/Loading';
@@ -70,7 +70,7 @@ export default function AuditRole() {
     data: roleData,
     isError,
     isLoading: userIsLoading,
-  } = useGetRoleById({
+  } = useRoleById({
     pathParams: {roleId: id ?? ''},
   });
 
@@ -78,7 +78,7 @@ export default function AuditRole() {
     data,
     error,
     isLoading: userAuditIsLoading,
-  } = useGetGroupRoleAudits({
+  } = useGroupsAndRoles({
     queryParams: Object.assign(
       {role_id: id ?? '', page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -89,7 +89,7 @@ export default function AuditRole() {
     ),
   });
 
-  const {data: searchData} = useGetGroups({
+  const {data: searchData} = useGroups({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -101,7 +101,7 @@ export default function AuditRole() {
     return <Loading />;
   }
 
-  const role = roleData ?? ({} as RoleGroup);
+  const role = roleData ?? ({} as RoleGroupDetail);
 
   const rows = data?.items ?? [];
   const totalRows = data?.total ?? 0;
@@ -203,7 +203,7 @@ export default function AuditRole() {
             <ToggleButton value={true}>Owner</ToggleButton>
           </ToggleButtonGroup>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: GroupSummary) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -244,7 +244,7 @@ export default function AuditRole() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AuditGroupRoleRow) => (
               <TableRow
                 key={row.id}
                 sx={{

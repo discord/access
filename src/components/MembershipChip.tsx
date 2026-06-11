@@ -1,4 +1,4 @@
-import {OktaUserGroupMember, PolymorphicGroup, RoleGroup} from '../api/apiSchemas';
+import {OktaUserGroupMemberDetail, GroupDetail, RoleGroupDetail} from '../api/apiSchemas';
 import {useNavigate} from 'react-router-dom';
 import {useCurrentUser} from '../authentication';
 import {canManageGroup, isGroupOwner} from '../authorization';
@@ -6,9 +6,9 @@ import Chip from '@mui/material/Chip';
 import Tooltip from '@mui/material/Tooltip';
 
 export interface MembershipChipProps {
-  okta_user_group_member: OktaUserGroupMember;
-  group: PolymorphicGroup;
-  removeRoleGroup: (roleGroup: RoleGroup) => void;
+  okta_user_group_member: OktaUserGroupMemberDetail;
+  group: GroupDetail;
+  removeRoleGroup: (roleGroup: RoleGroupDetail) => void;
   removeDirectAccessAsUser: () => void;
   removeDirectAccessAsGroupManager: () => void;
 }
@@ -40,7 +40,9 @@ export default function MembershipChip({
         onDelete={
           canManageThisGroup || canManageUserRoleGroup
             ? () => {
-                removeRoleGroup(activeRoleGroup);
+                // `active_role_group` is the slim `RoleGroupMembershipRef`; the
+                // parent's handler only reads id/name, which the ref carries.
+                removeRoleGroup(activeRoleGroup as unknown as RoleGroupDetail);
               }
             : undefined
         }

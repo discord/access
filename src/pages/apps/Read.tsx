@@ -5,8 +5,8 @@ import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
 import Paper from '@mui/material/Paper';
 
-import {useGetAppById} from '../../api/apiComponents';
-import {App, AppGroup} from '../../api/apiSchemas';
+import {useAppById} from '../../api/apiComponents';
+import {AppDetail, AppGroupDetail} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import NotFound from '../NotFound';
@@ -19,14 +19,14 @@ export default function ReadApp() {
   const currentUser = useCurrentUser();
 
   const {id} = useParams();
-  const {data, isError, isLoading} = useGetAppById({
+  const {data, isError, isLoading} = useAppById({
     pathParams: {appId: id ?? ''},
   });
-  const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroup[]>([]);
+  const [nonOwnerAppGroups, setNonOwnerAppGroups] = React.useState<AppGroupDetail[]>([]);
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [isSearchActive, setIsSearchActive] = React.useState(false);
 
-  const app = data ?? ({} as App);
+  const app = data ?? ({} as AppDetail);
 
   const initialNonOwnerAppGroups = React.useMemo(() => {
     return app?.active_non_owner_app_groups || [];
@@ -46,7 +46,7 @@ export default function ReadApp() {
     });
   }, []);
 
-  const handleSearchSubmit = React.useCallback((newAppGroups: AppGroup[], isActive: boolean) => {
+  const handleSearchSubmit = React.useCallback((newAppGroups: AppGroupDetail[], isActive: boolean) => {
     setNonOwnerAppGroups((prev) => {
       // Only update if the groups actually changed
       if (prev.length === newAppGroups.length && prev.every((group, index) => group.id === newAppGroups[index]?.id)) {

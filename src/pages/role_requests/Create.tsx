@@ -30,22 +30,23 @@ import {
 } from 'react-hook-form-mui';
 
 import {
-  useCreateRoleRequest,
-  useGetGroups,
-  useGetRoles,
-  CreateRoleRequestError,
-  CreateRoleRequestVariables,
+  useRoleRequestsCreate,
+  useGroups,
+  useRoles,
+  RoleRequestsCreateError,
+  RoleRequestsCreateVariables,
 } from '../../api/apiComponents';
 import {
-  PolymorphicGroup,
-  CreateRoleRequest,
-  OktaUserGroupMember,
-  OktaUser,
-  OktaGroup,
-  AppGroup,
-  RoleRequest,
-  RoleGroup,
-  RoleGroupMap,
+  GroupDetail,
+  CreateRoleRequestBody,
+  OktaUserGroupMemberDetail,
+  OktaUserDetail,
+  OktaGroupDetail,
+  AppGroupDetail,
+  RoleRequestDetail,
+  RoleRequestSummary,
+  RoleGroupDetail,
+  RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
@@ -57,8 +58,8 @@ dayjs.extend(IsSameOrBefore);
 interface CreateRequestButtonProps {
   enabled: boolean;
   setOpen(open: boolean): any;
-  role?: RoleGroup;
-  group?: PolymorphicGroup;
+  role?: RoleGroupDetail;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
@@ -90,21 +91,21 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
   );
 }
 
-function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMap): boolean {
+function filterManagedRoleGroupMap(roleGroupMap: RoleGroupMapDetail): boolean {
   return roleGroupMap.active_role_group?.is_managed ?? false;
 }
 
 interface CreateRequestContainerProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  role?: RoleGroup;
-  group?: PolymorphicGroup;
+  role?: RoleGroupDetail;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
 interface CreateRequestForm {
-  role: RoleGroup;
-  group: PolymorphicGroup;
+  role: RoleGroupDetail;
+  group: GroupDetail;
   until?: string;
   customUntil?: string;
   ownerOrMember: string;
@@ -159,7 +160,7 @@ function filterUntilLabels(timeLimit: number): [string, Array<Record<string, str
 }
 
 // Given an array of OktaUserGroupMembers, returns an array of group ids
-function getGroupIds(groups: Array<OktaUserGroupMember>): Array<string> {
+function getGroupIds(groups: Array<OktaUserGroupMemberDetail>): Array<string> {
   return groups.reduce((ids, userGroupMember) => {
     if (userGroupMember.active_group?.id) {
       ids.push(userGroupMember.active_group.id);
@@ -189,7 +190,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [groupSearchInput, setGroupSearchInput] = React.useState(props.group?.name ?? '');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [selectedGroup, setSelectedGroup] = React.useState<PolymorphicGroup | null>(props.group ?? null);
+  const [selectedGroup, setSelectedGroup] = React.useState<GroupDetail | null>(props.group ?? null);
   const [owner, setOwner] = React.useState<boolean>(props.owner ?? false);
 
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
@@ -199,9 +200,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
   const complete = (
-    completedRequest: RoleRequest | undefined,
-    error: CreateRoleRequestError | null,
-    variables: CreateRoleRequestVariables,
+    completedRequest: RoleRequestSummary | undefined,
+    error: RoleRequestsCreateError | null,
+    variables: RoleRequestsCreateVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -213,11 +214,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     }
   };
 
-  const createRequest = useCreateRoleRequest({
+  const createRequest = useRoleRequestsCreate({
     onSettled: complete,
   });
 
-  const {data: roleSearchData} = useGetRoles({
+  const {data: roleSearchData} = useRoles({
     queryParams: {
       page: 1,
       size: 10,
@@ -227,7 +228,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   });
   let roleSearchOptions = roleSearchData?.items ?? [];
 
-  const {data: groupSearchData} = useGetGroups({
+  const {data: groupSearchData} = useGroups({
     queryParams: {
       page: 1,
       size: 10,
@@ -237,7 +238,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   });
   const groupSearchOptions = groupSearchData?.items ?? [];
 
-  const updateUntil = (group: PolymorphicGroup | null = selectedGroup, ownerOrMember: boolean = owner) => {
+  const updateUntil = (group: GroupDetail | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);
     setOwner(ownerOrMember);
     let time: number | null = null;
@@ -271,7 +272,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       group_id: requestForm.group.id,
       group_owner: props.owner != null ? props.owner : requestForm.ownerOrMember == 'owner',
       reason: requestForm.reason ?? '',
-    } as CreateRoleRequest;
+    } as CreateRoleRequestBody;
 
     switch (requestForm.until) {
       case 'indefinite':
@@ -484,15 +485,15 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 }
 
 interface CreateRequestDialogProps {
-  currentUser: OktaUser;
+  currentUser: OktaUserDetail;
   setOpen(open: boolean): any;
-  group?: PolymorphicGroup;
+  group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
-  const [group, setGroup] = React.useState<PolymorphicGroup | undefined>(props.group);
+  const [group, setGroup] = React.useState<GroupDetail | undefined>(props.group);
   const [owner, setOwner] = React.useState<boolean | undefined>(props.owner);
 
   return (
@@ -504,9 +505,9 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 
 interface CreateRequestProps {
   enabled: boolean;
-  currentUser: OktaUser;
-  role?: RoleGroup;
-  group?: OktaGroup | AppGroup;
+  currentUser: OktaUserDetail;
+  role?: RoleGroupDetail;
+  group?: OktaGroupDetail | AppGroupDetail;
   owner?: boolean;
   renew?: boolean;
   open?: boolean;
@@ -521,7 +522,7 @@ export default function CreateRequest(props: CreateRequestProps) {
   if (
     props.role?.deleted_at != null ||
     props.group?.deleted_at != null ||
-    (props.role != null && !canManageGroup(props.currentUser, props.role)) ||
+    (props.role != null && !canManageGroup(props.currentUser, props.role as GroupDetail)) ||
     props.group?.is_managed == false
   ) {
     return null;
@@ -534,12 +535,19 @@ export default function CreateRequest(props: CreateRequestProps) {
           enabled={props.enabled}
           setOpen={setOpen}
           role={props.role}
-          group={props.group}
+          group={props.group as GroupDetail | undefined}
           owner={props.owner}
           renew={props.renew}
         />
       )}
-      {open ? <CreateRequestDialog setOpen={setOpen} {...props} renew={props.renew} /> : null}
+      {open ? (
+        <CreateRequestDialog
+          setOpen={setOpen}
+          {...props}
+          group={props.group as GroupDetail | undefined}
+          renew={props.renew}
+        />
+      ) : null}
     </>
   );
 }

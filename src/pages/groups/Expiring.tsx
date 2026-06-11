@@ -28,7 +28,14 @@ import BulkRenewal from './BulkRenewal';
 import NotFound from '../NotFound';
 import CreateRequest from '../requests/Create';
 import ChangeTitle from '../../tab-title';
-import {useGetUserGroupAudits, useGetUsers} from '../../api/apiComponents';
+import {useUsersAndGroups, useUsers} from '../../api/apiComponents';
+import {
+  AuditUserGroupRow,
+  GroupDetail,
+  OktaUserDetail,
+  OktaUserGroupMemberDetail,
+  OktaUserSummary,
+} from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
 import DateRangePicker from '../../components/DateRange';
@@ -83,7 +90,7 @@ export default function ExpiringGroups() {
     data,
     isError,
     isLoading: expiringGroupsIsLoading,
-  } = useGetUserGroupAudits({
+  } = useUsersAndGroups({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       orderBy == null ? null : {order_by: orderBy},
@@ -100,7 +107,7 @@ export default function ExpiringGroups() {
     ),
   });
 
-  const {data: searchData} = useGetUsers({
+  const {data: searchData} = useUsers({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -228,7 +235,9 @@ export default function ExpiringGroups() {
       <TableContainer component={Paper}>
         <TableTopBar title="Expiring Groups">
           <BulkRenewal
-            rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+            rows={rows.filter((row: AuditUserGroupRow) =>
+              canManageGroup(currentUser, row.group as GroupDetail | undefined),
+            )}
             ownAccess={userId == '@me' || userId == currentUser.id}
           />
           <Tooltip title="Show access that still needs review or all expiring access.">
@@ -258,7 +267,7 @@ export default function ExpiringGroups() {
             }}
           />
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => displayUserName(row) + ';' + row.email.toLowerCase())}
+            options={searchRows.map((row: OktaUserSummary) => displayUserName(row) + ';' + row.email.toLowerCase())}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => {
               setSearchInput(newInputValue?.split(';')[0] ?? '');
@@ -298,7 +307,7 @@ export default function ExpiringGroups() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AuditUserGroupRow) => (
               <TableRow
                 key={row.id}
                 sx={{
@@ -364,7 +373,7 @@ export default function ExpiringGroups() {
                 </TableCell>
                 <TableCell>{row.is_owner ? 'Owner' : 'Member'}</TableCell>
                 <TableCell>
-                  <Started memberships={[row]} />
+                  <Started memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
                 </TableCell>
                 <TableCell>
                   {(row.created_actor?.deleted_at ?? null) != null ? (
@@ -384,25 +393,27 @@ export default function ExpiringGroups() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Ending memberships={[row]} />
+                  <Ending memberships={[row] as unknown as Array<OktaUserGroupMemberDetail>} />
                 </TableCell>
                 <TableCell>{row.should_expire && 'Reviewed, not renewed'}</TableCell>
-                {userId == '@me' || currentUser.id == row.user.id ? (
+                {userId == '@me' || currentUser.id == row.user?.id ? (
                   <TableCell align="center">
                     <CreateRequest
-                      currentUser={row.user}
-                      group={row.group}
+                      currentUser={row.user as OktaUserDetail}
+                      group={row.group as GroupDetail | undefined}
                       owner={row.is_owner}
                       renew={true}
-                      expired={row.should_expire}
+                      expired={row.should_expire ?? undefined}
                     />
                   </TableCell>
-                ) : ownerId == '@me' || canManageGroup(currentUser, row.group) ? (
+                ) : ownerId == '@me' || canManageGroup(currentUser, row.group as GroupDetail | undefined) ? (
                   <TableCell align="center">
                     <BulkRenewal
-                      rows={rows.filter((row) => canManageGroup(currentUser, row.group))}
+                      rows={rows.filter((row: AuditUserGroupRow) =>
+                        canManageGroup(currentUser, row.group as GroupDetail | undefined),
+                      )}
                       select={row.id}
-                      rereview={row.should_expire}
+                      rereview={row.should_expire ?? undefined}
                     />
                   </TableCell>
                 ) : (

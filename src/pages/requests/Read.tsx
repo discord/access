@@ -53,24 +53,28 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
-  useGetRequestById,
-  useGetGroupById,
-  useGetAppById,
-  useResolveRequestById,
-  useGetUserGroupAudits,
-  useGetGroupRoleAudits,
-  ResolveRequestByIdError,
-  ResolveRequestByIdVariables,
+  useAccessRequestById,
+  useGroupById,
+  useAppById,
+  useAccessRequestByIdPut,
+  useUsersAndGroups,
+  useGroupsAndRoles,
+  AccessRequestByIdPutError,
+  AccessRequestByIdPutVariables,
 } from '../../api/apiComponents';
 import {
-  AccessRequest,
-  ResolveAccessRequest,
-  PolymorphicGroup,
-  OktaUserGroupMember,
-  AppGroup,
-  App,
-  OktaGroup,
-  RoleGroup,
+  AccessRequestDetail,
+  AccessRequestSummary,
+  ResolveAccessRequestBody,
+  GroupDetail,
+  GroupRefForMembership,
+  OktaUserGroupMemberDetail,
+  OktaGroupTagMapDetail,
+  AppGroupDetail,
+  AppGroupForAppDetail,
+  AppDetail,
+  AuditUserGroupRow,
+  RoleGroupDetail,
 } from '../../api/apiSchemas';
 
 import NotFound from '../NotFound';
@@ -84,8 +88,8 @@ dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
 
 function sortGroupMembers(
-  [aUserId, aUsers]: [string, Array<OktaUserGroupMember>],
-  [bUserId, bUsers]: [string, Array<OktaUserGroupMember>],
+  [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
+  [bUserId, bUsers]: [string, Array<OktaUserGroupMemberDetail>],
 ): number {
   let aEmail = aUsers[0].active_user?.email ?? '';
   let bEmail = bUsers[0].active_user?.email ?? '';
@@ -110,7 +114,7 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntri
 );
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(accessRequest: AccessRequest) {
+function ComputeConstraints(accessRequest: AccessRequestDetail) {
   const group = accessRequest.requested_group ?? null;
 
   if (group == null) {
@@ -118,29 +122,29 @@ function ComputeConstraints(accessRequest: AccessRequest) {
   }
 
   let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
+    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
     accessRequest.request_ownership!,
   );
 
   let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap) => tagMap.active_tag!) : [],
+    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
     accessRequest.request_ownership!,
   );
 
   if (group.type == 'role_group' && !accessRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroup).active_role_associated_group_owner_mappings?.reduce(
+    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
       (out, curr) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
-    const active_groups_members = (group as RoleGroup).active_role_associated_group_member_mappings?.reduce(
+    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
       (out, curr) => {
         curr.active_group ? out.push(curr.active_group) : null;
         return out;
       },
-      new Array<OktaGroup | AppGroup>(),
+      new Array<GroupRefForMembership>(),
     );
 
     reason =
@@ -163,11 +167,11 @@ export default function ReadRequest() {
   const [approved, setApproved] = React.useState<boolean | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
-  const {data, isError, isLoading} = useGetRequestById({
+  const {data, isError, isLoading} = useAccessRequestById({
     pathParams: {accessRequestId: id ?? ''},
   });
 
-  const accessRequest = data ?? ({} as AccessRequest);
+  const accessRequest = data ?? ({} as AccessRequestDetail);
 
   const ownRequest = accessRequest.requester?.id == currentUser.id;
 
@@ -187,9 +191,9 @@ export default function ReadRequest() {
   const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
 
   const complete = (
-    completedAccessRequest: ResolveAccessRequest | undefined,
-    error: ResolveRequestByIdError | null,
-    variables: ResolveRequestByIdVariables,
+    completedAccessRequest: AccessRequestSummary | undefined,
+    error: AccessRequestByIdPutError | null,
+    variables: AccessRequestByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -200,11 +204,11 @@ export default function ReadRequest() {
     }
   };
 
-  const putResolveRequest = useResolveRequestById({
+  const putResolveRequest = useAccessRequestByIdPut({
     onSettled: complete,
   });
 
-  const {data: groupData} = useGetGroupById(
+  const {data: groupData} = useGroupById(
     {
       pathParams: {groupId: accessRequest.requested_group?.id ?? ''},
     },
@@ -213,7 +217,7 @@ export default function ReadRequest() {
     },
   );
 
-  const group = groupData ?? ({} as PolymorphicGroup);
+  const group = groupData ?? ({} as GroupDetail);
 
   const constraints = ComputeConstraints(accessRequest);
 
@@ -246,12 +250,12 @@ export default function ReadRequest() {
     }));
   }
 
-  const ownerships = groupBy(group.active_user_ownerships, (m) => m.active_user?.id);
+  const ownerships = groupBy(group.active_user_ownerships, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  const {data: appData} = useGetAppById(
+  const {data: appData} = useAppById(
     {
       pathParams: {
-        appId: ((accessRequest.requested_group ?? {}) as AppGroup).app?.id ?? '',
+        appId: ((accessRequest.requested_group ?? {}) as AppGroupDetail).app?.id ?? '',
       },
     },
     {
@@ -259,14 +263,14 @@ export default function ReadRequest() {
     },
   );
 
-  const app = appData ?? ({} as App);
+  const app = appData ?? ({} as AppDetail);
 
   const appOwnershipsArray = (app.active_owner_app_groups ?? [])
-    .map((appGroup) => appGroup.active_user_ownerships ?? [])
+    .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_ownerships ?? [])
     .flat();
-  const appOwnerships = groupBy(appOwnershipsArray, (m) => m.active_user?.id);
+  const appOwnerships = groupBy(appOwnershipsArray, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  const {data: accessAppData} = useGetAppById(
+  const {data: accessAppData} = useAppById(
     {
       pathParams: {
         appId: ACCESS_APP_RESERVED_NAME,
@@ -281,14 +285,16 @@ export default function ReadRequest() {
     },
   );
 
-  const accessApp = accessAppData ?? ({} as App);
+  const accessApp = accessAppData ?? ({} as AppDetail);
 
   const accessAppOwnerships = groupBy(
-    (accessApp.active_owner_app_groups ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
-    (m) => m.active_user?.id,
+    (accessApp.active_owner_app_groups ?? [])
+      .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_memberships ?? [])
+      .flat(),
+    (m: OktaUserGroupMemberDetail) => m.active_user?.id,
   );
 
-  const {data: userGroupAudits} = useGetUserGroupAudits({
+  const {data: userGroupAudits} = useUsersAndGroups({
     queryParams: {
       user_id: accessRequest.requester?.id ?? '',
       group_id: accessRequest.requested_group?.id ?? '',
@@ -298,7 +304,7 @@ export default function ReadRequest() {
     },
   });
 
-  const {data: groupRoleAudits} = useGetGroupRoleAudits({
+  const {data: groupRoleAudits} = useGroupsAndRoles({
     queryParams: {
       group_id: accessRequest.requested_group?.id ?? '',
       size: 50,
@@ -326,7 +332,7 @@ export default function ReadRequest() {
     const resolveRequest = {
       approved: approved ?? false,
       reason: responseForm.reason ?? '',
-    } as ResolveAccessRequest;
+    } as ResolveAccessRequestBody;
 
     switch (responseForm.until) {
       case 'indefinite':
@@ -350,7 +356,7 @@ export default function ReadRequest() {
   // Filter audit data for the specific group and user
   const userGroupHistory =
     userGroupAudits?.items?.filter(
-      (audit) =>
+      (audit: AuditUserGroupRow) =>
         audit.group?.id === accessRequest.requested_group?.id && audit.user?.id === accessRequest.requester?.id,
     ) ?? [];
 
@@ -747,7 +753,7 @@ export default function ReadRequest() {
                             </Typography>
                           </Paper>
                           {accessRequest.requested_group?.type != 'app_group' ||
-                          !(accessRequest.requested_group as AppGroup).is_owner ? (
+                          !(accessRequest.requested_group as AppGroupDetail).is_owner ? (
                             <Paper sx={{p: 2, mt: 1}}>
                               <Table size="small" aria-label="group owners">
                                 <TableHead>
@@ -781,7 +787,7 @@ export default function ReadRequest() {
                                   {Object.keys(ownerships).length > 0 ? (
                                     Object.entries(ownerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link
@@ -821,7 +827,7 @@ export default function ReadRequest() {
                                   <TableRow>
                                     <TableCell colSpan={3}>
                                       <Typography variant="h6" color="text.accent">
-                                        {((accessRequest.requested_group ?? {}) as AppGroup).app?.name}
+                                        {((accessRequest.requested_group ?? {}) as AppGroupDetail).app?.name}
                                         {' App Owners'}
                                       </Typography>
                                     </TableCell>
@@ -846,7 +852,7 @@ export default function ReadRequest() {
                                   {Object.keys(appOwnerships).length > 0 ? (
                                     Object.entries(appOwnerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link
@@ -912,7 +918,7 @@ export default function ReadRequest() {
                                   {Object.keys(accessAppOwnerships).length > 0 ? (
                                     Object.entries(accessAppOwnerships)
                                       .sort(sortGroupMembers)
-                                      .map(([userId, users]: [string, Array<OktaUserGroupMember>]) => (
+                                      .map(([userId, users]: [string, Array<OktaUserGroupMemberDetail>]) => (
                                         <TableRow key={'owner' + userId}>
                                           <TableCell>
                                             <Link

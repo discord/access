@@ -23,7 +23,8 @@ import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateUpdateApp from './CreateUpdate';
 import {emptyTableRows, perPage} from '../../helpers';
-import {useGetApps} from '../../api/apiComponents';
+import {useApps} from '../../api/apiComponents';
+import {AppSummary} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import LinkTableRow from '../../components/LinkTableRow';
@@ -50,11 +51,11 @@ export default function ListApps() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetApps({
+  const {data, error, isLoading} = useApps({
     queryParams: Object.assign({page: page + 1, size: rowsPerPage}, searchQuery == null ? null : {q: searchQuery}),
   });
 
-  const {data: searchData} = useGetApps({
+  const {data: searchData} = useApps({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -118,7 +119,7 @@ export default function ListApps() {
           </Button>
           <CreateUpdateApp currentUser={currentUser}></CreateUpdateApp>
           <TableTopBarAutocomplete
-            options={searchRows.map((row) => row.name)}
+            options={searchRows.map((row: AppSummary) => row.name)}
             onChange={handleSearchSubmit}
             onInputChange={(event, newInputValue) => setSearchInput(newInputValue)}
             defaultValue={searchQuery}
@@ -132,7 +133,7 @@ export default function ListApps() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AppSummary) => (
               <LinkTableRow to={`/apps/${row.name}`} key={row.id}>
                 <TableCell>{row.name}</TableCell>
                 <TableCell>

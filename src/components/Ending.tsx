@@ -1,14 +1,13 @@
 import dayjs from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 
-import {OktaUserGroupMember, RoleGroupMap} from '../api/apiSchemas';
+import {OktaUserGroupMemberDetail, RoleGroupMapDetail, AuditUserGroupRow, AuditGroupRoleRow} from '../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
 
-function selectLastTime(
-  a: OktaUserGroupMember | RoleGroupMap,
-  b: OktaUserGroupMember | RoleGroupMap,
-): OktaUserGroupMember | RoleGroupMap {
+type MembershipLike = OktaUserGroupMemberDetail | RoleGroupMapDetail | AuditUserGroupRow | AuditGroupRoleRow;
+
+function selectLastTime(a: MembershipLike, b: MembershipLike): MembershipLike {
   if (a.ended_at == null) return a;
   if (b.ended_at == null) return b;
   if (dayjs(a.ended_at).isAfter(dayjs(b.ended_at))) {
@@ -19,7 +18,7 @@ function selectLastTime(
 }
 
 interface EndingProps {
-  memberships: Array<OktaUserGroupMember | RoleGroupMap>;
+  memberships: Array<MembershipLike>;
 }
 
 export default function Ending(props: EndingProps) {

@@ -9,12 +9,12 @@ import DialogTitle from '@mui/material/DialogTitle';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {usePutRoleMembersById, PutRoleMembersByIdError, PutRoleMembersByIdVariables} from '../../api/apiComponents';
-import {PolymorphicGroup, RoleGroup, RoleMember} from '../../api/apiSchemas';
+import {useRoleMembersByIdPut, RoleMembersByIdPutError, RoleMembersByIdPutVariables} from '../../api/apiComponents';
+import {GroupDetail, RoleGroupDetail, RoleMember, RoleMembersSummary} from '../../api/apiSchemas';
 
 export interface RemoveGroupsDialogParameters {
-  group: PolymorphicGroup;
-  role: RoleGroup;
+  group: GroupDetail;
+  role: RoleGroupDetail;
   owner: boolean;
 }
 
@@ -35,9 +35,9 @@ export default function RemoveGroupsDialog(props: RemoveGroupsDialogProps) {
   const [submitting, setSubmitting] = React.useState(false);
 
   const complete = (
-    completedUsersChange: RoleMember | undefined,
-    error: PutRoleMembersByIdError | null,
-    variables: PutRoleMembersByIdVariables,
+    completedUsersChange: RoleMembersSummary | undefined,
+    error: RoleMembersByIdPutError | null,
+    variables: RoleMembersByIdPutVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -49,7 +49,7 @@ export default function RemoveGroupsDialog(props: RemoveGroupsDialogProps) {
     }
   };
 
-  const putGroupUsers = usePutRoleMembersById({
+  const putGroupUsers = useRoleMembersByIdPut({
     onSettled: complete,
   });
 

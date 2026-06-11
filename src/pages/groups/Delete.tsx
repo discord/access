@@ -11,13 +11,13 @@ import DeleteIcon from '@mui/icons-material/DeleteForever';
 import Alert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {useDeleteGroupById, DeleteGroupByIdError, DeleteGroupByIdVariables} from '../../api/apiComponents';
-import {PolymorphicGroup, AppGroup, OktaUser} from '../../api/apiSchemas';
+import {useGroupByIdDelete, GroupByIdDeleteError, GroupByIdDeleteVariables} from '../../api/apiComponents';
+import {GroupDetail, AppGroupDetail, DeleteMessage, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup} from '../../authorization';
 
 interface GroupDialogProps {
   setOpen(open: boolean): any;
-  group: PolymorphicGroup;
+  group: GroupDetail;
 }
 
 const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
@@ -34,9 +34,9 @@ function GroupDialog(props: GroupDialogProps) {
   const [submitting, setSubmitting] = React.useState(false);
 
   const complete = (
-    deletedGroup: PolymorphicGroup | undefined,
-    error: DeleteGroupByIdError | null,
-    variables: DeleteGroupByIdVariables,
+    deletedGroup: DeleteMessage | undefined,
+    error: GroupByIdDeleteError | null,
+    variables: GroupByIdDeleteVariables,
     context: any,
   ) => {
     setSubmitting(false);
@@ -46,7 +46,7 @@ function GroupDialog(props: GroupDialogProps) {
       props.setOpen(false);
       switch (props.group.type) {
         case 'app_group':
-          navigate('/apps/' + encodeURIComponent((props.group as AppGroup).app?.name ?? ''));
+          navigate('/apps/' + encodeURIComponent((props.group as AppGroupDetail).app?.name ?? ''));
           break;
         case 'role_group':
           navigate('/roles/');
@@ -58,7 +58,7 @@ function GroupDialog(props: GroupDialogProps) {
     }
   };
 
-  const deleteGroup = useDeleteGroupById({
+  const deleteGroup = useGroupByIdDelete({
     onSettled: complete,
   });
 
@@ -90,8 +90,8 @@ function GroupDialog(props: GroupDialogProps) {
 }
 
 interface DeleteGroupProps {
-  currentUser: OktaUser;
-  group: PolymorphicGroup;
+  currentUser: OktaUserDetail;
+  group: GroupDetail;
 }
 
 export default function DeleteGroup(props: DeleteGroupProps) {
@@ -100,7 +100,7 @@ export default function DeleteGroup(props: DeleteGroupProps) {
   if (
     props.group.deleted_at != null ||
     !canManageGroup(props.currentUser, props.group) ||
-    (props.group.type == 'app_group' && (props.group as AppGroup).is_owner) ||
+    (props.group.type == 'app_group' && (props.group as AppGroupDetail).is_owner) ||
     !props.group.is_managed
   ) {
     return null;

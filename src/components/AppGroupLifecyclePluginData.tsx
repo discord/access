@@ -21,13 +21,13 @@ import Typography from '@mui/material/Typography';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import {
-  useGetAppGroupLifecyclePlugins,
-  useGetAppGroupLifecyclePluginAppConfigProperties,
-  useGetAppGroupLifecyclePluginGroupConfigProperties,
-  useGetAppGroupLifecyclePluginAppStatusProperties,
-  useGetAppGroupLifecyclePluginGroupStatusProperties,
+  useAppGroupLifecyclePlugins,
+  useAppGroupLifecyclePluginAppConfigProps,
+  useAppGroupLifecyclePluginGroupConfigProps,
+  useAppGroupLifecyclePluginAppStatusProps,
+  useAppGroupLifecyclePluginGroupStatusProps,
 } from '../api/apiComponents';
-import {AppGroupLifecyclePluginConfigProperties, AppGroupLifecyclePluginStatusProperties} from '../api/apiSchemas';
+import {PluginConfigProp, PluginStatusProp, PluginInfo} from '../api/apiSchemas';
 
 type PluginData = {
   [propertyId: string]: any;
@@ -61,7 +61,7 @@ function PluginDataPropertiesTable({
   data,
 }: {
   type: 'Configuration' | 'Status';
-  properties: AppGroupLifecyclePluginConfigProperties | AppGroupLifecyclePluginStatusProperties;
+  properties: Record<string, PluginConfigProp | PluginStatusProp>;
   data: PluginData;
 }) {
   return (
@@ -125,16 +125,12 @@ export default function AppGroupLifecyclePluginData({
   currentStatus = {},
 }: AppGroupLifecyclePluginDataProps) {
   const [expanded, setExpanded] = React.useState(false);
-  const {data: plugins, isLoading: pluginsLoading} = useGetAppGroupLifecyclePlugins();
+  const {data: plugins, isLoading: pluginsLoading} = useAppGroupLifecyclePlugins({});
 
   const useConfigPropertiesHook =
-    entityType === 'app'
-      ? useGetAppGroupLifecyclePluginAppConfigProperties
-      : useGetAppGroupLifecyclePluginGroupConfigProperties;
+    entityType === 'app' ? useAppGroupLifecyclePluginAppConfigProps : useAppGroupLifecyclePluginGroupConfigProps;
   const useStatusPropertiesHook =
-    entityType === 'app'
-      ? useGetAppGroupLifecyclePluginAppStatusProperties
-      : useGetAppGroupLifecyclePluginGroupStatusProperties;
+    entityType === 'app' ? useAppGroupLifecyclePluginAppStatusProps : useAppGroupLifecyclePluginGroupStatusProps;
 
   const {data: configProperties, isLoading: configLoading} = useConfigPropertiesHook(
     {pathParams: {pluginId: pluginId}},
@@ -148,7 +144,7 @@ export default function AppGroupLifecyclePluginData({
 
   const selectedPlugin = React.useMemo(() => {
     if (!plugins || !pluginId) return null;
-    return plugins.find((p) => p.id === pluginId) || null;
+    return plugins.find((p: PluginInfo) => p.id === pluginId) || null;
   }, [plugins, pluginId]);
 
   if (pluginsLoading) {

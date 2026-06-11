@@ -26,11 +26,12 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import {useCurrentUser} from '../../authentication';
 import ChangeTitle from '../../tab-title';
 import CreateRequest from './Create';
-import {useGetRequests} from '../../api/apiComponents';
+import {useAccessRequests} from '../../api/apiComponents';
 import {emptyTableRows, displayUserName, perPage} from '../../helpers';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
 import StatusFilter, {StatusFilterValue} from '../../components/StatusFilter';
+import {AccessRequestSummary} from '../../api/apiSchemas';
 
 dayjs.extend(RelativeTime);
 
@@ -64,7 +65,7 @@ export default function ListRequests() {
     setRowsPerPage(parseInt(searchParams.get('size') ?? '20', 10));
   }, [searchParams]);
 
-  const {data, error, isLoading} = useGetRequests({
+  const {data, error, isLoading} = useAccessRequests({
     queryParams: Object.assign(
       {page: page + 1, size: rowsPerPage},
       searchQuery == null ? null : {q: searchQuery},
@@ -75,7 +76,7 @@ export default function ListRequests() {
     ),
   });
 
-  const {data: searchData} = useGetRequests({
+  const {data: searchData} = useAccessRequests({
     queryParams: {page: 1, size: 10, q: searchInput},
   });
 
@@ -158,7 +159,7 @@ export default function ListRequests() {
           <StatusFilter value={statusFilter} onChange={handleStatusFilter} />
           <TableTopBarAutocomplete
             options={searchRows.map(
-              (row) =>
+              (row: AccessRequestSummary) =>
                 row.id +
                 ';' +
                 displayUserName(row.requester) +
@@ -206,7 +207,7 @@ export default function ListRequests() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {rows.map((row) => (
+            {rows.map((row: AccessRequestSummary) => (
               <TableRow
                 key={row.id}
                 sx={{
@@ -284,7 +285,7 @@ export default function ListRequests() {
                     to={`/requests/${row.id}`}
                     sx={{textDecoration: 'none', color: 'inherit'}}
                     component={RouterLink}>
-                    <span title={row.created_at}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
+                    <span title={row.created_at ?? undefined}>{dayjs(row.created_at).startOf('second').fromNow()}</span>
                   </Link>
                 </TableCell>
                 <TableCell>

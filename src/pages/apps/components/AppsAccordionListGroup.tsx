@@ -17,7 +17,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import {App, AppGroup, OktaUserGroupMember} from '../../../api/apiSchemas';
+import {AppDetail, AppGroupDetail, OktaUserGroupMemberDetail} from '../../../api/apiSchemas';
 import React from 'react';
 import {displayUserName, groupBy, groupMemberships, sortGroupMembers} from '../../../helpers';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
@@ -52,7 +52,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
             </TableHead>
             <TableBody>
               {member_list.length > 0 ? (
-                member_list.map((member: OktaUserGroupMember) => (
+                member_list.map((member: OktaUserGroupMemberDetail) => (
                   <TableRow key={member.active_user?.id}>
                     <TableCell>
                       <Link
@@ -106,7 +106,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
 );
 
 const AccordionItem: React.FC<{
-  appGroup: AppGroup;
+  appGroup: AppGroupDetail;
   expanded: boolean;
   onToggle: (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => void;
 }> = React.memo(
@@ -199,7 +199,7 @@ const AccordionItem: React.FC<{
 );
 
 interface AppAccordionListGroupProps {
-  app_group: AppGroup[];
+  app_group: AppGroupDetail[];
   list_group_title?: string;
   list_group_description?: string;
   isExpanded?: boolean;
