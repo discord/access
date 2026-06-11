@@ -102,35 +102,6 @@ Kubernetes Deployment and CronJobs already documents this pattern.)
 
 ## Tooling
 
-### 13. OpenAPI client codegen — DONE
-
-The frontend client is regenerated from the live FastAPI spec
-(`/api/openapi.json`, served when `ENV=development`) via
-`npm run codegen`, and `@tanstack/react-query` was upgraded to v5 to
-match the generator's output.
-
-Making the spec codegen-friendly required several backend changes:
-- `generate_unique_id_function` on the app derives clean `operationId`s
-  from each route's `name=` (→ `useGroups`, `useGroupById`, …) instead
-  of FastAPI's mangled default.
-- A shared `ProblemDetail` (RFC 9457) model is advertised as the default
-  error response on every router, so generated `*Error` types are typed.
-- The polymorphic group unions (`GroupDetail`/`GroupSummary`/`GroupRef`/
-  `RoleRequestRequestedGroupRef`) are wrapped in `TypeAliasType` so they
-  emit as named schemas (clean reusable TS union types) rather than
-  inline `anyOf`.
-- `add_pagination` defeats FastAPI's flattening of Pydantic
-  query-parameter models; a small `app.openapi()` post-process
-  (`_flatten_query_param_models`) re-flattens the `q_args` object param
-  back into individual query params to match the wire.
-
-Regenerating also surfaced that the migration's detail schemas had
-dropped scalar fields the frontend uses (`id`, `created_actor`,
-`ended_actor` on `OktaUserGroupMemberDetail`; `id`, `should_expire`,
-`created_reason`, `created_actor`, `ended_actor` on `RoleGroupMapDetail`)
-— restored, with the actor relationships eager-loaded in
-`api/routers/_eager.py`.
-
 ### 14. Strict type checking on routers + schemas
 
 Enforce `pyright` / `mypy` strict mode on `api/routers/` and `api/schemas/`.

@@ -101,6 +101,8 @@ npm run codegen
 
 Re-running codegen overwrites the generated files (`src/api/apiComponents.ts`, `apiSchemas.ts`) but preserves the hand-customized `apiFetcher.ts`, `apiContext.ts`, and `apiUtils.ts`.
 
+A CI check ([openapi-client-drift.yml](.github/workflows/openapi-client-drift.yml)) regenerates the client from the spec on every PR and fails if `src/api/` is out of sync, so remember to commit the regenerated files when you change a route or schema. (That workflow dumps the spec to a file and points the config at it via the `OPENAPI_SPEC_FILE` env var, so it needs no running server.)
+
 ## Tests
 
 ```
