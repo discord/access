@@ -7,6 +7,7 @@ from sqlalchemy.orm import (
 
 from sqlalchemy import func, or_, select, update
 from api.extensions import db
+from api.operations._fan_out import drain_fan_out_tasks
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -152,5 +153,4 @@ class DeleteUser:
                 current_user_id=current_user_id,
             ).execute()
 
-        if len(okta_tasks) > 0:
-            await asyncio.wait(okta_tasks)
+        await drain_fan_out_tasks(okta_tasks, f"DeleteUser for user {self.user_id}")
