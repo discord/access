@@ -2,7 +2,8 @@ from typing import Any, Protocol, cast
 
 import pytest
 from factory import Faker
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from sqlalchemy import select
 from okta.models.group import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
@@ -23,14 +24,15 @@ from api.models import (
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
+from tests.helpers import db_count
 
 
-def test_get_app_omits_inline_groups(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_app_omits_inline_groups(client: AsyncClient, db: Db, url_for: Any) -> None:
     """App detail no longer inlines its groups (and their memberships): those
     fields are gone so the response can't materialize every group's members.
     The React /apps page reads groups from the paginated /groups endpoint."""
     access_app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
-    rep = client.get(access_app_url)
+    rep = await client.get(access_app_url)
     assert rep.status_code == 200, rep.text
     data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
@@ -38,7 +40,7 @@ def test_get_app_omits_inline_groups(client: TestClient, db: Db, url_for: Any) -
     assert "active_non_owner_app_groups" not in data
 
 
-def test_app_groups_endpoint_returns_owner_group(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_app_groups_endpoint_returns_owner_group(client: AsyncClient, db: Db, url_for: Any) -> None:
     """The conftest seeds the built-in Access app + App-Access-Owners group;
     it must surface under the paginated /groups endpoint as an owner group."""
     expected_owner_name = (
@@ -46,7 +48,7 @@ def test_app_groups_endpoint_returns_owner_group(client: TestClient, db: Db, url
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     groups_url = url_for("api-apps.app_groups_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
-    rep = client.get(groups_url)
+    rep = await client.get(groups_url)
     assert rep.status_code == 200, rep.text
     items = rep.json()["items"]
     owner_groups = [g for g in items if g["is_owner"]]
@@ -56,8 +58,8 @@ def test_app_groups_endpoint_returns_owner_group(client: TestClient, db: Db, url
         assert g["is_owner"] is True
 
 
-def test_get_app(
-    client: TestClient,
+async def test_get_app(
+    client: AsyncClient,
     db: Db,
     access_app: App,
     app_group: AppGroup,
@@ -67,20 +69,24 @@ def test_get_app(
 ) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 404
 
     db.session.add(access_app)
     db.session.add(user)
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyRoleGroups(
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
         role_group=role_group, groups_to_add=[app_group.id], owner_groups_to_add=[app_group.id], sync_to_okta=False
     ).execute()
 
@@ -94,7 +100,7 @@ def test_get_app(
 
     # test get app
     app_url = url_for("api-apps.app_by_id", app_id=app_id)
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 200
 
     data = rep.json()
@@ -102,15 +108,15 @@ def test_get_app(
     assert data["description"] == app_description
 
     app_url = url_for("api-apps.app_by_id", app_id=app_group_id)
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 404
 
     app_url = url_for("api-apps.app_by_id", app_id=role_group_id)
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 404
 
 
-def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
+async def test_get_app_groups_paginated(client: AsyncClient, db: Db, user: OktaUser, url_for: Any) -> None:
     """`GET /api/apps/{app_id}/groups` returns the app's groups as a page bounded
     to 10 per page. Members are NOT inlined — each item carries member_count /
     owner_count, and the UI fetches members per-group from the paginated
@@ -118,23 +124,23 @@ def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, ur
     app = AppFactory.create()
     db.session.add(app)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     groups = []
     for _ in range(25):
         ag = AppGroupFactory.create(app_id=app.id)
         db.session.add(ag)
         groups.append(ag)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=groups[0], members_to_add=[user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=groups[0], members_to_add=[user.id], sync_to_okta=False).execute()
 
     app_id = app.id
     member_group_id = groups[0].id
     db.session.expunge_all()
 
     url = url_for("api-apps.app_groups_by_id", app_id=app_id)
-    rep = client.get(url)
+    rep = await client.get(url)
     assert rep.status_code == 200, rep.text
     data = rep.json()
 
@@ -158,65 +164,65 @@ def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, ur
         assert by_id[member_group_id]["owner_count"] == 0
 
 
-def test_get_app_groups_search_by_user(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_app_groups_search_by_user(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`?q=` returns only the app's groups containing a member matching the
     query by name/email, computed server-side (the app page's user search)."""
     app = AppFactory.create()
     db.session.add(app)
-    db.session.commit()
+    await db.session.commit()
     group_a = AppGroupFactory.create(app_id=app.id)
     group_b = AppGroupFactory.create(app_id=app.id)
     db.session.add_all([group_a, group_b])
     alice = OktaUserFactory.create(first_name="Alice", last_name="Xeno", email="alice.xeno@example.com")
     bob = OktaUserFactory.create(first_name="Bob", last_name="Yon", email="bob.yon@example.com")
     db.session.add_all([alice, bob])
-    db.session.commit()
-    ModifyGroupUsers(group=group_a, members_to_add=[alice.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=group_b, members_to_add=[bob.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=group_a, members_to_add=[alice.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=group_b, members_to_add=[bob.id], sync_to_okta=False).execute()
 
     app_id = app.id
     group_a_id = group_a.id
     db.session.expunge_all()
 
     url = url_for("api-apps.app_groups_by_id", app_id=app_id)
-    rep = client.get(url, params={"q": "alice"})
+    rep = await client.get(url, params={"q": "alice"})
     assert rep.status_code == 200, rep.text
     ids = [g["id"] for g in rep.json()["items"]]
     assert ids == [group_a_id]
 
-    rep = client.get(url, params={"q": "bob.yon@example.com"})
+    rep = await client.get(url, params={"q": "bob.yon@example.com"})
     assert [g["id"] for g in rep.json()["items"]] == [group_b.id]
 
 
-def test_get_app_groups_size_capped_at_10(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_app_groups_size_capped_at_10(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Requesting more than 10 per page is rejected so the bound can't be opted out of."""
     app = AppFactory.create()
     db.session.add(app)
-    db.session.commit()
+    await db.session.commit()
     app_id = app.id
     db.session.expunge_all()
 
     url = url_for("api-apps.app_groups_by_id", app_id=app_id)
-    rep = client.get(url, params={"size": 20})
+    rep = await client.get(url, params={"size": 20})
     assert rep.status_code == 400, rep.text
     assert "size" in rep.text
 
 
-def test_put_app(
-    client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
+async def test_put_app(
+    client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, tag: Tag, url_for: Any
 ) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="randomid")
-    rep = client.put(app_url)
+    rep = await client.put(app_url)
     assert rep.status_code == 404
 
     db.session.add(access_app)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     app_group.name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}group"
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
     old_app_group_id = app_group.id
 
@@ -226,7 +232,7 @@ def test_put_app(
     data = {"name": "Updated", "description": "new description", "tags_to_add": [tag.id]}
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
@@ -235,16 +241,15 @@ def test_put_app(
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
     assert (
-        db.session.get(AppGroup, old_app_group_id).name
-        == f"{AppGroup.APP_GROUP_NAME_PREFIX}Updated{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}group"
-    )
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+        await db.session.get(AppGroup, old_app_group_id)
+    ).name == f"{AppGroup.APP_GROUP_NAME_PREFIX}Updated{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}group"
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 1
 
     update_group_spy.reset_mock()
 
     data = {"name": "Updated", "tags_to_add": [tag.id], "tags_to_remove": []}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -252,13 +257,13 @@ def test_put_app(
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 1
 
     update_group_spy.reset_mock()
 
     data = {"name": "Updated", "tags_to_remove": [tag.id]}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -266,23 +271,31 @@ def test_put_app(
     assert data["name"] == "Updated"
     assert data["description"] == "new description"
     assert data["id"] == access_app.id
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 0
 
     # Updating the name of the built-in Access app should fail
-    builtin_access_app = db.session.query(App).filter(App.name == App.ACCESS_APP_RESERVED_NAME).first()
+    builtin_access_app = (await db.session.scalars(select(App).where(App.name == App.ACCESS_APP_RESERVED_NAME))).first()
     builtin_access_owners_group = (
-        db.session.query(AppGroup).filter(AppGroup.app_id == builtin_access_app.id, AppGroup.is_owner.is_(True)).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.app_id == builtin_access_app.id, AppGroup.is_owner.is_(True))
+        )
+    ).first()
     app_url = url_for("api-apps.app_by_id", app_id=builtin_access_app.id)
     data = {"name": "UpdatedAccess"}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 400
+
+    # The failed request's rollback on the shared session expired the
+    # identity map; reload before reading ORM attributes.
+    await db.session.refresh(tag)
+    await db.session.refresh(builtin_access_app)
+    await db.session.refresh(builtin_access_owners_group)
 
     # Updating tags is allowed, but nothing else
     data = {"name": "UpdatedAccess", "description": "new description", "tags_to_add": [tag.id]}
     update_group_spy.reset_mock()
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -291,16 +304,16 @@ def test_put_app(
     assert data["description"] != "new description"
     assert data["id"] == builtin_access_app.id
     assert (
-        db.session.get(AppGroup, builtin_access_owners_group.id).name
+        (await db.session.get(AppGroup, builtin_access_owners_group.id)).name
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 1
 
     data = {"name": "UpdatedAccess", "description": "new description", "tags_to_remove": [tag.id]}
     update_group_spy.reset_mock()
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -309,66 +322,74 @@ def test_put_app(
     assert data["description"] != "new description"
     assert data["id"] == builtin_access_app.id
     assert (
-        db.session.get(AppGroup, builtin_access_owners_group.id).name
+        (await db.session.get(AppGroup, builtin_access_owners_group.id)).name
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 0
 
 
-def test_delete_app(client: TestClient, db: Db, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any) -> None:
+async def test_delete_app(
+    client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, tag: Tag, url_for: Any
+) -> None:
     # test 404
     app_url = url_for("api-apps.app_by_id", app_id="100000")
-    rep = client.delete(app_url)
+    rep = await client.delete(app_url)
     assert rep.status_code == 404
 
     app_groups = AppGroupFactory.create_batch(3, app=access_app)
     db.session.add(access_app)
     db.session.add_all(app_groups)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
     db.session.add(app_tag_map)
-    db.session.commit()
+    await db.session.commit()
     for app_group in app_groups:
         db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    db.session.commit()
+    await db.session.commit()
 
     app_id = access_app.id
     app_group_id = app_groups[0].id
 
     # test delete app
-    delete_group_spy = mocker.patch.object(okta, "async_delete_group")
+    delete_group_spy = mocker.patch.object(okta, "delete_group")
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
-    rep = client.delete(app_url)
+    rep = await client.delete(app_url)
     assert rep.status_code == 200
     assert delete_group_spy.call_count == 3
-    assert db.session.get(App, app_id).deleted_at is not None
-    assert db.session.get(AppGroup, app_group_id).deleted_at is not None
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 0
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 0
+    # The delete request's bulk update expired deleted_at on the identity-map
+    # instances; expire fully so the get() calls below reload them.
+    db.session.expire_all()
+    assert (await db.session.get(App, app_id)).deleted_at is not None
+    assert (await db.session.get(AppGroup, app_group_id)).deleted_at is not None
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 0
 
 
-def test_get_app_excludes_soft_deleted(
-    client: TestClient, db: Db, mocker: MockerFixture, access_app: App, url_for: Any
+async def test_get_app_excludes_soft_deleted(
+    client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, url_for: Any
 ) -> None:
     db.session.add(access_app)
-    db.session.commit()
+    await db.session.commit()
     app_id = access_app.id
     app_name = access_app.name
 
-    mocker.patch.object(okta, "async_delete_group")
-    rep = client.delete(url_for("api-apps.app_by_id", app_id=app_id))
+    mocker.patch.object(okta, "delete_group")
+    rep = await client.delete(url_for("api-apps.app_by_id", app_id=app_id))
     assert rep.status_code == 200
-    assert db.session.get(App, app_id).deleted_at is not None
+    # The delete request's bulk update expired deleted_at on the identity-map
+    # instance; expire fully so the get() below reloads it.
+    db.session.expire_all()
+    assert (await db.session.get(App, app_id)).deleted_at is not None
 
-    rep = client.get(url_for("api-apps.app_by_id", app_id=app_id))
+    rep = await client.get(url_for("api-apps.app_by_id", app_id=app_id))
     assert rep.status_code == 404
 
-    rep = client.get(url_for("api-apps.app_by_id", app_id=app_name))
+    rep = await client.get(url_for("api-apps.app_by_id", app_id=app_name))
     assert rep.status_code == 404
 
 
@@ -377,8 +398,8 @@ class FakerWithPyStr(Protocol):
     def pystr(self) -> str: ...
 
 
-def test_create_app(
-    client: TestClient,
+async def test_create_app(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -388,47 +409,49 @@ def test_create_app(
     # test bad data
     apps_url = url_for("api-apps.apps")
     data: dict[str, Any] = {}
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     create_group_spy = mocker.patch.object(
         okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
     data = {"name": "Created", "tags_to_add": [tag.id]}
 
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
     data = rep.json()
-    assert db.session.get(App, data["id"]) is not None
+    assert await db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
     assert data["description"] == ""
     assert data["active_app_tags"][0]["active_tag"]["id"] == tag.id
 
-    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
+    app_groups = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == data["id"]))).all()
     assert len(app_groups) == 1
-    assert db.session.query(OktaGroupTagMap).filter(OktaGroupTagMap.ended_at.is_(None)).count() == 1
-    assert db.session.query(AppTagMap).filter(AppTagMap.ended_at.is_(None)).count() == 1
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
+    assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 1
 
     test_app_group = (
-        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"])
+        )
+    ).first()
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
 
-def test_create_app_with_initial_owners(
-    client: TestClient,
+async def test_create_app_with_initial_owners(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -438,58 +461,69 @@ def test_create_app_with_initial_owners(
 ) -> None:
     db.session.add(role_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     create_group_spy = mocker.patch.object(
         okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
     data = {"name": "Created", "initial_owner_id": user.id, "initial_owner_role_ids": [role_group.id]}
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
+    # The create-app request staled the identity-map entries on the shared
+    # session; reload before reading ORM attributes.
+    await db.session.refresh(user)
+    await db.session.refresh(role_group)
+
     data = rep.json()
-    assert db.session.get(App, data["id"]) is not None
+    assert await db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
     assert data["description"] == ""
 
-    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
+    app_groups = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == data["id"]))).all()
     assert len(app_groups) == 1
 
     test_app_group = (
-        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"])
+        )
+    ).first()
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == test_app_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == test_app_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.group_id == test_app_group.id)
-        .filter(RoleGroupMap.role_group_id == role_group.id)
-        .filter(RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(RoleGroupMap)
+            .where(RoleGroupMap.group_id == test_app_group.id)
+            .where(RoleGroupMap.role_group_id == role_group.id)
+            .where(RoleGroupMap.ended_at.is_(None)),
+        )
         == 2
     )
 
 
-def test_create_app_with_additional_groups(
-    client: TestClient,
+async def test_create_app_with_additional_groups(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -503,7 +537,7 @@ def test_create_app_with_additional_groups(
             {"name": "Test", "description": "test"},
         ],
     }
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     data = {
@@ -512,7 +546,7 @@ def test_create_app_with_additional_groups(
             {"name": "App-WrongApp-Test", "description": "test"},
         ],
     }
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     data = {
@@ -521,14 +555,14 @@ def test_create_app_with_additional_groups(
             {},
         ],
     }
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 400
 
     create_group_spy = mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
     data = {
         "name": "Created",
@@ -539,37 +573,41 @@ def test_create_app_with_additional_groups(
     }
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 3
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
     data = rep.json()
-    assert db.session.get(App, data["id"]) is not None
+    assert await db.session.get(App, data["id"]) is not None
 
     assert data["name"] == "Created"
     assert data["description"] == ""
 
-    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
+    app_groups = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == data["id"]))).all()
     assert len(app_groups) == 3
 
     test_app_group = (
-        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"]).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.name == "App-Created-Owners", AppGroup.app_id == data["id"])
+        )
+    ).first()
     assert test_app_group is not None
     assert test_app_group.is_owner is True
 
     test_app_group = (
-        db.session.query(AppGroup).filter(AppGroup.name == "App-Created-Test", AppGroup.app_id == data["id"]).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.name == "App-Created-Test", AppGroup.app_id == data["id"])
+        )
+    ).first()
     assert test_app_group is not None
     assert test_app_group.description == "test"
     assert test_app_group.is_owner is False
 
 
-def test_create_app_with_name_collision(
-    client: TestClient,
+async def test_create_app_with_name_collision(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -579,42 +617,46 @@ def test_create_app_with_name_collision(
     app = AppFactory.create()
     app.name = "Test-Staging"
     db.session.add(app)
-    db.session.commit()
+    await db.session.commit()
 
     app_group.app_id = app.id
     app_group.name = "App-Test-Staging-Group"
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
     create_group_spy = mocker.patch.object(
         okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
     data = {"name": "Test"}
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
     assert add_user_to_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 1
 
     data = rep.json()
-    assert db.session.get(App, data["id"]) is not None
+    assert await db.session.get(App, data["id"]) is not None
     assert data["name"] == "Test"
 
     # Make sure new app doesn't end up with additional app groups from name collision
-    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == data["id"]).all()
+    app_groups = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == data["id"]))).all()
     assert len(app_groups) == 1
+
+    # The create-app request staled the original app's identity-map entry on
+    # the shared session; reload before reading its id.
+    await db.session.refresh(app)
 
     # Make sure original app still has its app group
-    app_groups = db.session.query(AppGroup).filter(AppGroup.app_id == app.id).all()
+    app_groups = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == app.id))).all()
     assert len(app_groups) == 1
 
 
-def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_all_app(client: AsyncClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
     apps = AppFactory.create_batch(10)
 
@@ -623,16 +665,16 @@ def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
         app.name = f"A{app.name}"
 
     db.session.add_all(apps)
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(apps_url)
+    rep = await client.get(apps_url)
     assert rep.status_code == 200
 
     results = rep.json()
     for app in apps:
         assert any(u["id"] == app.id for u in results["items"])
 
-    rep = client.get(apps_url, params={"q": "a"})
+    rep = await client.get(apps_url, params={"q": "a"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -641,9 +683,9 @@ def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
-def test_create_app_with_and_without_description(
+async def test_create_app_with_and_without_description(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -655,14 +697,14 @@ def test_create_app_with_and_without_description(
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     apps_url = url_for("api-apps.apps")
 
     # Test creating app without description
     data: dict[str, Any] = {"name": "TestAppNoDesc"}
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     if require_descriptions:
         # Should fail when REQUIRE_DESCRIPTIONS=True
         assert rep.status_code == 400
@@ -677,7 +719,7 @@ def test_create_app_with_and_without_description(
 
     # Test creating app with empty description
     data = {"name": "TestAppEmptyDesc", "description": ""}
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
@@ -692,7 +734,7 @@ def test_create_app_with_and_without_description(
 
     # Test creating app with a description should always succeed
     data = {"name": "TestAppWithDesc", "description": "This has a description"}
-    rep = client.post(apps_url, json=data)
+    rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
 
     result = rep.json()
@@ -701,8 +743,8 @@ def test_create_app_with_and_without_description(
 
 
 @pytest.mark.parametrize("app", [False, True], indirect=True)
-def test_partial_app_update_preserves_description(
-    app: FastAPI, client: TestClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
+async def test_partial_app_update_preserves_description(
+    app: FastAPI, client: AsyncClient, db: Db, mocker: MockerFixture, access_app: App, app_group: AppGroup, url_for: Any
 ) -> None:
     """Test that app updates handle descriptions correctly based on REQUIRE_DESCRIPTIONS setting"""
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
@@ -710,10 +752,10 @@ def test_partial_app_update_preserves_description(
     # Set up the app with a description
     access_app.description = "Original description"
     db.session.add(access_app)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(okta, "update_group")
 
@@ -721,7 +763,7 @@ def test_partial_app_update_preserves_description(
 
     # Test updating with empty description
     data = {"name": "UpdatedWithEmpty", "description": ""}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     if require_descriptions:
         # Should fail - empty description fails length validation
         assert rep.status_code == 400
@@ -738,12 +780,12 @@ def test_partial_app_update_preserves_description(
     if not require_descriptions:
         # Need to reset since empty description succeeded above
         data = {"name": "UpdatedWithEmpty", "description": "Original description"}
-        rep = client.put(app_url, json=data)
+        rep = await client.put(app_url, json=data)
         assert rep.status_code == 200
 
     # Test partial update without description should preserve existing description
     data = {"name": "UpdatedName"}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     result = rep.json()
     assert result["name"] == "UpdatedName"
@@ -751,15 +793,15 @@ def test_partial_app_update_preserves_description(
 
     # Test updating with valid description should succeed
     data = {"name": "UpdatedName2", "description": "Updated description"}
-    rep = client.put(app_url, json=data)
+    rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     result = rep.json()
     assert result["name"] == "UpdatedName2"
     assert result["description"] == "Updated description"
 
 
-def test_create_app_fails_when_preexisting_owner_group_is_occupied(
-    client: TestClient,
+async def test_create_app_fails_when_preexisting_owner_group_is_occupied(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -767,13 +809,13 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     url_for: Any,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -781,19 +823,21 @@ def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     )
     squatted_group = OktaGroupFactory.create(name=owner_group_name)
     db.session.add(squatted_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=user.id, group_id=squatted_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json={"name": "Payments"})
+    rep = await client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 409
 
-    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is None
+    assert (
+        await db.session.scalars(select(App).where(App.name == "Payments").where(App.deleted_at.is_(None)))
+    ).first() is None
 
 
-def test_create_app_succeeds_with_empty_preexisting_owner_group(
-    client: TestClient,
+async def test_create_app_succeeds_with_empty_preexisting_owner_group(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -802,8 +846,8 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -811,19 +855,21 @@ def test_create_app_succeeds_with_empty_preexisting_owner_group(
     )
     empty_group = OktaGroupFactory.create(name=owner_group_name)
     db.session.add(empty_group)
-    db.session.commit()
+    await db.session.commit()
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json={"name": "Payments"})
+    rep = await client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
     data = rep.json()
     assert data["name"] == "Payments"
-    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+    assert (
+        await db.session.scalars(select(App).where(App.name == "Payments").where(App.deleted_at.is_(None)))
+    ).first() is not None
 
 
-def test_create_app_succeeds_with_members_only_preexisting_owner_group(
-    client: TestClient,
+async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -831,13 +877,13 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     url_for: Any,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
@@ -845,30 +891,32 @@ def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     )
     group_with_members = OktaGroupFactory.create(name=owner_group_name)
     db.session.add(group_with_members)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=user.id, group_id=group_with_members.id, is_owner=False))
-    db.session.commit()
+    await db.session.commit()
 
     apps_url = url_for("api-apps.apps")
-    rep = client.post(apps_url, json={"name": "Payments"})
+    rep = await client.post(apps_url, json={"name": "Payments"})
     assert rep.status_code == 201
 
     data = rep.json()
     assert data["name"] == "Payments"
-    assert db.session.query(App).filter(App.name == "Payments").filter(App.deleted_at.is_(None)).first() is not None
+    assert (
+        await db.session.scalars(select(App).where(App.name == "Payments").where(App.deleted_at.is_(None)))
+    ).first() is not None
 
 
-def test_delete_reserved_access_app_blocked(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_delete_reserved_access_app_blocked(client: AsyncClient, db: Db, url_for: Any) -> None:
     """The built-in Access app underpins admin auth, so DELETE must refuse
     it even for an admin caller."""
     app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
-    rep = client.delete(app_url)
+    rep = await client.delete(app_url)
     assert rep.status_code == 400
     assert "cannot be deleted" in rep.text
 
 
-def test_put_app_logs_audit_on_rename(
-    client: TestClient,
+async def test_put_app_logs_audit_on_rename(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -879,13 +927,13 @@ def test_put_app_logs_audit_on_rename(
     handler must continue to do so."""
     mocker.patch.object(okta, "update_group")
     db.session.add(access_app)
-    db.session.commit()
+    await db.session.commit()
     old_name = access_app.name
 
     app_url = url_for("api-apps.app_by_id_put", app_id=access_app.id)
     new_name = f"{old_name}Renamed"
     with caplog.at_level("INFO", logger="access.audit"):
-        rep = client.put(app_url, json={"name": new_name})
+        rep = await client.put(app_url, json={"name": new_name})
     assert rep.status_code == 200, rep.text
 
     audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
@@ -893,30 +941,30 @@ def test_put_app_logs_audit_on_rename(
     assert any(old_name in m for m in audit_messages), audit_messages
 
 
-def test_post_app_validation_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_post_app_validation_via_http(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Body validation enforced at the HTTP layer (not just Pydantic-level).
     The project's request_validation_handler converts 422 → 400 with the
     RFC 9457 problem-detail envelope."""
     apps_url = url_for("api-apps.apps")
 
-    rep = client.post(apps_url, json={"name": ""})
+    rep = await client.post(apps_url, json={"name": ""})
     assert rep.status_code == 400
     body = rep.json()
     assert body["status"] == 400
     assert "detail" in body
 
-    rep = client.post(apps_url, json={"name": "MyApp", "description": "x" * 1025})
+    rep = await client.post(apps_url, json={"name": "MyApp", "description": "x" * 1025})
     assert rep.status_code == 400
 
-    rep = client.post(
+    rep = await client.post(
         apps_url,
         json={"name": "MyApp", "initial_additional_app_groups": [{"name": "wrong-prefix"}]},
     )
     assert rep.status_code == 400
 
 
-def test_post_app_require_descriptions_enforced_via_http(
-    client: TestClient,
+async def test_post_app_require_descriptions_enforced_via_http(
+    client: AsyncClient,
     db: Db,
     url_for: Any,
     monkeypatch: pytest.MonkeyPatch,
@@ -926,21 +974,21 @@ def test_post_app_require_descriptions_enforced_via_http(
     monkeypatch.setattr(settings, "REQUIRE_DESCRIPTIONS", True)
     apps_url = url_for("api-apps.apps")
 
-    rep = client.post(apps_url, json={"name": "DescRequired"})
+    rep = await client.post(apps_url, json={"name": "DescRequired"})
     assert rep.status_code == 400
-    rep = client.post(apps_url, json={"name": "DescRequired", "description": ""})
+    rep = await client.post(apps_url, json={"name": "DescRequired", "description": ""})
     assert rep.status_code == 400
 
 
-def test_get_apps_q_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_apps_q_via_http(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`q` is honored end-to-end on /api/apps."""
     a1 = AppFactory.create(name="ZelaPaymentsApp", description="Handles money flows")
     a2 = AppFactory.create(name="LoggingApp", description="Stores logs")
     db.session.add_all([a1, a2])
-    db.session.commit()
+    await db.session.commit()
 
     apps_url = url_for("api-apps.apps")
-    rep = client.get(apps_url, params={"q": "ZelaPayments"})
+    rep = await client.get(apps_url, params={"q": "ZelaPayments"})
     assert rep.status_code == 200
     names = [a["name"] for a in rep.json()["items"]]
     assert "ZelaPaymentsApp" in names

@@ -13,7 +13,7 @@ from typing import Any, Generator
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy.orm import Session
 
@@ -246,10 +246,10 @@ class TestPluginRegistration:
 class TestPluginAPIEndpoints:
     """Tests for plugin-related API endpoints."""
 
-    def test_list_plugins(self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any) -> None:
+    async def test_list_plugins(self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, url_for: Any) -> None:
         """Test GET /api/plugins/app-group-lifecycle returns all plugins."""
         url = url_for("api-plugins.app_group_lifecycle_plugins")
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 200
 
         data = response.json()
@@ -257,12 +257,12 @@ class TestPluginAPIEndpoints:
         plugin_ids = [p["id"] for p in data]
         assert DummyPlugin.ID in plugin_ids
 
-    def test_get_app_config_properties(
-        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    async def test_get_app_config_properties(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_config_props", plugin_id=DummyPlugin.ID)
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 200
 
         data = response.json()
@@ -270,47 +270,47 @@ class TestPluginAPIEndpoints:
         assert "category" in data
         assert data["enabled"]["required"] is True
 
-    def test_get_group_config_properties(
-        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    async def test_get_group_config_properties(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-config-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_config_props", plugin_id=DummyPlugin.ID)
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 200
 
         data = response.json()
         assert "group_id" in data
         assert data["group_id"]["required"] is True
 
-    def test_get_app_status_properties(
-        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    async def test_get_app_status_properties(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/app-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_status_props", plugin_id=DummyPlugin.ID)
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 200
 
         data = response.json()
         assert "last_sync" in data
 
-    def test_get_group_status_properties(
-        self, client: TestClient, db: Db, test_plugin: DummyPlugin, url_for: Any
+    async def test_get_group_status_properties(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test GET /api/plugins/app-group-lifecycle/<plugin_id>/group-status-props."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_group_status_props", plugin_id=DummyPlugin.ID)
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 200
 
         data = response.json()
         assert "member_count" in data
 
-    def test_get_nonexistent_plugin(self, client: TestClient, db: Db, url_for: Any) -> None:
+    async def test_get_nonexistent_plugin(self, client: AsyncClient, db: Db, url_for: Any) -> None:
         """Test that requesting a non-existent plugin returns 404."""
         url = url_for("api-plugins.app_group_lifecycle_plugin_app_config_props", plugin_id="nonexistent_plugin")
-        response = client.get(url)
+        response = await client.get(url)
         assert response.status_code == 404
 
-    def test_plugin_not_found_returns_error_envelope(self, client: TestClient, db: Db, url_for: Any) -> None:
+    async def test_plugin_not_found_returns_error_envelope(self, client: AsyncClient, db: Db, url_for: Any) -> None:
         """The plugin endpoints' 404 path must respond with
         `{"error": "..."}` (the React client reads the `error` field).
         The plugin router raises `PluginNotFoundError`, which the
@@ -324,7 +324,7 @@ class TestPluginAPIEndpoints:
             "api-plugins.app_group_lifecycle_plugin_group_status_props",
         ):
             url = url_for(endpoint, plugin_id="does-not-exist")
-            response = client.get(url)
+            response = await client.get(url)
             assert response.status_code == 404
             body = response.json()
             assert body == {"error": "Plugin 'does-not-exist' not found"}
@@ -335,8 +335,8 @@ class TestPluginAPIEndpoints:
 class TestPluginConfigAuthorization:
     """Tests for plugin configuration authorization - positive cases (should succeed)."""
 
-    def test_access_admin_can_configure_plugin_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_access_admin_can_configure_plugin_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that Access admins can configure plugins on apps."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
@@ -344,7 +344,7 @@ class TestPluginConfigAuthorization:
         test_app = AppFactory.build(name="TestApp", description="Test App")
 
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # Configure plugin on the test app
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -354,15 +354,15 @@ class TestPluginConfigAuthorization:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": True, "category": "test_id"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         response_data = response.json()
         assert response_data["app_group_lifecycle_plugin"] == DummyPlugin.ID
         assert response_data["plugin_data"][DummyPlugin.ID]["configuration"]["enabled"] is True
 
-    def test_app_owner_cannot_configure_plugin_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_app_owner_cannot_configure_plugin_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that app owners (non-Access admins) cannot configure plugins on apps."""
         # Create app owner user
@@ -382,7 +382,7 @@ class TestPluginConfigAuthorization:
         # Make the user an owner of the test app (but not Access admin) by directly adding membership
         membership = OktaUserGroupMember(user_id=app_owner.id, group_id=test_app_owner_group.id, is_owner=True)
         db.session.add(membership)
-        db.session.commit()
+        await db.session.commit()
 
         # Set current user to app owner
         app.state.current_user_email = app_owner.email
@@ -395,11 +395,11 @@ class TestPluginConfigAuthorization:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": True, "category": "test_id"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 403
 
-    def test_app_owner_cannot_modify_existing_plugin_config_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_app_owner_cannot_modify_existing_plugin_config_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that app owners cannot modify existing plugin configuration."""
         # Create app owner
@@ -424,7 +424,7 @@ class TestPluginConfigAuthorization:
         # Make app_owner an owner of the test app by directly adding membership
         membership = OktaUserGroupMember(user_id=app_owner.id, group_id=test_app_owner_group.id, is_owner=True)
         db.session.add(membership)
-        db.session.commit()
+        await db.session.commit()
 
         # Set current user to app owner
         app.state.current_user_email = app_owner.email
@@ -443,11 +443,11 @@ class TestPluginConfigAuthorization:
             },
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 403
 
-    def test_access_admin_can_configure_plugin_at_group_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_access_admin_can_configure_plugin_at_group_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that Access admins can configure plugins on groups."""
         # Use the default Access admin user (wumpus@discord.com) created in conftest
@@ -461,7 +461,7 @@ class TestPluginConfigAuthorization:
 
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta update_group call
         mocker.patch.object(okta, "update_group")
@@ -476,11 +476,11 @@ class TestPluginConfigAuthorization:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external_group_123"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
-    def test_app_owner_can_configure_plugin_at_group_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_app_owner_can_configure_plugin_at_group_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that app owners can configure plugins on their app's groups."""
         # Create app owner
@@ -507,7 +507,7 @@ class TestPluginConfigAuthorization:
         # Make user app owner by directly adding membership
         membership = OktaUserGroupMember(user_id=app_owner.id, group_id=test_app_owner_group.id, is_owner=True)
         db.session.add(membership)
-        db.session.commit()
+        await db.session.commit()
 
         # Set current user
         app.state.current_user_email = app_owner.email
@@ -525,11 +525,11 @@ class TestPluginConfigAuthorization:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external_group_456"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
-    def test_group_owner_cannot_configure_plugin_at_group_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_group_owner_cannot_configure_plugin_at_group_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that group owners (non-app owners) cannot configure plugins on groups."""
         # Create group owner (but not app owner)
@@ -550,7 +550,7 @@ class TestPluginConfigAuthorization:
         # Make user a group owner (not app owner) by directly adding membership
         membership = OktaUserGroupMember(user_id=group_owner.id, group_id=test_group.id, is_owner=True)
         db.session.add(membership)
-        db.session.commit()
+        await db.session.commit()
 
         # Set current user
         app.state.current_user_email = group_owner.email
@@ -565,21 +565,21 @@ class TestPluginConfigAuthorization:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external_group_789"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 403
 
 
 class TestPluginHelperFunctions:
     """Tests for plugin helper functions like get_config_value, set_status_value, etc."""
 
-    def test_get_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_get_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting configuration values from plugin data."""
         test_app = AppFactory.build(
             name="TestApp7",
             plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True, "category": "test_id_123"}}},
         )
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         enabled = get_config_value(test_app, "enabled", DummyPlugin.ID)
         category = get_config_value(test_app, "category", DummyPlugin.ID)
@@ -587,14 +587,14 @@ class TestPluginHelperFunctions:
         assert enabled is True
         assert category == "test_id_123"
 
-    def test_get_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_get_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting status values from plugin data."""
         test_app = AppFactory.build(
             name="TestApp8",
             plugin_data={DummyPlugin.ID: {"status": {"last_sync": "2025-01-15T10:30:00Z", "sync_count": 42}}},
         )
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
         sync_count = get_status_value(test_app, "sync_count", DummyPlugin.ID)
@@ -602,17 +602,17 @@ class TestPluginHelperFunctions:
         assert last_sync == "2025-01-15T10:30:00Z"
         assert sync_count == 42
 
-    def test_set_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_set_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting status values in plugin data."""
         test_app = AppFactory.build(name="TestApp9", plugin_data={})
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         set_status_value(test_app, "last_sync", "2025-01-15T11:00:00Z", DummyPlugin.ID)
-        db.session.commit()
+        await db.session.commit()
 
-        # Refresh from DB
-        db.session.expire(test_app)
+        # Refresh from DB (expire + sync lazy read would raise under async)
+        await db.session.refresh(test_app)
 
         last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
         assert last_sync == "2025-01-15T11:00:00Z"
@@ -621,14 +621,14 @@ class TestPluginHelperFunctions:
 class TestPluginValidation:
     """Tests for plugin configuration validation."""
 
-    def test_valid_app_config(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_valid_app_config(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that valid app configuration is accepted."""
         test_app = AppFactory.build(name="TestApp10")
 
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # Valid configuration
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -638,17 +638,17 @@ class TestPluginValidation:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": True, "category": "valid_id"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
-    def test_invalid_app_config(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_invalid_app_config(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that invalid app configuration is rejected."""
         test_app = AppFactory.build(name="TestApp11")
 
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # Invalid configuration (missing required 'enabled' field)
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -665,12 +665,12 @@ class TestPluginValidation:
             },
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 400
         assert "enabled" in str(response.json())
 
-    def test_valid_group_config(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_valid_group_config(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that valid group configuration is accepted."""
         test_app = AppFactory.build(name="TestApp12", app_group_lifecycle_plugin=DummyPlugin.ID)
@@ -681,7 +681,7 @@ class TestPluginValidation:
 
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta update_group call
         mocker.patch.object(okta, "update_group")
@@ -696,11 +696,11 @@ class TestPluginValidation:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external_123"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
-    def test_invalid_group_config(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    async def test_invalid_group_config(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
     ) -> None:
         """Test that invalid group configuration is rejected."""
         test_app = AppFactory.build(name="TestApp13", app_group_lifecycle_plugin=DummyPlugin.ID)
@@ -711,7 +711,7 @@ class TestPluginValidation:
 
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         # Invalid configuration (missing required 'group_id' field)
         url = url_for("api-groups.group_by_id", group_id=test_group.id)
@@ -729,7 +729,7 @@ class TestPluginValidation:
             },
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 400
         assert "group_id" in str(response.json())
 
@@ -737,12 +737,12 @@ class TestPluginValidation:
 class TestPluginDataRestore:
     """Tests for the restore_unchanged_app_lifecycle_plugin_data function."""
 
-    def test_restore_unchanged_app_data(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_restore_unchanged_app_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function merges configuration updates while preserving status."""
         # Create an app with existing plugin data (this simulates the OLD state before update)
         test_app = AppFactory.build(name="TestAppRestore1")
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # Save the OLD complete plugin data (before the update)
         old_plugin_data = {
@@ -771,7 +771,7 @@ class TestPluginDataRestore:
         assert test_app.plugin_data[DummyPlugin.ID]["status"]["last_sync"] == "2025-01-01T00:00:00Z"
         assert test_app.plugin_data[DummyPlugin.ID]["status"]["sync_count"] == 10
 
-    def test_restore_unchanged_group_data(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_restore_unchanged_group_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function works with app groups."""
         test_app = AppFactory.build(name="TestAppRestore2", app_group_lifecycle_plugin=DummyPlugin.ID)
         test_group = AppGroupFactory.build(
@@ -780,7 +780,7 @@ class TestPluginDataRestore:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         # Save the OLD complete plugin data (before the update)
         old_plugin_data = {
@@ -802,11 +802,11 @@ class TestPluginDataRestore:
         # Check status was preserved from old data
         assert test_group.plugin_data[DummyPlugin.ID]["status"]["member_count"] == 5
 
-    def test_restore_ignores_non_plugin_data(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_restore_ignores_non_plugin_data(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test that restore function only processes registered plugin IDs."""
         test_app = AppFactory.build(name="TestAppRestore3")
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # OLD data includes both a non-existent plugin and the valid plugin
         old_plugin_data = {
@@ -890,8 +890,8 @@ class TestPluginDirectFunctions:
 class TestPluginGroupUpdatedHook:
     """Tests for the group_updated lifecycle hook fired via the group PUT endpoint."""
 
-    def test_name_change_fires_hook(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_name_change_fires_hook(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that renaming an app group fires the group_updated hook with old name."""
         test_app = AppFactory.build(
@@ -906,7 +906,7 @@ class TestPluginGroupUpdatedHook:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         old_name = test_group.name
         mocker.patch.object(okta, "update_group")
@@ -920,7 +920,7 @@ class TestPluginGroupUpdatedHook:
             "app_id": test_group.app_id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_updated_calls) == 1
@@ -929,8 +929,8 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_name == old_name
         assert hook_old_desc == "Same description"
 
-    def test_description_change_fires_hook(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_description_change_fires_hook(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that changing an app group's description fires the group_updated hook."""
         test_app = AppFactory.build(
@@ -945,7 +945,7 @@ class TestPluginGroupUpdatedHook:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -957,7 +957,7 @@ class TestPluginGroupUpdatedHook:
             "app_id": test_group.app_id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_updated_calls) == 1
@@ -965,8 +965,8 @@ class TestPluginGroupUpdatedHook:
         assert hook_old_name == test_group.name
         assert hook_old_desc == "Old description"
 
-    def test_no_change_does_not_fire_hook(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_no_change_does_not_fire_hook(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that updating a group without changing name or description does not fire the hook."""
         test_app = AppFactory.build(
@@ -981,7 +981,7 @@ class TestPluginGroupUpdatedHook:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -993,13 +993,13 @@ class TestPluginGroupUpdatedHook:
             "app_id": test_group.app_id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_updated_calls) == 0
 
-    def test_hook_not_fired_without_lifecycle_plugin(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_hook_not_fired_without_lifecycle_plugin(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_updated hook does not fire when the app has no lifecycle plugin configured."""
         test_app = AppFactory.build(
@@ -1013,7 +1013,7 @@ class TestPluginGroupUpdatedHook:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -1025,13 +1025,13 @@ class TestPluginGroupUpdatedHook:
             "app_id": test_group.app_id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_updated_calls) == 0
 
-    def test_null_description_normalized(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_null_description_normalized(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that a group with NULL description is treated as empty string for comparison."""
         test_app = AppFactory.build(
@@ -1046,7 +1046,7 @@ class TestPluginGroupUpdatedHook:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -1058,7 +1058,7 @@ class TestPluginGroupUpdatedHook:
             "app_id": test_group.app_id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # NULL -> "" should not be considered a change
@@ -1068,8 +1068,8 @@ class TestPluginGroupUpdatedHook:
 class TestPluginGroupDeletedOnTypeChange:
     """Tests for the group_deleted hook fired when an AppGroup's type is changed to Group or Role."""
 
-    def test_app_group_to_okta_group_fires_group_deleted(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_app_group_to_okta_group_fires_group_deleted(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an AppGroup to a plain Group fires the group_deleted hook."""
         test_app = AppFactory.build(
@@ -1084,7 +1084,7 @@ class TestPluginGroupDeletedOnTypeChange:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         group_id = test_group.id
         mocker.patch.object(okta, "update_group")
@@ -1096,15 +1096,15 @@ class TestPluginGroupDeletedOnTypeChange:
             "description": "Now a plain group",
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
         assert response.json()["type"] == "okta_group"
 
         assert len(test_plugin.group_deleted_calls) == 1
         assert test_plugin.group_deleted_calls[0] == group_id
 
-    def test_app_group_to_role_group_fires_group_deleted(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_app_group_to_role_group_fires_group_deleted(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an AppGroup to a Role fires the group_deleted hook."""
         test_app = AppFactory.build(
@@ -1119,7 +1119,7 @@ class TestPluginGroupDeletedOnTypeChange:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         group_id = test_group.id
         mocker.patch.object(okta, "update_group")
@@ -1131,15 +1131,15 @@ class TestPluginGroupDeletedOnTypeChange:
             "description": "Now a role",
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
         assert response.json()["type"] == "role_group"
 
         assert len(test_plugin.group_deleted_calls) == 1
         assert test_plugin.group_deleted_calls[0] == group_id
 
-    def test_no_hook_without_lifecycle_plugin(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_no_hook_without_lifecycle_plugin(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_deleted hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
@@ -1153,7 +1153,7 @@ class TestPluginGroupDeletedOnTypeChange:
         )
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -1164,7 +1164,7 @@ class TestPluginGroupDeletedOnTypeChange:
             "description": "No plugin",
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_deleted_calls) == 0
@@ -1173,8 +1173,8 @@ class TestPluginGroupDeletedOnTypeChange:
 class TestPluginGroupCreatedOnTypeChange:
     """Tests for the group_created hook fired when a Group or Role is converted to an AppGroup."""
 
-    def test_okta_group_to_app_group_fires_group_created(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_okta_group_to_app_group_fires_group_created(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting an OktaGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
@@ -1185,7 +1185,7 @@ class TestPluginGroupCreatedOnTypeChange:
         test_group = OktaGroupFactory.build(name="PlainGroup-ToAppGroup")
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         group_id = test_group.id
         mocker.patch.object(okta, "update_group")
@@ -1198,15 +1198,15 @@ class TestPluginGroupCreatedOnTypeChange:
             "app_id": test_app.id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
         assert response.json()["type"] == "app_group"
 
         assert len(test_plugin.group_created_calls) == 1
         assert test_plugin.group_created_calls[0] == group_id
 
-    def test_role_group_to_app_group_fires_group_created(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_role_group_to_app_group_fires_group_created(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that converting a RoleGroup to an AppGroup fires the group_created hook."""
         test_app = AppFactory.build(
@@ -1217,7 +1217,7 @@ class TestPluginGroupCreatedOnTypeChange:
         test_group = RoleGroupFactory.build(name="Role-ToAppGroup")
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         group_id = test_group.id
         mocker.patch.object(okta, "update_group")
@@ -1230,15 +1230,15 @@ class TestPluginGroupCreatedOnTypeChange:
             "app_id": test_app.id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
         assert response.json()["type"] == "app_group"
 
         assert len(test_plugin.group_created_calls) == 1
         assert test_plugin.group_created_calls[0] == group_id
 
-    def test_no_hook_without_lifecycle_plugin(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    async def test_no_hook_without_lifecycle_plugin(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
         """Test that group_created hook does not fire when the app has no lifecycle plugin."""
         test_app = AppFactory.build(
@@ -1248,7 +1248,7 @@ class TestPluginGroupCreatedOnTypeChange:
         test_group = OktaGroupFactory.build(name="PlainGroup-NoPlugin")
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         mocker.patch.object(okta, "update_group")
 
@@ -1260,7 +1260,7 @@ class TestPluginGroupCreatedOnTypeChange:
             "app_id": test_app.id,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         assert len(test_plugin.group_created_calls) == 0
@@ -1269,7 +1269,7 @@ class TestPluginGroupCreatedOnTypeChange:
 class TestPluginMembershipHooks:
     """Tests for plugin lifecycle hooks when members are added/removed."""
 
-    def test_direct_member_removed_loses_all_access(
+    async def test_direct_member_removed_loses_all_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a member is removed and loses all access to the group."""
@@ -1289,29 +1289,29 @@ class TestPluginMembershipHooks:
         db.session.add(test_app)
         db.session.add(test_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Add the user to the group (this will trigger members_added hook)
         from api.operations import ModifyGroupUsers
 
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Remove the user from the group (user has no other access paths)
-        ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called because user lost all access
         assert len(test_plugin.members_removed_calls) == 1
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
-    def test_direct_member_removed_but_has_redundant_access(
+    async def test_direct_member_removed_but_has_redundant_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when trying to remove direct access but user only has role-based access."""
@@ -1336,17 +1336,17 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Associate the app group with a role
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to the role (gives them access to the group via role)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
@@ -1354,12 +1354,12 @@ class TestPluginMembershipHooks:
 
         # Try to remove direct membership (but user only has role-based access, no direct access to remove)
         # This should not trigger the hook because user still has role-based access
-        ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_remove=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called because user still has access via role
         assert len(test_plugin.members_removed_calls) == 0
 
-    def test_direct_member_added_gains_first_access(
+    async def test_direct_member_added_gains_first_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a member is added for the first time."""
@@ -1379,21 +1379,21 @@ class TestPluginMembershipHooks:
         db.session.add(test_app)
         db.session.add(test_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # Add the user to the group for the first time
         from api.operations import ModifyGroupUsers
 
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called because user gained first access
         assert len(test_plugin.members_added_calls) == 1
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
-    def test_direct_member_added_but_already_has_access(
+    async def test_direct_member_added_but_already_has_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a member is added directly but already has access via a role."""
@@ -1418,27 +1418,27 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # Associate the app group with a role
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to the role (gives them access to the group)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding via role
         test_plugin.members_added_calls.clear()
 
         # Add the user directly to the group (they already have access via role)
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called because user already had access via role
         assert len(test_plugin.members_added_calls) == 0
 
-    def test_role_member_removed_loses_all_access_to_associated_group(
+    async def test_role_member_removed_loses_all_access_to_associated_group(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is removed and loses all access to role-associated groups."""
@@ -1463,30 +1463,30 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Associate the app group with the role as a member group
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to the role (which gives them access to the associated group)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Remove the user from the role (user loses access to associated group)
-        ModifyGroupUsers(group=role_group, members_to_remove=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_remove=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called for the associated group because user lost all access
         assert len(test_plugin.members_removed_calls) == 1
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
-    def test_role_associated_lifecycle_hooks_survive_cold_session(
+    async def test_role_associated_lifecycle_hooks_survive_cold_session(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Regression for the AppGroup.app raise_on_sql flip: the role-associated
@@ -1514,35 +1514,35 @@ class TestPluginMembershipHooks:
         role_group = RoleGroupFactory.build(name="TestRoleCold", is_managed=True)
         user = OktaUserFactory.build()
         db.session.add_all([test_app, test_group, role_group, user])
-        db.session.commit()
+        await db.session.commit()
 
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add a member to the role on a cold session -> modify_group_users add
         # cascade reads associated_group.app.
         db.session.expunge_all()
         test_plugin.members_added_calls.clear()
-        ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
         assert test_plugin.members_added_calls == [(test_group.id, [user.id])]
 
         # Remove the member on a cold session -> modify_group_users remove cascade.
         db.session.expunge_all()
         test_plugin.members_removed_calls.clear()
-        ModifyGroupUsers(group=role_group.id, members_to_remove=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group.id, members_to_remove=[user.id], sync_to_okta=False).execute()
         assert test_plugin.members_removed_calls == [(test_group.id, [user.id])]
 
         # Re-add the member, then remove the *group* from the role on a cold
         # session -> modify_role_groups groups_to_remove cascade reads group.app.
-        ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
         db.session.expunge_all()
         test_plugin.members_removed_calls.clear()
-        ModifyRoleGroups(role_group=role_group.id, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group.id, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
         assert test_plugin.members_removed_calls == [(test_group.id, [user.id])]
 
-    def test_role_member_removed_but_has_redundant_access_via_another_role(
+    async def test_role_member_removed_but_has_redundant_access_via_another_role(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is removed but still has access via another role."""
@@ -1569,31 +1569,31 @@ class TestPluginMembershipHooks:
         db.session.add(role_group_1)
         db.session.add(role_group_2)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Associate the app group with both roles as member groups
-        ModifyRoleGroups(role_group=role_group_1, groups_to_add=[test_group.id], sync_to_okta=False).execute()
-        ModifyRoleGroups(role_group=role_group_2, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group_1, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group_2, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to both roles (gives them redundant access to the associated group)
-        ModifyGroupUsers(group=role_group_1, members_to_add=[user.id], sync_to_okta=False).execute()
-        ModifyGroupUsers(group=role_group_2, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group_1, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group_2, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Remove the user from one role (user still has access via the other role)
-        ModifyGroupUsers(group=role_group_1, members_to_remove=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group_1, members_to_remove=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called because user still has access via role_group_2
         assert len(test_plugin.members_removed_calls) == 0
 
-    def test_role_member_added_gains_first_access_to_associated_group(
+    async def test_role_member_added_gains_first_access_to_associated_group(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role member is added and gains first access to role-associated groups."""
@@ -1618,22 +1618,22 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # Associate the app group with the role as a member group
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to the role (gives them first access to the associated group)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called for the associated group because user gained first access
         assert len(test_plugin.members_added_calls) == 1
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
-    def test_role_member_added_but_already_has_access_to_associated_group(
+    async def test_role_member_added_but_already_has_access_to_associated_group(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role member is added but already has access to role-associated groups."""
@@ -1658,25 +1658,25 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # First, give the user direct access to the group
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from first add
         test_plugin.members_added_calls.clear()
 
         # Now associate the app group with a role and add the user to the role
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called for the associated group because user already had access
         assert len(test_plugin.members_added_calls) == 0
 
-    def test_role_removed_from_group_user_loses_all_access(
+    async def test_role_removed_from_group_user_loses_all_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role is removed from a group and user loses all access."""
@@ -1701,30 +1701,30 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Associate the app group with the role
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Add the user to the role (gives them access to the group via role)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Remove the group from the role (user loses all access to the group)
-        ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called because user lost all access
         assert len(test_plugin.members_removed_calls) == 1
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
-    def test_role_removed_from_group_user_has_redundant_access(
+    async def test_role_removed_from_group_user_has_redundant_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role is removed from a group but user has direct access."""
@@ -1749,30 +1749,30 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
-        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
 
         # Give the user direct access to the group
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Also give them role-based access
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Remove the group from the role (user still has direct access to the group)
-        ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called because user still has direct access
         assert len(test_plugin.members_removed_calls) == 0
 
-    def test_role_added_to_group_user_gains_first_access(
+    async def test_role_added_to_group_user_gains_first_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is called when a role is added to a group and user gains first access."""
@@ -1797,26 +1797,26 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # Add the user to the role first (before associating the group with the role)
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding user to role
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Now associate the app group with the role (user gains first access to the group)
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Assert: Hook should be called because user gained first access
         assert len(test_plugin.members_added_calls) == 1
         assert test_plugin.members_added_calls[0] == (test_group.id, [user.id])
 
-    def test_role_added_to_group_user_already_has_access(
+    async def test_role_added_to_group_user_already_has_access(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
         """Test hook is NOT called when a role is added to a group but user already has direct access."""
@@ -1841,23 +1841,23 @@ class TestPluginMembershipHooks:
         db.session.add(test_group)
         db.session.add(role_group)
         db.session.add(user)
-        db.session.commit()
+        await db.session.commit()
 
         # Mock Okta calls
-        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
 
         # Give the user direct access to the group first
-        ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=test_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Add the user to the role
-        ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
+        await ModifyGroupUsers(group=role_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
         # Clear the hook calls from adding
         test_plugin.members_added_calls.clear()
         test_plugin.members_removed_calls.clear()
 
         # Now associate the app group with the role (user already has direct access)
-        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
 
         # Assert: Hook should NOT be called because user already had access
         assert len(test_plugin.members_added_calls) == 0
@@ -1866,8 +1866,8 @@ class TestPluginMembershipHooks:
 class TestPluginAuditLogging:
     """Tests for plugin configuration audit logging."""
 
-    def test_audit_log_plugin_assignment_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    async def test_audit_log_plugin_assignment_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that assigning a plugin to an app creates an audit log entry."""
         import json
@@ -1879,7 +1879,7 @@ class TestPluginAuditLogging:
 
         test_app = AppFactory.build(name="TestApp", description="Test App")
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         # Assign plugin to the app
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
@@ -1888,7 +1888,7 @@ class TestPluginAuditLogging:
             "app_group_lifecycle_plugin": DummyPlugin.ID,
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check audit log
@@ -1905,8 +1905,8 @@ class TestPluginAuditLogging:
         assert log_data["old_app_group_lifecycle_plugin"] is None
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
-    def test_audit_log_plugin_configuration_change_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    async def test_audit_log_plugin_configuration_change_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that changing app-level plugin configuration creates an audit log entry."""
         import json
@@ -1923,7 +1923,7 @@ class TestPluginAuditLogging:
             plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True, "category": "original"}}},
         )
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         caplog.clear()
 
@@ -1934,7 +1934,7 @@ class TestPluginAuditLogging:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": False, "category": "updated"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check audit log
@@ -1952,8 +1952,8 @@ class TestPluginAuditLogging:
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["category"] == "original"
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
-    def test_audit_log_plugin_removal_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    async def test_audit_log_plugin_removal_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that removing a plugin from an app creates an audit log entry."""
         import json
@@ -1970,7 +1970,7 @@ class TestPluginAuditLogging:
             plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
         )
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         caplog.clear()
 
@@ -1978,7 +1978,7 @@ class TestPluginAuditLogging:
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
         data = {"name": test_app.name, "app_group_lifecycle_plugin": None}
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check audit log
@@ -1994,9 +1994,9 @@ class TestPluginAuditLogging:
         assert log_data["old_app_group_lifecycle_plugin"] == DummyPlugin.ID
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
-    def test_audit_log_plugin_configuration_change_at_group_level(
+    async def test_audit_log_plugin_configuration_change_at_group_level(
         self,
-        client: TestClient,
+        client: AsyncClient,
         db: Db,
         app: FastAPI,
         test_plugin: DummyPlugin,
@@ -2026,7 +2026,7 @@ class TestPluginAuditLogging:
 
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         caplog.clear()
 
@@ -2042,7 +2042,7 @@ class TestPluginAuditLogging:
             "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "external-456"}}},
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check audit log
@@ -2059,8 +2059,8 @@ class TestPluginAuditLogging:
         assert log_data["old_plugin_data"][DummyPlugin.ID]["configuration"]["custom_tag"] == "original"
         assert log_data["current_user_email"] == settings.CURRENT_OKTA_USER_EMAIL
 
-    def test_no_audit_log_when_plugin_unchanged_at_app_level(
-        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
+    async def test_no_audit_log_when_plugin_unchanged_at_app_level(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, caplog: Any, url_for: Any
     ) -> None:
         """Test that no audit log is created when plugin configuration is unchanged."""
         import logging
@@ -2075,7 +2075,7 @@ class TestPluginAuditLogging:
             app_group_lifecycle_plugin=DummyPlugin.ID,
         )
         db.session.add(test_app)
-        db.session.commit()
+        await db.session.commit()
 
         caplog.clear()
 
@@ -2083,7 +2083,7 @@ class TestPluginAuditLogging:
         url = url_for("api-apps.app_by_id", app_id=test_app.id)
         data = {"name": test_app.name, "description": "Updated description"}
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check that no plugin audit log was created
@@ -2091,9 +2091,9 @@ class TestPluginAuditLogging:
         plugin_logs = [log for log in audit_logs if EventType.app_modify_plugin.value in log.message]
         assert len(plugin_logs) == 0
 
-    def test_no_audit_log_when_plugin_unchanged_at_group_level(
+    async def test_no_audit_log_when_plugin_unchanged_at_group_level(
         self,
-        client: TestClient,
+        client: AsyncClient,
         db: Db,
         app: FastAPI,
         test_plugin: DummyPlugin,
@@ -2121,7 +2121,7 @@ class TestPluginAuditLogging:
 
         db.session.add(test_app)
         db.session.add(test_group)
-        db.session.commit()
+        await db.session.commit()
 
         caplog.clear()
 
@@ -2137,7 +2137,7 @@ class TestPluginAuditLogging:
             "description": "Updated description",
         }
 
-        response = client.put(url, json=data)
+        response = await client.put(url, json=data)
         assert response.status_code == 200
 
         # Check that no plugin audit log was created

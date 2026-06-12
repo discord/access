@@ -1,9 +1,13 @@
 """FastAPI test harness.
 
 - The `app` fixture returns a `FastAPI` instance.
-- The `client` fixture returns a `fastapi.testclient.TestClient`.
-- The `db` fixture binds a sqlite-in-memory engine via `db.init_app(...)`,
-  creates tables, and seeds the bootstrap "Access" app + admin user.
+- The `client` fixture returns an `httpx.AsyncClient` over `ASGITransport`,
+  so requests run on the test's own event loop (required: the aiosqlite
+  engine is bound to that loop — a sync `TestClient` would drive the app
+  from its portal thread's loop and explode with cross-loop futures).
+- The `db` fixture binds a sqlite-in-memory aiosqlite engine via
+  `db.init_app(...)`, creates tables, and seeds the bootstrap "Access" app
+  + admin user.
 - The `mock_user` factory fixture overrides
   `app.dependency_overrides[get_current_user_id]` to switch the acting user.
 - The `url_for` fixture maps the legacy `"<bp>.<endpoint>"` name passed to
@@ -14,20 +18,20 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Generator
+from typing import Any, AsyncGenerator, Callable, Generator
 from urllib.parse import urlencode
 
+import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from pytest_factoryboy import register
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from api.app import create_app
 from api.auth.dependencies import get_current_user_id
 from api.config import settings
-from api.extensions import Db, _session_scope, db as _db
+from api.extensions import Base, Db, _session_scope, db as _db
 from api.models import App, AppGroup, OktaUserGroupMember
 from tests.factories import (
     AccessRequestFactory,
@@ -50,15 +54,29 @@ register(RoleRequestFactory, "role_request")
 register(TagFactory, "tag")
 
 
+def _async_test_uri() -> str:
+    """Resolve TEST_DATABASE_URI to an async driver.
+
+    Defaults to in-memory SQLite over aiosqlite. Legacy sync driver names in
+    a stale env var keep working (mirrors `api.database.to_async_url`).
+    """
+    uri = os.environ.get("TEST_DATABASE_URI", "sqlite+aiosqlite://")
+    uri = uri.replace("postgresql+pg8000://", "postgresql+asyncpg://")
+    if uri.startswith("postgresql://"):
+        uri = uri.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if uri in ("sqlite://", "sqlite:///:memory:"):
+        uri = "sqlite+aiosqlite://"
+    return uri
+
+
 @pytest.fixture(scope="session")
 def app(request: pytest.FixtureRequest) -> FastAPI:
     # Build the shared app with MCP disabled regardless of the ambient
     # ENABLE_MCP (e.g. a local .env that sets it true). This app is
-    # session-scoped, but the `client` fixture re-enters its lifespan on
-    # every test, and the MCP StreamableHTTPSessionManager's run() may only
-    # be entered once per process — an MCP-enabled shared app would crash
-    # every test after the first. MCP is exercised by test_mcp.py, which
-    # builds its own app and manages the singleton.
+    # session-scoped; MCP is exercised by test_mcp.py, which builds its own
+    # app and manages the singleton. Building the app is not loop-bound
+    # (no engine is bound when testing=True and no lifespan without MCP),
+    # so a sync session-scoped fixture is safe under per-test event loops.
     prev_mcp = settings.ENABLE_MCP
     settings.ENABLE_MCP = False
     try:
@@ -72,25 +90,26 @@ def app(request: pytest.FixtureRequest) -> FastAPI:
 
 
 @pytest.fixture
-def db(app: FastAPI) -> Generator[Db, None, None]:
+async def db(app: FastAPI) -> AsyncGenerator[Db, None]:
     """Bind a test engine, create tables, and seed bootstrap data.
 
-    Defaults to in-memory SQLite. Set `TEST_DATABASE_URI` to point at any
-    other database (e.g. `postgresql+pg8000://postgres:postgres@localhost:5433/access_test`)
+    Defaults to in-memory SQLite (aiosqlite). Set `TEST_DATABASE_URI` to
+    point at any other database (e.g.
+    `postgresql+asyncpg://postgres:postgres@localhost:5433/access_test`)
     to verify Postgres-only behaviour.
     """
-    db_uri = os.environ.get("TEST_DATABASE_URI", "sqlite://")
+    db_uri = _async_test_uri()
     if db_uri.startswith("sqlite"):
-        engine = create_engine(
-            db_uri,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
+        # StaticPool shares the single in-memory connection; aiosqlite
+        # funnels all operations through one worker thread, so
+        # check_same_thread is unnecessary.
+        engine = create_async_engine(db_uri, poolclass=StaticPool)
     else:
-        engine = create_engine(db_uri)
+        engine = create_async_engine(db_uri)
     _db.init_app(engine=engine)
-    _db.drop_all()
-    _db.create_all()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
 
     token = _session_scope.set("test-session")
     try:
@@ -113,31 +132,36 @@ def db(app: FastAPI) -> Generator[Db, None, None]:
         _db.session.add(access_app)
         _db.session.add(access_app_owner_group)
         _db.session.add(access_app_owner_group_membership)
-        _db.session.commit()
+        await _db.session.commit()
 
         yield _db
     finally:
         try:
-            _db.session.rollback()
+            await _db.session.rollback()
         except Exception:
             pass
-        _db.drop_all()
-        _db.remove()
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await _db.remove()
+        # Close the aiosqlite worker thread / asyncpg connections on the
+        # loop that created them.
+        await engine.dispose()
         _session_scope.reset(token)
 
 
-class _DatetimeAwareTestClient(TestClient):
-    """TestClient that serializes datetimes in `json=` payloads to ISO strings.
+class DatetimeAwareAsyncClient(httpx.AsyncClient):
+    """AsyncClient that serializes datetimes in `json=` payloads to ISO strings.
 
     httpx's stdlib JSON encoder rejects raw datetime objects, so we
     pre-process the payload — many tests pass timezone-aware datetimes
-    directly to `client.post(..., json=...)`."""
+    directly to `client.post(..., json=...)`. All verb helpers funnel
+    through `request()`."""
 
-    def request(self, method: str, url: str, **kwargs: Any) -> Any:
+    async def request(self, method: str, url: Any, **kwargs: Any) -> httpx.Response:
         json_payload = kwargs.get("json")
         if json_payload is not None:
             kwargs["json"] = _stringify_datetimes(json_payload)
-        return super().request(method, url, **kwargs)
+        return await super().request(method, url, **kwargs)
 
 
 def _stringify_datetimes(obj: Any) -> Any:
@@ -157,10 +181,20 @@ def _stringify_datetimes(obj: Any) -> Any:
 
 
 @pytest.fixture
-def client(app: FastAPI, db: Db) -> Generator[TestClient, None, None]:
-    """Return a FastAPI TestClient that shares the test database session."""
+async def client(app: FastAPI, db: Db) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """Return an in-process async client that shares the test database session.
+
+    `raise_app_exceptions=False` matches the old
+    `TestClient(raise_server_exceptions=False)`; `follow_redirects=True`
+    matches TestClient's default (httpx defaults to False).
+    """
     app.state.current_user_email = settings.CURRENT_OKTA_USER_EMAIL
-    with _DatetimeAwareTestClient(app, raise_server_exceptions=False) as c:
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with DatetimeAwareAsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        follow_redirects=True,
+    ) as c:
         yield c
     app.dependency_overrides.pop(get_current_user_id, None)
 

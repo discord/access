@@ -2,12 +2,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, cast, Protocol
 
 from factory import Faker
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from okta.models import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from api.config import settings
 from api.extensions import Db
 from api.models import (
@@ -40,16 +40,16 @@ class FakerWithPyStr(Protocol):
     def pystr(self) -> str: ...
 
 
-def test_create_group_request(
+async def test_create_group_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Test Group",
         requested_group_description="Test Description",
@@ -65,20 +65,20 @@ def test_create_group_request(
     assert group_request.resolved_at is None
 
 
-def test_create_app_group_request(
+async def test_create_app_group_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     app_obj = AppFactory.create()
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-Admins",
         requested_group_description="Admin group for TestApp",
@@ -92,16 +92,16 @@ def test_create_app_group_request(
     assert group_request.requested_group_type == "app_group"
 
 
-def test_create_role_group_request(
+async def test_create_role_group_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Role-Engineering",
         requested_group_description="Engineering role",
@@ -113,18 +113,18 @@ def test_create_role_group_request(
     assert group_request.requested_group_type == "role_group"
 
 
-def test_create_group_request_with_tags(
+async def test_create_group_request_with_tags(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
     tag: Tag,
 ) -> None:
     db.session.add(user)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Tagged Group",
         requested_group_description="Group with tags",
@@ -137,19 +137,19 @@ def test_create_group_request_with_tags(
     assert tag.id in group_request.requested_group_tags
 
 
-def test_create_group_request_with_ownership_ending_at(
+async def test_create_group_request_with_ownership_ending_at(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     # Request ownership for 60 days
     requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Time Limited Group",
         requested_group_description="Group with time limit",
@@ -162,7 +162,7 @@ def test_create_group_request_with_ownership_ending_at(
     assert group_request.requested_ownership_ending_at is not None
 
     # Refresh to get the datetime with proper timezone info from DB
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
 
     # Should be close to the requested time (within a few seconds), make both timezone-aware
     stored_time = group_request.requested_ownership_ending_at
@@ -171,9 +171,9 @@ def test_create_group_request_with_ownership_ending_at(
     assert abs((stored_time - requested_ending_at).total_seconds()) < 5
 
 
-def test_create_group_request_tag_limits_ownership_time(
+async def test_create_group_request_tag_limits_ownership_time(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
@@ -187,10 +187,10 @@ def test_create_group_request_tag_limits_ownership_time(
 
     db.session.add(user)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     # Request ownership with no ending time (should be limited to 90 days by tag)
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Tag Limited Group",
         requested_group_description="Group with tag time limit",
@@ -204,7 +204,7 @@ def test_create_group_request_tag_limits_ownership_time(
     assert group_request.requested_ownership_ending_at is not None
 
     # Refresh to get proper timezone info
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
         stored_time = stored_time.replace(tzinfo=timezone.utc)
@@ -215,9 +215,9 @@ def test_create_group_request_tag_limits_ownership_time(
     assert time_diff < 5  # Within 5 seconds of expected
 
 
-def test_create_group_request_tag_reduces_requested_ownership_time(
+async def test_create_group_request_tag_reduces_requested_ownership_time(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
@@ -231,12 +231,12 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
 
     db.session.add(user)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     # Request ownership for 90 days (should be reduced to 30 days)
     requested_ending_at = datetime.now(timezone.utc) + timedelta(days=90)
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Tag Reduced Group",
         requested_group_description="Group with reduced time",
@@ -250,7 +250,7 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
     assert group_request.requested_ownership_ending_at is not None
 
     # Refresh to get proper timezone info
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     stored_time = group_request.requested_ownership_ending_at
     if stored_time.tzinfo is None:
         stored_time = stored_time.replace(tzinfo=timezone.utc)
@@ -261,26 +261,28 @@ def test_create_group_request_tag_reduces_requested_ownership_time(
     assert time_diff < 5  # Within 5 seconds of expected
 
 
-def test_approve_group_request_creates_group(
+async def test_approve_group_request_creates_group(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="New Group",
         requested_group_description="New group description",
@@ -290,57 +292,60 @@ def test_approve_group_request_creates_group(
 
     assert group_request is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolved_at is not None
     assert group_request.resolver_user_id == admin.id
     assert group_request.approved_group_id is not None
 
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
     assert created_group is not None
     assert created_group.name == "New Group"
     assert created_group.description == "New group description"
 
     ownerships = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == created_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .all()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
     assert len(ownerships) == 1
     assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
 
 
-def test_approve_group_request_sets_owner_with_ending_time(
+async def test_approve_group_request_sets_owner_with_ending_time(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Request ownership for 60 days
     requested_ending_at = datetime.now(timezone.utc) + timedelta(days=60)
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Time Limited Ownership Group",
         requested_group_description="Group with time-limited ownership",
@@ -351,24 +356,25 @@ def test_approve_group_request_sets_owner_with_ending_time(
 
     assert group_request is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.approved_group_id is not None
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that the requester is an owner with the correct ending time
     ownerships = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == created_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .all()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
     assert len(ownerships) == 1
     assert ownerships[0].ended_at is not None
 
@@ -382,24 +388,26 @@ def test_approve_group_request_sets_owner_with_ending_time(
     assert time_diff < 5
 
 
-def test_approve_group_request_tag_limits_owner_ending_time(
+async def test_approve_group_request_tag_limits_owner_ending_time(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Create a tag that limits ownership to 30 days
     tag = TagFactory.create(
@@ -409,10 +417,10 @@ def test_approve_group_request_tag_limits_owner_ending_time(
         },
     )
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     # Request group with this tag, no ending time specified
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Tag Constrained Group",
         requested_group_description="Group with tag constraint",
@@ -427,26 +435,27 @@ def test_approve_group_request_tag_limits_owner_ending_time(
     # Approver sets resolved ownership ending time to 90 days (should be reduced to 30 by tag)
     requested_90_days = datetime.now(timezone.utc) + timedelta(days=90)
     group_request.resolved_ownership_ending_at = requested_90_days
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved with time limit",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.approved_group_id is not None
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that requester is an owner
     ownerships = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == created_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .all()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
     assert len(ownerships) == 1
     assert ownerships[0].ended_at is not None
 
@@ -464,35 +473,37 @@ def test_approve_group_request_tag_limits_owner_ending_time(
     assert stored_time < requested_90_days
 
     # Check that resolved_ownership_ending_at was updated to the coalesced value
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     resolved_time = group_request.resolved_ownership_ending_at
     if resolved_time.tzinfo is None:
         resolved_time = resolved_time.replace(tzinfo=timezone.utc)
     assert resolved_time < requested_90_days
 
 
-def test_approve_group_request_applies_tags(
+async def test_approve_group_request_applies_tags(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
     tag: Tag,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Tagged Group",
         requested_group_description="Group with tags",
@@ -505,54 +516,57 @@ def test_approve_group_request_applies_tags(
 
     # Set resolved tags (approver could modify these)
     group_request.resolved_group_tags = [tag.id]
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.approved_group_id is not None
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Check that the tag was applied
     tag_mappings = (
-        db.session.query(OktaGroupTagMap)
-        .filter(OktaGroupTagMap.group_id == created_group.id)
-        .filter(OktaGroupTagMap.tag_id == tag.id)
-        .filter(
-            or_(
-                OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > func.now(),
+        await db.session.scalars(
+            select(OktaGroupTagMap)
+            .where(OktaGroupTagMap.group_id == created_group.id)
+            .where(OktaGroupTagMap.tag_id == tag.id)
+            .where(
+                or_(
+                    OktaGroupTagMap.ended_at.is_(None),
+                    OktaGroupTagMap.ended_at > func.now(),
+                )
             )
         )
-        .all()
-    )
+    ).all()
     assert len(tag_mappings) == 1
 
 
-def test_approve_group_request_sets_name(
+async def test_approve_group_request_sets_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Specific Name",
         requested_group_description="Specific description text",
@@ -562,42 +576,44 @@ def test_approve_group_request_sets_name(
 
     assert group_request is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.approved_group_id is not None
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
     assert created_group.name == "Specific Name"
     assert created_group.description == "Specific description text"
 
 
-def test_approve_group_request_sets_type(
+async def test_approve_group_request_sets_type(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     app_obj = AppFactory.create()
 
     db.session.add(user)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Test OktaGroup
-    group_request_okta = CreateGroupRequest(
+    group_request_okta = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Regular Group",
         requested_group_description="Description",
@@ -607,22 +623,22 @@ def test_approve_group_request_sets_type(
 
     assert group_request_okta is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request_okta,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request_okta)
+    await db.session.refresh(group_request_okta)
     assert group_request_okta.status == AccessRequestStatus.APPROVED
     assert group_request_okta.resolver_user_id == admin.id
     assert group_request_okta.approved_group_id is not None
 
-    created_okta_group = db.session.get(OktaGroup, group_request_okta.approved_group_id)
+    created_okta_group = await db.session.get(OktaGroup, group_request_okta.approved_group_id)
     assert type(created_okta_group) is OktaGroup
 
     # Test AppGroup
-    group_request_app = CreateGroupRequest(
+    group_request_app = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-Users",
         requested_group_description="App group",
@@ -633,23 +649,25 @@ def test_approve_group_request_sets_type(
 
     assert group_request_app is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request_app,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request_app)
+    await db.session.refresh(group_request_app)
     assert group_request_app.status == AccessRequestStatus.APPROVED
     assert group_request_app.resolver_user_id == admin.id
     assert group_request_app.approved_group_id is not None
 
-    created_app_group = db.session.get(OktaGroup, group_request_app.approved_group_id)
+    created_app_group = await db.session.get(OktaGroup, group_request_app.approved_group_id)
     assert type(created_app_group) is AppGroup
+    # eager-load the joined-inheritance subclass column (lazy IO would raise in async)
+    await db.session.refresh(created_app_group, attribute_names=["app_id"])
     assert created_app_group.app_id == app_obj.id
 
     # Test RoleGroup
-    group_request_role = CreateGroupRequest(
+    group_request_role = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Role-Marketing",
         requested_group_description="Role group",
@@ -659,24 +677,24 @@ def test_approve_group_request_sets_type(
 
     assert group_request_role is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request_role,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request_role)
+    await db.session.refresh(group_request_role)
     assert group_request_role.status == AccessRequestStatus.APPROVED
     assert group_request_role.resolver_user_id == admin.id
     assert group_request_role.approved_group_id is not None
 
-    created_role_group = db.session.get(OktaGroup, group_request_role.approved_group_id)
+    created_role_group = await db.session.get(OktaGroup, group_request_role.approved_group_id)
     assert type(created_role_group) is RoleGroup
 
 
-def test_app_owner_can_approve_request(
+async def test_app_owner_can_approve_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -688,13 +706,13 @@ def test_app_owner_can_approve_request(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Owner group for the app
     owner_group = AppGroupFactory.create(
@@ -704,7 +722,7 @@ def test_app_owner_can_approve_request(
     )
 
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
 
     # Add app_owner to owner group
     db.session.add(
@@ -714,9 +732,9 @@ def test_app_owner_can_approve_request(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New app group",
@@ -728,20 +746,20 @@ def test_app_owner_can_approve_request(
     assert group_request is not None
 
     # App owner should be able to approve
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved by app owner",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolver_user_id == app_owner.id
 
 
-def test_app_owner_can_reject_request(
+async def test_app_owner_can_reject_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
@@ -751,7 +769,7 @@ def test_app_owner_can_reject_request(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     # Create owner group for the app
     owner_group = AppGroupFactory.create(
@@ -761,7 +779,7 @@ def test_app_owner_can_reject_request(
     )
 
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
 
     # Make app_owner an owner of the app via its owner group
     db.session.add(
@@ -771,9 +789,9 @@ def test_app_owner_can_reject_request(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-AnotherGroup",
         requested_group_description="Another app group",
@@ -785,21 +803,21 @@ def test_app_owner_can_reject_request(
     assert group_request is not None
 
     # App owner should be able to reject
-    RejectGroupRequest(
+    await RejectGroupRequest(
         group_request=group_request,
         rejection_reason="Rejected by app owner",
         notify_requester=True,
         current_user_id=app_owner.id,
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolver_user_id == app_owner.id
 
 
-def test_wrong_app_owner_cannot_approve_request(
+async def test_wrong_app_owner_cannot_approve_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -813,13 +831,13 @@ def test_wrong_app_owner_cannot_approve_request(
     db.session.add(app_owner)
     db.session.add(app_obj)
     db.session.add(other_app)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Create owner groups for both apps
     owner_group = AppGroupFactory.create(
@@ -835,7 +853,7 @@ def test_wrong_app_owner_cannot_approve_request(
 
     db.session.add(owner_group)
     db.session.add(other_owner_group)
-    db.session.commit()
+    await db.session.commit()
 
     # Make app_owner an owner of 'app' but not 'other_app'
     db.session.add(
@@ -845,10 +863,10 @@ def test_wrong_app_owner_cannot_approve_request(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
     # Create request for other_app
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{other_app.name}-NewGroup",
         requested_group_description="Group for other app",
@@ -861,34 +879,36 @@ def test_wrong_app_owner_cannot_approve_request(
 
     # Set resolved_app_id
     group_request.resolved_app_id = other_app.id
-    db.session.commit()
+    await db.session.commit()
 
     # App owner of 'app' should NOT be able to approve request for 'other_app'
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Should not be allowed",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     # Request should still be pending (not approved)
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
 
 
-def test_admin_can_reject_request(
+async def test_admin_can_reject_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     db.session.add(user)
     db.session.add(admin)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Admin Rejected Group",
         requested_group_description="Group rejected by admin",
@@ -898,21 +918,21 @@ def test_admin_can_reject_request(
 
     assert group_request is not None
 
-    RejectGroupRequest(
+    await RejectGroupRequest(
         group_request=group_request,
         rejection_reason="Rejected by admin",
         notify_requester=True,
         current_user_id=admin.id,
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolver_user_id == admin.id
 
 
-def test_any_user_cannot_reject_request(
+async def test_any_user_cannot_reject_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
@@ -920,9 +940,9 @@ def test_any_user_cannot_reject_request(
 
     db.session.add(user)
     db.session.add(other_user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Other User Can't Reject Group",
         requested_group_description="Group can't be rejected by non-admin user",
@@ -932,28 +952,28 @@ def test_any_user_cannot_reject_request(
 
     assert group_request is not None
 
-    RejectGroupRequest(
+    await RejectGroupRequest(
         group_request=group_request,
         rejection_reason="Rejected by other_user",
         notify_requester=True,
         current_user_id=other_user.id,
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
 
 
-def test_user_can_reject_own_request(
+async def test_user_can_reject_own_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Self Rejected Group",
         requested_group_description="Group I don't want anymore",
@@ -963,28 +983,28 @@ def test_user_can_reject_own_request(
 
     assert group_request is not None
 
-    RejectGroupRequest(
+    await RejectGroupRequest(
         group_request=group_request,
         rejection_reason="I changed my mind",
         notify_requester=False,
         current_user_id=user.id,
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolver_user_id == user.id
 
 
-def test_user_cannot_approve_own_request(
+async def test_user_cannot_approve_own_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
 ) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Self Approval Attempt",
         requested_group_description="Trying to approve myself",
@@ -995,42 +1015,44 @@ def test_user_cannot_approve_own_request(
     assert group_request is not None
 
     # Attempt to self-approve should fail
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=user,
         approval_reason="Self approval",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     # Should still be pending
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
 
 
-def test_approver_can_modify_group_details(
+async def test_approver_can_modify_group_details(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
     user: OktaUser,
 ) -> None:
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     tag = TagFactory.create(enabled=True)
     other_tag = TagFactory.create(enabled=True)
 
     db.session.add(user)
     db.session.add(tag)
     db.session.add(other_tag)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Original Name",
         requested_group_description="Original description",
@@ -1045,17 +1067,17 @@ def test_approver_can_modify_group_details(
     group_request.resolved_group_name = "Modified Name"
     group_request.resolved_group_description = "Modified description"
     group_request.resolved_group_tags = [other_tag.id]
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved with modifications",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.approved_group_id is not None
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
 
     # Verify the modified values were used
     assert created_group.name == "Modified Name"
@@ -1063,24 +1085,25 @@ def test_approver_can_modify_group_details(
 
     # Check tags
     tag_mappings = (
-        db.session.query(OktaGroupTagMap)
-        .filter(OktaGroupTagMap.group_id == created_group.id)
-        .filter(
-            or_(
-                OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > func.now(),
+        await db.session.scalars(
+            select(OktaGroupTagMap)
+            .where(OktaGroupTagMap.group_id == created_group.id)
+            .where(
+                or_(
+                    OktaGroupTagMap.ended_at.is_(None),
+                    OktaGroupTagMap.ended_at > func.now(),
+                )
             )
         )
-        .all()
-    )
+    ).all()
     tag_ids = [tm.tag_id for tm in tag_mappings]
     assert other_tag.id in tag_ids
     assert tag.id not in tag_ids
 
 
-def test_cannot_approve_already_resolved_request(
+async def test_cannot_approve_already_resolved_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1090,15 +1113,15 @@ def test_cannot_approve_already_resolved_request(
 
     db.session.add(user)
     db.session.add(approver_user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Already Resolved",
         requested_group_description="Description",
@@ -1109,32 +1132,32 @@ def test_cannot_approve_already_resolved_request(
     assert group_request is not None
 
     # First approval
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=approver_user,
         approval_reason="First approval",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     first_approval_time = group_request.resolved_at
     first_group_id = group_request.approved_group_id
 
     # Try to approve again
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=approver_user,
         approval_reason="Second approval attempt",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     # Should still have the same resolution details
     assert group_request.resolved_at == first_approval_time
     assert group_request.approved_group_id == first_group_id
 
 
-def test_cannot_approve_deleted_requester(
+async def test_cannot_approve_deleted_requester(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1144,15 +1167,15 @@ def test_cannot_approve_deleted_requester(
 
     db.session.add(user)
     db.session.add(approver_user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Deleted Requester Group",
         requested_group_description="Requester will be deleted",
@@ -1164,24 +1187,24 @@ def test_cannot_approve_deleted_requester(
 
     # Delete the requester
     user.deleted_at = func.now()
-    db.session.commit()
+    await db.session.commit()
 
     # Try to approve
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=approver_user,
         approval_reason="Should not work",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     # Should still be pending
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
 
 
-def test_app_owner_auto_approves_own_app_group_request(
+async def test_app_owner_auto_approves_own_app_group_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1191,13 +1214,13 @@ def test_app_owner_auto_approves_own_app_group_request(
 
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Create owner group for the app
     owner_group = AppGroupFactory.create(
@@ -1207,7 +1230,7 @@ def test_app_owner_auto_approves_own_app_group_request(
     )
 
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
 
     # Make app_owner an owner of the app via its owner group
     db.session.add(
@@ -1217,10 +1240,10 @@ def test_app_owner_auto_approves_own_app_group_request(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
     # App owner creates a group request for their own app
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=app_owner,
         requested_group_name=f"App-{app_obj.name}-NewTeam",
         requested_group_description="New team group for the app",
@@ -1232,35 +1255,38 @@ def test_app_owner_auto_approves_own_app_group_request(
     # Verify the request was automatically approved
     assert group_request is not None
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolved_at is not None
     assert group_request.approved_group_id is not None
     assert group_request.resolution_reason == "Requester owns parent app and can create app groups"
 
     # Verify the group was created
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
     assert created_group is not None
     assert type(created_group) is AppGroup
     assert created_group.name == f"App-{app_obj.name}-NewTeam"
     assert created_group.description == "New team group for the app"
+    # eager-load the joined-inheritance subclass column (lazy IO would raise in async)
+    await db.session.refresh(created_group, attribute_names=["app_id"])
     assert created_group.app_id == app_obj.id
 
     # Verify the requester (app owner) is set as the group owner
     ownerships = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == created_group.id)
-        .filter(OktaUserGroupMember.user_id == app_owner.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .all()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == app_owner.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
     assert len(ownerships) == 1
     assert ownerships[0].created_reason == f"Group request approved: {group_request.request_reason}"
 
 
-def test_app_owner_auto_approves_own_app_group_request_tagged(
+async def test_app_owner_auto_approves_own_app_group_request_tagged(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1272,18 +1298,18 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
     db.session.add(app_owner)
     db.session.add(app_obj)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
 
     # Apply tag to the app so it cascades to groups created for this app
     app_tag_map = AppTagMap(app_id=app_obj.id, tag_id=tag.id)
     db.session.add(app_tag_map)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Create owner group for the app
     owner_group = AppGroupFactory.create(
@@ -1293,7 +1319,7 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
     )
 
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
 
     # Make app_owner an owner of the app via its owner group
     db.session.add(
@@ -1303,11 +1329,11 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
     # App owner creates a group request for their own app
     # Include the tag in the request
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=app_owner,
         requested_group_name=f"App-{app_obj.name}-NewTeam",
         requested_group_description="New team group for the app",
@@ -1320,53 +1346,59 @@ def test_app_owner_auto_approves_own_app_group_request_tagged(
     # Verify the request was automatically approved
     assert group_request is not None
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.APPROVED
     assert group_request.resolved_at is not None
     assert group_request.approved_group_id is not None
     assert group_request.resolution_reason == "Requester owns parent app and can create app groups"
 
     # Verify the group was created
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, group_request.approved_group_id)
     assert created_group is not None
     assert type(created_group) is AppGroup
     assert created_group.name == f"App-{app_obj.name}-NewTeam"
     assert created_group.description == "New team group for the app"
+    # eager-load the joined-inheritance subclass column (lazy IO would raise in async)
+    await db.session.refresh(created_group, attribute_names=["app_id"])
     assert created_group.app_id == app_obj.id
 
     # Verify the app owner is *not* set as the group owner due to tags (will own implicitly via app ownership)
     ownerships = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == created_group.id)
-        .filter(OktaUserGroupMember.user_id == app_owner.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .all()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == created_group.id)
+            .where(OktaUserGroupMember.user_id == app_owner.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+        )
+    ).all()
     assert len(ownerships) == 0
 
     # Verify the tag was applied to the created group
     tag_mappings = {
         tag_map.tag_id
         for tag_map in (
-            db.session.query(OktaGroupTagMap)
-            .filter(OktaGroupTagMap.group_id == created_group.id)
-            .filter(OktaGroupTagMap.tag_id == tag.id)
-            .filter(
-                or_(
-                    OktaGroupTagMap.ended_at.is_(None),
-                    OktaGroupTagMap.ended_at > func.now(),
+            (
+                await db.session.scalars(
+                    select(OktaGroupTagMap)
+                    .where(OktaGroupTagMap.group_id == created_group.id)
+                    .where(OktaGroupTagMap.tag_id == tag.id)
+                    .where(
+                        or_(
+                            OktaGroupTagMap.ended_at.is_(None),
+                            OktaGroupTagMap.ended_at > func.now(),
+                        )
+                    )
                 )
-            )
-            .all()
+            ).all()
         )
     }
 
     assert len(tag_mappings) == 1
 
 
-def test_random_user_cannot_approve_group_request(
+async def test_random_user_cannot_approve_group_request(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
     mocker: MockerFixture,
@@ -1376,15 +1408,15 @@ def test_random_user_cannot_approve_group_request(
 
     db.session.add(user)
     db.session.add(random_user)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Random Approval Attempt",
         requested_group_description="Should not be approvable by random user",
@@ -1394,21 +1426,21 @@ def test_random_user_cannot_approve_group_request(
 
     assert group_request is not None
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=random_user,
         approval_reason="Should not work",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.resolved_at is None
     assert group_request.approved_group_id is None
 
 
-def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
+async def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1422,13 +1454,13 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     db.session.add(app_owner)
     db.session.add(app_a)
     db.session.add(app_b)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_a.name}"
@@ -1437,15 +1469,15 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
     db.session.add(sensitive_group)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_a.name}-NewGroup",
         requested_group_description="New group for App A",
@@ -1457,34 +1489,35 @@ def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
 
     # attacker overwrites resolved_group_name to target app b sensitive group
     group_request.resolved_group_name = sensitive_group.name
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name collides with a pre-existing group"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == sensitive_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .first()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == sensitive_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(OktaUserGroupMember.ended_at.is_(None))
+        )
+    ).first()
     assert hijacked_ownership is None
 
 
-def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
+async def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1496,13 +1529,13 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1511,15 +1544,15 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     existing_okta_group = OktaGroupFactory.create(name="Okta-Platform-Admins")
     db.session.add(existing_okta_group)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1530,34 +1563,35 @@ def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     assert group_request is not None
 
     group_request.resolved_group_name = existing_okta_group.name
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == existing_okta_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .first()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == existing_okta_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(OktaUserGroupMember.ended_at.is_(None))
+        )
+    ).first()
     assert hijacked_ownership is None
 
 
-def test_app_owner_cannot_hijack_role_group_via_resolved_name(
+async def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1569,13 +1603,13 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1584,15 +1618,15 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     existing_role_group = RoleGroupFactory.create(name="Role-Security-Engineers")
     db.session.add(existing_role_group)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1603,34 +1637,35 @@ def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     assert group_request is not None
 
     group_request.resolved_group_name = existing_role_group.name
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == existing_role_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .first()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == existing_role_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(OktaUserGroupMember.ended_at.is_(None))
+        )
+    ).first()
     assert hijacked_ownership is None
 
 
-def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
+async def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1644,13 +1679,13 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     db.session.add(app_owner)
     db.session.add(app_a)
     db.session.add(app_b)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_a.name}"
@@ -1659,15 +1694,15 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     sensitive_group = AppGroupFactory.create(name="App-Finance-Sensitive", app_id=app_b.id)
     db.session.add(sensitive_group)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_a.name}-NewGroup",
         requested_group_description="New group for App A",
@@ -1679,32 +1714,33 @@ def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
 
     # case-insensitive lookup should still collides
     group_request.resolved_group_name = sensitive_group.name.upper()
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING, "case-insensitive name collision must also be blocked"
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == sensitive_group.id)
-        .filter(OktaUserGroupMember.user_id == user.id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .first()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == sensitive_group.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(OktaUserGroupMember.ended_at.is_(None))
+        )
+    ).first()
     assert hijacked_ownership is None
 
 
-def test_cannot_approve_okta_group_with_reserved_app_owners_name(
+async def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1716,13 +1752,13 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1731,11 +1767,11 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1747,32 +1783,30 @@ def test_cannot_approve_okta_group_with_reserved_app_owners_name(
 
     group_request.resolved_group_name = "App-Payments-Owners"
     group_request.resolved_group_type = "okta_group"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
     assert group_request.resolved_at is None
 
     assert (
-        db.session.query(OktaGroup)
-        .filter(OktaGroup.name == "App-Payments-Owners")
-        .filter(OktaGroup.deleted_at.is_(None))
-        .first()
-        is None
-    )
+        await db.session.scalars(
+            select(OktaGroup).where(OktaGroup.name == "App-Payments-Owners").where(OktaGroup.deleted_at.is_(None))
+        )
+    ).first() is None
 
 
-def test_cannot_approve_role_group_with_reserved_app_owners_name(
+async def test_cannot_approve_role_group_with_reserved_app_owners_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1784,13 +1818,13 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1799,11 +1833,11 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1815,32 +1849,30 @@ def test_cannot_approve_role_group_with_reserved_app_owners_name(
 
     group_request.resolved_group_name = "App-Payments-Owners"
     group_request.resolved_group_type = "role_group"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
     assert group_request.resolved_at is None
 
     assert (
-        db.session.query(OktaGroup)
-        .filter(OktaGroup.name == "App-Payments-Owners")
-        .filter(OktaGroup.deleted_at.is_(None))
-        .first()
-        is None
-    )
+        await db.session.scalars(
+            select(OktaGroup).where(OktaGroup.name == "App-Payments-Owners").where(OktaGroup.deleted_at.is_(None))
+        )
+    ).first() is None
 
 
-def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
+async def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1852,13 +1884,13 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1867,11 +1899,11 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1884,32 +1916,30 @@ def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     # Non-Owners suffix: rule is broader than just App-*-Owners
     group_request.resolved_group_name = "App-Payments-Members"
     group_request.resolved_group_type = "okta_group"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked for any non-app_group resolved_group_name that starts with the App- prefix"
     assert group_request.resolved_at is None
 
     assert (
-        db.session.query(OktaGroup)
-        .filter(OktaGroup.name == "App-Payments-Members")
-        .filter(OktaGroup.deleted_at.is_(None))
-        .first()
-        is None
-    )
+        await db.session.scalars(
+            select(OktaGroup).where(OktaGroup.name == "App-Payments-Members").where(OktaGroup.deleted_at.is_(None))
+        )
+    ).first() is None
 
 
-def test_cannot_approve_app_group_request_with_owners_group_name(
+async def test_cannot_approve_app_group_request_with_owners_group_name(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1921,13 +1951,13 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
     db.session.add(user)
     db.session.add(app_owner)
     db.session.add(app_obj)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     owner_group = AppGroupFactory.create(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
@@ -1936,11 +1966,11 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=app_owner.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_obj.name}-NewGroup",
         requested_group_description="New group",
@@ -1956,33 +1986,33 @@ def test_cannot_approve_app_group_request_with_owners_group_name(
     )
     group_request.resolved_group_name = owners_group_name
     group_request.resolved_group_type = "app_group"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=app_owner,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked when resolved_group_name matches the App-*-Owners pattern even for app_group type"
     assert group_request.resolved_at is None
 
     assert (
-        db.session.query(OktaGroup)
-        .filter(OktaGroup.name == owners_group_name)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(OktaGroup.id != owner_group.id)
-        .first()
-        is None
-    )
+        await db.session.scalars(
+            select(OktaGroup)
+            .where(OktaGroup.name == owners_group_name)
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id != owner_group.id)
+        )
+    ).first() is None
 
 
-def test_cannot_approve_non_role_group_request_with_role_prefix(
+async def test_cannot_approve_non_role_group_request_with_role_prefix(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -1991,21 +2021,21 @@ def test_cannot_approve_non_role_group_request_with_role_prefix(
     admin = OktaUserFactory.create()
     db.session.add(user)
     db.session.add(admin)
-    db.session.commit()
+    await db.session.commit()
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     access_admin_group = RoleGroupFactory.create(name="App-Access-Owners")
     db.session.add(access_admin_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=admin.id, group_id=access_admin_group.id, is_owner=False))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins",
         requested_group_description="A role group",
@@ -2017,22 +2047,22 @@ def test_cannot_approve_non_role_group_request_with_role_prefix(
     # Override the resolved name/type to use the Role- prefix with a non-role type
     group_request.resolved_group_name = f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins"
     group_request.resolved_group_type = "okta_group"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=admin,
         approval_reason="Approved",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert (
         group_request.status == AccessRequestStatus.PENDING
     ), "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
     assert group_request.resolved_at is None
 
 
-def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_group_request_list_filters_via_http(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`status`, `requester_user_id`, `requested_group_type`,
     `requested_app_id` and `q` each narrow /api/group-requests. Seed two
     requests of different types/requesters/apps so each filter must
@@ -2044,9 +2074,9 @@ def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for
     other_user = OktaUserFactory.create()
     target_app = AppFactory.create()
     db.session.add_all([target_user, other_user, target_app])
-    db.session.commit()
+    await db.session.commit()
 
-    target_gr = CreateGroupRequest(
+    target_gr = await CreateGroupRequest(
         requester_user=target_user,
         requested_group_name="ZelaTargetOktaGroup",
         requested_group_description="zela target desc",
@@ -2056,7 +2086,7 @@ def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for
         requested_ownership_ending_at=None,
         request_reason="please",
     ).execute()
-    other_gr = CreateGroupRequest(
+    other_gr = await CreateGroupRequest(
         requester_user=other_user,
         requested_group_name=f"App-{target_app.name}-OtherDistinctApp",
         requested_group_description="distinct app group desc",
@@ -2073,33 +2103,33 @@ def test_group_request_list_filters_via_http(client: TestClient, db: Db, url_for
     def ids(rep: Any) -> list[str]:
         return [r["id"] for r in rep.json()["items"]]
 
-    rep = client.get(list_url, params={"status": "PENDING"})
+    rep = await client.get(list_url, params={"status": "PENDING"})
     assert rep.status_code == 200
     assert {target_gr.id, other_gr.id}.issubset(set(ids(rep)))
 
-    rep = client.get(list_url, params={"requester_user_id": target_user.id})
+    rep = await client.get(list_url, params={"requester_user_id": target_user.id})
     assert rep.status_code == 200
     found = ids(rep)
     assert target_gr.id in found and other_gr.id not in found
 
-    rep = client.get(list_url, params={"requested_group_type": "okta_group"})
+    rep = await client.get(list_url, params={"requested_group_type": "okta_group"})
     assert rep.status_code == 200
     found = ids(rep)
     assert target_gr.id in found and other_gr.id not in found
 
-    rep = client.get(list_url, params={"requested_app_id": target_app.id})
+    rep = await client.get(list_url, params={"requested_app_id": target_app.id})
     assert rep.status_code == 200
     found = ids(rep)
     assert other_gr.id in found and target_gr.id not in found
 
-    rep = client.get(list_url, params={"q": "ZelaTargetOktaGroup"})
+    rep = await client.get(list_url, params={"q": "ZelaTargetOktaGroup"})
     assert rep.status_code == 200
     found = ids(rep)
     assert target_gr.id in found and other_gr.id not in found
 
 
-def test_post_group_request_validation_via_http(
-    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+async def test_post_group_request_validation_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
 ) -> None:
     """POST /api/group-requests pre-validates: deleted requester → 403,
     unknown tag → 400, and `app_group` without `requested_app_id` → 400
@@ -2111,9 +2141,9 @@ def test_post_group_request_validation_via_http(
     # (a) Deleted requester → 403
     deleted = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
     db.session.add(deleted)
-    db.session.commit()
+    await db.session.commit()
     mock_user(deleted.id)
-    rep = client.post(
+    rep = await client.post(
         create_url,
         json={
             "requested_group_name": "Foo",
@@ -2127,9 +2157,9 @@ def test_post_group_request_validation_via_http(
 
     # (b) Unknown tag → 400
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     mock_user(user.id)
-    rep = client.post(
+    rep = await client.post(
         create_url,
         json={
             "requested_group_name": "Foo",
@@ -2143,7 +2173,7 @@ def test_post_group_request_validation_via_http(
 
     # (c) app_group missing requested_app_id → 400 (Pydantic discriminator
     # rejects the missing required field on _AppGroupRequestBody).
-    rep = client.post(
+    rep = await client.post(
         create_url,
         json={
             "requested_group_name": "Foo",
@@ -2154,16 +2184,16 @@ def test_post_group_request_validation_via_http(
     assert rep.status_code == 400
 
 
-def test_post_group_request_app_id_must_exist_unknown(
-    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+async def test_post_group_request_app_id_must_exist_unknown(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
 ) -> None:
     """`requested_app_id` that does not match any App row → 404 "App not found".
     The router must verify the app exists before invoking
     `CreateGroupRequest`."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     mock_user(user.id)
-    rep = client.post(
+    rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
         json={
             "requested_group_name": "Foo",
@@ -2176,17 +2206,17 @@ def test_post_group_request_app_id_must_exist_unknown(
     assert "App not found" in rep.text
 
 
-def test_post_group_request_app_id_must_exist_deleted(
-    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+async def test_post_group_request_app_id_must_exist_deleted(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
 ) -> None:
     """`requested_app_id` pointing at a soft-deleted App → 404 (the resource
     queries `App.deleted_at.is_(None)` before accepting the request)."""
     db.session.add(user)
     deleted_app = AppFactory.create(name="DeletedApp", deleted_at=datetime.now(timezone.utc))
     db.session.add(deleted_app)
-    db.session.commit()
+    await db.session.commit()
     mock_user(user.id)
-    rep = client.post(
+    rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
         json={
             "requested_group_name": "Foo",
@@ -2199,8 +2229,8 @@ def test_post_group_request_app_id_must_exist_deleted(
     assert "App not found" in rep.text
 
 
-def test_post_group_request_tag_ids_must_be_undeleted(
-    client: TestClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
+async def test_post_group_request_tag_ids_must_be_undeleted(
+    client: AsyncClient, db: Db, user: OktaUser, mock_user: Any, url_for: Any
 ) -> None:
     """A soft-deleted tag id must not be accepted — the router filters
     `Tag.deleted_at.is_(None)` before counting matches against the
@@ -2210,9 +2240,9 @@ def test_post_group_request_tag_ids_must_be_undeleted(
     db.session.add(user)
     deleted_tag = TagFactory.create(name="DeletedTag", deleted_at=datetime.now(timezone.utc))
     db.session.add(deleted_tag)
-    db.session.commit()
+    await db.session.commit()
     mock_user(user.id)
-    rep = client.post(
+    rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
         json={
             "requested_group_name": "Foo",
@@ -2225,17 +2255,17 @@ def test_post_group_request_tag_ids_must_be_undeleted(
     assert "tags not found" in rep.text
 
 
-def test_put_group_request_ignores_legacy_resolution_reason_alias_via_http(
-    client: TestClient, db: Db, user: OktaUser, url_for: Any
+async def test_put_group_request_ignores_legacy_resolution_reason_alias_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, url_for: Any
 ) -> None:
     """PUT /api/group-requests/{id} reads `reason` from the body (matching
     the access-request and role-request resolve endpoints). The legacy
     `resolution_reason` key is silently dropped, leaving the persisted
     resolution_reason empty."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="ResolveAliasOktaGroup",
         requested_group_description="alias drop test",
@@ -2245,22 +2275,24 @@ def test_put_group_request_ignores_legacy_resolution_reason_alias_via_http(
     assert group_request is not None
 
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = client.put(resolve_url, json={"approved": False, "resolution_reason": "should be dropped"})
+    rep = await client.put(resolve_url, json={"approved": False, "resolution_reason": "should be dropped"})
     assert rep.status_code == 200
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolution_reason == ""
 
 
-def test_put_group_request_persists_reason_via_http(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
+async def test_put_group_request_persists_reason_via_http(
+    client: AsyncClient, db: Db, user: OktaUser, url_for: Any
+) -> None:
     """PUT /api/group-requests/{id} stores the body's `reason` verbatim on
     the resolved request's `resolution_reason` column (the DB column name
     is preserved; only the request-body key was renamed)."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="ResolveResolutionReasonOktaGroup",
         requested_group_description="reason test",
@@ -2270,16 +2302,16 @@ def test_put_group_request_persists_reason_via_http(client: TestClient, db: Db, 
     assert group_request is not None
 
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = client.put(resolve_url, json={"approved": False, "reason": "duplicate work"})
+    rep = await client.put(resolve_url, json={"approved": False, "reason": "duplicate work"})
     assert rep.status_code == 200
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolution_reason == "duplicate work"
 
 
-def test_put_group_request_app_owner_cannot_escalate_to_role_group(
-    client: TestClient,
+async def test_put_group_request_app_owner_cannot_escalate_to_role_group(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -2298,8 +2330,8 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     # Alice is the app owner of Foo. She is NOT an Access admin.
     alice = OktaUserFactory.create()
@@ -2307,7 +2339,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     db.session.add(user)
     db.session.add(alice)
     db.session.add(foo_app)
-    db.session.commit()
+    await db.session.commit()
 
     owner_group = AppGroupFactory.create(
         name=(
@@ -2318,14 +2350,14 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
         is_owner=True,
     )
     db.session.add(owner_group)
-    db.session.commit()
+    await db.session.commit()
     # is_owner=True makes Alice a *manager* of app Foo
     db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     # Regular user files an app_group request against Foo. Alice is a valid
     # approver for this request because she owns Foo.
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{foo_app.name}-Members",
         requested_group_description="legit app group",
@@ -2341,7 +2373,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     # resolved_app_id) still passes.
     mock_user(alice.id)
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = client.put(
+    rep = await client.put(
         resolve_url,
         json={
             "approved": True,
@@ -2354,8 +2386,10 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     assert rep.status_code == 403
     # No RoleGroup should be created since Alice is only an
     # app owner but not an admin
-    db.session.refresh(group_request)
-    role_evil = db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
+    await db.session.refresh(group_request)
+    role_evil = (
+        await db.session.scalars(select(RoleGroup).where(func.lower(OktaGroup.name) == func.lower("Role-evil")))
+    ).first()
     assert role_evil is None, (
         "App owner was able to escalate an app_group request into creating a RoleGroup "
         f"(PUT returned {rep.status_code}, request status={group_request.status})."
@@ -2364,8 +2398,8 @@ def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     assert group_request.approved_group_id is None
 
 
-def test_put_group_request_app_owner_cannot_escalate_to_other_app(
-    client: TestClient,
+async def test_put_group_request_app_owner_cannot_escalate_to_other_app(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -2380,8 +2414,8 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     alice = OktaUserFactory.create()
     foo_app = AppFactory.create()
@@ -2390,7 +2424,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
     db.session.add(alice)
     db.session.add(foo_app)
     db.session.add(bar_app)
-    db.session.commit()
+    await db.session.commit()
 
     foo_owner_group = AppGroupFactory.create(
         name=(
@@ -2401,11 +2435,11 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
         is_owner=True,
     )
     db.session.add(foo_owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=foo_owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{foo_app.name}-Members",
         requested_group_description="legit app group",
@@ -2417,7 +2451,7 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
 
     mock_user(alice.id)
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = client.put(
+    rep = await client.put(
         resolve_url,
         json={
             "approved": True,
@@ -2428,18 +2462,22 @@ def test_put_group_request_app_owner_cannot_escalate_to_other_app(
     )
 
     assert rep.status_code == 403
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
+    # the 403 request's rollback expired bar_app; reload it before reading .id
+    await db.session.refresh(bar_app)
     bar_group = (
-        db.session.query(AppGroup).filter(AppGroup.app_id == bar_app.id).filter(AppGroup.deleted_at.is_(None)).first()
-    )
+        await db.session.scalars(
+            select(AppGroup).where(AppGroup.app_id == bar_app.id).where(AppGroup.deleted_at.is_(None))
+        )
+    ).first()
     assert bar_group is None, "App owner of Foo escalated approval into creating a group attached to Bar."
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.approved_group_id is None
 
 
-def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
+async def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -2454,15 +2492,15 @@ def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
     alice = OktaUserFactory.create()
     foo_app = AppFactory.create()
     db.session.add(user)
     db.session.add(alice)
     db.session.add(foo_app)
-    db.session.commit()
+    await db.session.commit()
 
     foo_owner_group = AppGroupFactory.create(
         name=(
@@ -2473,11 +2511,11 @@ def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
         is_owner=True,
     )
     db.session.add(foo_owner_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaUserGroupMember(user_id=alice.id, group_id=foo_owner_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{foo_app.name}-Members",
         requested_group_description="legit app group",
@@ -2491,23 +2529,25 @@ def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
     # caller that bypasses the router (e.g. another internal operation).
     group_request.resolved_group_type = "role_group"
     group_request.resolved_group_name = "Role-evil"
-    db.session.commit()
+    await db.session.commit()
 
-    ApproveGroupRequest(
+    await ApproveGroupRequest(
         group_request=group_request,
         approver_user=alice,
         approval_reason="lgtm",
     ).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.approved_group_id is None
-    role_evil = db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
+    role_evil = (
+        await db.session.scalars(select(RoleGroup).where(func.lower(OktaGroup.name) == func.lower("Role-evil")))
+    ).first()
     assert role_evil is None
 
 
-def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected(
-    client: TestClient,
+async def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     faker: Faker,  # type: ignore[type-arg]
@@ -2518,16 +2558,16 @@ def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected
     "App-{app name}-" prefix is a 400 and leaves the request pending."""
     app_obj = AppFactory.create()
     db.session.add_all([user, app_obj])
-    db.session.commit()
+    await db.session.commit()
     app_name = app_obj.name
 
     mocker.patch.object(
         okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
     )
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name=f"App-{app_name}-NewGroup",
         requested_group_description="New group",
@@ -2538,41 +2578,41 @@ def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected
     assert group_request is not None
 
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = client.put(resolve_url, json={"approved": True, "reason": "ok", "resolved_group_name": "Whatever"})
+    rep = await client.put(resolve_url, json={"approved": True, "reason": "ok", "resolved_group_name": "Whatever"})
     assert rep.status_code == 400
     assert rep.json()["detail"] == (
         f'App Group name "Whatever" should be prefixed with App name. For example: "App-{app_name}-"'
     )
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.PENDING
     assert group_request.approved_group_id is None
 
     # A conforming resolved name approves cleanly
-    rep = client.put(
+    rep = await client.put(
         resolve_url,
         json={"approved": True, "reason": "ok", "resolved_group_name": f"App-{app_name}-RenamedGroup"},
     )
     assert rep.status_code == 200
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     # Re-fetch instead of reusing `group_request` — mypy narrows `status` to
     # PENDING after the assert above and doesn't know refresh() mutates it.
-    approved_request = db.session.get(GroupRequest, group_request.id)
+    approved_request = await db.session.get(GroupRequest, group_request.id)
     assert approved_request is not None
     assert approved_request.status == AccessRequestStatus.APPROVED
-    created_group = db.session.get(OktaGroup, approved_request.approved_group_id)
+    created_group = await db.session.get(OktaGroup, approved_request.approved_group_id)
     assert created_group.name == f"App-{app_name}-RenamedGroup"
 
 
-def test_approve_group_request_notify_false_suppresses_completion(
+async def test_approve_group_request_notify_false_suppresses_completion(
     db: Db, user: OktaUser, mocker: MockerFixture
 ) -> None:
     """`notify=False` suppresses the group-request completion DM; still APPROVED."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Notify Gate Group",
         requested_group_description="d",
@@ -2582,23 +2622,27 @@ def test_approve_group_request_notify_false_suppresses_completion(
     assert group_request is not None
 
     mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group({"id": "00gNOTIFYGATEGRP001"}))
-    mocker.patch.object(okta, "async_add_owner_to_group")
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    mocker.patch.object(okta, "add_owner_to_group")
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     hook = get_notification_hook()
     completed_spy = mocker.patch.object(hook, "access_group_request_completed")
 
-    ApproveGroupRequest(group_request=group_request, approver_user=admin, notify=False).execute()
+    await ApproveGroupRequest(group_request=group_request, approver_user=admin, notify=False).execute()
 
-    assert db.session.get(GroupRequest, group_request.id).status == AccessRequestStatus.APPROVED
+    assert (await db.session.get(GroupRequest, group_request.id)).status == AccessRequestStatus.APPROVED
     assert completed_spy.call_count == 0
 
 
-def test_reject_group_request_notify_false_suppresses_completion(db: Db, user: OktaUser, mocker: MockerFixture) -> None:
+async def test_reject_group_request_notify_false_suppresses_completion(
+    db: Db, user: OktaUser, mocker: MockerFixture
+) -> None:
     """`notify=False` suppresses the group-request completion DM; still REJECTED."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Notify Gate Group",
         requested_group_description="d",
@@ -2607,11 +2651,13 @@ def test_reject_group_request_notify_false_suppresses_completion(db: Db, user: O
     ).execute()
     assert group_request is not None
 
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     hook = get_notification_hook()
     completed_spy = mocker.patch.object(hook, "access_group_request_completed")
 
-    RejectGroupRequest(group_request=group_request, current_user_id=admin, notify=False).execute()
+    await RejectGroupRequest(group_request=group_request, current_user_id=admin, notify=False).execute()
 
-    assert db.session.get(GroupRequest, group_request.id).status == AccessRequestStatus.REJECTED
+    assert (await db.session.get(GroupRequest, group_request.id)).status == AccessRequestStatus.REJECTED
     assert completed_spy.call_count == 0

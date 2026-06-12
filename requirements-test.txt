@@ -1,4 +1,5 @@
   pytest==9.0.3
+  pytest-asyncio==1.4.0
   pytest-runner==6.0.1
   pytest-factoryboy==2.8.1
   pytest-mock==3.14.0
