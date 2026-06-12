@@ -7,8 +7,16 @@ from sqlalchemy.orm import (
 
 from sqlalchemy import func, or_
 from api.extensions import db
-from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser, OktaUserGroupMember
-from api.operations import RejectAccessRequest
+from api.models import (
+    AccessRequest,
+    AccessRequestStatus,
+    GroupRequest,
+    OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleRequest,
+)
+from api.operations import RejectAccessRequest, RejectGroupRequest, RejectRoleRequest
 from api.services import okta
 
 
@@ -90,6 +98,38 @@ class DeleteUser:
         for obsolete_access_request in obsolete_access_requests:
             RejectAccessRequest(
                 access_request=obsolete_access_request,
+                rejection_reason="Closed because the requestor was deleted",
+                current_user_id=self.current_user_id,
+            ).execute()
+
+        # Reject pending role requests by the deleted user. ApproveRoleRequest
+        # doesn't guard on a deleted requester, so a surviving one would still
+        # grant the role access to the group after the requester is gone.
+        obsolete_role_requests = (
+            db.session.query(RoleRequest)
+            .filter(RoleRequest.requester_user_id == self.user.id)
+            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
+            .filter(RoleRequest.resolved_at.is_(None))
+            .all()
+        )
+        for obsolete_role_request in obsolete_role_requests:
+            RejectRoleRequest(
+                role_request=obsolete_role_request,
+                rejection_reason="Closed because the requestor was deleted",
+                current_user_id=self.current_user_id,
+            ).execute()
+
+        # Reject pending group requests by the deleted user, mirroring above.
+        obsolete_group_requests = (
+            db.session.query(GroupRequest)
+            .filter(GroupRequest.requester_user_id == self.user.id)
+            .filter(GroupRequest.status == AccessRequestStatus.PENDING)
+            .filter(GroupRequest.resolved_at.is_(None))
+            .all()
+        )
+        for obsolete_group_request in obsolete_group_requests:
+            RejectGroupRequest(
+                group_request=obsolete_group_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=self.current_user_id,
             ).execute()
