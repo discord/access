@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy import String, and_, cast, or_
+from sqlalchemy import String, and_, cast, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
@@ -46,17 +46,17 @@ def list_group_requests(
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
-    query = db.query(GroupRequest).options(*_load_options()).order_by(GroupRequest.created_at.desc())
+    stmt = select(GroupRequest).options(*_load_options()).order_by(GroupRequest.created_at.desc())
 
     if q_args.status:
-        query = query.filter(GroupRequest.status == q_args.status)
+        stmt = stmt.where(GroupRequest.status == q_args.status)
 
     if q_args.requester_user_id:
         if q_args.requester_user_id == "@me":
-            query = query.filter(GroupRequest.requester_user_id == current_user_id)
+            stmt = stmt.where(GroupRequest.requester_user_id == current_user_id)
         else:
             requester_alias = aliased(OktaUser)
-            query = query.join(GroupRequest.requester.of_type(requester_alias)).filter(
+            stmt = stmt.join(GroupRequest.requester.of_type(requester_alias)).where(
                 or_(
                     GroupRequest.requester_user_id == q_args.requester_user_id,
                     requester_alias.email.ilike(q_args.requester_user_id),
@@ -64,47 +64,45 @@ def list_group_requests(
             )
 
     if q_args.requested_group_type:
-        query = query.filter(GroupRequest.requested_group_type == q_args.requested_group_type)
+        stmt = stmt.where(GroupRequest.requested_group_type == q_args.requested_group_type)
 
     if q_args.requested_app_id:
-        query = query.filter(GroupRequest.requested_app_id == q_args.requested_app_id)
+        stmt = stmt.where(GroupRequest.requested_app_id == q_args.requested_app_id)
 
     if q_args.assignee_user_id:
         # "Requests I can resolve". Admins see every pending request; app
         # owners see app-group requests for apps they own. In both cases the
         # assignee's own requests are stripped out.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
-        assignee_user = (
-            db.query(OktaUser)
-            .filter(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
-            .first()
-        )
+        assignee_user = db.scalars(
+            select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+        ).first()
         if assignee_user is not None:
             if not is_access_admin(db, assignee_user.id):
                 owned_app_ids: list[str] = []
-                for app in db.query(App).filter(App.deleted_at.is_(None)).all():
+                for app in db.scalars(select(App).where(App.deleted_at.is_(None))).all():
                     manager_ids = [m.id for m in get_app_managers(app.id)]
                     if assignee_user.id in manager_ids:
                         owned_app_ids.append(app.id)
                 if owned_app_ids:
-                    query = query.filter(
+                    stmt = stmt.where(
                         and_(
                             GroupRequest.requested_app_id.in_(owned_app_ids),
                             GroupRequest.requested_group_type == "app_group",
                         )
                     )
                 else:
-                    query = query.filter(False)
-            query = query.filter(GroupRequest.requester_user_id != assignee_user.id)
+                    stmt = stmt.where(False)
+            stmt = stmt.where(GroupRequest.requester_user_id != assignee_user.id)
         else:
-            query = query.filter(False)
+            stmt = stmt.where(False)
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":
-            query = query.filter(GroupRequest.resolver_user_id == current_user_id)
+            stmt = stmt.where(GroupRequest.resolver_user_id == current_user_id)
         else:
             resolver_alias = aliased(OktaUser)
-            query = query.outerjoin(GroupRequest.resolver.of_type(resolver_alias)).filter(
+            stmt = stmt.outerjoin(GroupRequest.resolver.of_type(resolver_alias)).where(
                 or_(
                     GroupRequest.resolver_user_id == q_args.resolver_user_id,
                     resolver_alias.email.ilike(q_args.resolver_user_id),
@@ -117,10 +115,10 @@ def list_group_requests(
         like = f"%{q_args.q}%"
         q_requester_alias = aliased(OktaUser)
         q_resolver_alias = aliased(OktaUser)
-        query = (
-            query.join(GroupRequest.requester.of_type(q_requester_alias))
+        stmt = (
+            stmt.join(GroupRequest.requester.of_type(q_requester_alias))
             .outerjoin(GroupRequest.resolver.of_type(q_resolver_alias))
-            .filter(
+            .where(
                 or_(
                     GroupRequest.id.like(f"{q_args.q}%"),
                     cast(GroupRequest.status, String).ilike(like),
@@ -144,12 +142,12 @@ def list_group_requests(
             )
         )
 
-    return paginate(db, query, transformer=validated(GroupRequestDetail))
+    return paginate(db, stmt, transformer=validated(GroupRequestDetail))
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")
 def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupRequestDetail:
-    gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
+    gr = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
     return GroupRequestDetail.model_validate(gr, from_attributes=True)
@@ -163,7 +161,9 @@ def post_group_request(
 ) -> GroupRequestDetail:
     # Soft-deleted requesters cannot create new requests; Flask returned 403
     # here, not 404.
-    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
+    requester = db.scalars(
+        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+    ).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
@@ -173,29 +173,31 @@ def post_group_request(
     if body.requested_group_type == "app_group":
         if requested_app_id is None:
             raise HTTPException(400, "app_id is required for app group requests")
-        app = db.query(App).filter(App.deleted_at.is_(None)).filter(App.id == requested_app_id).first()
+        app = db.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == requested_app_id)).first()
         if app is None:
             raise HTTPException(404, "App not found")
 
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
-        tags = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(body.requested_group_tags)).all()
+        tags = db.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(body.requested_group_tags))
+        ).all()
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
 
     # Auto-cancel any prior PENDING request from the same user for the same
     # group name (and same app, for app-group requests). Without this a user
     # clicking "Request" twice produces multiple PENDING rows.
-    existing_query = (
-        db.query(GroupRequest)
-        .filter(GroupRequest.requested_group_name == body.requested_group_name)
-        .filter(GroupRequest.requester_user_id == current_user_id)
-        .filter(GroupRequest.status == AccessRequestStatus.PENDING)
-        .filter(GroupRequest.resolved_at.is_(None))
+    existing_stmt = (
+        select(GroupRequest)
+        .where(GroupRequest.requested_group_name == body.requested_group_name)
+        .where(GroupRequest.requester_user_id == current_user_id)
+        .where(GroupRequest.status == AccessRequestStatus.PENDING)
+        .where(GroupRequest.resolved_at.is_(None))
     )
     if body.requested_group_type == "app_group":
-        existing_query = existing_query.filter(GroupRequest.requested_app_id == requested_app_id)
-    for prior in existing_query.all():
+        existing_stmt = existing_stmt.where(GroupRequest.requested_app_id == requested_app_id)
+    for prior in db.scalars(existing_stmt).all():
         RejectGroupRequest(
             group_request=prior,
             rejection_reason="Closed due to duplicate group request creation",
@@ -215,7 +217,7 @@ def post_group_request(
     ).execute()
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
-    refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == gr.id).first()
+    refreshed = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr.id)).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
 
 
@@ -229,7 +231,7 @@ def put_group_request(
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
-    gr = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
+    gr = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
 
@@ -288,5 +290,7 @@ def put_group_request(
             rejection_reason=resolution_reason,
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = db.query(GroupRequest).options(*_load_options()).filter(GroupRequest.id == group_request_id).first()
+    refreshed = db.scalars(
+        select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)
+    ).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)

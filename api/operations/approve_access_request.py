@@ -4,6 +4,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
@@ -31,13 +32,12 @@ class ApproveAccessRequest:
         # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
         # joinedload's nullable outer-join side (Postgres rejects that); it's
         # a no-op on SQLite.
-        self.access_request = (
-            db.session.query(AccessRequest)
+        self.access_request = db.session.scalars(
+            select(AccessRequest)
             .options(joinedload(AccessRequest.active_requested_group))
-            .filter(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
+            .where(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
             .with_for_update(of=AccessRequest)
-            .first()
-        )
+        ).first()
 
         if approver_user is None:
             self.approver_id = None
@@ -98,13 +98,12 @@ class ApproveAccessRequest:
         # self.access_request.approval_ending_at = self.ending_at
 
         # Audit logging
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.access_request.requested_group_id)
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.access_request.requested_group_id)
+        ).first()
 
         _ctx = get_request_context()
 

@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
-from sqlalchemy import func, nullsfirst, or_
+from sqlalchemy import func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
@@ -90,13 +90,12 @@ _group_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
 def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
-    return (
-        db.query(OktaGroup)
+    return db.scalars(
+        select(OktaGroup)
         .options(*DEFAULT_LOAD_OPTIONS)
-        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
-        .first()
-    )
+    ).first()
 
 
 @router.get("", name="groups")
@@ -106,8 +105,8 @@ def list_groups(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchGroupQuery, Query()],
 ) -> Page[GroupSummary]:
-    query = (
-        db.query(OktaGroup)
+    stmt = (
+        select(OktaGroup)
         .options(
             selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
             selectinload(OktaGroup.active_group_tags).options(*group_tag_map_options()),
@@ -117,16 +116,16 @@ def list_groups(
             selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
             joinedload(AppGroup.app),
         )
-        .filter(OktaGroup.deleted_at.is_(None))
+        .where(OktaGroup.deleted_at.is_(None))
         .order_by(func.lower(OktaGroup.name))
     )
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
+        stmt = stmt.where(or_(OktaGroup.name.ilike(like), OktaGroup.description.ilike(like)))
     if q_args.managed is not None:
-        query = query.filter(OktaGroup.is_managed == q_args.managed)
+        stmt = stmt.where(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(db, query, transformer=validated(GroupSummary))
+    return paginate(db, stmt, transformer=validated(GroupSummary))
 
 
 @router.get("/{group_id}", name="group_by_id")
@@ -166,12 +165,11 @@ def post_group(
     ):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
-    existing = (
-        db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .filter(func.lower(OktaGroup.name) == func.lower(group.name))
-        .filter(OktaGroup.deleted_at.is_(None))
-        .first()
-    )
+    existing = db.scalars(
+        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+        .where(func.lower(OktaGroup.name) == func.lower(group.name))
+        .where(OktaGroup.deleted_at.is_(None))
+    ).first()
     if existing is not None:
         raise HTTPException(400, "Group already exists with the same name")
 
@@ -263,7 +261,7 @@ def put_group(
     ):
         from api.models import App
 
-        target_app = db.query(App).filter(App.id == body.app_id).filter(App.deleted_at.is_(None)).first()
+        target_app = db.scalars(select(App).where(App.id == body.app_id).where(App.deleted_at.is_(None))).first()
         if target_app is None:
             raise HTTPException(404, "Not Found")
         if not (
@@ -406,28 +404,26 @@ def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUse
 
 @router.get("/{group_id}/members", name="group_members_by_id")
 def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupMembersSummary:
-    group = (
-        db.query(OktaGroup)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
-        .first()
-    )
+    group = db.scalars(
+        select(OktaGroup)
+        .where(OktaGroup.deleted_at.is_(None))
+        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+    ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
 
-    base_query = (
-        db.query(OktaUserGroupMember)
-        .with_entities(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
-        .filter(
+    base_stmt = (
+        select(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
+        .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > func.now(),
             )
         )
-        .filter(OktaUserGroupMember.group_id == group.id)
+        .where(OktaUserGroupMember.group_id == group.id)
         .group_by(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
     )
-    rows = base_query.all()
+    rows = db.execute(base_stmt).all()
     return GroupMembersSummary(
         members=[r.user_id for r in rows if not r.is_owner],
         owners=[r.user_id for r in rows if r.is_owner],
@@ -441,12 +437,11 @@ def put_group_members(
     current_user_id: CurrentUserId,
     body: GroupMember | None = None,
 ) -> GroupMembersSummary:
-    group = (
-        db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
-        .first()
-    )
+    group = db.scalars(
+        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+        .where(OktaGroup.deleted_at.is_(None))
+        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+    ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
     # Body is `Optional` so the missing-group 404 above fires even when the

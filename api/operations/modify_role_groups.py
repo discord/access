@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 import logging
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select, update
 from api.context import get_request_context
 from sqlalchemy.orm import selectinload
 
@@ -47,12 +47,9 @@ class ModifyRoleGroups:
         notify: bool = True,
     ):
         if isinstance(role_group, str):
-            self.role = (
-                db.session.query(RoleGroup)
-                .filter(RoleGroup.deleted_at.is_(None))
-                .filter(RoleGroup.id == role_group)
-                .first()
-            )
+            self.role = db.session.scalars(
+                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == role_group)
+            ).first()
         else:
             self.role = role_group
 
@@ -60,74 +57,65 @@ class ModifyRoleGroups:
 
         self.groups_to_add = []
         if len(groups_to_add) > 0:
-            self.groups_to_add = (
-                db.session.query(OktaGroup)
+            self.groups_to_add = db.session.scalars(
+                select(OktaGroup)
                 .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                .filter(OktaGroup.id.in_(groups_to_add))
-                .filter(OktaGroup.is_managed.is_(True))
-                .filter(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id.in_(groups_to_add))
+                .where(OktaGroup.is_managed.is_(True))
+                .where(OktaGroup.deleted_at.is_(None))
                 # Don't allow Roles to be added as Groups to Roles
-                .filter(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
-                .all()
-            )
+                .where(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
+            ).all()
         self.owner_groups_to_add = []
         if len(owner_groups_to_add) > 0:
-            self.owner_groups_to_add = (
-                db.session.query(OktaGroup)
+            self.owner_groups_to_add = db.session.scalars(
+                select(OktaGroup)
                 .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                .filter(OktaGroup.id.in_(owner_groups_to_add))
-                .filter(OktaGroup.is_managed.is_(True))
-                .filter(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id.in_(owner_groups_to_add))
+                .where(OktaGroup.is_managed.is_(True))
+                .where(OktaGroup.deleted_at.is_(None))
                 # Don't allow Roles to be added as Groups to Roles
-                .filter(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
-                .all()
-            )
+                .where(OktaGroup.type != RoleGroup.__mapper_args__["polymorphic_identity"])
+            ).all()
 
         self.groups_should_expire = []
         if len(groups_should_expire) > 0:
-            self.groups_should_expire = (
-                db.session.query(RoleGroupMap)
-                .filter(RoleGroupMap.id.in_(groups_should_expire))
-                .filter(RoleGroupMap.role_group_id == self.role.id)
-                .filter(RoleGroupMap.ended_at > func.now())
-                .filter(RoleGroupMap.is_owner.is_(False))
+            self.groups_should_expire = db.session.scalars(
+                select(RoleGroupMap)
+                .where(RoleGroupMap.id.in_(groups_should_expire))
+                .where(RoleGroupMap.role_group_id == self.role.id)
+                .where(RoleGroupMap.ended_at > func.now())
+                .where(RoleGroupMap.is_owner.is_(False))
             ).all()
 
         self.owner_groups_should_expire = []
         if len(owner_groups_should_expire) > 0:
-            self.owner_groups_should_expire = (
-                db.session.query(RoleGroupMap)
-                .filter(RoleGroupMap.id.in_(owner_groups_should_expire))
-                .filter(RoleGroupMap.role_group_id == self.role.id)
-                .filter(RoleGroupMap.ended_at > func.now())
-                .filter(RoleGroupMap.is_owner.is_(True))
+            self.owner_groups_should_expire = db.session.scalars(
+                select(RoleGroupMap)
+                .where(RoleGroupMap.id.in_(owner_groups_should_expire))
+                .where(RoleGroupMap.role_group_id == self.role.id)
+                .where(RoleGroupMap.ended_at > func.now())
+                .where(RoleGroupMap.is_owner.is_(True))
             ).all()
 
         self.groups_to_remove = []
         if len(groups_to_remove) > 0:
-            self.groups_to_remove = (
-                db.session.query(OktaGroup)
-                .filter(OktaGroup.id.in_(groups_to_remove))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .all()
-            )
+            self.groups_to_remove = db.session.scalars(
+                select(OktaGroup).where(OktaGroup.id.in_(groups_to_remove)).where(OktaGroup.deleted_at.is_(None))
+            ).all()
 
         self.owner_groups_to_remove = []
         if len(owner_groups_to_remove) > 0:
-            self.owner_groups_to_remove = (
-                db.session.query(OktaGroup)
-                .filter(OktaGroup.id.in_(owner_groups_to_remove))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .all()
-            )
+            self.owner_groups_to_remove = db.session.scalars(
+                select(OktaGroup).where(OktaGroup.id.in_(owner_groups_to_remove)).where(OktaGroup.deleted_at.is_(None))
+            ).all()
 
         self.sync_to_okta = sync_to_okta
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
@@ -220,43 +208,41 @@ class ModifyRoleGroups:
             # combination before removing role, there can be multiple role groups
             # which allow group access for this user
 
-            active_role_members = (
-                db.session.query(OktaUserGroupMember)
-                .filter(
+            active_role_members = db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .filter(OktaUserGroupMember.group_id == self.role.id)
-                .filter(OktaUserGroupMember.is_owner.is_(False))
-            )
+                .where(OktaUserGroupMember.group_id == self.role.id)
+                .where(OktaUserGroupMember.is_owner.is_(False))
+            ).all()
 
             role_members_to_remove_ids = [m.user_id for m in active_role_members]
             groups_to_remove_ids = [m.id for m in self.groups_to_remove]
             owner_groups_to_remove_ids = [m.id for m in self.owner_groups_to_remove]
-            removed_role_group_users_with_other_access = (
-                db.session.query(OktaUserGroupMember)
-                .with_entities(
+            removed_role_group_users_with_other_access = db.session.execute(
+                select(
                     OktaUserGroupMember.user_id,
                     OktaUserGroupMember.group_id,
                     OktaUserGroupMember.is_owner,
                 )
-                .filter(
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .filter(OktaUserGroupMember.user_id.in_(role_members_to_remove_ids))
-                .filter(OktaUserGroupMember.group_id.in_(groups_to_remove_ids + owner_groups_to_remove_ids))
+                .where(OktaUserGroupMember.user_id.in_(role_members_to_remove_ids))
+                .where(OktaUserGroupMember.group_id.in_(groups_to_remove_ids + owner_groups_to_remove_ids))
                 .group_by(
                     OktaUserGroupMember.user_id,
                     OktaUserGroupMember.group_id,
                     OktaUserGroupMember.is_owner,
                 )
-                .all()
-            )
+            ).all()
 
             for group_id in groups_to_remove_ids:
                 removed_members_with_other_access_ids = [
@@ -273,12 +259,11 @@ class ModifyRoleGroups:
                     group = db.session.get(OktaGroup, group_id)
                     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                     if plugin_id is not None:
-                        members_losing_access = (
-                            db.session.query(OktaUser)
-                            .filter(OktaUser.id.in_(okta_members_to_remove_ids))
-                            .filter(OktaUser.deleted_at.is_(None))
-                            .all()
-                        )
+                        members_losing_access = db.session.scalars(
+                            select(OktaUser)
+                            .where(OktaUser.id.in_(okta_members_to_remove_ids))
+                            .where(OktaUser.deleted_at.is_(None))
+                        ).all()
                         try:
                             hook = get_app_group_lifecycle_hook()
                             hook.group_members_removed(
@@ -315,17 +300,19 @@ class ModifyRoleGroups:
         # Only relevant for the expiring roles page so not adding checks for this field anywhere else since OK if marked to expire
         # then manually renewed from group/role page or with an access request
         if len(self.groups_should_expire) > 0:
-            db.session.query(RoleGroupMap).filter(RoleGroupMap.id.in_(m.id for m in self.groups_should_expire)).update(
-                {RoleGroupMap.should_expire: True},
-                synchronize_session="fetch",
+            db.session.execute(
+                update(RoleGroupMap)
+                .where(RoleGroupMap.id.in_(m.id for m in self.groups_should_expire))
+                .values({RoleGroupMap.should_expire: True})
+                .execution_options(synchronize_session="fetch")
             )
 
         if len(self.owner_groups_should_expire) > 0:
-            db.session.query(RoleGroupMap).filter(
-                RoleGroupMap.id.in_(m.id for m in self.owner_groups_should_expire)
-            ).update(
-                {RoleGroupMap.should_expire: True},
-                synchronize_session="fetch",
+            db.session.execute(
+                update(RoleGroupMap)
+                .where(RoleGroupMap.id.in_(m.id for m in self.owner_groups_should_expire))
+                .values({RoleGroupMap.should_expire: True})
+                .execution_options(synchronize_session="fetch")
             )
 
         # Commit all changes so far
@@ -382,35 +369,32 @@ class ModifyRoleGroups:
 
             # Group members of a role should be added as members to all newly added groups
             # and owner groups associated with that role
-            active_role_memberships = (
-                db.session.query(OktaUserGroupMember)
-                .filter(
+            active_role_memberships = db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .filter(OktaUserGroupMember.group_id == self.role.id)
-                .filter(OktaUserGroupMember.is_owner.is_(False))
-                .all()
-            )
+                .where(OktaUserGroupMember.group_id == self.role.id)
+                .where(OktaUserGroupMember.is_owner.is_(False))
+            ).all()
             group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_memberships_added.values():
                 group_memberships_added[role_associated_group_map.group_id] = role_associated_membership_added = {}
 
                 # Check which members being added currently have NO active memberships (to track first-time access)
                 members_to_add_ids = [m.user_id for m in active_role_memberships]
-                existing_members_with_access = (
-                    db.session.query(OktaUserGroupMember)
-                    .with_entities(OktaUserGroupMember.user_id)
-                    .filter(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
-                    .filter(OktaUserGroupMember.group_id == role_associated_group_map.group_id)
-                    .filter(OktaUserGroupMember.user_id.in_(members_to_add_ids))
-                    .filter(OktaUserGroupMember.is_owner.is_(False))
+                existing_members_with_access = db.session.scalars(
+                    select(OktaUserGroupMember.user_id)
+                    .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
+                    .where(OktaUserGroupMember.group_id == role_associated_group_map.group_id)
+                    .where(OktaUserGroupMember.user_id.in_(members_to_add_ids))
+                    .where(OktaUserGroupMember.is_owner.is_(False))
                     .group_by(OktaUserGroupMember.user_id)
-                    .all()
-                )
-                existing_member_ids = {m.user_id for m in existing_members_with_access}
+                ).all()
+                existing_member_ids = set(existing_members_with_access)
                 members_gaining_access_ids = set(members_to_add_ids) - existing_member_ids
 
                 # Invoke app group lifecycle plugin hooks for added members
@@ -418,12 +402,11 @@ class ModifyRoleGroups:
                     group = role_associated_group_map.active_group
                     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                     if plugin_id is not None:
-                        members_gaining_access = (
-                            db.session.query(OktaUser)
-                            .filter(OktaUser.id.in_(members_gaining_access_ids))
-                            .filter(OktaUser.deleted_at.is_(None))
-                            .all()
-                        )
+                        members_gaining_access = db.session.scalars(
+                            select(OktaUser)
+                            .where(OktaUser.id.in_(members_gaining_access_ids))
+                            .where(OktaUser.deleted_at.is_(None))
+                        ).all()
                         try:
                             hook = get_app_group_lifecycle_hook()
                             hook.group_members_added(
@@ -509,19 +492,18 @@ class ModifyRoleGroups:
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (
-                db.session.query(AccessRequest)
-                .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-                .filter(AccessRequest.resolved_at.is_(None))
+                select(AccessRequest)
+                .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                .where(AccessRequest.resolved_at.is_(None))
             )
             active_role_membership_ids = [m.user_id for m in active_role_memberships]
 
             # Find all pending membership requests to approve for groups added as members via this role
-            pending_member_requests = (
-                pending_requests_query.filter(AccessRequest.requested_group_id.in_(group_memberships_added.keys()))
-                .filter(AccessRequest.requester_user_id.in_(active_role_membership_ids))
-                .filter(AccessRequest.request_ownership.is_(False))
-                .all()
-            )
+            pending_member_requests = db.session.scalars(
+                pending_requests_query.where(AccessRequest.requested_group_id.in_(group_memberships_added.keys()))
+                .where(AccessRequest.requester_user_id.in_(active_role_membership_ids))
+                .where(AccessRequest.request_ownership.is_(False))
+            ).all()
             for access_request in pending_member_requests:
                 async_tasks.append(
                     self._approve_access_request(
@@ -531,12 +513,11 @@ class ModifyRoleGroups:
                 )
 
             # Find all pending ownership requests to approve for groups added as owners via this role
-            pending_role_associated_owner_requests = (
-                pending_requests_query.filter(AccessRequest.requested_group_id.in_(group_ownerships_added.keys()))
-                .filter(AccessRequest.requester_user_id.in_(active_role_membership_ids))
-                .filter(AccessRequest.request_ownership.is_(True))
-                .all()
-            )
+            pending_role_associated_owner_requests = db.session.scalars(
+                pending_requests_query.where(AccessRequest.requested_group_id.in_(group_ownerships_added.keys()))
+                .where(AccessRequest.requester_user_id.in_(active_role_membership_ids))
+                .where(AccessRequest.request_ownership.is_(True))
+            ).all()
             for access_request in pending_role_associated_owner_requests:
                 async_tasks.append(
                     self._approve_access_request(
@@ -547,18 +528,18 @@ class ModifyRoleGroups:
 
             # Approve any pending role requests for memberships granted by this operation
             pending_role_requests_query = (
-                db.session.query(RoleRequest)
-                .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-                .filter(RoleRequest.resolved_at.is_(None))
-                .filter(RoleRequest.requester_role == self.role)
+                select(RoleRequest)
+                .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                .where(RoleRequest.resolved_at.is_(None))
+                .where(RoleRequest.requester_role == self.role)
             )
 
             added_group_ids = [group.id for group in self.groups_to_add]
-            pending_role_memberships = (
-                pending_role_requests_query.filter(RoleRequest.request_ownership.is_(False))
-                .filter(RoleRequest.requested_group_id.in_(added_group_ids))
-                .all()
-            )
+            pending_role_memberships = db.session.scalars(
+                pending_role_requests_query.where(RoleRequest.request_ownership.is_(False)).where(
+                    RoleRequest.requested_group_id.in_(added_group_ids)
+                )
+            ).all()
             for role_request in pending_role_memberships:
                 async_tasks.append(
                     self._approve_role_request(role_request, role_memberships_added[role_request.requested_group_id])
@@ -566,11 +547,11 @@ class ModifyRoleGroups:
 
             # Approve any pending role requests for ownerships granted by this operation
             added_owner_group_ids = [group.id for group in self.owner_groups_to_add]
-            pending_role_ownerships = (
-                pending_role_requests_query.filter(RoleRequest.request_ownership.is_(True))
-                .filter(RoleRequest.requested_group_id.in_(added_owner_group_ids))
-                .all()
-            )
+            pending_role_ownerships = db.session.scalars(
+                pending_role_requests_query.where(RoleRequest.request_ownership.is_(True)).where(
+                    RoleRequest.requested_group_id.in_(added_owner_group_ids)
+                )
+            ).all()
             for role_request in pending_role_ownerships:
                 async_tasks.append(
                     self._approve_role_request(role_request, role_ownerships_added[role_request.requested_group_id])
@@ -591,39 +572,44 @@ class ModifyRoleGroups:
             return
 
         # Role user members should be removed from any groups associated with that role being removed
-        old_role_associated_groups_mappings = (
-            db.session.query(RoleGroupMap)
-            .filter(
+        old_role_associated_groups_mappings = db.session.scalars(
+            select(RoleGroupMap)
+            .where(
                 or_(
                     RoleGroupMap.ended_at.is_(None),
                     RoleGroupMap.ended_at > func.now(),
                 )
             )
-            .filter(RoleGroupMap.role_group_id == self.role.id)
-            .filter(RoleGroupMap.group_id.in_([g.id for g in groups_to_remove]))
-            .filter(RoleGroupMap.is_owner == owner_groups)
-            .all()
-        )
+            .where(RoleGroupMap.role_group_id == self.role.id)
+            .where(RoleGroupMap.group_id.in_([g.id for g in groups_to_remove]))
+            .where(RoleGroupMap.is_owner == owner_groups)
+        ).all()
 
         # End group memberships via role
-        db.session.query(OktaUserGroupMember).filter(
-            or_(
-                OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > func.now(),
+        db.session.execute(
+            update(OktaUserGroupMember)
+            .where(
+                or_(
+                    OktaUserGroupMember.ended_at.is_(None),
+                    OktaUserGroupMember.ended_at > func.now(),
+                )
             )
-        ).filter(OktaUserGroupMember.role_group_map_id.in_([m.id for m in old_role_associated_groups_mappings])).update(
-            {OktaUserGroupMember.ended_at: func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id},
-            synchronize_session="fetch",
+            .where(OktaUserGroupMember.role_group_map_id.in_([m.id for m in old_role_associated_groups_mappings]))
+            .values(
+                {OktaUserGroupMember.ended_at: func.now(), OktaUserGroupMember.ended_actor_id: self.current_user_id}
+            )
+            .execution_options(synchronize_session="fetch")
         )
 
         # End mappings of role associated group to role
-        db.session.query(RoleGroupMap).filter(
-            or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now())
-        ).filter(RoleGroupMap.role_group_id == self.role.id).filter(
-            RoleGroupMap.group_id.in_([g.id for g in groups_to_remove])
-        ).filter(RoleGroupMap.is_owner == owner_groups).update(
-            {RoleGroupMap.ended_at: func.now(), RoleGroupMap.ended_actor_id: self.current_user_id},
-            synchronize_session="fetch",
+        db.session.execute(
+            update(RoleGroupMap)
+            .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+            .where(RoleGroupMap.role_group_id == self.role.id)
+            .where(RoleGroupMap.group_id.in_([g.id for g in groups_to_remove]))
+            .where(RoleGroupMap.is_owner == owner_groups)
+            .values({RoleGroupMap.ended_at: func.now(), RoleGroupMap.ended_actor_id: self.current_user_id})
+            .execution_options(synchronize_session="fetch")
         )
 
     def _approve_access_request(

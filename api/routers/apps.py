@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -67,22 +67,21 @@ def list_apps(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchAppQuery, Query()],
 ) -> Page[AppSummary]:
-    query = db.query(App).filter(App.deleted_at.is_(None)).order_by(func.lower(App.name))
+    stmt = select(App).where(App.deleted_at.is_(None)).order_by(func.lower(App.name))
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(db, query, transformer=validated(AppSummary))
+        stmt = stmt.where(or_(App.name.ilike(like), App.description.ilike(like)))
+    return paginate(db, stmt, transformer=validated(AppSummary))
 
 
 @router.get("/{app_id}", name="app_by_id")
 def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDetail:
-    app = (
-        db.query(App)
+    app = db.scalars(
+        select(App)
         .options(*APP_LOAD_OPTIONS)
-        .filter(App.deleted_at.is_(None))
-        .filter(or_(App.id == app_id, App.name == app_id))
-        .first()
-    )
+        .where(App.deleted_at.is_(None))
+        .where(or_(App.id == app_id, App.name == app_id))
+    ).first()
     if app is None:
         raise HTTPException(404, "Not Found")
     return AppDetail.model_validate(app, from_attributes=True)
@@ -100,9 +99,9 @@ def post_app(
     description = body.description if body.description is not None else ""
 
     # Reject duplicates by name.
-    existing = (
-        db.query(App).filter(func.lower(App.name) == func.lower(body.name)).filter(App.deleted_at.is_(None)).first()
-    )
+    existing = db.scalars(
+        select(App).where(func.lower(App.name) == func.lower(body.name)).where(App.deleted_at.is_(None))
+    ).first()
     if existing is not None:
         raise HTTPException(400, "App already exists with the same name")
 
@@ -111,17 +110,16 @@ def post_app(
     if db.get(OktaUser, current_user_id) is not None:
         owner_id = current_user_id
     if body.initial_owner_id is not None:
-        owner = (
-            db.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(
+        owner = db.scalars(
+            select(OktaUser)
+            .where(OktaUser.deleted_at.is_(None))
+            .where(
                 or_(
                     OktaUser.id == body.initial_owner_id,
                     OktaUser.email.ilike(body.initial_owner_id),
                 )
             )
-            .first()
-        )
+        ).first()
         if owner is None:
             raise HTTPException(400, "Given App initial_owner_id is not a valid user")
         owner_id = owner.id
@@ -131,12 +129,9 @@ def post_app(
 
     owner_role_ids: list[str] = []
     if body.initial_owner_role_ids is not None:
-        roles = (
-            db.query(RoleGroup)
-            .filter(RoleGroup.id.in_(body.initial_owner_role_ids))
-            .filter(RoleGroup.deleted_at.is_(None))
-            .all()
-        )
+        roles = db.scalars(
+            select(RoleGroup).where(RoleGroup.id.in_(body.initial_owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+        ).all()
         owner_role_ids = [r.id for r in roles]
         if len(owner_role_ids) != len(body.initial_owner_role_ids):
             raise HTTPException(400, "Given App initial_owner_role_ids contains invalid role ids")
@@ -153,13 +148,12 @@ def post_app(
     from sqlalchemy.orm import with_polymorphic
 
     poly_group = with_polymorphic(OktaGroup, [_AppGroup, RoleGroup])
-    existing_owner_group = (
-        db.query(poly_group)
+    existing_owner_group = db.scalars(
+        select(poly_group)
         .options(selectinload(poly_group.active_user_ownerships))
-        .filter(func.lower(OktaGroup.name) == func.lower(owner_group_name))
-        .filter(OktaGroup.deleted_at.is_(None))
-        .first()
-    )
+        .where(func.lower(OktaGroup.name) == func.lower(owner_group_name))
+        .where(OktaGroup.deleted_at.is_(None))
+    ).first()
     if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
         raise HTTPException(
             409,
@@ -181,7 +175,7 @@ def post_app(
         tags=body.tags_to_add or [],
         current_user_id=current_user_id,
     ).execute()
-    refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == created.id).first()
+    refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created.id)).first()
     return AppDetail.model_validate(refreshed, from_attributes=True)
 
 
@@ -240,9 +234,9 @@ def put_app(
     # Reject duplicate name on rename
     new_name = body.name
     if new_name and new_name.lower() != app_obj.name.lower():
-        existing = (
-            db.query(App).filter(func.lower(App.name) == func.lower(new_name)).filter(App.deleted_at.is_(None)).first()
-        )
+        existing = db.scalars(
+            select(App).where(func.lower(App.name) == func.lower(new_name)).where(App.deleted_at.is_(None))
+        ).first()
         if existing is not None:
             raise HTTPException(400, "App already exists with the same name")
 
@@ -263,7 +257,7 @@ def put_app(
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
+            refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
             return AppDetail.model_validate(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
@@ -288,7 +282,7 @@ def put_app(
     if app_obj.name != old_app_name:
         old_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         new_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-        app_groups = db.query(_AppGroup).filter(_AppGroup.app_id == app_obj.id).all()
+        app_groups = db.scalars(select(_AppGroup).where(_AppGroup.app_id == app_obj.id)).all()
         for ag in app_groups:
             if ag.name.startswith(old_prefix):
                 suffix = ag.name[len(old_prefix) :]
@@ -307,7 +301,7 @@ def put_app(
         current_user_id=current_user_id,
     ).execute()
 
-    refreshed = db.query(App).options(*APP_LOAD_OPTIONS).filter(App.id == app_obj.id).first()
+    refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
 
     # Audit logging — both name renames and plugin assignment/configuration
     # changes.

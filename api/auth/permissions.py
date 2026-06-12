@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from api.auth.dependencies import CurrentUserId
@@ -21,20 +21,19 @@ from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember
 
 
 def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
-    return (
-        db.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == group.id)
-        .filter(OktaUserGroupMember.user_id == current_user_id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(
+    stmt = (
+        select(OktaUserGroupMember)
+        .where(OktaUserGroupMember.group_id == group.id)
+        .where(OktaUserGroupMember.user_id == current_user_id)
+        .where(OktaUserGroupMember.is_owner.is_(True))
+        .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > func.now(),
             )
         )
-        .count()
-        > 0
     )
+    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
 def is_app_owner_group_owner(
@@ -51,55 +50,52 @@ def is_app_owner_group_owner(
     else:
         return False
 
-    owner_app_groups = (
-        db.query(AppGroup)
-        .filter(OktaGroup.deleted_at.is_(None))
-        .filter(AppGroup.app_id == app_id)
-        .filter(AppGroup.is_owner.is_(True))
+    owner_app_groups_stmt = (
+        select(AppGroup)
+        .where(OktaGroup.deleted_at.is_(None))
+        .where(AppGroup.app_id == app_id)
+        .where(AppGroup.is_owner.is_(True))
     )
-    if owner_app_groups.count() == 0:
+    if (db.scalar(select(func.count()).select_from(owner_app_groups_stmt.subquery())) or 0) == 0:
         return False
 
-    return (
-        db.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups]))
-        .filter(OktaUserGroupMember.user_id == current_user_id)
-        .filter(OktaUserGroupMember.is_owner.is_(True))
-        .filter(
+    stmt = (
+        select(OktaUserGroupMember)
+        .where(OktaUserGroupMember.group_id.in_([ag.id for ag in db.scalars(owner_app_groups_stmt)]))
+        .where(OktaUserGroupMember.user_id == current_user_id)
+        .where(OktaUserGroupMember.is_owner.is_(True))
+        .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > func.now(),
             )
         )
-        .count()
-        > 0
     )
+    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
 def is_access_admin(db: Session, current_user_id: str) -> bool:
-    access_app = (
-        db.query(App)
+    access_app = db.scalars(
+        select(App)
         .options(selectinload(App.active_owner_app_groups))
-        .filter(App.deleted_at.is_(None))
-        .filter(App.name == App.ACCESS_APP_RESERVED_NAME)
-        .first()
-    )
+        .where(App.deleted_at.is_(None))
+        .where(App.name == App.ACCESS_APP_RESERVED_NAME)
+    ).first()
     if access_app is None or len(access_app.active_owner_app_groups) == 0:
         return False
-    return (
-        db.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id.in_([ag.id for ag in access_app.active_owner_app_groups]))
-        .filter(OktaUserGroupMember.user_id == current_user_id)
-        .filter(OktaUserGroupMember.is_owner.is_(False))
-        .filter(
+    stmt = (
+        select(OktaUserGroupMember)
+        .where(OktaUserGroupMember.group_id.in_([ag.id for ag in access_app.active_owner_app_groups]))
+        .where(OktaUserGroupMember.user_id == current_user_id)
+        .where(OktaUserGroupMember.is_owner.is_(False))
+        .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > func.now(),
             )
         )
-        .count()
-        > 0
     )
+    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
 def can_manage_group(db: Session, current_user_id: str, group: OktaGroup) -> bool:
@@ -146,7 +142,9 @@ def require_app_owner_or_access_admin_for_app(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> App:
-    app_obj = db.query(App).filter(App.deleted_at.is_(None)).filter(or_(App.id == app_id, App.name == app_id)).first()
+    app_obj = db.scalars(
+        select(App).where(App.deleted_at.is_(None)).where(or_(App.id == app_id, App.name == app_id))
+    ).first()
     if app_obj is None:
         raise HTTPException(status_code=404, detail="Not Found")
     if is_app_owner_group_owner(db, current_user_id, app=app_obj):

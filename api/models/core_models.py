@@ -13,6 +13,7 @@ from sqlalchemy import (
     JSON,
     Unicode,
     func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -631,7 +632,7 @@ class AppGroup(OktaGroup):
 
     @validates("name")
     def validate_group(self, key: str, name: str) -> str:
-        app = db.session.query(App).filter(App.id == self.app_id).filter(App.deleted_at.is_(None)).first()
+        app = db.session.scalars(select(App).where(App.id == self.app_id).where(App.deleted_at.is_(None))).first()
         if app is None:
             raise ValueError(f"Specified App with app_id: {self.app_id} does not exist")
         # app_groups should have app name prepended always

@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from sqlalchemy import String, cast, or_
+from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
@@ -83,21 +83,21 @@ def list_access_requests(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchAccessRequestQuery, Query()],
 ) -> Page[AccessRequestSummary]:
-    query = db.query(AccessRequest).options(*_summary_load_options()).order_by(AccessRequest.created_at.desc())
+    stmt = select(AccessRequest).options(*_summary_load_options()).order_by(AccessRequest.created_at.desc())
 
     # Honored search filters: status, requester_user_id, requested_group_id,
     # assignee_user_id, resolver_user_id. The frontend sends these from the
     # URL bar on the requests list page; without them the client-side
     # filters do nothing.
     if q_args.status:
-        query = query.filter(AccessRequest.status == q_args.status)
+        stmt = stmt.where(AccessRequest.status == q_args.status)
 
     if q_args.requester_user_id:
         if q_args.requester_user_id == "@me":
-            query = query.filter(AccessRequest.requester_user_id == current_user_id)
+            stmt = stmt.where(AccessRequest.requester_user_id == current_user_id)
         else:
             requester_alias = aliased(OktaUser)
-            query = query.join(AccessRequest.requester.of_type(requester_alias)).filter(
+            stmt = stmt.join(AccessRequest.requester.of_type(requester_alias)).where(
                 or_(
                     AccessRequest.requester_user_id == q_args.requester_user_id,
                     requester_alias.email.ilike(q_args.requester_user_id),
@@ -105,7 +105,7 @@ def list_access_requests(
             )
 
     if q_args.requested_group_id:
-        query = query.join(AccessRequest.requested_group).filter(
+        stmt = stmt.join(AccessRequest.requested_group).where(
             or_(
                 AccessRequest.requested_group_id == q_args.requested_group_id,
                 OktaGroup.name.ilike(q_args.requested_group_id),
@@ -114,23 +114,21 @@ def list_access_requests(
 
     if q_args.assignee_user_id:
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
-        assignee_user = (
-            db.query(OktaUser)
-            .filter(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
-            .first()
-        )
+        assignee_user = db.scalars(
+            select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+        ).first()
         if assignee_user is not None:
             groups_owned_subquery = (
-                db.query(OktaGroup.id)
+                select(OktaGroup.id)
                 .options(selectinload(OktaGroup.active_user_ownerships))
                 .join(OktaGroup.active_user_ownerships)
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaUserGroupMember.user_id == assignee_user.id)
                 .subquery()
             )
             owner_app_group_alias = aliased(AppGroup)
             app_groups_owned_subquery = (
-                db.query(AppGroup.id)
+                select(AppGroup.id)
                 .options(
                     joinedload(AppGroup.app)
                     .joinedload(App.active_owner_app_groups.of_type(owner_app_group_alias))
@@ -139,25 +137,25 @@ def list_access_requests(
                 .join(AppGroup.app)
                 .join(App.active_owner_app_groups.of_type(owner_app_group_alias))
                 .join(owner_app_group_alias.active_user_ownerships)
-                .filter(AppGroup.deleted_at.is_(None))
-                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .where(AppGroup.deleted_at.is_(None))
+                .where(OktaUserGroupMember.user_id == assignee_user.id)
                 .subquery()
             )
-            query = query.join(AccessRequest.requested_group).filter(
+            stmt = stmt.join(AccessRequest.requested_group).where(
                 or_(
                     OktaGroup.id.in_(groups_owned_subquery),
                     OktaGroup.id.in_(app_groups_owned_subquery),
                 )
             )
         else:
-            query = query.filter(False)
+            stmt = stmt.where(False)
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":
-            query = query.filter(AccessRequest.resolver_user_id == current_user_id)
+            stmt = stmt.where(AccessRequest.resolver_user_id == current_user_id)
         else:
             resolver_alias = aliased(OktaUser)
-            query = query.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).filter(
+            stmt = stmt.outerjoin(AccessRequest.resolver.of_type(resolver_alias)).where(
                 or_(
                     AccessRequest.resolver_user_id == q_args.resolver_user_id,
                     resolver_alias.email.ilike(q_args.resolver_user_id),
@@ -170,11 +168,11 @@ def list_access_requests(
         like = f"%{q_args.q}%"
         q_requester_alias = aliased(OktaUser)
         q_resolver_alias = aliased(OktaUser)
-        query = (
-            query.join(AccessRequest.requester.of_type(q_requester_alias))
+        stmt = (
+            stmt.join(AccessRequest.requester.of_type(q_requester_alias))
             .join(AccessRequest.requested_group)
             .outerjoin(AccessRequest.resolver.of_type(q_resolver_alias))
-            .filter(
+            .where(
                 or_(
                     AccessRequest.id.like(f"{q_args.q}%"),
                     cast(AccessRequest.status, String).ilike(like),
@@ -193,12 +191,14 @@ def list_access_requests(
                 )
             )
         )
-    return paginate(db, query, transformer=validated(AccessRequestSummary))
+    return paginate(db, stmt, transformer=validated(AccessRequestSummary))
 
 
 @router.get("/{access_request_id}", name="access_request_by_id")
 def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> AccessRequestDetail:
-    ar = db.query(AccessRequest).options(*_detail_load_options()).filter(AccessRequest.id == access_request_id).first()
+    ar = db.scalars(
+        select(AccessRequest).options(*_detail_load_options()).where(AccessRequest.id == access_request_id)
+    ).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
     return AccessRequestDetail.model_validate(ar, from_attributes=True)
@@ -210,10 +210,14 @@ def post_access_request(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> AccessRequestSummary:
-    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
+    requester = db.scalars(
+        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+    ).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
-    group = db.query(OktaGroup).filter(OktaGroup.id == body.group_id).filter(OktaGroup.deleted_at.is_(None)).first()
+    group = db.scalars(
+        select(OktaGroup).where(OktaGroup.id == body.group_id).where(OktaGroup.deleted_at.is_(None))
+    ).first()
     if group is None:
         raise HTTPException(404, "Group not found")
     if not group.is_managed:
@@ -222,15 +226,14 @@ def post_access_request(
     # Auto-cancel any prior PENDING access request from the same user for the
     # same group + ownership mode. Without this, a user clicking "Request"
     # twice produces multiple PENDING rows that approvers see as duplicates.
-    existing_pending = (
-        db.query(AccessRequest)
-        .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-        .filter(AccessRequest.requester_user_id == requester.id)
-        .filter(AccessRequest.requested_group_id == group.id)
-        .filter(AccessRequest.request_ownership.is_(body.group_owner))
-        .filter(AccessRequest.resolved_at.is_(None))
-        .all()
-    )
+    existing_pending = db.scalars(
+        select(AccessRequest)
+        .where(AccessRequest.status == AccessRequestStatus.PENDING)
+        .where(AccessRequest.requester_user_id == requester.id)
+        .where(AccessRequest.requested_group_id == group.id)
+        .where(AccessRequest.request_ownership.is_(body.group_owner))
+        .where(AccessRequest.resolved_at.is_(None))
+    ).all()
     for prior in existing_pending:
         RejectAccessRequest(
             access_request=prior,
@@ -250,7 +253,9 @@ def post_access_request(
         # Belt and suspenders — `is_managed` is the only path that returns
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
-    refreshed = db.query(AccessRequest).options(*_summary_load_options()).filter(AccessRequest.id == ar.id).first()
+    refreshed = db.scalars(
+        select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id)
+    ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)
 
 
@@ -264,12 +269,11 @@ def put_access_request(
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
-    ar = (
-        db.query(AccessRequest)
+    ar = db.scalars(
+        select(AccessRequest)
         .options(joinedload(AccessRequest.active_requested_group))
-        .filter(AccessRequest.id == access_request_id)
-        .first()
-    )
+        .where(AccessRequest.id == access_request_id)
+    ).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
 
@@ -309,7 +313,7 @@ def put_access_request(
             notify_requester=ar.requester_user_id != current_user_id,
             current_user_id=current_user_id,
         ).execute()
-    refreshed = (
-        db.query(AccessRequest).options(*_summary_load_options()).filter(AccessRequest.id == access_request_id).first()
-    )
+    refreshed = db.scalars(
+        select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == access_request_id)
+    ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)

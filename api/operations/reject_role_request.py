@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.exceptions import ConflictError
@@ -28,16 +28,17 @@ class RejectRoleRequest:
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
         request_id = role_request if isinstance(role_request, str) else role_request.id
-        self.role_request = db.session.query(RoleRequest).filter(RoleRequest.id == request_id).with_for_update().first()
+        self.role_request = db.session.scalars(
+            select(RoleRequest).where(RoleRequest.id == request_id).with_for_update()
+        ).first()
 
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
             self.rejecter_id = getattr(
-                db.session.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first(),
+                db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                ).first(),
                 "id",
                 None,
             )
@@ -69,13 +70,12 @@ class RejectRoleRequest:
         if self.rejecter_id is not None:
             email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None)
 
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.id == self.role_request.requested_group_id)
+            .where(OktaGroup.id == self.role_request.requested_group_id)
             .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
-            .first()
-        )
+        ).first()
 
         _ctx = get_request_context()
 

@@ -5,7 +5,7 @@ from typing import Optional, TypedDict
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
@@ -42,22 +42,22 @@ class CreateApp:
             self.app = app
 
         self.tag_ids = [
-            tag.id for tag in db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
+            tag.id
+            for tag in db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags))).all()
         ]
 
         self.owner_id = getattr(
-            db.session.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == owner_id).first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == owner_id)
+            ).first(),
             "id",
             None,
         )
         self.owner_role_ids = None
         if owner_role_ids is not None:
-            self.owner_roles = (
-                db.session.query(RoleGroup)
-                .filter(RoleGroup.id.in_(owner_role_ids))
-                .filter(RoleGroup.deleted_at.is_(None))
-                .all()
-            )
+            self.owner_roles = db.session.scalars(
+                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+            ).all()
             self.owner_role_ids = [role.id for role in self.owner_roles]
 
         self.app_group_prefix = (
@@ -81,22 +81,18 @@ class CreateApp:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
 
     def execute(self) -> App:
         # Do not allow non-deleted apps with the same name
-        existing_app = (
-            db.session.query(App)
-            .filter(func.lower(App.name) == func.lower(self.app.name))
-            .filter(App.deleted_at.is_(None))
-            .first()
-        )
+        existing_app = db.session.scalars(
+            select(App).where(func.lower(App.name) == func.lower(self.app.name)).where(App.deleted_at.is_(None))
+        ).first()
         if existing_app is not None:
             return existing_app
 
@@ -126,12 +122,11 @@ class CreateApp:
 
         app_id = self.app.id
 
-        existing_owner_group = (
-            db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .filter(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .first()
-        )
+        existing_owner_group = db.session.scalars(
+            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
+            .where(OktaGroup.deleted_at.is_(None))
+        ).first()
 
         if existing_owner_group is None:
             owner_app_group = AppGroup(
@@ -149,7 +144,7 @@ class CreateApp:
                     group_changes=AppGroup(app_id=app_id, is_owner=True),
                     current_user_id=self.current_user_id,
                 ).execute()
-            owner_app_group = db.session.query(AppGroup).filter(AppGroup.id == group_id).first()
+            owner_app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             db.session.commit()
@@ -173,13 +168,12 @@ class CreateApp:
                 ).execute()
 
         # Find other app groups with the same app name prefix and update them
-        other_existing_app_groups = (
-            db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .filter(OktaGroup.name.ilike(f"{self.app_group_prefix}%"))
-            .filter(func.lower(OktaGroup.name) != func.lower(self.owner_group_name))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .all()
-        )
+        other_existing_app_groups = db.session.scalars(
+            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(OktaGroup.name.ilike(f"{self.app_group_prefix}%"))
+            .where(func.lower(OktaGroup.name) != func.lower(self.owner_group_name))
+            .where(OktaGroup.deleted_at.is_(None))
+        ).all()
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
             if type(existing_app_group) is not AppGroup:
@@ -197,12 +191,11 @@ class CreateApp:
             for app_group in self.additional_app_groups:
                 app_group.app_id = app_id
 
-                existing_group = (
-                    db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                    .filter(func.lower(OktaGroup.name) == func.lower(app_group.name))
-                    .filter(OktaGroup.deleted_at.is_(None))
-                    .first()
-                )
+                existing_group = db.session.scalars(
+                    select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                    .where(func.lower(OktaGroup.name) == func.lower(app_group.name))
+                    .where(OktaGroup.deleted_at.is_(None))
+                ).first()
 
                 if existing_group is None:
                     CreateGroup(group=app_group, current_user_id=self.current_user_id).execute()
@@ -214,15 +207,15 @@ class CreateApp:
                             group_changes=AppGroup(app_id=app_id, is_owner=False),
                             current_user_id=self.current_user_id,
                         ).execute()
-                    app_group = db.session.query(AppGroup).filter(AppGroup.id == group_id).first()
+                    app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
                     app_group.app_id = app_id
                     app_group.is_owner = False
                     db.session.commit()
 
         if len(self.tag_ids) > 0:
-            all_app_groups = (
-                db.session.query(AppGroup).filter(AppGroup.app_id == app_id).filter(AppGroup.deleted_at.is_(None)).all()
-            )
+            all_app_groups = db.session.scalars(
+                select(AppGroup).where(AppGroup.app_id == app_id).where(AppGroup.deleted_at.is_(None))
+            ).all()
 
             for tag_id in self.tag_ids:
                 db.session.add(
@@ -233,17 +226,16 @@ class CreateApp:
                 )
             db.session.commit()
 
-            new_app_tag_maps = (
-                db.session.query(AppTagMap)
-                .filter(AppTagMap.app_id == app_id)
-                .filter(
+            new_app_tag_maps = db.session.scalars(
+                select(AppTagMap)
+                .where(AppTagMap.app_id == app_id)
+                .where(
                     or_(
                         AppTagMap.ended_at.is_(None),
                         AppTagMap.ended_at > func.now(),
                     )
                 )
-                .all()
-            )
+            ).all()
 
             for app_tag_map in new_app_tag_maps:
                 for app_group in all_app_groups:

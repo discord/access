@@ -6,6 +6,7 @@ from typing import List, Optional
 import logging
 
 from api.context import get_request_context
+from sqlalchemy import select
 
 from api.extensions import db
 from api.models import (
@@ -83,14 +84,12 @@ class CreateGroupRequest:
         # Validate app exists if app_id provided and desired group name prefix is correct
         app = None
         if self.requested_app_id is not None:
-            app = (
-                db.session.query(App)
-                .filter(
+            app = db.session.scalars(
+                select(App).where(
                     App.id == self.requested_app_id,
                     App.deleted_at.is_(None),
                 )
-                .first()
-            )
+            ).first()
 
             if app is None:
                 return None
@@ -100,12 +99,9 @@ class CreateGroupRequest:
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
-            tags = (
-                db.session.query(Tag)
-                .filter(Tag.id.in_(self.requested_group_tags))
-                .filter(Tag.deleted_at.is_(None))
-                .all()
-            )
+            tags = db.session.scalars(
+                select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+            ).all()
             if len(tags) != len(self.requested_group_tags):
                 return None
 
