@@ -38,7 +38,7 @@ class ApproveAccessRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         access_request = self._access_request_arg
         approver_user = self._approver_user_arg
 
@@ -47,26 +47,27 @@ class ApproveAccessRequest:
         # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
         # joinedload's nullable outer-join side (Postgres rejects that); it's
         # a no-op on SQLite.
-        self.access_request = db.session.scalars(
+        request_result = await db.session.scalars(
             select(AccessRequest)
             .options(joinedload(AccessRequest.active_requested_group))
             .where(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
             .with_for_update(of=AccessRequest)
-        ).first()
+        )
+        self.access_request = request_result.first()
 
         if approver_user is None:
             self.approver_id = None
             self.approver_email = None
         elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+            approver = await db.session.get(OktaUser, approver_user)
             self.approver_id = approver.id
             self.approver_email = approver.email
         else:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-    def execute(self) -> AccessRequest:
-        self._resolve()
+    async def execute(self) -> AccessRequest:
+        await self._resolve()
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
@@ -78,7 +79,7 @@ class ApproveAccessRequest:
             return self.access_request
 
         # Don't allow approving a request if the reason is invalid and required
-        valid, _ = CheckForReason(
+        valid, _ = await CheckForReason(
             group=self.access_request.requested_group,
             reason=self.approval_reason,
             members_to_add=[self.access_request.requester_user_id] if not self.access_request.request_ownership else [],
@@ -88,7 +89,7 @@ class ApproveAccessRequest:
             return self.access_request
 
         # Don't allow approving a request if the requester is deleted
-        requester = db.session.get(OktaUser, self.access_request.requester_user_id)
+        requester = await db.session.get(OktaUser, self.access_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             raise ResourceGoneError("The requester no longer exists")
 
@@ -106,11 +107,13 @@ class ApproveAccessRequest:
         # self.access_request.approval_ending_at = self.ending_at
 
         # Audit logging
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.access_request.requested_group_id)
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.access_request.requested_group_id)
+            )
         ).first()
 
         _ctx = get_request_context()
@@ -125,13 +128,13 @@ class ApproveAccessRequest:
                     "current_user_email": self.approver_email,
                     "group": group,
                     "request": self.access_request,
-                    "requester": db.session.get(OktaUser, self.access_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, self.access_request.requester_user_id),
                 }
             )
         )
 
         if self.access_request.request_ownership:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=self.access_request.requested_group_id,
                 current_user_id=self.approver_id,
                 users_added_ended_at=self.ending_at,
@@ -140,7 +143,7 @@ class ApproveAccessRequest:
                 notify=self.notify,
             ).execute()
         else:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=self.access_request.requested_group_id,
                 current_user_id=self.approver_id,
                 users_added_ended_at=self.ending_at,

@@ -1,9 +1,12 @@
+import functools
 import random
 import string
 from datetime import datetime
 from typing import Optional
 
 import logging
+
+import anyio.to_thread
 
 from api.context import get_request_context
 from sqlalchemy import select
@@ -51,24 +54,26 @@ class CreateAccessRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         requester_user = self._requester_user_arg
         requested_group = self._requested_group_arg
 
         if isinstance(requester_user, str):
-            self.requester = db.session.get(OktaUser, requester_user)
+            self.requester = await db.session.get(OktaUser, requester_user)
         else:
             self.requester = requester_user
 
-        self.requested_group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
+        self.requested_group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
+            )
         ).first()
 
-    def execute(self) -> Optional[AccessRequest]:
-        self._resolve()
+    async def execute(self) -> Optional[AccessRequest]:
+        await self._resolve()
         # Don't allow creating a request for an unmanaged group
         if not self.requested_group.is_managed:
             return None
@@ -84,10 +89,10 @@ class CreateAccessRequest:
         )
 
         db.session.add(access_request)
-        db.session.commit()
+        await db.session.commit()
 
         # Fetch the users to notify
-        approvers = get_group_managers(self.requested_group.id)
+        approvers = await get_group_managers(self.requested_group.id)
 
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
@@ -96,23 +101,26 @@ class CreateAccessRequest:
             or (len(approvers) == 1 and approvers[0].id == self.requester.id)
             and type(self.requested_group) is AppGroup
         ):
-            approvers = get_app_managers(self.requested_group.app_id)
+            approvers = await get_app_managers(self.requested_group.app_id)
 
         # If there are still no approvers, try to get the access owners
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
-            approvers = get_access_owners()
+            approvers = await get_access_owners()
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
-                ),
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    joinedload(AppGroup.app),
+                    selectinload(OktaGroup.active_group_tags).options(
+                        joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                        joinedload(OktaGroupTagMap.enabled_active_tag),
+                    ),
+                )
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.requested_group.id)
             )
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.requested_group.id)
         ).first()
 
         # Audit logging
@@ -134,24 +142,29 @@ class CreateAccessRequest:
             )
         )
 
-        conditional_access_responses = self.conditional_access_hook.access_request_created(
-            access_request=access_request,
-            group=group,
-            group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
-            requester=self.requester,
+        # Sync plugin hooks may do network I/O; run them on a worker thread so
+        # they don't block the event loop.
+        conditional_access_responses = await anyio.to_thread.run_sync(
+            functools.partial(
+                self.conditional_access_hook.access_request_created,
+                access_request=access_request,
+                group=group,
+                group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
+                requester=self.requester,
+            )
         )
 
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    ApproveAccessRequest(
+                    await ApproveAccessRequest(
                         access_request=access_request,
                         approval_reason=response.reason,
                         ending_at=response.ending_at,
                         notify=False,
                     ).execute()
                 else:
-                    RejectAccessRequest(
+                    await RejectAccessRequest(
                         access_request=access_request,
                         rejection_reason=response.reason,
                         notify=False,
@@ -159,11 +172,14 @@ class CreateAccessRequest:
 
                 return access_request
 
-        self.notification_hook.access_request_created(
-            access_request=access_request,
-            group=group,
-            requester=self.requester,
-            approvers=approvers,
+        await anyio.to_thread.run_sync(
+            functools.partial(
+                self.notification_hook.access_request_created,
+                access_request=access_request,
+                group=group,
+                requester=self.requester,
+                approvers=approvers,
+            )
         )
 
         return access_request

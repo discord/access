@@ -44,10 +44,9 @@ returned as ``{"error": "..."}`` strings rather than raised — FastMCP's
 exception-to-tool-error path is non-deterministic across versions and a
 JSON string keeps the error contract stable.
 
-Tool handlers are sync (``def``, not ``async def``). FastMCP runs them
-on its threadpool, the same way FastAPI does for sync route handlers,
-which keeps the sync SQLAlchemy ORM happy. Do not change tools to async
-without first porting the ORM.
+Tool handlers are async (``async def``) — FastMCP runs them natively on
+the event loop, and every DB touch goes through the request-scoped
+AsyncSession exposed by ``api.extensions.db``.
 """
 
 from __future__ import annotations
@@ -189,12 +188,14 @@ def _clamp_pagination(page: int, size: int) -> tuple[int, int, Optional[str]]:
     return page, size, None
 
 
-def _paginate_query(db: Any, query: Any, page: int, size: int) -> dict[str, Any]:
+async def _paginate_query(db: Any, query: Any, page: int, size: int) -> dict[str, Any]:
     """Run ``query`` and return the standard envelope. ``page`` is
     zero-indexed."""
-    total = db.scalar(select(func.count()).select_from(query.order_by(None).options(noload("*")).subquery())) or 0
+    total = (
+        await db.scalar(select(func.count()).select_from(query.order_by(None).options(noload("*")).subquery()))
+    ) or 0
     pages = max(1, (total + size - 1) // size)
-    items = db.scalars(query.limit(size).offset(page * size)).all()
+    items = (await db.scalars(query.limit(size).offset(page * size))).all()
     return {"total": total, "pages": pages, "page": page, "size": size, "items": items}
 
 
@@ -342,8 +343,8 @@ def register_tools(mcp: "FastMCP") -> None:
         regardless of which auth provider resolved the request.
       - ``get_mcp_user_id()`` returns the authenticated user id.
       - Reads use ``_db_shim.session`` directly (no commit).
-      - Writes use ``with mcp_db_session() as session:`` (commits on
-        success).
+      - Writes use ``async with mcp_db_session() as session:`` (commits
+        on success).
       - Output is JSON. Errors are ``{"error": "..."}`` strings.
     """
 
@@ -375,7 +376,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_groups(
+    async def list_groups(
         q: str = "", managed: Optional[bool] = None, page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE
     ) -> str:
         page, size, err = _clamp_pagination(page, size)
@@ -400,7 +401,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         if managed is not None:
             query = query.where(OktaGroup.is_managed == managed)
 
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(GroupSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -435,13 +436,15 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_group(group_id_or_name: str) -> str:
+    async def get_group(group_id_or_name: str) -> str:
         db = _db_shim.session
-        group = db.scalars(
-            select(OktaGroup)
-            .options(*_group_load_options())
-            .where(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
-            .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+        group = (
+            await db.scalars(
+                select(OktaGroup)
+                .options(*_group_load_options())
+                .where(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
+                .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+            )
         ).first()
         if group is None:
             return _error("Group not found")
@@ -460,25 +463,29 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_group_memberships(group_id_or_name: str) -> str:
+    async def list_group_memberships(group_id_or_name: str) -> str:
         db = _db_shim.session
-        group = db.scalars(
-            select(OktaGroup)
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
+        group = (
+            await db.scalars(
+                select(OktaGroup)
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(or_(OktaGroup.id == group_id_or_name, OktaGroup.name == group_id_or_name))
+            )
         ).first()
         if group is None:
             return _error("Group not found")
-        rows = db.execute(
-            select(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
-            .where(
-                or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > func.now(),
+        rows = (
+            await db.execute(
+                select(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
+                    )
                 )
+                .where(OktaUserGroupMember.group_id == group.id)
+                .group_by(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
             )
-            .where(OktaUserGroupMember.group_id == group.id)
-            .group_by(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
         ).all()
         result = GroupMembersSummary(
             members=[r.user_id for r in rows if not r.is_owner],
@@ -503,28 +510,32 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_roles(q: str = "", owner_id: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
+    async def list_roles(q: str = "", owner_id: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
         db = _db_shim.session
         query = select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
         if owner_id:
-            owner = db.scalars(
-                select(OktaUser)
-                .where(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
-                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+            owner = (
+                await db.scalars(
+                    select(OktaUser)
+                    .where(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+                    .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+                )
             ).first()
             if owner is None:
                 return _error(f"Owner not found: {owner_id}")
-            owned_role_ids = db.scalars(
-                select(OktaUserGroupMember.group_id)
-                .where(OktaUserGroupMember.user_id == owner.id)
-                .where(OktaUserGroupMember.is_owner.is_(True))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > func.now(),
+            owned_role_ids = (
+                await db.scalars(
+                    select(OktaUserGroupMember.group_id)
+                    .where(OktaUserGroupMember.user_id == owner.id)
+                    .where(OktaUserGroupMember.is_owner.is_(True))
+                    .where(
+                        or_(
+                            OktaUserGroupMember.ended_at.is_(None),
+                            OktaUserGroupMember.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
@@ -532,7 +543,7 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.where(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(RoleGroupListItem)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -560,13 +571,15 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_role(role_id_or_name: str) -> str:
+    async def get_role(role_id_or_name: str) -> str:
         db = _db_shim.session
-        role = db.scalars(
-            select(RoleGroup)
-            .options(*_group_load_options())
-            .where(or_(RoleGroup.id == role_id_or_name, RoleGroup.name == role_id_or_name))
-            .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
+        role = (
+            await db.scalars(
+                select(RoleGroup)
+                .options(*_group_load_options())
+                .where(or_(RoleGroup.id == role_id_or_name, RoleGroup.name == role_id_or_name))
+                .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
+            )
         ).first()
         if role is None:
             return _error("Role not found")
@@ -589,7 +602,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_apps(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
+    async def list_apps(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -598,7 +611,7 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.where(or_(App.name.ilike(like), App.description.ilike(like)))
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(AppSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -623,13 +636,15 @@ def _register_app_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_app(app_id_or_name: str) -> str:
+    async def get_app(app_id_or_name: str) -> str:
         db = _db_shim.session
-        app = db.scalars(
-            select(App)
-            .options(*_app_load_options())
-            .where(App.deleted_at.is_(None))
-            .where(or_(App.id == app_id_or_name, App.name == app_id_or_name))
+        app = (
+            await db.scalars(
+                select(App)
+                .options(*_app_load_options())
+                .where(App.deleted_at.is_(None))
+                .where(or_(App.id == app_id_or_name, App.name == app_id_or_name))
+            )
         ).first()
         if app is None:
             return _error("App not found")
@@ -651,7 +666,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_users(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
+    async def list_users(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -668,7 +683,7 @@ def _register_user_tools(mcp: "FastMCP") -> None:
                     (OktaUser.first_name + " " + OktaUser.last_name).ilike(like),
                 )
             )
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(OktaUserSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -693,19 +708,21 @@ def _register_user_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_user(user_id_or_email: str) -> str:
+    async def get_user(user_id_or_email: str) -> str:
         if user_id_or_email == "@me":
             user_id_or_email = get_mcp_user_id()
         db = _db_shim.session
-        user = db.scalars(
-            select(OktaUser)
-            .options(
-                selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
-                selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
-                joinedload(OktaUser.manager),
+        user = (
+            await db.scalars(
+                select(OktaUser)
+                .options(
+                    selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
+                    selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
+                    joinedload(OktaUser.manager),
+                )
+                .where(or_(OktaUser.id == user_id_or_email, OktaUser.email.ilike(user_id_or_email)))
+                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
             )
-            .where(or_(OktaUser.id == user_id_or_email, OktaUser.email.ilike(user_id_or_email)))
-            .order_by(nullsfirst(OktaUser.deleted_at.desc()))
         ).first()
         if user is None:
             return _error("User not found")
@@ -729,7 +746,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_tags(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
+    async def list_tags(q: str = "", page: int = 0, size: int = MCP_DEFAULT_PAGE_SIZE) -> str:
         page, size, err = _clamp_pagination(page, size)
         if err:
             return _error(err)
@@ -738,7 +755,7 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.where(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(TagListItem)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -756,13 +773,15 @@ def _register_tag_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_tag(tag_id_or_name: str) -> str:
+    async def get_tag(tag_id_or_name: str) -> str:
         db = _db_shim.session
-        tag = db.scalars(
-            select(Tag)
-            .options(*_tag_load_options())
-            .where(or_(Tag.id == tag_id_or_name, Tag.name == tag_id_or_name))
-            .order_by(nullsfirst(Tag.deleted_at.desc()))
+        tag = (
+            await db.scalars(
+                select(Tag)
+                .options(*_tag_load_options())
+                .where(or_(Tag.id == tag_id_or_name, Tag.name == tag_id_or_name))
+                .order_by(nullsfirst(Tag.deleted_at.desc()))
+            )
         ).first()
         if tag is None:
             return _error("Tag not found")
@@ -786,7 +805,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_access_requests(
+    async def list_access_requests(
         q: str = "",
         status: str = "",
         requester_user_id: str = "",
@@ -827,7 +846,7 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
                     AccessRequest.request_reason.ilike(like),
                 )
             )
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(AccessRequestSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -846,12 +865,14 @@ def _register_access_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_access_request(access_request_id: str) -> str:
+    async def get_access_request(access_request_id: str) -> str:
         db = _db_shim.session
-        ar = db.scalars(
-            select(AccessRequest)
-            .options(*_access_request_detail_load_options())
-            .where(AccessRequest.id == access_request_id)
+        ar = (
+            await db.scalars(
+                select(AccessRequest)
+                .options(*_access_request_detail_load_options())
+                .where(AccessRequest.id == access_request_id)
+            )
         ).first()
         if ar is None:
             return _error("Access request not found")
@@ -874,7 +895,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_role_requests(
+    async def list_role_requests(
         q: str = "",
         status: str = "",
         requester_user_id: str = "",
@@ -905,7 +926,7 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         if q:
             like = f"%{q}%"
             query = query.where(or_(RoleRequest.id.like(f"{q}%"), RoleRequest.request_reason.ilike(like)))
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(RoleRequestSummary)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -923,10 +944,14 @@ def _register_role_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_role_request(role_request_id: str) -> str:
+    async def get_role_request(role_request_id: str) -> str:
         db = _db_shim.session
-        rr = db.scalars(
-            select(RoleRequest).options(*_role_request_detail_load_options()).where(RoleRequest.id == role_request_id)
+        rr = (
+            await db.scalars(
+                select(RoleRequest)
+                .options(*_role_request_detail_load_options())
+                .where(RoleRequest.id == role_request_id)
+            )
         ).first()
         if rr is None:
             return _error("Role request not found")
@@ -949,7 +974,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_group_requests(
+    async def list_group_requests(
         q: str = "",
         status: str = "",
         requester_user_id: str = "",
@@ -984,7 +1009,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
                     GroupRequest.request_reason.ilike(like),
                 )
             )
-        page_data = _paginate_query(db, query, page, size)
+        page_data = await _paginate_query(db, query, page, size)
         adapter: TypeAdapter[Any] = TypeAdapter(GroupRequestDetail)
         results = [_serialize_model(adapter.validate_python(row, from_attributes=True)) for row in page_data["items"]]
         return json.dumps(
@@ -998,10 +1023,12 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def get_group_request(group_request_id: str) -> str:
+    async def get_group_request(group_request_id: str) -> str:
         db = _db_shim.session
-        gr = db.scalars(
-            select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == group_request_id)
+        gr = (
+            await db.scalars(
+                select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == group_request_id)
+            )
         ).first()
         if gr is None:
             return _error("Group request not found")
@@ -1026,7 +1053,7 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
-    def list_audit_entries(
+    async def list_audit_entries(
         user_id: str = "",
         group_id: str = "",
         is_owner: Optional[bool] = None,
@@ -1045,20 +1072,24 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         if user_id:
             resolved_user_id = current_user_id if user_id == "@me" else user_id
             # Accept email too — match by id or email.
-            user = db.scalars(
-                select(OktaUser)
-                .where(or_(OktaUser.id == resolved_user_id, OktaUser.email.ilike(resolved_user_id)))
-                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+            user = (
+                await db.scalars(
+                    select(OktaUser)
+                    .where(or_(OktaUser.id == resolved_user_id, OktaUser.email.ilike(resolved_user_id)))
+                    .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+                )
             ).first()
             if user is None:
                 return _error(f"User not found: {user_id}")
             query = query.where(OktaUserGroupMember.user_id == user.id)
 
         if group_id:
-            group = db.scalars(
-                select(OktaGroup)
-                .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
-                .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+            group = (
+                await db.scalars(
+                    select(OktaGroup)
+                    .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+                    .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+                )
             ).first()
             if group is None:
                 return _error(f"Group not found: {group_id}")
@@ -1080,9 +1111,9 @@ def _register_audit_tool(mcp: "FastMCP") -> None:
         # related model. For MCP we keep it simple and return only the
         # scalar columns + user_id / group_id; clients that need richer
         # data can call get_user / get_group on the id values.
-        total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+        total = (await db.scalar(select(func.count()).select_from(query.order_by(None).subquery()))) or 0
         pages = max(1, (total + size - 1) // size)
-        items = db.scalars(query.limit(size).offset(page * size)).all()
+        items = (await db.scalars(query.limit(size).offset(page * size))).all()
         results = [
             {
                 "id": m.id,
@@ -1125,7 +1156,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
-    def create_access_request(
+    async def create_access_request(
         group_id: str,
         reason: str = "",
         group_owner: bool = False,
@@ -1148,9 +1179,11 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         # graph until a write tool actually fires. Reads don't need it.
         from api.operations import CreateAccessRequest, RejectAccessRequest
 
-        with mcp_db_session() as db:
-            requester = db.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+        async with mcp_db_session() as db:
+            requester = (
+                await db.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                )
             ).first()
             if requester is None:
                 # No active OktaUser for the resolved id — typically a
@@ -1158,8 +1191,10 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 # a real human identity. The REST handler returns 403
                 # here; we mirror that.
                 return _error("Current user is not allowed to perform this action")
-            group = db.scalars(
-                select(OktaGroup).where(OktaGroup.id == body.group_id).where(OktaGroup.deleted_at.is_(None))
+            group = (
+                await db.scalars(
+                    select(OktaGroup).where(OktaGroup.id == body.group_id).where(OktaGroup.deleted_at.is_(None))
+                )
             ).first()
             if group is None:
                 return _error("Group not found")
@@ -1167,16 +1202,18 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 return _error("Groups not managed by Access cannot be modified")
 
             # Same supersede-prior-pending behavior as POST /api/requests.
-            existing_pending = db.scalars(
-                select(AccessRequest)
-                .where(AccessRequest.status == AccessRequestStatus.PENDING)
-                .where(AccessRequest.requester_user_id == requester.id)
-                .where(AccessRequest.requested_group_id == group.id)
-                .where(AccessRequest.request_ownership.is_(body.group_owner))
-                .where(AccessRequest.resolved_at.is_(None))
+            existing_pending = (
+                await db.scalars(
+                    select(AccessRequest)
+                    .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                    .where(AccessRequest.requester_user_id == requester.id)
+                    .where(AccessRequest.requested_group_id == group.id)
+                    .where(AccessRequest.request_ownership.is_(body.group_owner))
+                    .where(AccessRequest.resolved_at.is_(None))
+                )
             ).all()
             for prior in existing_pending:
-                RejectAccessRequest(
+                await RejectAccessRequest(
                     access_request=prior,
                     current_user_id=current_user_id,
                     rejection_reason="Superseded by a newer request from the same user",
@@ -1186,7 +1223,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # Execute the operation. Audit-log emission, conditional
             # access hooks, and notification hooks all fire from inside
             # `execute()` — the per-operation contract handles the rest.
-            ar = CreateAccessRequest(
+            ar = await CreateAccessRequest(
                 requester_user=requester,
                 requested_group=group,
                 request_ownership=body.group_owner,
@@ -1199,8 +1236,12 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
             db.expire_all()
-            refreshed = db.scalars(
-                select(AccessRequest).options(*_access_request_summary_load_options()).where(AccessRequest.id == ar.id)
+            refreshed = (
+                await db.scalars(
+                    select(AccessRequest)
+                    .options(*_access_request_summary_load_options())
+                    .where(AccessRequest.id == ar.id)
+                )
             ).first()
             # Log the MCP-origin tag onto the audit channel separately
             # from the operation's own audit emission, which already
@@ -1230,7 +1271,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
-    def create_role_request(
+    async def create_role_request(
         role_id: str,
         group_id: str,
         reason: str = "",
@@ -1254,12 +1295,16 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         from api.operations import CreateRoleRequest, RejectRoleRequest
 
-        with mcp_db_session() as db:
-            requester = db.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+        async with mcp_db_session() as db:
+            requester = (
+                await db.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                )
             ).first()
-            role = db.scalars(
-                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == body.role_id)
+            role = (
+                await db.scalars(
+                    select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == body.role_id)
+                )
             ).first()
             if role is None:
                 return _error("Role not found")
@@ -1269,10 +1314,12 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # If the requester has no active OktaUser row at all (e.g.
             # service-token traffic), can_manage_group returns False and
             # we surface the same 403 message the REST handler does.
-            if requester is None or not can_manage_group(db, current_user_id, role):
+            if requester is None or not await can_manage_group(db, current_user_id, role):
                 return _error("Current user is not allowed to perform this action")
-            group = db.scalars(
-                select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == body.group_id)
+            group = (
+                await db.scalars(
+                    select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == body.group_id)
+                )
             ).first()
             if group is None:
                 return _error("Group not found")
@@ -1284,24 +1331,26 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 # error surfaces before we hit the operation.
                 return _error("Role requests may only be made for groups and app groups (not roles).")
 
-            existing = db.scalars(
-                select(RoleRequest)
-                .where(RoleRequest.requester_user_id == current_user_id)
-                .where(RoleRequest.requester_role_id == body.role_id)
-                .where(RoleRequest.requested_group_id == body.group_id)
-                .where(RoleRequest.request_ownership == body.group_owner)
-                .where(RoleRequest.status == AccessRequestStatus.PENDING)
-                .where(RoleRequest.resolved_at.is_(None))
+            existing = (
+                await db.scalars(
+                    select(RoleRequest)
+                    .where(RoleRequest.requester_user_id == current_user_id)
+                    .where(RoleRequest.requester_role_id == body.role_id)
+                    .where(RoleRequest.requested_group_id == body.group_id)
+                    .where(RoleRequest.request_ownership == body.group_owner)
+                    .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                    .where(RoleRequest.resolved_at.is_(None))
+                )
             ).all()
             for old in existing:
-                RejectRoleRequest(
+                await RejectRoleRequest(
                     role_request=old,
                     rejection_reason="Closed due to duplicate role request creation",
                     notify_requester=False,
                     current_user_id=current_user_id,
                 ).execute()
 
-            rr = CreateRoleRequest(
+            rr = await CreateRoleRequest(
                 requester_user=requester,
                 requester_role=role,
                 requested_group=group,
@@ -1314,8 +1363,10 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
             db.expire_all()
-            refreshed = db.scalars(
-                select(RoleRequest).options(*_role_request_summary_load_options()).where(RoleRequest.id == rr.id)
+            refreshed = (
+                await db.scalars(
+                    select(RoleRequest).options(*_role_request_summary_load_options()).where(RoleRequest.id == rr.id)
+                )
             ).first()
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":
@@ -1342,7 +1393,7 @@ def _register_write_tools(mcp: "FastMCP") -> None:
         annotations=_WRITE_PROPOSAL_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_CREATE_REQUESTS)
-    def create_group_request(
+    async def create_group_request(
         group_name: str,
         group_type: str,
         description: str = "",
@@ -1378,14 +1429,16 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
         requested_app_id: Optional[str] = body.requested_app_id if isinstance(body, _AppGroupRequestBody) else None
 
-        with mcp_db_session() as db:
+        async with mcp_db_session() as db:
             # Same gate as POST /api/group-requests: an active OktaUser
             # row is required. No additional role/admin check — anyone
             # authenticated can ask Access to create a group; the
             # approval step (not exposed here) is where the gating
             # happens.
-            requester = db.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            requester = (
+                await db.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                )
             ).first()
             if requester is None:
                 return _error("Current user is not allowed to perform this action")
@@ -1394,13 +1447,17 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             if body.requested_group_type == "app_group":
                 if requested_app_id is None:
                     return _error("app_id is required for app group requests")
-                app = db.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == requested_app_id)).first()
+                app = (
+                    await db.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == requested_app_id))
+                ).first()
                 if app is None:
                     return _error("App not found")
 
             if body.requested_group_tags:
-                tags = db.scalars(
-                    select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(body.requested_group_tags))
+                tags = (
+                    await db.scalars(
+                        select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(body.requested_group_tags))
+                    )
                 ).all()
                 if len(tags) != len(body.requested_group_tags):
                     return _error("One or more tags not found")
@@ -1414,15 +1471,15 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             )
             if body.requested_group_type == "app_group":
                 existing_query = existing_query.where(GroupRequest.requested_app_id == requested_app_id)
-            for prior in db.scalars(existing_query).all():
-                RejectGroupRequest(
+            for prior in (await db.scalars(existing_query)).all():
+                await RejectGroupRequest(
                     group_request=prior,
                     rejection_reason="Closed due to duplicate group request creation",
                     notify_requester=False,
                     current_user_id=current_user_id,
                 ).execute()
 
-            gr = CreateGroupRequest(
+            gr = await CreateGroupRequest(
                 requester_user=requester,
                 requested_group_name=body.requested_group_name,
                 requested_group_description=body.requested_group_description or "",
@@ -1437,8 +1494,10 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
             db.expire_all()
-            refreshed = db.scalars(
-                select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == gr.id)
+            refreshed = (
+                await db.scalars(
+                    select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == gr.id)
+                )
             ).first()
             _ctx = get_request_context()
             if _ctx is not None and _ctx.source == "mcp":

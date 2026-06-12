@@ -97,7 +97,7 @@ def _configured_fallback_scopes() -> frozenset[str]:
     return frozenset(s.strip() for s in raw.split(",") if s.strip())
 
 
-def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     """Return an ``MCPIdentity`` for an OIDC-authenticated request, or
     ``None`` to defer (no OIDC config, no Bearer token, verification
     failure). Never raises for a missing credential — the middleware
@@ -144,8 +144,10 @@ def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
         return None
 
     db = _db_shim.session
-    user = db.scalars(
-        select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+    user = (
+        await db.scalars(
+            select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+        )
     ).first()
     if user is None:
         logger.warning(f"OIDC token verified for email={email!r} but no matching active OktaUser exists")

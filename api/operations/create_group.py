@@ -30,26 +30,32 @@ class CreateGroup:
         self._tags_arg = tags
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
-        self.tags = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
+    async def _resolve(self) -> None:
+        self.tags = (
+            await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg)))
         ).all()
 
         self.current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+            (
+                await db.session.scalars(
+                    select(OktaUser)
+                    .where(OktaUser.deleted_at.is_(None))
+                    .where(OktaUser.id == self._current_user_id_arg)
+                )
             ).first(),
             "id",
             None,
         )
 
-    def execute(self, *, _group: Optional[T] = None) -> T:
-        self._resolve()
+    async def execute(self, *, _group: Optional[T] = None) -> T:
+        await self._resolve()
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        existing_group = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(func.lower(OktaGroup.name) == func.lower(self.group.name))
-            .where(OktaGroup.deleted_at.is_(None))
+        existing_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(self.group.name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).first()
         if existing_group is not None:
             return existing_group
@@ -57,29 +63,31 @@ class CreateGroup:
         # Make sure the app exists if we're creating an app group
         if (
             type(self.group) is AppGroup
-            and db.session.scalars(
-                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            and (
+                await db.session.scalars(select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None)))
             ).first()
             is None
         ):
             raise ValueError("App for AppGroup does not exist")
 
-        okta_group = okta.create_group(self.group.name, self.group.description)
+        okta_group = await okta.create_group(self.group.name, self.group.description)
         if okta_group is None:
-            okta_group = okta.list_groups(query_params={"q": self.group.name})[0]
+            okta_group = (await okta.list_groups(query_params={"q": self.group.name}))[0]
         self.group.id = okta_group.id
         db.session.add(self.group)
-        db.session.commit()
+        await db.session.commit()
 
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
-            app_tag_maps = db.session.scalars(
-                select(AppTagMap)
-                .where(AppTagMap.app_id == self.group.app_id)
-                .where(
-                    or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > func.now(),
+            app_tag_maps = (
+                await db.session.scalars(
+                    select(AppTagMap)
+                    .where(AppTagMap.app_id == self.group.app_id)
+                    .where(
+                        or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
@@ -92,7 +100,7 @@ class CreateGroup:
                         app_tag_map_id=app_tag_map.id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
         # Add direct tags
         if len(self.tags) > 0:
@@ -103,31 +111,36 @@ class CreateGroup:
                         group_id=self.group.id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
         plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
         if plugin_id is not None:
             try:
                 hook = get_app_group_lifecycle_hook()
-                hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
-                db.session.commit()
+                # sync plugin hook: session-bound, runs on the greenlet bridge
+                await db.session.run_sync(
+                    lambda s: hook.group_created(session=s, group=self.group, plugin_id=plugin_id)
+                )
+                await db.session.commit()
             except Exception:
                 logging.getLogger("api").exception(
                     f"Failed to invoke group_created hook for group {self.group.id} with plugin '{plugin_id}'"
                 )
-                db.session.rollback()
+                await db.session.rollback()
 
         # Audit logging
         email = None
         if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, self.current_user_id), "email", None)
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.group.id)
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.group.id)
+            )
         ).first()
 
         _ctx = get_request_context()

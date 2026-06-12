@@ -19,7 +19,7 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.operations import ModifyRoleGroups
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
@@ -38,7 +38,7 @@ _role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
 @router.get("", name="roles")
-def list_roles(
+async def list_roles(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -54,21 +54,25 @@ def list_roles(
     # Filter to roles owned by `owner_id` (id or email; supports `@me`).
     if q_args.owner_id:
         owner_id = current_user_id if q_args.owner_id == "@me" else q_args.owner_id
-        owner = db.scalars(
-            select(OktaUser)
-            .where(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
-            .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+        owner = (
+            await db.scalars(
+                select(OktaUser)
+                .where(or_(OktaUser.id == owner_id, OktaUser.email.ilike(owner_id)))
+                .order_by(nullsfirst(OktaUser.deleted_at.desc()))
+            )
         ).first()
         if owner is None:
             raise HTTPException(404, "Not Found")
-        owned_role_ids = db.scalars(
-            select(OktaUserGroupMember.group_id)
-            .where(OktaUserGroupMember.user_id == owner.id)
-            .where(OktaUserGroupMember.is_owner.is_(True))
-            .where(
-                or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > func.now(),
+        owned_role_ids = (
+            await db.scalars(
+                select(OktaUserGroupMember.group_id)
+                .where(OktaUserGroupMember.user_id == owner.id)
+                .where(OktaUserGroupMember.is_owner.is_(True))
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
+                    )
                 )
             )
         ).all()
@@ -77,16 +81,18 @@ def list_roles(
     if q_args.q:
         like = f"%{q_args.q}%"
         stmt = stmt.where(or_(RoleGroup.name.ilike(like), RoleGroup.description.ilike(like)))
-    return paginate(db, stmt, transformer=validated(RoleGroupListItem))
+    return await apaginate(db, stmt, transformer=validated(RoleGroupListItem))
 
 
 @router.get("/{role_id}", name="role_by_id")
-def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
-    role = db.scalars(
-        select(RoleGroup)
-        .options(*_GROUP_LOAD_OPTIONS)
-        .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
-        .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
+async def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
+    role = (
+        await db.scalars(
+            select(RoleGroup)
+            .options(*_GROUP_LOAD_OPTIONS)
+            .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+            .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
+        )
     ).first()
     if role is None:
         raise HTTPException(404, "Not Found")
@@ -94,7 +100,7 @@ def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> Gro
 
 
 @router.get("/{role_id}/audit", name="role_audit_by_id")
-def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
+async def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     from urllib.parse import urlencode
 
     qp = dict(request.query_params)
@@ -103,18 +109,22 @@ def get_role_audit(role_id: str, request: Request, current_user_id: CurrentUserI
 
 
 @router.get("/{role_id}/members", name="role_members_by_id")
-def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleMembersSummary:
-    role = db.scalars(
-        select(RoleGroup)
-        .where(RoleGroup.deleted_at.is_(None))
-        .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+async def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleMembersSummary:
+    role = (
+        await db.scalars(
+            select(RoleGroup)
+            .where(RoleGroup.deleted_at.is_(None))
+            .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        )
     ).first()
     if role is None:
         raise HTTPException(404, "Not Found")
-    mappings = db.scalars(
-        select(RoleGroupMap)
-        .where(RoleGroupMap.role_group_id == role.id)
-        .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+    mappings = (
+        await db.scalars(
+            select(RoleGroupMap)
+            .where(RoleGroupMap.role_group_id == role.id)
+            .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+        )
     ).all()
     return RoleMembersSummary(
         groups_in_role=[m.group_id for m in mappings if not m.is_owner],
@@ -123,7 +133,7 @@ def get_role_members(role_id: str, db: DbSession, current_user_id: CurrentUserId
 
 
 @router.put("/{role_id}/members", name="role_members_by_id_put")
-def put_role_members(
+async def put_role_members(
     role_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -134,10 +144,12 @@ def put_role_members(
     from api.models import AppGroup, RoleGroupMap
     from api.operations.constraints import CheckForReason, CheckForSelfAdd
 
-    role = db.scalars(
-        select(RoleGroup)
-        .where(RoleGroup.deleted_at.is_(None))
-        .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+    role = (
+        await db.scalars(
+            select(RoleGroup)
+            .where(RoleGroup.deleted_at.is_(None))
+            .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
+        )
     ).first()
     if role is None:
         raise HTTPException(404, "Not Found")
@@ -150,43 +162,53 @@ def put_role_members(
     # Authorization: should_expire requires can_manage_group on each affected group.
     if body.groups_should_expire or body.owner_groups_should_expire:
         all_should_expire_ids = body.groups_should_expire + body.owner_groups_should_expire
-        maps = db.scalars(
-            select(RoleGroupMap)
-            .where(RoleGroupMap.id.in_(all_should_expire_ids))
-            .where(RoleGroupMap.role_group_id == role.id)
+        maps = (
+            await db.scalars(
+                select(RoleGroupMap)
+                .where(RoleGroupMap.id.in_(all_should_expire_ids))
+                .where(RoleGroupMap.role_group_id == role.id)
+            )
         ).all()
         affected_group_ids = [m.group_id for m in maps]
-        affected_groups = db.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id.in_(affected_group_ids))
+        affected_groups = (
+            await db.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id.in_(affected_group_ids))
+            )
         ).all()
         for g in affected_groups:
-            if not _perms.can_manage_group(db, current_user_id, g):
+            if not await _perms.can_manage_group(db, current_user_id, g):
                 raise HTTPException(403, "Current user is not allowed to perform this action")
 
-    if not _perms.is_access_admin(db, current_user_id):
+    if not await _perms.is_access_admin(db, current_user_id):
         # Each group being added: must be group owner or app owner.
-        added_groups = db.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id.in_(body.groups_to_add + body.owner_groups_to_add))
+        added_groups = (
+            await db.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id.in_(body.groups_to_add + body.owner_groups_to_add))
+            )
         ).all()
         for g in added_groups:
-            if not _perms.is_group_owner(db, current_user_id, g) and not _perms.is_app_owner_group_owner(
+            if not await _perms.is_group_owner(db, current_user_id, g) and not await _perms.is_app_owner_group_owner(
                 db, current_user_id, app_group=g if isinstance(g, AppGroup) else None
             ):
                 raise HTTPException(403, "Current user is not allowed to perform this action")
 
         # Each group being removed: role owners exempt; otherwise must own the group/app.
-        if not _perms.is_group_owner(db, current_user_id, role):
-            removed_groups = db.scalars(
-                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .where(OktaGroup.deleted_at.is_(None))
-                .where(OktaGroup.id.in_(body.groups_to_remove + body.owner_groups_to_remove))
+        if not await _perms.is_group_owner(db, current_user_id, role):
+            removed_groups = (
+                await db.scalars(
+                    select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                    .where(OktaGroup.deleted_at.is_(None))
+                    .where(OktaGroup.id.in_(body.groups_to_remove + body.owner_groups_to_remove))
+                )
             ).all()
             for g in removed_groups:
-                if not _perms.is_group_owner(db, current_user_id, g) and not _perms.is_app_owner_group_owner(
+                if not await _perms.is_group_owner(
+                    db, current_user_id, g
+                ) and not await _perms.is_app_owner_group_owner(
                     db, current_user_id, app_group=g if isinstance(g, AppGroup) else None
                 ):
                     raise HTTPException(403, "Current user is not allowed to perform this action")
@@ -194,7 +216,7 @@ def put_role_members(
     # Reject changes to unmanaged groups.
     affected_ids = body.groups_to_add + body.owner_groups_to_add + body.groups_to_remove + body.owner_groups_to_remove
     if affected_ids:
-        unmanaged_count = db.scalar(
+        unmanaged_count = await db.scalar(
             select(func.count(OktaGroup.id))
             .where(OktaGroup.id.in_(affected_ids))
             .where(OktaGroup.deleted_at.is_(None))
@@ -206,7 +228,7 @@ def put_role_members(
     # Reject role-in-role nesting. Roles can only contain non-role groups.
     add_ids = body.groups_to_add + body.owner_groups_to_add
     if add_ids:
-        role_in_add_count = db.scalar(
+        role_in_add_count = await db.scalar(
             select(func.count(OktaGroup.id))
             .where(OktaGroup.id.in_(add_ids))
             .where(OktaGroup.deleted_at.is_(None))
@@ -215,7 +237,7 @@ def put_role_members(
         if role_in_add_count and role_in_add_count > 0:
             raise HTTPException(400, "Roles cannot be added to other Roles")
 
-    valid, err_message = CheckForSelfAdd(
+    valid, err_message = await CheckForSelfAdd(
         group=role,
         current_user=current_user_id,
         members_to_add=body.groups_to_add,
@@ -224,7 +246,7 @@ def put_role_members(
     if not valid:
         raise HTTPException(400, err_message)
 
-    valid, err_message = CheckForReason(
+    valid, err_message = await CheckForReason(
         group=role,
         reason=body.created_reason or "",
         members_to_add=body.groups_to_add,
@@ -233,7 +255,7 @@ def put_role_members(
     if not valid:
         raise HTTPException(400, err_message)
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role,
         groups_to_add=body.groups_to_add,
         groups_to_remove=body.groups_to_remove,
@@ -245,4 +267,4 @@ def put_role_members(
         current_user_id=current_user_id,
         created_reason=body.created_reason or "",
     ).execute()
-    return get_role_members(role_id, db, current_user_id)
+    return await get_role_members(role_id, db, current_user_id)

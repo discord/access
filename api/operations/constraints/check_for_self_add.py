@@ -26,11 +26,11 @@ class CheckForSelfAdd:
         self.members_to_add = members_to_add
         self.owners_to_add = owners_to_add
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         group = self._group_arg
         current_user = self._current_user_arg
 
-        self.group = db.session.scalars(
+        group_result = await db.session.scalars(
             select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
@@ -46,20 +46,22 @@ class CheckForSelfAdd:
             )
             .where(OktaGroup.deleted_at.is_(None))
             .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
-        ).first()
+        )
+        self.group = group_result.first()
 
         if current_user is None:
             self.current_user = None
         else:
-            self.current_user = db.session.scalars(
+            user_result = await db.session.scalars(
                 select(OktaUser)
                 .where(OktaUser.deleted_at.is_(None))
                 .where(OktaUser.id == (current_user if isinstance(current_user, str) else current_user.id))
-            ).first()
+            )
+            self.current_user = user_result.first()
 
-    def execute_for_group(self) -> Tuple[bool, str]:
-        self._resolve()
-        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
+    async def execute_for_group(self) -> Tuple[bool, str]:
+        await self._resolve()
+        if self.current_user is None or await _is_access_admin(db.session, self.current_user.id):
             return True, ""
 
         if len(self.owners_to_add) > 0 and self.current_user.id in self.owners_to_add:
@@ -116,9 +118,9 @@ class CheckForSelfAdd:
                         )
         return True, ""
 
-    def execute_for_role(self) -> Tuple[bool, str]:
-        self._resolve()
-        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
+    async def execute_for_role(self) -> Tuple[bool, str]:
+        await self._resolve()
+        if self.current_user is None or await _is_access_admin(db.session, self.current_user.id):
             return True, ""
 
         if type(self.group) is not RoleGroup:
@@ -127,7 +129,7 @@ class CheckForSelfAdd:
         # Check to see if the current user is a member of the role,
         # which would grant them access to the newly added groups associated with the role
         if (
-            db.session.scalar(
+            await db.session.scalar(
                 select(func.count()).select_from(
                     select(OktaUserGroupMember)
                     .where(OktaUserGroupMember.group_id == self.group.id)
@@ -145,12 +147,14 @@ class CheckForSelfAdd:
             or 0
         ) > 0:
             if len(self.members_to_add) > 0:
-                new_member_groups = db.session.scalars(
-                    select(OktaGroup)
-                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                    .where(OktaGroup.is_managed.is_(True))
-                    .where(OktaGroup.id.in_(self.members_to_add))
-                    .where(OktaGroup.deleted_at.is_(None))
+                new_member_groups = (
+                    await db.session.scalars(
+                        select(OktaGroup)
+                        .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
+                        .where(OktaGroup.is_managed.is_(True))
+                        .where(OktaGroup.id.in_(self.members_to_add))
+                        .where(OktaGroup.deleted_at.is_(None))
+                    )
                 ).all()
                 for member_group in new_member_groups:
                     require_member_reason = coalesce_constraints(
@@ -166,12 +170,14 @@ class CheckForSelfAdd:
                         )
 
             if len(self.owners_to_add) > 0:
-                new_owner_groups = db.session.scalars(
-                    select(OktaGroup)
-                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                    .where(OktaGroup.is_managed.is_(True))
-                    .where(OktaGroup.id.in_(self.owners_to_add))
-                    .where(OktaGroup.deleted_at.is_(None))
+                new_owner_groups = (
+                    await db.session.scalars(
+                        select(OktaGroup)
+                        .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
+                        .where(OktaGroup.is_managed.is_(True))
+                        .where(OktaGroup.id.in_(self.owners_to_add))
+                        .where(OktaGroup.deleted_at.is_(None))
+                    )
                 ).all()
                 for owner_group in new_owner_groups:
                     require_owner_reason = coalesce_constraints(

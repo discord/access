@@ -26,9 +26,9 @@ class CheckForReason:
         self.members_to_add = members_to_add
         self.owners_to_add = owners_to_add
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         group = self._group_arg
-        self.group = db.session.scalars(
+        result = await db.session.scalars(
             select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
@@ -44,14 +44,15 @@ class CheckForReason:
             )
             .where(OktaGroup.deleted_at.is_(None))
             .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
-        ).first()
+        )
+        self.group = result.first()
 
     @staticmethod
     def invalid_reason(reason: Optional[str]) -> bool:
         return reason is None or reason.strip() == ""
 
-    def execute_for_group(self) -> Tuple[bool, str]:
-        self._resolve()
+    async def execute_for_group(self) -> Tuple[bool, str]:
+        await self._resolve()
         if self.invalid_reason(self.reason):
             tags = [tag_map.active_tag for tag_map in self.group.active_group_tags]
             if len(self.owners_to_add) > 0:
@@ -96,19 +97,21 @@ class CheckForReason:
                             )
         return True, ""
 
-    def execute_for_role(self) -> Tuple[bool, str]:
-        self._resolve()
+    async def execute_for_role(self) -> Tuple[bool, str]:
+        await self._resolve()
         if type(self.group) is not RoleGroup:
             return True, ""
 
         if self.invalid_reason(self.reason):
             if len(self.members_to_add) > 0:
-                new_member_groups = db.session.scalars(
-                    select(OktaGroup)
-                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                    .where(OktaGroup.is_managed.is_(True))
-                    .where(OktaGroup.id.in_(self.members_to_add))
-                    .where(OktaGroup.deleted_at.is_(None))
+                new_member_groups = (
+                    await db.session.scalars(
+                        select(OktaGroup)
+                        .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
+                        .where(OktaGroup.is_managed.is_(True))
+                        .where(OktaGroup.id.in_(self.members_to_add))
+                        .where(OktaGroup.deleted_at.is_(None))
+                    )
                 ).all()
                 for member_group in new_member_groups:
                     require_member_reason = coalesce_constraints(
@@ -123,12 +126,14 @@ class CheckForReason:
                         )
 
             if len(self.owners_to_add) > 0:
-                new_owner_groups = db.session.scalars(
-                    select(OktaGroup)
-                    .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
-                    .where(OktaGroup.is_managed.is_(True))
-                    .where(OktaGroup.id.in_(self.owners_to_add))
-                    .where(OktaGroup.deleted_at.is_(None))
+                new_owner_groups = (
+                    await db.session.scalars(
+                        select(OktaGroup)
+                        .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
+                        .where(OktaGroup.is_managed.is_(True))
+                        .where(OktaGroup.id.in_(self.owners_to_add))
+                        .where(OktaGroup.deleted_at.is_(None))
+                    )
                 ).all()
                 for owner_group in new_owner_groups:
                     require_owner_reason = coalesce_constraints(

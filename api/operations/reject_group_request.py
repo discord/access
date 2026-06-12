@@ -1,7 +1,9 @@
+import functools
 from typing import Optional
 
 import logging
 
+import anyio.to_thread
 from sqlalchemy import func, select
 from api.context import get_request_context
 
@@ -33,7 +35,7 @@ class RejectGroupRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         group_request = self._group_request_arg
         current_user_id = self._current_user_id_arg
 
@@ -41,22 +43,25 @@ class RejectGroupRequest:
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
         request_id = group_request if isinstance(group_request, str) else group_request.id
-        self.group_request = db.session.scalars(
+        request_result = await db.session.scalars(
             select(GroupRequest).where(GroupRequest.id == request_id).with_for_update()
-        ).first()
+        )
+        self.group_request = request_result.first()
 
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
-            user = db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            user = (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                )
             ).first()
             self.rejecter_id = user.id if user else None
         else:
             self.rejecter_id = current_user_id.id
 
-    def execute(self) -> GroupRequest:
-        self._resolve()
+    async def execute(self) -> GroupRequest:
+        await self._resolve()
         # Already resolved — raise rather than silently no-op so a stale/
         # concurrent rejection surfaces as a conflict instead of a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
@@ -72,22 +77,24 @@ class RejectGroupRequest:
             is_self_rejection = self.group_request.requester_user_id == self.rejecter_id
 
             if not is_self_rejection:
-                access_owner_ids = {u.id for u in get_access_owners()}
+                access_owner_ids = {u.id for u in await get_access_owners()}
                 is_global_admin = self.rejecter_id in access_owner_ids
 
                 if not is_global_admin:
                     # Check app ownership if this is an app group request
                     if resolved_app_id is not None:
-                        is_app_owner = db.session.scalars(
-                            select(OktaUserGroupMember)
-                            .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                            .where(
-                                AppGroup.app_id == resolved_app_id,
-                                AppGroup.is_owner.is_(True),
-                                AppGroup.deleted_at.is_(None),
-                                OktaUserGroupMember.user_id == self.rejecter_id,
-                                OktaUserGroupMember.is_owner.is_(True),
-                                OktaUserGroupMember.ended_at.is_(None),
+                        is_app_owner = (
+                            await db.session.scalars(
+                                select(OktaUserGroupMember)
+                                .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
+                                .where(
+                                    AppGroup.app_id == resolved_app_id,
+                                    AppGroup.is_owner.is_(True),
+                                    AppGroup.deleted_at.is_(None),
+                                    OktaUserGroupMember.user_id == self.rejecter_id,
+                                    OktaUserGroupMember.is_owner.is_(True),
+                                    OktaUserGroupMember.ended_at.is_(None),
+                                )
                             )
                         ).first()
 
@@ -98,7 +105,7 @@ class RejectGroupRequest:
                         return self.group_request
 
         # Audit logging
-        email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None) if self.rejecter_id else None
+        email = getattr(await db.session.get(OktaUser, self.rejecter_id), "email", None) if self.rejecter_id else None
         _ctx = get_request_context()
         logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
@@ -109,7 +116,7 @@ class RejectGroupRequest:
                     "current_user_id": self.rejecter_id,
                     "current_user_email": email,
                     "group_request": self.group_request,
-                    "requester": db.session.get(OktaUser, self.group_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, self.group_request.requester_user_id),
                 }
             )
         )
@@ -119,19 +126,24 @@ class RejectGroupRequest:
         self.group_request.resolver_user_id = self.rejecter_id
         self.group_request.resolution_reason = self.rejection_reason
 
-        db.session.commit()
+        await db.session.commit()
 
         if self.notify:
-            requester = db.session.get(OktaUser, self.group_request.requester_user_id)
+            requester = await db.session.get(OktaUser, self.group_request.requester_user_id)
 
-            approvers = get_all_possible_request_approvers(self.group_request)
+            approvers = await get_all_possible_request_approvers(self.group_request)
 
-            self.notification_hook.access_group_request_completed(
-                group_request=self.group_request,
-                group=None,
-                requester=requester,
-                approvers=approvers,
-                notify_requester=self.notify_requester,
+            # Sync notification hook may do network I/O; run it on a worker
+            # thread so it doesn't block the event loop.
+            await anyio.to_thread.run_sync(
+                functools.partial(
+                    self.notification_hook.access_group_request_completed,
+                    group_request=self.group_request,
+                    group=None,
+                    requester=requester,
+                    approvers=approvers,
+                    notify_requester=self.notify_requester,
+                )
             )
 
         return self.group_request

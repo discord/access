@@ -101,15 +101,15 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         finally:
             if owns_scope:
                 try:
-                    db.remove()
+                    await db.remove()
                 except Exception:
                     pass
                 if token is not None:
                     try:
                         _session_scope.reset(token)
                     except ValueError:
-                        # scoped_session ran on a copied context (FastAPI's
-                        # threadpool); the original token isn't valid here.
+                        # the scope was set on a copied context; the original
+                        # token isn't valid here.
                         _session_scope.set("__default__")
         response.headers["X-Request-Id"] = request_id
         return response

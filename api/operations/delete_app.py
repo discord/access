@@ -16,23 +16,28 @@ class DeleteApp:
         self._app_arg = app
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         app = self._app_arg
         if isinstance(app, str):
-            self.app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == app)).first()
+            app_result = await db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == app))
+            self.app = app_result.first()
         else:
             self.app = app
 
         self.current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+            (
+                await db.session.scalars(
+                    select(OktaUser)
+                    .where(OktaUser.deleted_at.is_(None))
+                    .where(OktaUser.id == self._current_user_id_arg)
+                )
             ).first(),
             "id",
             None,
         )
 
-    def execute(self) -> None:
-        self._resolve()
+    async def execute(self) -> None:
+        await self._resolve()
         # Prevent access app deletion
         if self.app.name == App.ACCESS_APP_RESERVED_NAME:
             raise ValueError("The Access Application cannot be deleted")
@@ -40,7 +45,7 @@ class DeleteApp:
         # Audit logging
         email = None
         if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, self.current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -58,18 +63,20 @@ class DeleteApp:
         )
 
         self.app.deleted_at = func.now()
-        db.session.commit()
+        await db.session.commit()
 
         # Delete all associated Okta App Groups and end their membership
-        app_groups = db.session.scalars(
-            select(AppGroup).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == self.app.id)
+        app_groups = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == self.app.id)
+            )
         ).all()
         app_group_ids = [ag.id for ag in app_groups]
         for app_group_id in app_group_ids:
-            DeleteGroup(group=app_group_id, current_user_id=self.current_user_id).execute()
+            await DeleteGroup(group=app_group_id, current_user_id=self.current_user_id).execute()
 
         # End all tag mappings for this app (OktaGroupTagMaps are ended by the DeleteGroup operation above)
-        db.session.execute(
+        await db.session.execute(
             update(AppTagMap)
             .where(AppTagMap.app_id == self.app.id)
             .where(
@@ -81,4 +88,4 @@ class DeleteApp:
             .values({AppTagMap.ended_at: func.now()})
             .execution_options(synchronize_session="fetch")
         )
-        db.session.commit()
+        await db.session.commit()
