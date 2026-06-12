@@ -126,7 +126,7 @@ Create a `.env.production` file in the repo root with the following variables. A
 ```
 OKTA_DOMAIN=<YOUR_OKTA_DOMAIN> # For example, "mydomain.okta.com"
 OKTA_API_TOKEN=<YOUR_OKTA_API_TOKEN>
-DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql+pg8000://postgres:postgres@localhost:5432/access"
+DATABASE_URI=<YOUR_DATABASE_URI> # For example, "postgresql://postgres:postgres@localhost:5432/access"
 CLIENT_ORIGIN_URL=http://localhost:3000
 VITE_API_SERVER_URL=""
 FASTAPI_SENTRY_DSN=https://<key>@sentry.io/<project>
@@ -139,7 +139,7 @@ If you want to use the Cloud SQL Python Connector, set the following variables i
 
 ```
 CLOUDSQL_CONNECTION_NAME=<YOUR_CLOUDSQL_CONNECTION_NAME> # For example, "project:region:instance-name"
-DATABASE_URI="postgresql+pg8000://"
+DATABASE_URI="postgresql://"
 DATABASE_USER=<YOUR_DATABASE_USER> # For a service account, this is the service account's email without the .gserviceaccount.com domain suffix.
 DATABASE_NAME=<YOUR_DATABASE_NAME>
 DATABASE_USES_PUBLIC_IP=[True|False]
@@ -252,7 +252,7 @@ The `.env.production` file is where you configure the application.
 
 - `OKTA_DOMAIN`: Specifies the [Okta](https://okta.com) domain to use.
 - `OKTA_API_TOKEN`: Specifies the [Okta](https://okta.com) [API Token](https://developer.okta.com/docs/api/openapi/okta-management/management/tag/ApiToken/) to use.
-- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql+pg8000://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`.
+- `DATABASE_URI`: Specifies the Database connection URI. **Example:** `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@postgres:5432/<DB_NAME>`. The app runs on async SQLAlchemy: `postgresql://` (and legacy `postgresql+pg8000://`) URIs are normalized to the `asyncpg` driver, `sqlite://` to `aiosqlite`. Note that asyncpg does not accept `sslmode=` URL parameters (use `ssl=`), and deployments behind transaction-mode PgBouncer should disable asyncpg's prepared-statement cache (`statement_cache_size=0`).
 - `CLIENT_ORIGIN_URL`: Specifies the origin URL used by plugins (e.g. for building notification URLs).
 - `VITE_API_SERVER_URL`: Specifies the API base URL which is used by the frontend. Set to an empty string "" to use the same URL as the frontend.
 - `FASTAPI_SENTRY_DSN`: See the [Sentry documentation](https://docs.sentry.io/product/sentry-basics/concepts/dsn-explainer/). **[OPTIONAL] You can safely remove this from your env file**
