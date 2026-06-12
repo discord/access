@@ -28,16 +28,14 @@ class DeleteUser:
 
         self.current_user_id = current_user_id
 
-    def execute(self) -> None:
-        # Run asychronously to parallelize Okta API requests
-        return asyncio.run(self._execute())
-
-    async def _execute(self) -> None:
-        user = db.session.scalars(select(OktaUser).where(OktaUser.id == self.user_id)).first()
+    async def execute(self) -> None:
+        user = (await db.session.scalars(select(OktaUser).where(OktaUser.id == self.user_id))).first()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -71,26 +69,26 @@ class DeleteUser:
             # Remove user from group membership in Okta
             group_memberships_to_remove_ids = [
                 m.group_id
-                for m in db.session.scalars(
-                    managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(False))
+                for m in (
+                    await db.session.scalars(managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(False)))
                 ).all()
             ]
 
             for group_id in group_memberships_to_remove_ids:
-                okta_tasks.append(asyncio.create_task(okta.async_remove_user_from_group(group_id, user.id)))
+                okta_tasks.append(asyncio.create_task(okta.remove_user_from_group(group_id, user.id)))
 
             # Remove user from group ownerships in Okta
             group_ownerships_to_remove_ids = [
                 m.group_id
-                for m in db.session.scalars(
-                    managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(True))
+                for m in (
+                    await db.session.scalars(managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(True)))
                 ).all()
             ]
 
             for group_id in group_ownerships_to_remove_ids:
-                okta_tasks.append(asyncio.create_task(okta.async_remove_owner_from_group(group_id, user.id)))
+                okta_tasks.append(asyncio.create_task(okta.remove_owner_from_group(group_id, user.id)))
 
-        db.session.execute(
+        await db.session.execute(
             update(OktaUserGroupMember)
             .where(
                 or_(
@@ -103,16 +101,18 @@ class DeleteUser:
             .execution_options(synchronize_session="fetch")
         )
 
-        db.session.commit()
+        await db.session.commit()
 
-        obsolete_access_requests = db.session.scalars(
-            select(AccessRequest)
-            .where(AccessRequest.requester_user_id == user.id)
-            .where(AccessRequest.status == AccessRequestStatus.PENDING)
-            .where(AccessRequest.resolved_at.is_(None))
+        obsolete_access_requests = (
+            await db.session.scalars(
+                select(AccessRequest)
+                .where(AccessRequest.requester_user_id == user.id)
+                .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                .where(AccessRequest.resolved_at.is_(None))
+            )
         ).all()
         for obsolete_access_request in obsolete_access_requests:
-            RejectAccessRequest(
+            await RejectAccessRequest(
                 access_request=obsolete_access_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=current_user_id,
@@ -121,28 +121,32 @@ class DeleteUser:
         # Reject pending role requests by the deleted user. ApproveRoleRequest
         # doesn't guard on a deleted requester, so a surviving one would still
         # grant the role access to the group after the requester is gone.
-        obsolete_role_requests = db.session.scalars(
-            select(RoleRequest)
-            .where(RoleRequest.requester_user_id == user.id)
-            .where(RoleRequest.status == AccessRequestStatus.PENDING)
-            .where(RoleRequest.resolved_at.is_(None))
+        obsolete_role_requests = (
+            await db.session.scalars(
+                select(RoleRequest)
+                .where(RoleRequest.requester_user_id == user.id)
+                .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                .where(RoleRequest.resolved_at.is_(None))
+            )
         ).all()
         for obsolete_role_request in obsolete_role_requests:
-            RejectRoleRequest(
+            await RejectRoleRequest(
                 role_request=obsolete_role_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=current_user_id,
             ).execute()
 
         # Reject pending group requests by the deleted user, mirroring above.
-        obsolete_group_requests = db.session.scalars(
-            select(GroupRequest)
-            .where(GroupRequest.requester_user_id == user.id)
-            .where(GroupRequest.status == AccessRequestStatus.PENDING)
-            .where(GroupRequest.resolved_at.is_(None))
+        obsolete_group_requests = (
+            await db.session.scalars(
+                select(GroupRequest)
+                .where(GroupRequest.requester_user_id == user.id)
+                .where(GroupRequest.status == AccessRequestStatus.PENDING)
+                .where(GroupRequest.resolved_at.is_(None))
+            )
         ).all()
         for obsolete_group_request in obsolete_group_requests:
-            RejectGroupRequest(
+            await RejectGroupRequest(
                 group_request=obsolete_group_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=current_user_id,

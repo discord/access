@@ -54,8 +54,8 @@ class CreateGroupRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> Optional[GroupRequest]:
-        requester = db.session.get(OktaUser, self.requester_user_id)
+    async def execute(self) -> Optional[GroupRequest]:
+        requester = await db.session.get(OktaUser, self.requester_user_id)
 
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
@@ -83,10 +83,12 @@ class CreateGroupRequest:
         # Validate app exists if app_id provided and desired group name prefix is correct
         app = None
         if self.requested_app_id is not None:
-            app = db.session.scalars(
-                select(App).where(
-                    App.id == self.requested_app_id,
-                    App.deleted_at.is_(None),
+            app = (
+                await db.session.scalars(
+                    select(App).where(
+                        App.id == self.requested_app_id,
+                        App.deleted_at.is_(None),
+                    )
                 )
             ).first()
 
@@ -98,8 +100,10 @@ class CreateGroupRequest:
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
-            tags = db.session.scalars(
-                select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+            tags = (
+                await db.session.scalars(
+                    select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+                )
             ).all()
             if len(tags) != len(self.requested_group_tags):
                 return None
@@ -127,15 +131,15 @@ class CreateGroupRequest:
         )
 
         db.session.add(group_request)
-        db.session.commit()
+        await db.session.commit()
 
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None:
             # Get app owners by checking active owner app groups
-            app_owner_user_ids = {u.id for u in get_app_managers(app.id)}
+            app_owner_user_ids = {u.id for u in await get_app_managers(app.id)}
 
             if requester.id in app_owner_user_ids:
-                ApproveGroupRequest(
+                await ApproveGroupRequest(
                     group_request=group_request,
                     approver_user=requester,
                     approval_reason="Requester owns parent app and can create app groups",
@@ -147,9 +151,9 @@ class CreateGroupRequest:
         # Fetch the users to notify
         # If app group, notify app managers; otherwise notify access owners
         if self.requested_app_id is not None:
-            approvers = get_app_managers(self.requested_app_id)
+            approvers = await get_app_managers(self.requested_app_id)
         else:
-            approvers = get_access_owners()
+            approvers = await get_access_owners()
 
         # Audit logging
         _ctx = get_request_context()
@@ -187,13 +191,13 @@ class CreateGroupRequest:
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    ApproveGroupRequest(
+                    await ApproveGroupRequest(
                         group_request=group_request,
                         approval_reason=response.reason,
                         notify=False,
                     ).execute()
                 else:
-                    RejectGroupRequest(
+                    await RejectGroupRequest(
                         group_request=group_request,
                         rejection_reason=response.reason,
                         notify=False,

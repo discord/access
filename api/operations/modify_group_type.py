@@ -31,17 +31,21 @@ class ModifyGroupType:
         self.group_changes = group_changes
         self.current_user_id = current_user_id
 
-    def execute(self) -> OktaGroup:
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.group_id)
+    async def execute(self) -> OktaGroup:
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.group_id)
+            )
         ).first()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -64,25 +68,27 @@ class ModifyGroupType:
                     )
 
                 # End all group attachments to this role and all group memberships via the role grant
-                active_role_associated_groups = db.session.scalars(
-                    select(RoleGroupMap)
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
+                active_role_associated_groups = (
+                    await db.session.scalars(
+                        select(RoleGroupMap)
+                        .where(
+                            or_(
+                                RoleGroupMap.ended_at.is_(None),
+                                RoleGroupMap.ended_at > func.now(),
+                            )
                         )
+                        .where(RoleGroupMap.role_group_id == group.id)
                     )
-                    .where(RoleGroupMap.role_group_id == group.id)
                 ).all()
-                ModifyRoleGroups(
+                await ModifyRoleGroups(
                     role_group=group,
                     current_user_id=current_user_id,
                     groups_to_remove=[g.group_id for g in active_role_associated_groups if not g.is_owner],
                     owner_groups_to_remove=[g.group_id for g in active_role_associated_groups if g.is_owner],
                 ).execute()
-                db.session.commit()
+                await db.session.commit()
 
-                db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
+                await db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
             elif type(group) is AppGroup:
                 # Bail if this is the owner group for the app
                 # which cannot have its type changed
@@ -104,15 +110,15 @@ class ModifyGroupType:
                     try:
                         hook = get_app_group_lifecycle_hook()
                         hook.group_deleted(session=db.session, group=group, plugin_id=plugin_id)
-                        db.session.commit()
+                        await db.session.commit()
                     except Exception:
                         logging.getLogger("api").exception(
                             f"Failed to invoke group_deleted hook for group {group.id} with plugin '{plugin_id}'"
                         )
-                        db.session.rollback()
+                        await db.session.rollback()
 
                 # Remove app tag map for this group that is no longer attached to an app
-                db.session.execute(
+                await db.session.execute(
                     update(OktaGroupTagMap)
                     .where(
                         or_(
@@ -125,9 +131,9 @@ class ModifyGroupType:
                     .values({OktaGroupTagMap.app_tag_map_id: None})
                     .execution_options(synchronize_session="fetch")
                 )
-                db.session.commit()
+                await db.session.commit()
 
-                db.session.execute(delete(AppGroup.__table__).where(AppGroup.__table__.c.id == group_id))
+                await db.session.execute(delete(AppGroup.__table__).where(AppGroup.__table__.c.id == group_id))
             # Expunge the session so the changed object is flushed from the ORM
             # See https://stackoverflow.com/a/21792969
             db.session.expunge_all()
@@ -135,38 +141,42 @@ class ModifyGroupType:
             # We've deleted the group child class row group,
             # update the type to the base class type "okta_group"
             group.type = OktaGroup.__mapper_args__["polymorphic_identity"]
-            db.session.commit()
+            await db.session.commit()
 
-            group = db.session.scalars(
-                select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == group_id)
+            group = (
+                await db.session.scalars(
+                    select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == group_id)
+                )
             ).first()
 
             # Create new child table row
             if type(self.group_changes) is RoleGroup:
                 # Convert any group memberships and ownerships via a role to direct group memberships and ownerships
-                active_group_users_from_role = db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .where(
-                        or_(
-                            OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > func.now(),
+                active_group_users_from_role = (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .where(
+                            or_(
+                                OktaUserGroupMember.ended_at.is_(None),
+                                OktaUserGroupMember.ended_at > func.now(),
+                            )
                         )
+                        .where(OktaUserGroupMember.role_group_map_id.is_not(None))
+                        .where(OktaUserGroupMember.group_id == group_id)
                     )
-                    .where(OktaUserGroupMember.role_group_map_id.is_not(None))
-                    .where(OktaUserGroupMember.group_id == group_id)
                 ).all()
                 # Add all group memberships and ownerships via a role grant as direct memberships and ownerships
                 # Do this in a loop so we can preserve the ended_at value
                 for group_user in active_group_users_from_role:
                     if group_user.is_owner:
-                        ModifyGroupUsers(
+                        await ModifyGroupUsers(
                             group=group_id,
                             current_user_id=current_user_id,
                             owners_to_add=[group_user.user_id],
                             users_added_ended_at=group_user.ended_at,
                         ).execute()
                     else:
-                        ModifyGroupUsers(
+                        await ModifyGroupUsers(
                             group=group_id,
                             current_user_id=current_user_id,
                             members_to_add=[group_user.user_id],
@@ -174,33 +184,35 @@ class ModifyGroupType:
                         ).execute()
 
                 # Remove all group memberships and ownerships via a role grant
-                active_role_associated_groups = db.session.scalars(
-                    select(RoleGroupMap)
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
+                active_role_associated_groups = (
+                    await db.session.scalars(
+                        select(RoleGroupMap)
+                        .where(
+                            or_(
+                                RoleGroupMap.ended_at.is_(None),
+                                RoleGroupMap.ended_at > func.now(),
+                            )
                         )
+                        .where(RoleGroupMap.group_id == group_id)
                     )
-                    .where(RoleGroupMap.group_id == group_id)
                 ).all()
                 for role_group_map in active_role_associated_groups:
                     if role_group_map.is_owner:
-                        ModifyRoleGroups(
+                        await ModifyRoleGroups(
                             role_group=role_group_map.role_group_id,
                             current_user_id=current_user_id,
                             owner_groups_to_remove=[role_group_map.group_id],
                         ).execute()
                     else:
-                        ModifyRoleGroups(
+                        await ModifyRoleGroups(
                             role_group=role_group_map.role_group_id,
                             current_user_id=current_user_id,
                             groups_to_remove=[role_group_map.group_id],
                         ).execute()
 
-                db.session.execute(insert(RoleGroup.__table__).values(id=group_id))
+                await db.session.execute(insert(RoleGroup.__table__).values(id=group_id))
             elif type(self.group_changes) is AppGroup:
-                db.session.execute(
+                await db.session.execute(
                     insert(AppGroup.__table__).values(
                         id=group_id,
                         app_id=self.group_changes.app_id,
@@ -209,7 +221,7 @@ class ModifyGroupType:
 
             # Update the group type
             group.type = self.group_changes.type
-            db.session.commit()
+            await db.session.commit()
 
             # Expunge the session so the changed object is flushed from the ORM
             # See https://stackoverflow.com/a/21792969
@@ -217,17 +229,19 @@ class ModifyGroupType:
 
             # Add all app tags to this new app group, after we've updated the group type
             if type(self.group_changes) is AppGroup:
-                app_tag_maps = db.session.scalars(
-                    select(AppTagMap)
-                    .options(joinedload(AppTagMap.active_tag))
-                    .where(
-                        or_(
-                            AppTagMap.ended_at.is_(None),
-                            AppTagMap.ended_at > func.now(),
+                app_tag_maps = (
+                    await db.session.scalars(
+                        select(AppTagMap)
+                        .options(joinedload(AppTagMap.active_tag))
+                        .where(
+                            or_(
+                                AppTagMap.ended_at.is_(None),
+                                AppTagMap.ended_at > func.now(),
+                            )
                         )
-                    )
-                    .where(
-                        AppTagMap.app_id == self.group_changes.app_id,
+                        .where(
+                            AppTagMap.app_id == self.group_changes.app_id,
+                        )
                     )
                 ).all()
                 for app_tag_map in app_tag_maps:
@@ -240,16 +254,18 @@ class ModifyGroupType:
                     )
 
                 # Handle group time limit constraints when adding tags with time limit contraints to a group
-                ModifyGroupsTimeLimit(
+                await ModifyGroupsTimeLimit(
                     groups=[group_id], tags=[tag_map.active_tag.id for tag_map in app_tag_maps]
                 ).execute()
 
             # Return a new lookup for the group
-            group = db.session.scalars(
-                select(OktaGroup)
-                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-                .where(OktaGroup.deleted_at.is_(None))
-                .where(OktaGroup.id == group_id)
+            group = (
+                await db.session.scalars(
+                    select(OktaGroup)
+                    .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                    .where(OktaGroup.deleted_at.is_(None))
+                    .where(OktaGroup.id == group_id)
+                )
             ).first()
 
             # Invoke group_created hook after converting to an AppGroup (symmetric
@@ -260,18 +276,18 @@ class ModifyGroupType:
                     try:
                         hook = get_app_group_lifecycle_hook()
                         hook.group_created(session=db.session, group=group, plugin_id=plugin_id)
-                        db.session.commit()
+                        await db.session.commit()
                     except Exception:
                         logging.getLogger("api").exception(
                             f"Failed to invoke group_created hook for group {group.id}" f" with plugin '{plugin_id}'"
                         )
-                        db.session.rollback()
+                        await db.session.rollback()
 
         # Audit logging if type changed
         if group.type != old_group_type:
             email = None
             if current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+                email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(

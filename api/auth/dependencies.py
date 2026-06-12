@@ -19,7 +19,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException
 from sentry_sdk import set_user
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from api.auth.cloudflare import extract_token, verify_cloudflare_token
@@ -30,9 +30,11 @@ from api.models import OktaUser
 logger = logging.getLogger(__name__)
 
 
-def _lookup_user_by_email(db: Session, email: str) -> OktaUser:
-    user = db.scalars(
-        select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+async def _lookup_user_by_email(db: AsyncSession, email: str) -> OktaUser:
+    user = (
+        await db.scalars(
+            select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+        )
     ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -55,7 +57,7 @@ class OIDCRedirectRequired(Exception):
         super().__init__(f"OIDC login required (next={next_path!r})")
 
 
-def get_current_user_id(request: Request, db: DbSession) -> str:
+async def get_current_user_id(request: Request, db: DbSession) -> str:
     """Resolve the current user id, raising 403 if unauthenticated."""
     if settings.ENV in ("development", "test"):
         email = _dev_user_email(request)
@@ -63,7 +65,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             # Health-check tests set this sentinel to opt out of having a
             # real OktaUser row resolved; the endpoint runs without auth.
             return ""
-        user = _lookup_user_by_email(db, email)
+        user = await _lookup_user_by_email(db, email)
         request.state.current_user_id = user.id
         if settings.FASTAPI_SENTRY_DSN:
             set_user({"id": user.id})
@@ -75,7 +77,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             raise HTTPException(status_code=403, detail="Missing required Cloudflare authorization token")
         payload = verify_cloudflare_token(token)
         if "email" in payload:
-            user = _lookup_user_by_email(db, payload["email"])
+            user = await _lookup_user_by_email(db, payload["email"])
             request.state.current_user_id = user.id
             if settings.FASTAPI_SENTRY_DSN:
                 set_user({"id": user.id})
@@ -95,7 +97,7 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
             # Browser flow: the SPA should follow the 307 to the OIDC login
             # endpoint, which kicks off the authorization-code redirect.
             raise OIDCRedirectRequired(next_path=request.url.path)
-        user = _lookup_user_by_email(db, userinfo["email"])
+        user = await _lookup_user_by_email(db, userinfo["email"])
         request.state.current_user_id = user.id
         if settings.FASTAPI_SENTRY_DSN:
             set_user({"id": user.id})
@@ -104,12 +106,12 @@ def get_current_user_id(request: Request, db: DbSession) -> str:
     raise HTTPException(status_code=403, detail="No authentication method configured")
 
 
-def get_current_user(
+async def get_current_user(
     db: DbSession,
     current_user_id: Annotated[str, Depends(get_current_user_id)],
 ) -> OktaUser:
-    user = db.scalars(
-        select(OktaUser).where(OktaUser.id == current_user_id).where(OktaUser.deleted_at.is_(None))
+    user = (
+        await db.scalars(select(OktaUser).where(OktaUser.id == current_user_id).where(OktaUser.deleted_at.is_(None)))
     ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -129,7 +131,7 @@ CurrentUser = Annotated[OktaUser, Depends(get_current_user)]
 AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/oidc/")
 
 
-def require_authenticated(request: Request, db: DbSession) -> None:
+async def require_authenticated(request: Request, db: DbSession) -> None:
     """Enforce authentication on every request except `/api/healthz` and
     the OIDC login endpoints. `/api/docs` and `/api/openapi.json` are
     intentionally inside the gate even though they're DEBUG-only, as is
@@ -137,4 +139,4 @@ def require_authenticated(request: Request, db: DbSession) -> None:
     path = request.url.path
     if any(path == p.rstrip("/") or path.startswith(p) for p in AUTH_ALLOWLIST_PREFIXES):
         return
-    get_current_user_id(request, db)
+    await get_current_user_id(request, db)

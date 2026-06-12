@@ -26,25 +26,31 @@ class ModifyGroupTags:
         self.tag_ids_to_remove = tags_to_remove
         self.current_user_id = current_user_id
 
-    def execute(self) -> OktaGroup:
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.group_id)
+    async def execute(self) -> OktaGroup:
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.group_id)
+            )
         ).first()
 
-        tags_to_add = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add))
+        tags_to_add = (
+            await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add)))
         ).all()
 
-        tags_to_remove = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
+        tags_to_remove = (
+            await db.session.scalars(
+                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
+            )
         ).all()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -53,22 +59,24 @@ class ModifyGroupTags:
         if len(tags_to_add) > 0:
             # Only add tags that are not already associated with the group
             tag_ids_to_add = [t.id for t in tags_to_add]
-            existing_tag_maps = db.session.scalars(
-                select(OktaGroupTagMap)
-                .where(
-                    or_(
-                        OktaGroupTagMap.ended_at.is_(None),
-                        OktaGroupTagMap.ended_at > func.now(),
+            existing_tag_maps = (
+                await db.session.scalars(
+                    select(OktaGroupTagMap)
+                    .where(
+                        or_(
+                            OktaGroupTagMap.ended_at.is_(None),
+                            OktaGroupTagMap.ended_at > func.now(),
+                        )
                     )
-                )
-                .where(
-                    OktaGroupTagMap.group_id == group.id,
-                )
-                .where(
-                    OktaGroupTagMap.tag_id.in_(tag_ids_to_add),
-                )
-                .where(
-                    OktaGroupTagMap.app_tag_map_id.is_(None),
+                    .where(
+                        OktaGroupTagMap.group_id == group.id,
+                    )
+                    .where(
+                        OktaGroupTagMap.tag_id.in_(tag_ids_to_add),
+                    )
+                    .where(
+                        OktaGroupTagMap.app_tag_map_id.is_(None),
+                    )
                 )
             ).all()
 
@@ -84,12 +92,12 @@ class ModifyGroupTags:
 
             # Handle group time limit constraints when adding tags
             # with time limit contraints to a group
-            ModifyGroupsTimeLimit(groups=[group.id], tags=new_tag_ids_to_add).execute()
+            await ModifyGroupsTimeLimit(groups=[group.id], tags=new_tag_ids_to_add).execute()
 
-            db.session.commit()
+            await db.session.commit()
 
         if len(tags_to_remove) > 0:
-            db.session.execute(
+            await db.session.execute(
                 update(OktaGroupTagMap)
                 .where(
                     or_(
@@ -109,18 +117,20 @@ class ModifyGroupTags:
                 .values({OktaGroupTagMap.ended_at: func.now()})
                 .execution_options(synchronize_session="fetch")
             )
-            db.session.commit()
+            await db.session.commit()
 
         # Audit log if tags changed
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             email = None
             if current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
-                audit_group = db.session.scalars(
-                    select(OktaGroup)
-                    .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-                    .where(OktaGroup.deleted_at.is_(None))
-                    .where(OktaGroup.id == group.id)
+                email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
+                audit_group = (
+                    await db.session.scalars(
+                        select(OktaGroup)
+                        .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                        .where(OktaGroup.deleted_at.is_(None))
+                        .where(OktaGroup.id == group.id)
+                    )
                 ).first()
 
             _ctx = get_request_context()

@@ -54,22 +54,26 @@ class CreateRoleRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> Optional[RoleRequest]:
-        requester = db.session.get(OktaUser, self.requester_user_id)
+    async def execute(self) -> Optional[RoleRequest]:
+        requester = await db.session.get(OktaUser, self.requester_user_id)
 
-        requester_role = db.session.scalars(
-            select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.requester_role_id)
+        requester_role = (
+            await db.session.scalars(
+                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.requester_role_id)
+            )
         ).first()
 
-        requested_group = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
+        requested_group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup]),
+                    joinedload(AppGroup.app),
+                    selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
+                )
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.requested_group_id)
             )
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.requested_group_id)
         ).first()
 
         # Don't allow creating a request for an unmanaged group
@@ -92,23 +96,25 @@ class CreateRoleRequest:
         )
 
         db.session.add(role_request)
-        db.session.commit()
+        await db.session.commit()
 
         # Fetch the users to notify
-        approvers = get_group_managers(requested_group.id)
+        approvers = await get_group_managers(requested_group.id)
 
         requested_group_tags = [tm.active_tag for tm in requested_group.active_group_tags]
 
         role_memberships = [
             u.user_id
-            for u in db.session.scalars(
-                select(OktaUserGroupMember)
-                .where(OktaUserGroupMember.group_id == requester_role.id)
-                .where(OktaUserGroupMember.is_owner.is_(False))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > func.now(),
+            for u in (
+                await db.session.scalars(
+                    select(OktaUserGroupMember)
+                    .where(OktaUserGroupMember.group_id == requester_role.id)
+                    .where(OktaUserGroupMember.is_owner.is_(False))
+                    .where(
+                        or_(
+                            OktaUserGroupMember.ended_at.is_(None),
+                            OktaUserGroupMember.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
@@ -137,23 +143,26 @@ class CreateRoleRequest:
             or (len(approvers) == 1 and approvers[0].id == requester.id)
             and type(requested_group) is AppGroup
         ):
-            approvers = get_app_managers(requested_group.app_id)
+            approvers = await get_app_managers(requested_group.app_id)
 
         # If there are still no approvers, try to get the access owners
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == requester.id):
-            approvers = get_access_owners()
+            approvers = await get_access_owners()
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
-                ),
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    joinedload(AppGroup.app),
+                    selectinload(OktaGroup.active_group_tags).options(
+                        joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                        joinedload(OktaGroupTagMap.enabled_active_tag),
+                    ),
+                )
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == requested_group.id)
             )
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == requested_group.id)
         ).first()
 
         # Audit logging
@@ -187,14 +196,14 @@ class CreateRoleRequest:
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    ApproveRoleRequest(
+                    await ApproveRoleRequest(
                         role_request=role_request,
                         approval_reason=response.reason,
                         ending_at=response.ending_at,
                         notify=False,
                     ).execute()
                 else:
-                    RejectRoleRequest(
+                    await RejectRoleRequest(
                         role_request=role_request,
                         rejection_reason=response.reason,
                         notify=False,

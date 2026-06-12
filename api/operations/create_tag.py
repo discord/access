@@ -29,29 +29,33 @@ class CreateTag:
 
         self.current_user_id = current_user_id
 
-    def execute(self) -> Tag:
+    async def execute(self) -> Tag:
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
         )
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        existing_tag = db.session.scalars(
-            select(Tag).where(func.lower(Tag.name) == func.lower(self.tag.name)).where(Tag.deleted_at.is_(None))
+        existing_tag = (
+            await db.session.scalars(
+                select(Tag).where(func.lower(Tag.name) == func.lower(self.tag.name)).where(Tag.deleted_at.is_(None))
+            )
         ).first()
         if existing_tag is not None:
             return existing_tag
 
         db.session.add(self.tag)
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
         email = None
         if current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 

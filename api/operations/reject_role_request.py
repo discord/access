@@ -37,29 +37,33 @@ class RejectRoleRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> RoleRequest:
+    async def execute(self) -> RoleRequest:
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        role_request = db.session.scalars(
-            # `requester_role` is read by the audit-log serializer below and is
-            # `lazy="raise_on_sql"`, so eager-load it here — a cold session (e.g.
-            # the `access sync` cronjob deleting a user with pending role
-            # requests) has no resident role group to satisfy it otherwise.
-            # `of=RoleRequest` keeps FOR UPDATE off the joinedload's nullable
-            # outer-join side (Postgres rejects that); no-op on SQLite.
-            select(RoleRequest)
-            .options(joinedload(RoleRequest.requester_role))
-            .where(RoleRequest.id == self.role_request_id)
-            .with_for_update(of=RoleRequest)
+        role_request = (
+            await db.session.scalars(
+                # `requester_role` is read by the audit-log serializer below and is
+                # `lazy="raise_on_sql"`, so eager-load it here — a cold session (e.g.
+                # the `access sync` cronjob deleting a user with pending role
+                # requests) has no resident role group to satisfy it otherwise.
+                # `of=RoleRequest` keeps FOR UPDATE off the joinedload's nullable
+                # outer-join side (Postgres rejects that); no-op on SQLite.
+                select(RoleRequest)
+                .options(joinedload(RoleRequest.requester_role))
+                .where(RoleRequest.id == self.role_request_id)
+                .with_for_update(of=RoleRequest)
+            )
         ).first()
 
         if self.current_user_id is None:
             rejecter_id = None
         else:
             rejecter_id = getattr(
-                db.session.scalars(
-                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                (
+                    await db.session.scalars(
+                        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                    )
                 ).first(),
                 "id",
                 None,
@@ -76,18 +80,20 @@ class RejectRoleRequest:
         role_request.resolver_user_id = rejecter_id
         role_request.resolution_reason = self.rejection_reason
 
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
         email = None
         if rejecter_id is not None:
-            email = getattr(db.session.get(OktaUser, rejecter_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, rejecter_id), "email", None)
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.id == role_request.requested_group_id)
-            .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.id == role_request.requested_group_id)
+                .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+            )
         ).first()
 
         _ctx = get_request_context()
@@ -102,16 +108,16 @@ class RejectRoleRequest:
                     "current_user_email": email,
                     "group": group,
                     "role_request": role_request,
-                    "requester": db.session.get(OktaUser, role_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, role_request.requester_user_id),
                 }
             )
         )
 
         if self.notify:
-            requester = db.session.get(OktaUser, role_request.requester_user_id)
-            requester_role = db.session.get(OktaGroup, role_request.requester_role_id)
+            requester = await db.session.get(OktaUser, role_request.requester_user_id)
+            requester_role = await db.session.get(OktaGroup, role_request.requester_role_id)
 
-            approvers = get_all_possible_request_approvers(role_request)
+            approvers = await get_all_possible_request_approvers(role_request)
 
             self.notification_hook.access_role_request_completed(
                 role_request=role_request,

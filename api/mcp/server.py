@@ -316,7 +316,7 @@ class MCPAuthMiddleware:
         identity: Optional[MCPIdentity] = None
         for provider in (dev_provider, cloudflare_provider, oidc_provider):
             try:
-                identity = provider.resolve_identity(scope)
+                identity = await provider.resolve_identity(scope)
             except Exception:
                 # Providers shouldn't raise — they return None on
                 # missing or invalid credentials. A raised exception is

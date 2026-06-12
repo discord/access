@@ -37,19 +37,23 @@ class RejectGroupRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> GroupRequest:
+    async def execute(self) -> GroupRequest:
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        group_request = db.session.scalars(
-            select(GroupRequest).where(GroupRequest.id == self.group_request_id).with_for_update()
+        group_request = (
+            await db.session.scalars(
+                select(GroupRequest).where(GroupRequest.id == self.group_request_id).with_for_update()
+            )
         ).first()
 
         if self.current_user_id is None:
             rejecter_id = None
         else:
-            user = db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            user = (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first()
             rejecter_id = user.id if user else None
 
@@ -66,22 +70,24 @@ class RejectGroupRequest:
             is_self_rejection = group_request.requester_user_id == rejecter_id
 
             if not is_self_rejection:
-                access_owner_ids = {u.id for u in get_access_owners()}
+                access_owner_ids = {u.id for u in await get_access_owners()}
                 is_global_admin = rejecter_id in access_owner_ids
 
                 if not is_global_admin:
                     # Check app ownership if this is an app group request
                     if resolved_app_id is not None:
-                        is_app_owner = db.session.scalars(
-                            select(OktaUserGroupMember)
-                            .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                            .where(
-                                AppGroup.app_id == resolved_app_id,
-                                AppGroup.is_owner.is_(True),
-                                AppGroup.deleted_at.is_(None),
-                                OktaUserGroupMember.user_id == rejecter_id,
-                                OktaUserGroupMember.is_owner.is_(True),
-                                OktaUserGroupMember.ended_at.is_(None),
+                        is_app_owner = (
+                            await db.session.scalars(
+                                select(OktaUserGroupMember)
+                                .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
+                                .where(
+                                    AppGroup.app_id == resolved_app_id,
+                                    AppGroup.is_owner.is_(True),
+                                    AppGroup.deleted_at.is_(None),
+                                    OktaUserGroupMember.user_id == rejecter_id,
+                                    OktaUserGroupMember.is_owner.is_(True),
+                                    OktaUserGroupMember.ended_at.is_(None),
+                                )
                             )
                         ).first()
 
@@ -92,7 +98,7 @@ class RejectGroupRequest:
                         return group_request
 
         # Audit logging
-        email = getattr(db.session.get(OktaUser, rejecter_id), "email", None) if rejecter_id else None
+        email = getattr(await db.session.get(OktaUser, rejecter_id), "email", None) if rejecter_id else None
         _ctx = get_request_context()
         logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
@@ -103,7 +109,7 @@ class RejectGroupRequest:
                     "current_user_id": rejecter_id,
                     "current_user_email": email,
                     "group_request": group_request,
-                    "requester": db.session.get(OktaUser, group_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, group_request.requester_user_id),
                 }
             )
         )
@@ -113,12 +119,12 @@ class RejectGroupRequest:
         group_request.resolver_user_id = rejecter_id
         group_request.resolution_reason = self.rejection_reason
 
-        db.session.commit()
+        await db.session.commit()
 
         if self.notify:
-            requester = db.session.get(OktaUser, group_request.requester_user_id)
+            requester = await db.session.get(OktaUser, group_request.requester_user_id)
 
-            approvers = get_all_possible_request_approvers(group_request)
+            approvers = await get_all_possible_request_approvers(group_request)
 
             self.notification_hook.access_group_request_completed(
                 group_request=group_request,
