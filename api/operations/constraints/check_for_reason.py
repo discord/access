@@ -19,6 +19,15 @@ class CheckForReason:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
+        self._group_arg = group
+
+        self.reason = reason
+
+        self.members_to_add = members_to_add
+        self.owners_to_add = owners_to_add
+
+    def _resolve(self) -> None:
+        group = self._group_arg
         self.group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -37,16 +46,12 @@ class CheckForReason:
             .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
         ).first()
 
-        self.reason = reason
-
-        self.members_to_add = members_to_add
-        self.owners_to_add = owners_to_add
-
     @staticmethod
     def invalid_reason(reason: Optional[str]) -> bool:
         return reason is None or reason.strip() == ""
 
     def execute_for_group(self) -> Tuple[bool, str]:
+        self._resolve()
         if self.invalid_reason(self.reason):
             tags = [tag_map.active_tag for tag_map in self.group.active_group_tags]
             if len(self.owners_to_add) > 0:
@@ -92,6 +97,7 @@ class CheckForReason:
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
+        self._resolve()
         if type(self.group) is not RoleGroup:
             return True, ""
 

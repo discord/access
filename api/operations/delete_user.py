@@ -14,22 +14,29 @@ from api.services import okta
 
 class DeleteUser:
     def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
+        self._user_arg = user
+
+        self.sync_to_okta = sync_to_okta
+
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        user = self._user_arg
         if isinstance(user, str):
             self.user = db.session.scalars(select(OktaUser).where(OktaUser.id == user)).first()
         else:
             self.user = user
 
-        self.sync_to_okta = sync_to_okta
-
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> None:
+        self._resolve()
         # Run asychronously to parallelize Okta API requests
         return asyncio.run(self._execute())
 

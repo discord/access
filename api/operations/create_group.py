@@ -27,17 +27,24 @@ class CreateGroup:
         else:
             self.group = group
 
-        self.tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags))).all()
+        self._tags_arg = tags
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        self.tags = db.session.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
+        ).all()
 
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self, *, _group: Optional[T] = None) -> T:
+        self._resolve()
         # Do not allow non-deleted groups with the same name (case-insensitive)
         existing_group = db.session.scalars(
             select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))

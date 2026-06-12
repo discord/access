@@ -41,24 +41,9 @@ class CreateApp:
             app.id = id
             self.app = app
 
-        self.tag_ids = [
-            tag.id
-            for tag in db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags))).all()
-        ]
-
-        self.owner_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == owner_id)
-            ).first(),
-            "id",
-            None,
-        )
-        self.owner_role_ids = None
-        if owner_role_ids is not None:
-            self.owner_roles = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
-            ).all()
-            self.owner_role_ids = [role.id for role in self.owner_roles]
+        self._tags_arg = tags
+        self._owner_id_arg = owner_id
+        self._owner_role_ids_arg = owner_role_ids
 
         self.app_group_prefix = (
             f"{AppGroup.APP_GROUP_NAME_PREFIX}{self.app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
@@ -80,15 +65,41 @@ class CreateApp:
                 if name == self.owner_group_name:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        self.tag_ids = [
+            tag.id
+            for tag in db.session.scalars(
+                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
+            ).all()
+        ]
+
+        self.owner_id = getattr(
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._owner_id_arg)
+            ).first(),
+            "id",
+            None,
+        )
+        owner_role_ids = self._owner_role_ids_arg
+        self.owner_role_ids = None
+        if owner_role_ids is not None:
+            self.owner_roles = db.session.scalars(
+                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+            ).all()
+            self.owner_role_ids = [role.id for role in self.owner_roles]
+
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> App:
+        self._resolve()
         # Do not allow non-deleted apps with the same name
         existing_app = db.session.scalars(
             select(App).where(func.lower(App.name) == func.lower(self.app.name)).where(App.deleted_at.is_(None))

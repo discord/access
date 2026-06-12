@@ -26,6 +26,13 @@ from api.schemas import AuditLogSchema, EventType
 
 class ModifyGroupType:
     def __init__(self, *, group: OktaGroup | str, group_changes: OktaGroup, current_user_id: Optional[str]):
+        self._group_arg = group
+
+        self.group_changes = group_changes
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        group = self._group_arg
         self.group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
@@ -33,16 +40,16 @@ class ModifyGroupType:
             .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
         ).first()
 
-        self.group_changes = group_changes
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> OktaGroup:
+        self._resolve()
         # Update group type if it's being modified
         if type(self.group) is not type(self.group_changes):
             group_id = self.group.id

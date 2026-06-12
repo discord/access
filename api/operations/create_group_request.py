@@ -41,10 +41,7 @@ class CreateGroupRequest:
     ):
         self.id = self.__generate_id()
 
-        if isinstance(requester_user, str):
-            self.requester = db.session.get(OktaUser, requester_user)
-        else:
-            self.requester = requester_user
+        self._requester_user_arg = requester_user
 
         self.requested_group_name = requested_group_name
         self.requested_group_description = requested_group_description
@@ -57,7 +54,15 @@ class CreateGroupRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
+    def _resolve(self) -> None:
+        requester_user = self._requester_user_arg
+        if isinstance(requester_user, str):
+            self.requester = db.session.get(OktaUser, requester_user)
+        else:
+            self.requester = requester_user
+
     def execute(self) -> Optional[GroupRequest]:
+        self._resolve()
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
             return None
