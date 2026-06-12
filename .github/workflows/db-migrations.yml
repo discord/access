@@ -20,7 +20,7 @@ jobs:
         include:
           - python-version: "3.13"
             database: postgresql
-            database-uri: postgresql+pg8000://postgres:postgres@localhost:5432/postgres
+            database-uri: postgresql://postgres:postgres@localhost:5432/postgres
           - python-version: "3.13"
             database: sqlite
             database-uri: sqlite:///migrations_ci.db

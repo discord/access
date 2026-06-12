@@ -46,7 +46,7 @@ spec:
             - name: OKTA_DOMAIN
               value: mydomain.okta.com # Replace with your Okta domain
             - name: DATABASE_URI
-              value: postgresql+pg8000:// # Replace with your database URI
+              value: postgresql:// # Replace with your database URI
             - name: USER_DISPLAY_CUSTOM_ATTRIBUTES
               value: Title,Department,Work Location # Replace with the Custom Okta User Attributes you want to display
             - name: OKTA_API_TOKEN
