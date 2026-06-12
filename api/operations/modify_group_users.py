@@ -9,6 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
+from api.operations._fan_out import drain_fan_out_tasks
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -766,8 +767,7 @@ class ModifyGroupUsers:
                     asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
                 )
 
-        if len(async_tasks) > 0:
-            await asyncio.wait(async_tasks)
+        await drain_fan_out_tasks(async_tasks, f"ModifyGroupUsers for group {self.group.id}")
 
         return self.group
 

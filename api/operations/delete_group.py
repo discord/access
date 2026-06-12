@@ -8,6 +8,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
+from api.operations._fan_out import drain_fan_out_tasks
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -329,5 +330,4 @@ class DeleteGroup:
                 )
                 await db.session.rollback()
 
-        if len(okta_tasks) > 0:
-            await asyncio.wait(okta_tasks)
+        await drain_fan_out_tasks(okta_tasks, f"DeleteGroup for group {self.group.id}")
