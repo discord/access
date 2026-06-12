@@ -179,12 +179,12 @@ def _group_ref_for_audit(g: Any, include_role_associations: bool) -> _GroupRefFo
         o_raw = getattr(g, "active_role_associated_group_owner_mappings", None) or []
         member_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in m_raw) if r is not None]
         owner_mappings = [r for r in (_role_associated_mapping_for_audit(rgm) for rgm in o_raw) if r is not None]
-    # `active_group_tags` is `lazy="select"`. Reading it on an unwarmed instance
-    # would fire one SELECT per row. Only emit the tag rows when the relationship
-    # has been eager-loaded; otherwise leave the list empty. The OktaGroupTagMap
-    # rows back-reference the parent group (a self-loop) and the AppTagMap rows
-    # carry `lazy="raise_on_sql"` relationships that aren't warmed in this scope,
-    # so build both models by hand and skip the fields that would touch them.
+    # `active_group_tags` is `lazy="raise_on_sql"`. Only emit the tag rows when
+    # the relationship has been eager-loaded; otherwise leave the list empty.
+    # The OktaGroupTagMap rows back-reference the parent group (a self-loop)
+    # and the AppTagMap rows carry `lazy="raise_on_sql"` relationships that
+    # aren't warmed in this scope, so build both models by hand and skip the
+    # fields that would touch them.
     state = sa_inspect(g)
     active_group_tags: list[OktaGroupTagMapDetail] = []
     if state is not None and "active_group_tags" not in state.unloaded:

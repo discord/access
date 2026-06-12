@@ -90,6 +90,10 @@ _group_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
 def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
+    # Routes call this after operations mutate the group; with
+    # expire_on_commit=False the identity map would otherwise serve
+    # pre-operation relationship state, so drop cached ORM state first.
+    db.expire_all()
     return db.scalars(
         select(OktaGroup)
         .options(*DEFAULT_LOAD_OPTIONS)

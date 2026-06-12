@@ -224,6 +224,9 @@ def test_stale_resolution_then_approve_conflicts_without_granting(
     )
     db.session.commit()
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     with pytest.raises(AccessException) as exc:
         op.execute()
     assert exc.value.status_code == 409

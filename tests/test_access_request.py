@@ -1027,6 +1027,9 @@ def test_get_access_request_detail_requested_group_for_role_group(
     ).execute()
     assert ar is not None
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     rep = client.get(url_for("api-access-requests.access_request_by_id", access_request_id=ar.id))
     assert rep.status_code == 200, rep.text
     data = rep.json()
