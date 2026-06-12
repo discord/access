@@ -55,7 +55,15 @@ def _detail_load_options() -> tuple:
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
         requested_group_load,
-        selectinload(AccessRequest.active_requested_group),
+        # `active_requested_group` resolves to the same row as
+        # `requested_group`, but it must carry its own polymorphic + app
+        # loaders: relying on the sibling loader to warm the identity map is
+        # ordering-dependent (loader paths are applied in unordered-dict
+        # order) and leaves `AppGroup.app` unloaded when this one runs first.
+        selectinload(AccessRequest.active_requested_group).options(
+            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+            joinedload(AppGroup.app),
+        ),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
