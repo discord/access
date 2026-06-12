@@ -12,12 +12,12 @@ import base64
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Generator
+from typing import Any, AsyncGenerator, Generator
 
+import httpx
 import itsdangerous
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import RedirectResponse
 
@@ -82,10 +82,10 @@ def _build_oidc_mock(
 
 
 @pytest.fixture
-def seed_oidc_user(db: Db) -> OktaUser:
+async def seed_oidc_user(db: Db) -> OktaUser:
     user = OktaUserFactory.build(email=TEST_OIDC_USER_EMAIL)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     return user
 
 
@@ -94,13 +94,13 @@ def _install_oidc_settings(env: str) -> None:
     settings.SECRET_KEY = TEST_SECRET_KEY
     settings.OIDC_CLIENT_SECRETS = STUB_OIDC_CLIENT_SECRETS
     settings.CLOUDFLARE_TEAM_DOMAIN = None
-    # The TestClient talks to host "testserver"; allow it so the
+    # The test client talks to host "testserver"; allow it so the
     # TrustedHostMiddleware guard (required for OIDC outside dev/test) is
     # satisfied and requests aren't rejected as spoofed-Host.
     settings.ALLOWED_HOSTS = "testserver"
     # Keep MCP out of these apps: they build their own app per test and the
-    # TestClient re-enters the lifespan, which the MCP session manager only
-    # tolerates once per process. MCP is covered by test_mcp.py.
+    # MCP session manager needs a running lifespan (and only tolerates one
+    # `.run()` per instance). MCP is covered by test_mcp.py.
     settings.ENABLE_MCP = False
     # Suppress create_app's `db.init_app(build_engine())` branch — the `db`
     # fixture has already bound an in-memory engine with the seeded schema,
@@ -186,13 +186,13 @@ def oidc_app(
 
 
 @pytest.fixture
-def oidc_client(oidc_app: FastAPI) -> Generator[TestClient, None, None]:
+async def oidc_client(oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
     # Use https so the cookie jar will replay a Secure-flagged session cookie
     # back to the server on subsequent requests.
-    with TestClient(
-        oidc_app,
+    transport = httpx.ASGITransport(app=oidc_app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(
+        transport=transport,
         base_url="https://testserver",
-        raise_server_exceptions=False,
         follow_redirects=False,
     ) as c:
         yield c
@@ -239,12 +239,17 @@ def dev_oidc_app(
 
 
 @pytest.fixture
-def dev_oidc_client(dev_oidc_app: FastAPI) -> Generator[TestClient, None, None]:
-    with TestClient(dev_oidc_app, raise_server_exceptions=False, follow_redirects=False) as c:
+async def dev_oidc_client(dev_oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
+    transport = httpx.ASGITransport(app=dev_oidc_app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+        follow_redirects=False,
+    ) as c:
         yield c
 
 
-def _set_session(client: TestClient, data: dict[str, Any]) -> None:
+def _set_session(client: httpx.AsyncClient, data: dict[str, Any]) -> None:
     client.cookies.set("session", _signed_session_cookie(TEST_SECRET_KEY, data))
 
 
@@ -262,42 +267,42 @@ def _read_session_from_set_cookie(set_cookie_header: str) -> dict[str, Any] | No
 # ---------------------------------------------------------------------------
 
 
-def test_unauthenticated_protected_endpoint_redirects_to_oidc_login(
-    oidc_client: TestClient,
+async def test_unauthenticated_protected_endpoint_redirects_to_oidc_login(
+    oidc_client: httpx.AsyncClient,
 ) -> None:
-    response = oidc_client.get("/api/users")
+    response = await oidc_client.get("/api/users")
     assert response.status_code == 307
     location = response.headers["location"]
     assert location.startswith("/oidc/login?next=")
     assert "next=%2Fapi%2Fusers" in location
 
 
-def test_oidc_login_is_in_allowlist(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/login")
+async def test_oidc_login_is_in_allowlist(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/login")
     assert response.status_code == 302
     assert response.headers["location"].startswith("https://idp.test/authorize")
 
 
-def test_oidc_authorize_is_in_allowlist(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/authorize")
+async def test_oidc_authorize_is_in_allowlist(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/authorize")
     assert response.status_code in (302, 307)
     assert not response.headers["location"].startswith("/oidc/login")
 
 
-def test_oidc_logout_is_in_allowlist(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/logout")
+async def test_oidc_logout_is_in_allowlist(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/logout")
     assert response.status_code in (302, 307)
     assert not response.headers["location"].startswith("/oidc/login")
 
 
-def test_unmapped_api_path_redirects_through_auth_gate(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/api/this-endpoint-does-not-exist")
+async def test_unmapped_api_path_redirects_through_auth_gate(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/api/this-endpoint-does-not-exist")
     assert response.status_code == 307
     assert response.headers["location"].startswith("/oidc/login?next=")
 
 
-def test_unauthenticated_spa_path_redirects_to_oidc_login(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/groups/foo")
+async def test_unauthenticated_spa_path_redirects_to_oidc_login(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/groups/foo")
     assert response.status_code == 307
     location = response.headers["location"]
     assert location.startswith("/oidc/login?next=")
@@ -313,8 +318,8 @@ def test_unauthenticated_spa_path_redirects_to_oidc_login(oidc_client: TestClien
     "next_value",
     ["/dashboard", "/groups/foo", "/api/users/me", "/"],
 )
-def test_oidc_login_stores_safe_next(oidc_client: TestClient, next_value: str) -> None:
-    response = oidc_client.get(f"/oidc/login?next={next_value}")
+async def test_oidc_login_stores_safe_next(oidc_client: httpx.AsyncClient, next_value: str) -> None:
+    response = await oidc_client.get(f"/oidc/login?next={next_value}")
     assert response.status_code == 302
     session = _read_session_from_set_cookie(response.headers.get("set-cookie", ""))
     assert session is not None
@@ -336,17 +341,17 @@ def test_oidc_login_stores_safe_next(oidc_client: TestClient, next_value: str) -
         "relative/path",
     ],
 )
-def test_oidc_login_drops_unsafe_next(oidc_client: TestClient, next_value: str) -> None:
-    response = oidc_client.get("/oidc/login", params={"next": next_value})
+async def test_oidc_login_drops_unsafe_next(oidc_client: httpx.AsyncClient, next_value: str) -> None:
+    response = await oidc_client.get("/oidc/login", params={"next": next_value})
     assert response.status_code == 302
     session = _read_session_from_set_cookie(response.headers.get("set-cookie", ""))
     if session is not None:
         assert "oidc_next" not in session
 
 
-def test_oidc_authorize_uses_stored_next(oidc_client: TestClient) -> None:
+async def test_oidc_authorize_uses_stored_next(oidc_client: httpx.AsyncClient) -> None:
     _set_session(oidc_client, {"oidc_next": "/groups"})
-    response = oidc_client.get("/oidc/authorize")
+    response = await oidc_client.get("/oidc/authorize")
     assert response.status_code in (302, 307)
     assert response.headers["location"] == "/groups"
     session = _read_session_from_set_cookie(response.headers.get("set-cookie", ""))
@@ -355,8 +360,8 @@ def test_oidc_authorize_uses_stored_next(oidc_client: TestClient) -> None:
     assert session.get("userinfo", {}).get("email") == TEST_OIDC_USER_EMAIL
 
 
-def test_oidc_authorize_defaults_to_root_when_no_next(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/authorize")
+async def test_oidc_authorize_defaults_to_root_when_no_next(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/authorize")
     assert response.status_code in (302, 307)
     assert response.headers["location"] == "/"
 
@@ -366,29 +371,29 @@ def test_oidc_authorize_defaults_to_root_when_no_next(oidc_client: TestClient) -
 # ---------------------------------------------------------------------------
 
 
-def test_full_login_flow(oidc_client: TestClient, seed_oidc_user: OktaUser) -> None:
-    initial = oidc_client.get("/api/users")
+async def test_full_login_flow(oidc_client: httpx.AsyncClient, seed_oidc_user: OktaUser) -> None:
+    initial = await oidc_client.get("/api/users")
     assert initial.status_code == 307
     redirect_target = initial.headers["location"]
     assert redirect_target.startswith("/oidc/login?next=")
 
-    login = oidc_client.get(redirect_target)
+    login = await oidc_client.get(redirect_target)
     assert login.status_code == 302
     assert login.headers["location"].startswith("https://idp.test/authorize")
 
-    callback = oidc_client.get("/oidc/authorize")
+    callback = await oidc_client.get("/oidc/authorize")
     assert callback.status_code in (302, 307)
     assert callback.headers["location"] == "/api/users"
 
-    final = oidc_client.get("/api/users")
+    final = await oidc_client.get("/api/users")
     assert final.status_code == 200
 
 
-def test_login_with_existing_session_still_bounces_through_idp(
-    oidc_client: TestClient,
+async def test_login_with_existing_session_still_bounces_through_idp(
+    oidc_client: httpx.AsyncClient,
 ) -> None:
     _set_session(oidc_client, {"userinfo": {"email": TEST_OIDC_USER_EMAIL}})
-    response = oidc_client.get("/oidc/login?next=/dashboard")
+    response = await oidc_client.get("/oidc/login?next=/dashboard")
     assert response.status_code == 302
     assert response.headers["location"].startswith("https://idp.test/authorize")
 
@@ -398,27 +403,29 @@ def test_login_with_existing_session_still_bounces_through_idp(
 # ---------------------------------------------------------------------------
 
 
-def test_authorize_token_exchange_failure_returns_403(oidc_client: TestClient, oidc_mock: SimpleNamespace) -> None:
+async def test_authorize_token_exchange_failure_returns_403(
+    oidc_client: httpx.AsyncClient, oidc_mock: SimpleNamespace
+) -> None:
     async def boom(request: Any) -> dict[str, Any]:
         raise RuntimeError("upstream IdP rejected the code")
 
     oidc_mock.authorize_access_token = boom
-    response = oidc_client.get("/oidc/authorize")
+    response = await oidc_client.get("/oidc/authorize")
     assert response.status_code == 403
     assert "OIDC authorization failed" in response.text
 
 
-def test_authorize_unknown_email_returns_404_on_next_request(
-    oidc_client: TestClient, oidc_mock: SimpleNamespace
+async def test_authorize_unknown_email_returns_404_on_next_request(
+    oidc_client: httpx.AsyncClient, oidc_mock: SimpleNamespace
 ) -> None:
     async def unknown_user(request: Any) -> dict[str, Any]:
         return {"userinfo": {"email": "stranger@example.com"}}
 
     oidc_mock.authorize_access_token = unknown_user
-    callback = oidc_client.get("/oidc/authorize")
+    callback = await oidc_client.get("/oidc/authorize")
     assert callback.status_code in (302, 307)
 
-    follow_up = oidc_client.get("/api/users")
+    follow_up = await oidc_client.get("/api/users")
     assert follow_up.status_code == 404
 
 
@@ -427,9 +434,9 @@ def test_authorize_unknown_email_returns_404_on_next_request(
 # ---------------------------------------------------------------------------
 
 
-def test_logout_clears_session_and_redirects_home(oidc_client: TestClient) -> None:
+async def test_logout_clears_session_and_redirects_home(oidc_client: httpx.AsyncClient) -> None:
     _set_session(oidc_client, {"userinfo": {"email": TEST_OIDC_USER_EMAIL}})
-    response = oidc_client.get("/oidc/logout")
+    response = await oidc_client.get("/oidc/logout")
     assert response.status_code in (302, 307)
     assert response.headers["location"] == "/"
     set_cookie = response.headers.get("set-cookie", "")
@@ -438,7 +445,7 @@ def test_logout_clears_session_and_redirects_home(oidc_client: TestClient) -> No
         assert session is None or "userinfo" not in session
 
 
-def test_logout_does_not_call_idp_end_session(oidc_client: TestClient, oidc_mock: SimpleNamespace) -> None:
+async def test_logout_does_not_call_idp_end_session(oidc_client: httpx.AsyncClient, oidc_mock: SimpleNamespace) -> None:
     # Even if the IdP advertises an `end_session_endpoint`, /oidc/logout only
     # clears the local session. Driving the IdP-side logout would require an
     # `id_token_hint` (Okta returns 400 without one) and a registered
@@ -452,18 +459,18 @@ def test_logout_does_not_call_idp_end_session(oidc_client: TestClient, oidc_mock
 
     oidc_mock.load_server_metadata = metadata_with_end_session
     _set_session(oidc_client, {"userinfo": {"email": TEST_OIDC_USER_EMAIL}})
-    response = oidc_client.get("/oidc/logout")
+    response = await oidc_client.get("/oidc/logout")
     assert response.headers["location"] == "/"
     assert metadata_calls == 0
 
 
-def test_post_logout_request_redirects_back_to_login(oidc_client: TestClient) -> None:
+async def test_post_logout_request_redirects_back_to_login(oidc_client: httpx.AsyncClient) -> None:
     _set_session(oidc_client, {"userinfo": {"email": TEST_OIDC_USER_EMAIL}})
-    logout = oidc_client.get("/oidc/logout")
+    logout = await oidc_client.get("/oidc/logout")
     assert logout.status_code in (302, 307)
 
     oidc_client.cookies.clear()
-    response = oidc_client.get("/api/users")
+    response = await oidc_client.get("/api/users")
     assert response.status_code == 307
     assert response.headers["location"].startswith("/oidc/login?next=")
 
@@ -473,18 +480,18 @@ def test_post_logout_request_redirects_back_to_login(oidc_client: TestClient) ->
 # ---------------------------------------------------------------------------
 
 
-def test_hsts_present_in_non_dev(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/login")
+async def test_hsts_present_in_non_dev(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/login")
     assert response.headers.get("Strict-Transport-Security") == ("max-age=31536000; includeSubDomains")
 
 
-def test_hsts_absent_in_dev(dev_oidc_client: TestClient) -> None:
-    response = dev_oidc_client.get("/oidc/login")
+async def test_hsts_absent_in_dev(dev_oidc_client: httpx.AsyncClient) -> None:
+    response = await dev_oidc_client.get("/oidc/login")
     assert "Strict-Transport-Security" not in response.headers
 
 
-def test_other_security_headers_still_set(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/login")
+async def test_other_security_headers_still_set(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/login")
     assert "Content-Security-Policy" in response.headers
     assert response.headers.get("X-Frame-Options") == "DENY"
     assert response.headers.get("Referrer-Policy") == "no-referrer"
@@ -496,8 +503,8 @@ def test_other_security_headers_still_set(oidc_client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_session_cookie_flags_in_non_dev(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/login?next=/dashboard")
+async def test_session_cookie_flags_in_non_dev(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/login?next=/dashboard")
     set_cookie = response.headers.get("set-cookie", "").lower()
     assert "session=" in set_cookie
     assert "httponly" in set_cookie
@@ -505,9 +512,9 @@ def test_session_cookie_flags_in_non_dev(oidc_client: TestClient) -> None:
     assert "samesite=lax" in set_cookie
 
 
-def test_session_cookie_flags_in_dev_omit_secure(dev_oidc_client: TestClient) -> None:
+async def test_session_cookie_flags_in_dev_omit_secure(dev_oidc_client: httpx.AsyncClient) -> None:
     dev_oidc_client.cookies.set("session", _signed_session_cookie(TEST_SECRET_KEY, {"oidc_next": "/x"}))
-    response = dev_oidc_client.get("/oidc/logout")
+    response = await dev_oidc_client.get("/oidc/logout")
     set_cookie = response.headers.get("set-cookie", "").lower()
     assert "session=" in set_cookie
     assert "httponly" in set_cookie
@@ -560,46 +567,48 @@ def _has_trusted_host_middleware(app: FastAPI) -> bool:
     return any(m.cls.__name__ == TrustedHostMiddleware.__name__ for m in app.user_middleware)
 
 
-def test_request_with_allowed_host_passes(oidc_client: TestClient) -> None:
-    response = oidc_client.get("/oidc/login", headers={"host": "testserver"})
+async def test_request_with_allowed_host_passes(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/oidc/login", headers={"host": "testserver"})
     assert response.status_code == 302
 
 
-def test_request_with_spoofed_host_rejected(oidc_client: TestClient) -> None:
+async def test_request_with_spoofed_host_rejected(oidc_client: httpx.AsyncClient) -> None:
     # ALLOWED_HOSTS is "testserver" (set by the fixture); a spoofed Host is
     # rejected by TrustedHostMiddleware before any route runs.
-    response = oidc_client.get("/oidc/login", headers={"host": "evil.example.com"})
+    response = await oidc_client.get("/oidc/login", headers={"host": "evil.example.com"})
     assert response.status_code == 400
 
 
-def test_login_redirect_uri_derived_from_host(oidc_client: TestClient) -> None:
+async def test_login_redirect_uri_derived_from_host(oidc_client: httpx.AsyncClient) -> None:
     # The authorize_redirect mock echoes the redirect_uri into the IdP URL.
     # With no OIDC_OVERWRITE_REDIRECT_URI, it is built from the request host.
-    response = oidc_client.get("/oidc/login")
+    response = await oidc_client.get("/oidc/login")
     assert "https://testserver/oidc/authorize" in response.headers["location"]
 
 
-def test_overwrite_redirect_uri_pins_callback(oidc_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_overwrite_redirect_uri_pins_callback(
+    oidc_client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(settings, "OIDC_OVERWRITE_REDIRECT_URI", "https://pinned.example.com/oidc/authorize")
-    response = oidc_client.get("/oidc/login")
+    response = await oidc_client.get("/oidc/login")
     assert "https://pinned.example.com/oidc/authorize" in response.headers["location"]
 
 
-def test_create_app_requires_allowed_hosts_for_oidc_outside_dev(
+async def test_create_app_requires_allowed_hosts_for_oidc_outside_dev(
     monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
 ) -> None:
     with pytest.raises(ValueError, match="ALLOWED_HOSTS"):
         _build_app_with(monkeypatch, env="staging", oidc=True, cf=False, allowed_hosts="")
 
 
-def test_create_app_oidc_dev_allowed_without_allowed_hosts(
+async def test_create_app_oidc_dev_allowed_without_allowed_hosts(
     monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
 ) -> None:
     app = _build_app_with(monkeypatch, env="development", oidc=True, cf=False, allowed_hosts="")
     assert not _has_trusted_host_middleware(app)
 
 
-def test_create_app_cloudflare_outside_dev_not_required(
+async def test_create_app_cloudflare_outside_dev_not_required(
     monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path
 ) -> None:
     # Cloudflare deployment (no OIDC) doesn't hit the redirect_uri path, so the
@@ -608,7 +617,7 @@ def test_create_app_cloudflare_outside_dev_not_required(
     assert not _has_trusted_host_middleware(app)
 
 
-def test_create_app_adds_trusted_host_middleware_when_set(
+async def test_create_app_adds_trusted_host_middleware_when_set(
     monkeypatch: pytest.MonkeyPatch, db: Db, stub_build_dir: Path, installed_oidc_mock: None
 ) -> None:
     app = _build_app_with(monkeypatch, env="staging", oidc=True, cf=False, allowed_hosts="access.example.com")

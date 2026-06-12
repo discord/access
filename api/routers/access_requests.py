@@ -72,13 +72,19 @@ def _detail_load_options() -> tuple:
 def _summary_load_options() -> tuple:
     """Slim eager-loads for list / POST / PUT (`AccessRequestSummary`).
     Skips the per-type tag and role-association loaders the summary shape
-    doesn't expose."""
-    return (
+    doesn't expose. The polymorphic + AppGroup.app loaders must be nested
+    under each group relationship — applied at the top level of a
+    `select(AccessRequest)` they target the wrong entity and never run,
+    leaving AppGroup subclass attributes unloaded at serialization time."""
+    group_load_options = (
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+    )
+    return (
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
-        selectinload(AccessRequest.requested_group),
-        selectinload(AccessRequest.active_requested_group),
+        selectinload(AccessRequest.requested_group).options(*group_load_options),
+        selectinload(AccessRequest.active_requested_group).options(*group_load_options),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
@@ -271,9 +277,10 @@ async def post_access_request(
         raise HTTPException(400, "Access request could not be created")
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    ar_id = ar.id
     db.expire_all()
     refreshed = (
-        await db.scalars(select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id))
+        await db.scalars(select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar_id))
     ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)
 

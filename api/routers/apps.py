@@ -189,8 +189,9 @@ async def post_app(
     ).execute()
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    created_id = created.id
     db.expire_all()
-    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created.id))).first()
+    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created_id))).first()
     return AppDetail.model_validate(refreshed, from_attributes=True)
 
 
@@ -276,8 +277,9 @@ async def put_app(
             ).execute()
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            app_id = app_obj.id
             db.expire_all()
-            refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id))).first()
+            refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_id))).first()
             return AppDetail.model_validate(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
@@ -323,8 +325,11 @@ async def put_app(
 
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    # Capture the pk first: reading it after expire_all() would lazy-load
+    # synchronously, which raises MissingGreenlet on an AsyncSession.
+    app_id = app_obj.id
     db.expire_all()
-    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id))).first()
+    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_id))).first()
 
     # Audit logging — both name renames and plugin assignment/configuration
     # changes.

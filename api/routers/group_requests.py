@@ -223,9 +223,10 @@ async def post_group_request(
         raise HTTPException(400, "Failed to create group request")
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    gr_id = gr.id
     db.expire_all()
     refreshed = (
-        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr.id))
+        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr_id))
     ).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
 

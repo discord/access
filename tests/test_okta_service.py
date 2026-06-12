@@ -1,6 +1,4 @@
 import asyncio
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -68,86 +66,74 @@ def test_is_managed_group_with_allow_discord_access_undefined() -> None:
         assert result is True
 
 
-def test_update_group_preserves_custom_attributes() -> None:
+async def test_update_group_preserves_custom_attributes() -> None:
     """Test that update_group preserves custom attributes when updating a group."""
-    # Create a new event loop for this test
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    service = OktaService()
 
-    # Mock asyncio.run to use our event loop
-    with patch("asyncio.run", side_effect=lambda x: loop.run_until_complete(x)):
-        # Create OktaService instance
-        service = OktaService()
+    # Set up the mocks for the existing group and the update call
+    group_id = "test-group-id"
 
-        # Set up the mocks for the existing group and the update call
-        group_id = "test-group-id"
+    # Create a mock group with a profile that has the custom attribute
+    existing_group = MagicMock()
+    # Instead of setting __dict__ directly, configure the mock properly
+    existing_group.profile = MagicMock()
+    existing_group.profile.name = "Old Name"
+    existing_group.profile.description = "Old Description"
+    existing_group.profile.allow_discord_access = True
 
-        # Create a mock group with a profile that has the custom attribute
-        existing_group = MagicMock()
-        # Instead of setting __dict__ directly, configure the mock properly
-        existing_group.profile = MagicMock()
-        existing_group.profile.name = "Old Name"
-        existing_group.profile.description = "Old Description"
-        existing_group.profile.allow_discord_access = True
+    # Mock the per-call Okta client's get_group and update_group methods
+    mock_client = MagicMock()
+    mock_client.get_group = AsyncMock(return_value=(existing_group, None, None))
+    mock_client.update_group = AsyncMock(return_value=(MagicMock(), None, None))
 
-        # Mock the per-call Okta client's get_group and update_group methods
-        mock_client = MagicMock()
-        mock_client.get_group = AsyncMock(return_value=(existing_group, None, None))
-        mock_client.update_group = AsyncMock(return_value=(MagicMock(), None, None))
+    # Mock the _okta_client async context manager to yield the mock client
+    class MockOktaClientContext:
+        """Async context manager that yields the mock Okta client"""
 
-        # Mock the _okta_client async context manager to yield the mock client
-        class MockOktaClientContext:
-            """Async context manager that yields the mock Okta client"""
+        async def __aenter__(self) -> MagicMock:
+            return mock_client
 
-            async def __aenter__(self) -> MagicMock:
-                return mock_client
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            return None
 
-            async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-                return None
+    # Use patch to mock the _okta_client method
+    # This avoids directly assigning to the method, which mypy doesn't like
+    with patch.object(service, "_okta_client", return_value=MockOktaClientContext()):
+        # Call update_group
+        await service.update_group(group_id, "New Name", "New Description")
 
-        # Use patch to mock the _okta_client method
-        # This avoids directly assigning to the method, which mypy doesn't like
-        with patch.object(service, "_okta_client", return_value=MockOktaClientContext()):
-            # Call update_group
-            service.update_group(group_id, "New Name", "New Description")
+        # Verify update_group was called with a payload that preserved the custom attribute
+        args, _ = mock_client.update_group.call_args
+        assert len(args) == 2
+        assert args[0] == group_id
 
-            # Verify update_group was called with a payload that preserved the custom attribute
-            args, _ = mock_client.update_group.call_args
-            assert len(args) == 2
-            assert args[0] == group_id
-
-            # Check that the payload contains both the updated fields and the preserved custom attribute
-            updated_payload = args[1]
-            assert updated_payload.profile.name == "New Name"
-            assert updated_payload.profile.description == "New Description"
-            assert updated_payload.profile.allow_discord_access is True
+        # Check that the payload contains both the updated fields and the preserved custom attribute
+        updated_payload = args[1]
+        assert updated_payload.profile.name == "New Name"
+        assert updated_payload.profile.description == "New Description"
+        assert updated_payload.profile.allow_discord_access is True
 
 
-def test_concurrent_calls_use_isolated_request_executors() -> None:
+async def test_concurrent_calls_use_isolated_request_executors() -> None:
     """Concurrent Okta calls must each get their own client, executor, and session.
 
-    Every public method runs its coroutine under its own ``asyncio.run`` event
-    loop, and the FastAPI/MCP threadpools drive those sync methods concurrently.
-    The previous design shared one ``self.okta_client`` (and its request executor)
-    across all calls, so concurrent ``set_session()`` calls clobbered each other and
-    a session bound to one loop was awaited on another ("Future attached to a
-    different loop"). With a fresh client per call, each call binds its session to
-    its own executor on its own loop, so nothing is shared to race on.
+    ``_okta_client()`` builds a fresh SDK client per call. A previous design
+    shared one ``self.okta_client`` (and its request executor) across all
+    calls, so concurrent ``set_session()`` calls clobbered each other and a
+    session created by one call could be torn down under another. With a
+    fresh client per call, each call binds its own pooled session to its own
+    executor, so concurrent calls on the service share nothing to race on.
     """
     service = OktaService()
     service.initialize("fake.domain", "fake.token")
 
     executors: list[Any] = []
-    loops: list[Any] = []
-    lock = threading.Lock()
 
     real_set_session = RequestExecutor.set_session
 
     def tracking_set_session(executor: Any, session: Any) -> None:
         real_set_session(executor, session)
-        with lock:
-            executors.append(executor)
-            loops.append(asyncio.get_running_loop())
+        executors.append(executor)
 
     call_count = 16
     success = (UserFactory(), MagicMock(), None)
@@ -156,12 +142,11 @@ def test_concurrent_calls_use_isolated_request_executors() -> None:
         patch.object(RequestExecutor, "set_session", tracking_set_session),
         patch("okta.client.Client.get_user", return_value=success),
     ):
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            users = list(pool.map(lambda _: service.get_user("okta_id"), range(call_count)))
+        users = await asyncio.gather(*(service.get_user("okta_id") for _ in range(call_count)))
 
-    # No call raised (pool.map re-raises), and every call returned a user.
+    # No call raised (gather re-raises), and every call returned a user.
     assert len(users) == call_count
     assert all(user is not None for user in users)
-    # Each concurrent call got its own executor on its own event loop; nothing shared.
+    # Each concurrent call got its own client/request executor; nothing shared.
+    assert len(executors) == call_count
     assert len({id(executor) for executor in executors}) == call_count
-    assert len({id(loop) for loop in loops}) == call_count

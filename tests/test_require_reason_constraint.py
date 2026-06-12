@@ -1,7 +1,8 @@
 from typing import Any
 
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.extensions import Db
 from api.models import (
@@ -19,10 +20,11 @@ from api.models import (
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import TagFactory
+from tests.helpers import db_count
 
 
-def test_require_reason_modify_group_users(
-    client: TestClient,
+async def test_require_reason_modify_group_users(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -53,12 +55,12 @@ def test_require_reason_modify_group_users(
     db.session.add(access_app)
     db.session.add(role_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -78,27 +80,41 @@ def test_require_reason_modify_group_users(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    # Store IDs before requests — constraint-rejection (400) paths roll the
+    # shared session back, expiring instances; expired attributes cannot
+    # lazy-load under the async session.
+    user_id = user.id
+    okta_group_id = okta_group.id
+    app_group_id = app_group.id
+    role_group_id = role_group.id
+
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -107,36 +123,42 @@ def test_require_reason_modify_group_users(
 
     # Add the user to the okta group as member without a reason
     data: dict[str, Any] = {
-        "members_to_add": [user.id],
+        "members_to_add": [user_id],
         "owners_to_add": [],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
-    rep = client.put(group_url, json=data)
+    group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
     # Add the user to the okta group as owner without a reason
     data = {
         "members_to_add": [],
-        "owners_to_add": [user.id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -148,15 +170,21 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -167,36 +195,42 @@ def test_require_reason_modify_group_users(
 
     # Add the user to the okta group as member and owner without a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
     # Add the user to the okta group as member and owner with a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -208,15 +242,21 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -227,13 +267,13 @@ def test_require_reason_modify_group_users(
 
     # Add the user to the app group as member without a reason
     data = {
-        "members_to_add": [user.id],
+        "members_to_add": [user_id],
         "owners_to_add": [],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=app_group.id)
-    rep = client.put(group_url, json=data)
+    group_url = url_for("api-groups.group_members_by_id", group_id=app_group_id)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -245,15 +285,21 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -265,58 +311,70 @@ def test_require_reason_modify_group_users(
     # Add the user to the app group as owner without a reason
     data = {
         "members_to_add": [],
-        "owners_to_add": [user.id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
     # Add the user to the app group as member and owner without a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
     # Add the user to the app group as member and owner with a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -328,15 +386,21 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -347,36 +411,42 @@ def test_require_reason_modify_group_users(
 
     # Add the user to the role group as member without a reason
     data = {
-        "members_to_add": [user.id],
+        "members_to_add": [user_id],
         "owners_to_add": [],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
-    rep = client.put(group_url, json=data)
+    group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
     # Add the user to the role group as owner without a reason
     data = {
         "members_to_add": [],
-        "owners_to_add": [user.id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -388,15 +458,21 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -407,36 +483,42 @@ def test_require_reason_modify_group_users(
 
     # Add the user to the role group as member and owner without a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
     # Add the user to the role group as member and owner with a reason
     data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [user.id],
+        "members_to_add": [user_id],
+        "owners_to_add": [user_id],
         "members_to_remove": [],
         "owners_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -448,21 +530,27 @@ def test_require_reason_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 10
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
 
-def test_require_reason_modify_role_groups(
-    client: TestClient,
+async def test_require_reason_modify_role_groups(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -493,12 +581,12 @@ def test_require_reason_modify_role_groups(
     db.session.add(access_app)
     db.session.add(role_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
@@ -507,86 +595,105 @@ def test_require_reason_modify_role_groups(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    # Store IDs before requests — constraint-rejection (400) paths roll the
+    # shared session back, expiring instances; expired attributes cannot
+    # lazy-load under the async session.
+    okta_group_id = okta_group.id
+    app_group_id = app_group.id
+    role_group_id = role_group.id
+
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
     # Add the role group as a member to the okta group without a reason
     data: dict[str, Any] = {
-        "groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
     # Add the role group as a owner to the okta group without a reason
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [okta_group.id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -594,27 +701,33 @@ def test_require_reason_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -625,36 +738,42 @@ def test_require_reason_modify_role_groups(
 
     # Add the role group as a member and owner to the okta group without a reason
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -665,13 +784,13 @@ def test_require_reason_modify_role_groups(
 
     # Add the role group as a member to the okta group with a reason
     data = {
-        "groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -680,27 +799,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -712,12 +837,12 @@ def test_require_reason_modify_role_groups(
     # Add the role group as a owner to the okta group with a reason
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [okta_group.id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -726,27 +851,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -757,13 +888,13 @@ def test_require_reason_modify_role_groups(
 
     # Add the role group as a member and owner to the okta group with a reason
     data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [okta_group.id],
+        "groups_to_add": [okta_group_id],
+        "owner_groups_to_add": [okta_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -772,27 +903,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -803,12 +940,12 @@ def test_require_reason_modify_role_groups(
 
     # Add the role group as a member to the app group without a reason
     data = {
-        "groups_to_add": [app_group.id],
+        "groups_to_add": [app_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -816,27 +953,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -848,82 +991,94 @@ def test_require_reason_modify_role_groups(
     # Add the role group as a owner to the app group without a reason
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [app_group.id],
+        "owner_groups_to_add": [app_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
     # Add the role group as a member and owner to the app group without a reason
     data = {
-        "groups_to_add": [app_group.id],
-        "owner_groups_to_add": [app_group.id],
+        "groups_to_add": [app_group_id],
+        "owner_groups_to_add": [app_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
     # Add the role group as a member to the app group with a reason
     data = {
-        "groups_to_add": [app_group.id],
+        "groups_to_add": [app_group_id],
         "owner_groups_to_add": [],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -932,27 +1087,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -964,12 +1125,12 @@ def test_require_reason_modify_role_groups(
     # Add the role group as a owner to the app group with a reason
     data = {
         "groups_to_add": [],
-        "owner_groups_to_add": [app_group.id],
+        "owner_groups_to_add": [app_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -978,27 +1139,33 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -1009,13 +1176,13 @@ def test_require_reason_modify_role_groups(
 
     # Add the role group as a member and owner to the app group with a reason
     data = {
-        "groups_to_add": [app_group.id],
-        "owner_groups_to_add": [app_group.id],
+        "groups_to_add": [app_group_id],
+        "owner_groups_to_add": [app_group_id],
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
         "created_reason": "test reason",
     }
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -1024,33 +1191,39 @@ def test_require_reason_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason != "", RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap)
-        .filter(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.created_reason == "", RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
 
-def test_require_reason_approve_access_request(
-    client: TestClient,
+async def test_require_reason_approve_access_request(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -1081,12 +1254,12 @@ def test_require_reason_approve_access_request(
     db.session.add(access_app)
     db.session.add(role_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -1106,32 +1279,38 @@ def test_require_reason_approve_access_request(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships with a created reason
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
     # Approve an access request to the okta group as member and approve without a reason
-    access_request = CreateAccessRequest(
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=False,
@@ -1139,29 +1318,42 @@ def test_require_reason_approve_access_request(
     ).execute()
 
     db.session.expire_all()
+    # reload async — sync attribute access cannot lazy-load the expired
+    # instance under the async session
+    assert access_request is not None
+    await db.session.refresh(access_request)
 
     data = {"approved": True, "reason": ""}
 
-    assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
     # Approve an access request to the okta group as owner and approve without a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(okta_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=True,
@@ -1170,7 +1362,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1178,15 +1370,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1196,7 +1394,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the okta group as member and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(okta_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=False,
@@ -1207,7 +1409,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1215,15 +1417,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1233,7 +1441,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the okta group as owner and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(okta_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=True,
@@ -1242,7 +1454,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1250,15 +1462,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -1268,7 +1486,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the app group as member and approve without a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(app_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
         request_ownership=False,
@@ -1279,7 +1501,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1287,15 +1509,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1305,7 +1533,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the app group as owner and approve without a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(app_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
         request_ownership=True,
@@ -1314,24 +1546,34 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
     # Approve an access request to the app group as member and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(app_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
         request_ownership=False,
@@ -1342,7 +1584,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1350,15 +1592,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -1368,7 +1616,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the app group as owner and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(app_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
         request_ownership=True,
@@ -1377,7 +1629,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1385,15 +1637,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -1403,7 +1661,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the role group as member and approve without a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(role_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
         request_ownership=False,
@@ -1414,24 +1676,34 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
     # Approve an access request to the role group as owner and approve without a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(role_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
         request_ownership=True,
@@ -1440,7 +1712,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1448,15 +1720,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1466,7 +1744,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the role group as member and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(role_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
         request_ownership=False,
@@ -1477,7 +1759,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -1485,15 +1767,21 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 9
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1503,7 +1791,11 @@ def test_require_reason_approve_access_request(
     remove_owner_from_group_spy.reset_mock()
 
     # Approve an access request to the role group as owner and approve with a reason
-    access_request = CreateAccessRequest(
+    # the PUT above expired the shared session (router db.expire_all());
+    # reload instances async before the operation reads their attributes
+    await db.session.refresh(user)
+    await db.session.refresh(role_group)
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
         request_ownership=True,
@@ -1512,7 +1804,7 @@ def test_require_reason_approve_access_request(
 
     assert access_request is not None
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
-    rep = client.put(access_request_url, json=data)
+    rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1520,14 +1812,20 @@ def test_require_reason_approve_access_request(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason != "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 10
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.created_reason == "", OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
