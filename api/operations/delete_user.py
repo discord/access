@@ -20,27 +20,27 @@ class DeleteUser:
 
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         user = self._user_arg
         if isinstance(user, str):
-            self.user = db.session.scalars(select(OktaUser).where(OktaUser.id == user)).first()
+            self.user = (await db.session.scalars(select(OktaUser).where(OktaUser.id == user))).first()
         else:
             self.user = user
 
         self.current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+            (
+                await db.session.scalars(
+                    select(OktaUser)
+                    .where(OktaUser.deleted_at.is_(None))
+                    .where(OktaUser.id == self._current_user_id_arg)
+                )
             ).first(),
             "id",
             None,
         )
 
-    def execute(self) -> None:
-        self._resolve()
-        # Run asychronously to parallelize Okta API requests
-        return asyncio.run(self._execute())
-
-    async def _execute(self) -> None:
+    async def execute(self) -> None:
+        await self._resolve()
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         okta_tasks = []
 
@@ -69,26 +69,26 @@ class DeleteUser:
             # Remove user from group membership in Okta
             group_memberships_to_remove_ids = [
                 m.group_id
-                for m in db.session.scalars(
-                    managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(False))
+                for m in (
+                    await db.session.scalars(managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(False)))
                 ).all()
             ]
 
             for group_id in group_memberships_to_remove_ids:
-                okta_tasks.append(asyncio.create_task(okta.async_remove_user_from_group(group_id, self.user.id)))
+                okta_tasks.append(asyncio.create_task(okta.remove_user_from_group(group_id, self.user.id)))
 
             # Remove user from group ownerships in Okta
             group_ownerships_to_remove_ids = [
                 m.group_id
-                for m in db.session.scalars(
-                    managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(True))
+                for m in (
+                    await db.session.scalars(managed_group_access_query.where(OktaUserGroupMember.is_owner.is_(True)))
                 ).all()
             ]
 
             for group_id in group_ownerships_to_remove_ids:
-                okta_tasks.append(asyncio.create_task(okta.async_remove_owner_from_group(group_id, self.user.id)))
+                okta_tasks.append(asyncio.create_task(okta.remove_owner_from_group(group_id, self.user.id)))
 
-        db.session.execute(
+        await db.session.execute(
             update(OktaUserGroupMember)
             .where(
                 or_(
@@ -101,16 +101,18 @@ class DeleteUser:
             .execution_options(synchronize_session="fetch")
         )
 
-        db.session.commit()
+        await db.session.commit()
 
-        obsolete_access_requests = db.session.scalars(
-            select(AccessRequest)
-            .where(AccessRequest.requester_user_id == self.user.id)
-            .where(AccessRequest.status == AccessRequestStatus.PENDING)
-            .where(AccessRequest.resolved_at.is_(None))
+        obsolete_access_requests = (
+            await db.session.scalars(
+                select(AccessRequest)
+                .where(AccessRequest.requester_user_id == self.user.id)
+                .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                .where(AccessRequest.resolved_at.is_(None))
+            )
         ).all()
         for obsolete_access_request in obsolete_access_requests:
-            RejectAccessRequest(
+            await RejectAccessRequest(
                 access_request=obsolete_access_request,
                 rejection_reason="Closed because the requestor was deleted",
                 current_user_id=self.current_user_id,

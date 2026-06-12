@@ -1,9 +1,12 @@
+import functools
 import random
 import string
 from datetime import datetime
 from typing import List, Optional
 
 import logging
+
+import anyio.to_thread
 
 from api.context import get_request_context
 from sqlalchemy import select
@@ -54,15 +57,15 @@ class CreateGroupRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         requester_user = self._requester_user_arg
         if isinstance(requester_user, str):
-            self.requester = db.session.get(OktaUser, requester_user)
+            self.requester = await db.session.get(OktaUser, requester_user)
         else:
             self.requester = requester_user
 
-    def execute(self) -> Optional[GroupRequest]:
-        self._resolve()
+    async def execute(self) -> Optional[GroupRequest]:
+        await self._resolve()
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
             return None
@@ -89,10 +92,12 @@ class CreateGroupRequest:
         # Validate app exists if app_id provided and desired group name prefix is correct
         app = None
         if self.requested_app_id is not None:
-            app = db.session.scalars(
-                select(App).where(
-                    App.id == self.requested_app_id,
-                    App.deleted_at.is_(None),
+            app = (
+                await db.session.scalars(
+                    select(App).where(
+                        App.id == self.requested_app_id,
+                        App.deleted_at.is_(None),
+                    )
                 )
             ).first()
 
@@ -104,8 +109,10 @@ class CreateGroupRequest:
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
-            tags = db.session.scalars(
-                select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+            tags = (
+                await db.session.scalars(
+                    select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+                )
             ).all()
             if len(tags) != len(self.requested_group_tags):
                 return None
@@ -133,15 +140,15 @@ class CreateGroupRequest:
         )
 
         db.session.add(group_request)
-        db.session.commit()
+        await db.session.commit()
 
         # If the requested group is an app group and the requester is the app owner, approve the request
         if self.requested_group_type == "app_group" and app is not None:
             # Get app owners by checking active owner app groups
-            app_owner_user_ids = {u.id for u in get_app_managers(app.id)}
+            app_owner_user_ids = {u.id for u in await get_app_managers(app.id)}
 
             if self.requester.id in app_owner_user_ids:
-                ApproveGroupRequest(
+                await ApproveGroupRequest(
                     group_request=group_request,
                     approver_user=self.requester,
                     approval_reason="Requester owns parent app and can create app groups",
@@ -153,9 +160,9 @@ class CreateGroupRequest:
         # Fetch the users to notify
         # If app group, notify app managers; otherwise notify access owners
         if self.requested_app_id is not None:
-            approvers = get_app_managers(self.requested_app_id)
+            approvers = await get_app_managers(self.requested_app_id)
         else:
-            approvers = get_access_owners()
+            approvers = await get_access_owners()
 
         # Audit logging
         _ctx = get_request_context()
@@ -184,22 +191,26 @@ class CreateGroupRequest:
             )
         )
 
-        # Check conditional access hook
-        conditional_access_responses = self.conditional_access_hook.group_request_created(
-            group_request=group_request,
-            requester=self.requester,
+        # Check conditional access hook. Sync plugin hooks may do network I/O;
+        # run them on a worker thread so they don't block the event loop.
+        conditional_access_responses = await anyio.to_thread.run_sync(
+            functools.partial(
+                self.conditional_access_hook.group_request_created,
+                group_request=group_request,
+                requester=self.requester,
+            )
         )
 
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    ApproveGroupRequest(
+                    await ApproveGroupRequest(
                         group_request=group_request,
                         approval_reason=response.reason,
                         notify=False,
                     ).execute()
                 else:
-                    RejectGroupRequest(
+                    await RejectGroupRequest(
                         group_request=group_request,
                         rejection_reason=response.reason,
                         notify=False,
@@ -208,10 +219,13 @@ class CreateGroupRequest:
                 return group_request
 
         # Send notification to approvers
-        self.notification_hook.access_group_request_created(
-            group_request=group_request,
-            requester=self.requester,
-            approvers=approvers,
+        await anyio.to_thread.run_sync(
+            functools.partial(
+                self.notification_hook.access_group_request_created,
+                group_request=group_request,
+                requester=self.requester,
+                approvers=approvers,
+            )
         )
 
         return group_request

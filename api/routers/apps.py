@@ -22,7 +22,7 @@ from api.models import (
     AppTagMap,
     OktaGroup,
 )
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import (
@@ -61,7 +61,7 @@ router = APIRouter(prefix="/api/apps", tags=["apps"])
 
 
 @router.get("", name="apps")
-def list_apps(
+async def list_apps(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -71,16 +71,18 @@ def list_apps(
     if q_args.q:
         like = f"%{q_args.q}%"
         stmt = stmt.where(or_(App.name.ilike(like), App.description.ilike(like)))
-    return paginate(db, stmt, transformer=validated(AppSummary))
+    return await apaginate(db, stmt, transformer=validated(AppSummary))
 
 
 @router.get("/{app_id}", name="app_by_id")
-def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDetail:
-    app = db.scalars(
-        select(App)
-        .options(*APP_LOAD_OPTIONS)
-        .where(App.deleted_at.is_(None))
-        .where(or_(App.id == app_id, App.name == app_id))
+async def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDetail:
+    app = (
+        await db.scalars(
+            select(App)
+            .options(*APP_LOAD_OPTIONS)
+            .where(App.deleted_at.is_(None))
+            .where(or_(App.id == app_id, App.name == app_id))
+        )
     ).first()
     if app is None:
         raise HTTPException(404, "Not Found")
@@ -88,7 +90,7 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDe
 
 
 @router.post("", name="apps_create", status_code=201)
-def post_app(
+async def post_app(
     body: CreateAppBody,
     db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
@@ -99,24 +101,28 @@ def post_app(
     description = body.description if body.description is not None else ""
 
     # Reject duplicates by name.
-    existing = db.scalars(
-        select(App).where(func.lower(App.name) == func.lower(body.name)).where(App.deleted_at.is_(None))
+    existing = (
+        await db.scalars(
+            select(App).where(func.lower(App.name) == func.lower(body.name)).where(App.deleted_at.is_(None))
+        )
     ).first()
     if existing is not None:
         raise HTTPException(400, "App already exists with the same name")
 
     # Default owner = current user; explicit initial_owner_id wins.
     owner_id: str | None = None
-    if db.get(OktaUser, current_user_id) is not None:
+    if await db.get(OktaUser, current_user_id) is not None:
         owner_id = current_user_id
     if body.initial_owner_id is not None:
-        owner = db.scalars(
-            select(OktaUser)
-            .where(OktaUser.deleted_at.is_(None))
-            .where(
-                or_(
-                    OktaUser.id == body.initial_owner_id,
-                    OktaUser.email.ilike(body.initial_owner_id),
+        owner = (
+            await db.scalars(
+                select(OktaUser)
+                .where(OktaUser.deleted_at.is_(None))
+                .where(
+                    or_(
+                        OktaUser.id == body.initial_owner_id,
+                        OktaUser.email.ilike(body.initial_owner_id),
+                    )
                 )
             )
         ).first()
@@ -129,8 +135,12 @@ def post_app(
 
     owner_role_ids: list[str] = []
     if body.initial_owner_role_ids is not None:
-        roles = db.scalars(
-            select(RoleGroup).where(RoleGroup.id.in_(body.initial_owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+        roles = (
+            await db.scalars(
+                select(RoleGroup)
+                .where(RoleGroup.id.in_(body.initial_owner_role_ids))
+                .where(RoleGroup.deleted_at.is_(None))
+            )
         ).all()
         owner_role_ids = [r.id for r in roles]
         if len(owner_role_ids) != len(body.initial_owner_role_ids):
@@ -148,11 +158,13 @@ def post_app(
     from sqlalchemy.orm import with_polymorphic
 
     poly_group = with_polymorphic(OktaGroup, [_AppGroup, RoleGroup])
-    existing_owner_group = db.scalars(
-        select(poly_group)
-        .options(selectinload(poly_group.active_user_ownerships))
-        .where(func.lower(OktaGroup.name) == func.lower(owner_group_name))
-        .where(OktaGroup.deleted_at.is_(None))
+    existing_owner_group = (
+        await db.scalars(
+            select(poly_group)
+            .options(selectinload(poly_group.active_user_ownerships))
+            .where(func.lower(OktaGroup.name) == func.lower(owner_group_name))
+            .where(OktaGroup.deleted_at.is_(None))
+        )
     ).first()
     if existing_owner_group is not None and len(existing_owner_group.active_user_ownerships) > 0:
         raise HTTPException(
@@ -167,7 +179,7 @@ def post_app(
     ]
 
     app_obj = App(name=name, description=description)
-    created = CreateApp(
+    created = await CreateApp(
         app=app_obj,
         owner_id=owner_id,
         owner_role_ids=owner_role_ids,
@@ -178,12 +190,12 @@ def post_app(
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     db.expire_all()
-    refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created.id)).first()
+    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created.id))).first()
     return AppDetail.model_validate(refreshed, from_attributes=True)
 
 
 @router.put("/{app_id}", name="app_by_id_put")
-def put_app(
+async def put_app(
     app_id: str,
     body: UpdateAppBody,
     db: DbSession,
@@ -231,21 +243,23 @@ def put_app(
     if (
         new_plugin != app_obj.app_group_lifecycle_plugin
         or (new_plugin_data is not None and new_plugin_data != (app_obj.plugin_data or {}))
-    ) and not is_access_admin(db, current_user_id):
+    ) and not await is_access_admin(db, current_user_id):
         raise HTTPException(403, "Only Access owners are allowed to configure plugins at the app level")
 
     # Reject duplicate name on rename
     new_name = body.name
     if new_name and new_name.lower() != app_obj.name.lower():
-        existing = db.scalars(
-            select(App).where(func.lower(App.name) == func.lower(new_name)).where(App.deleted_at.is_(None))
+        existing = (
+            await db.scalars(
+                select(App).where(func.lower(App.name) == func.lower(new_name)).where(App.deleted_at.is_(None))
+            )
         ).first()
         if existing is not None:
             raise HTTPException(400, "App already exists with the same name")
 
     # tags_to_remove gated on admin
     if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not is_access_admin(db, current_user_id):
+        if not await is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access Admin and not allowed to remove tags from this app")
 
     tags_to_add = body.tags_to_add or []
@@ -254,7 +268,7 @@ def put_app(
     # Built-in Access app: only tags can be modified
     if app_obj.name == App.ACCESS_APP_RESERVED_NAME:
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
-            ModifyAppTags(
+            await ModifyAppTags(
                 app=app_obj,
                 tags_to_add=tags_to_add,
                 tags_to_remove=tags_to_remove,
@@ -263,7 +277,7 @@ def put_app(
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
             db.expire_all()
-            refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
+            refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id))).first()
             return AppDetail.model_validate(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modified for the Access application")
 
@@ -288,7 +302,7 @@ def put_app(
     if app_obj.name != old_app_name:
         old_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         new_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-        app_groups = db.scalars(select(_AppGroup).where(_AppGroup.app_id == app_obj.id)).all()
+        app_groups = (await db.scalars(select(_AppGroup).where(_AppGroup.app_id == app_obj.id))).all()
         for ag in app_groups:
             if ag.name.startswith(old_prefix):
                 suffix = ag.name[len(old_prefix) :]
@@ -296,11 +310,11 @@ def put_app(
             else:
                 new_group_name = f"{new_prefix}{ag.name}"
             new_description = app_owners_group_description(app_obj.name) if ag.is_owner else None
-            ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
+            await ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
 
-    db.commit()
+    await db.commit()
 
-    ModifyAppTags(
+    await ModifyAppTags(
         app=app_obj,
         tags_to_add=tags_to_add,
         tags_to_remove=tags_to_remove,
@@ -310,7 +324,7 @@ def put_app(
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     db.expire_all()
-    refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
+    refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id))).first()
 
     # Audit logging — both name renames and plugin assignment/configuration
     # changes.
@@ -326,7 +340,7 @@ def put_app(
         import logging as _logging
 
         _ctx = get_request_context()
-        email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
+        email = getattr(await db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
         audit_logger = _logging.getLogger("access.audit")
 
         if name_changed:
@@ -363,7 +377,7 @@ def put_app(
 
 
 @router.delete("/{app_id}", name="app_by_id_delete")
-def delete_app(
+async def delete_app(
     app_id: str,
     db: DbSession,
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
@@ -376,5 +390,5 @@ def delete_app(
     if app_obj.name == App.ACCESS_APP_RESERVED_NAME:
         raise HTTPException(400, "The Access Application cannot be deleted")
 
-    DeleteApp(app=app_obj, current_user_id=current_user_id).execute()
+    await DeleteApp(app=app_obj, current_user_id=current_user_id).execute()
     return DeleteMessage(deleted=True)

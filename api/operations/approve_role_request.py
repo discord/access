@@ -38,7 +38,7 @@ class ApproveRoleRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         role_request = self._role_request_arg
         approver_user = self._approver_user_arg
 
@@ -46,26 +46,27 @@ class ApproveRoleRequest:
         # can't both pass the pending-state guard and double-grant. `of=` keeps
         # FOR UPDATE off the joinedloads' nullable outer-join sides (Postgres
         # rejects that); no-op on SQLite.
-        self.role_request = db.session.scalars(
+        request_result = await db.session.scalars(
             select(RoleRequest)
             .options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
             .where(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
             .with_for_update(of=RoleRequest)
-        ).first()
+        )
+        self.role_request = request_result.first()
 
         if approver_user is None:
             self.approver_id = None
             self.approver_email = None
         elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+            approver = await db.session.get(OktaUser, approver_user)
             self.approver_id = approver.id
             self.approver_email = approver.email
         else:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-    def execute(self) -> RoleRequest:
-        self._resolve()
+    async def execute(self) -> RoleRequest:
+        await self._resolve()
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
@@ -77,7 +78,7 @@ class ApproveRoleRequest:
             return self.role_request
 
         # Don't allow approving a request if the reason is invalid and required
-        valid, _ = CheckForReason(
+        valid, _ = await CheckForReason(
             group=self.role_request.requester_role_id,
             reason=self.approval_reason,
             members_to_add=[self.role_request.requested_group_id] if not self.role_request.request_ownership else [],
@@ -87,7 +88,7 @@ class ApproveRoleRequest:
             return self.role_request
 
         # Don't allow approving a request if the requester role is deleted
-        requester = db.session.get(RoleGroup, self.role_request.requester_role_id)
+        requester = await db.session.get(RoleGroup, self.role_request.requester_role_id)
         if requester is None or requester.deleted_at is not None:
             raise ResourceGoneError("The requester role no longer exists")
 
@@ -97,14 +98,16 @@ class ApproveRoleRequest:
         if not self.role_request.active_requested_group.is_managed:
             raise InvalidRequestError("Groups not managed by Access cannot be modified")
 
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.role_request.requested_group_id)
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.role_request.requested_group_id)
+            )
         ).first()
 
         _ctx = get_request_context()
@@ -119,13 +122,13 @@ class ApproveRoleRequest:
                     "current_user_email": self.approver_email,
                     "group": group,
                     "role_request": self.role_request,
-                    "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, self.role_request.requester_user_id),
                 }
             )
         )
 
         if self.role_request.request_ownership:
-            ModifyRoleGroups(
+            await ModifyRoleGroups(
                 role_group=self.role_request.requester_role,
                 groups_added_ended_at=self.ending_at,
                 owner_groups_to_add=[self.role_request.requested_group_id],
@@ -134,7 +137,7 @@ class ApproveRoleRequest:
                 notify=self.notify,
             ).execute()
         else:
-            ModifyRoleGroups(
+            await ModifyRoleGroups(
                 role_group=self.role_request.requester_role,
                 groups_added_ended_at=self.ending_at,
                 groups_to_add=[self.role_request.requested_group_id],

@@ -39,7 +39,7 @@ from api.operations import (
     ModifyGroupUsers,
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
@@ -89,21 +89,23 @@ DEFAULT_LOAD_OPTIONS = (
 _group_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
 
-def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
+async def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
     # Routes call this after operations mutate the group; with
     # expire_on_commit=False the identity map would otherwise serve
     # pre-operation relationship state, so drop cached ORM state first.
     db.expire_all()
-    return db.scalars(
-        select(OktaGroup)
-        .options(*DEFAULT_LOAD_OPTIONS)
-        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
-        .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+    return (
+        await db.scalars(
+            select(OktaGroup)
+            .options(*DEFAULT_LOAD_OPTIONS)
+            .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+            .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+        )
     ).first()
 
 
 @router.get("", name="groups")
-def list_groups(
+async def list_groups(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -129,19 +131,19 @@ def list_groups(
     if q_args.managed is not None:
         stmt = stmt.where(OktaGroup.is_managed == q_args.managed)
 
-    return paginate(db, stmt, transformer=validated(GroupSummary))
+    return await apaginate(db, stmt, transformer=validated(GroupSummary))
 
 
 @router.get("/{group_id}", name="group_by_id")
-def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
-    group = _load_group_with_options(db, group_id)
+async def get_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupDetail:
+    group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Not Found")
     return _group_adapter.validate_python(group, from_attributes=True)
 
 
 @router.post("", name="groups_create", status_code=201)
-def post_group(
+async def post_group(
     request: Request,
     body: CreateGroupBody,
     db: DbSession,
@@ -164,15 +166,17 @@ def post_group(
         group = OktaGroup(name=body.name, description=description)
 
     if not (
-        is_access_admin(db, current_user_id)
-        or is_app_owner_group_owner(db, current_user_id, app_group=group if isinstance(group, AppGroup) else None)
+        await is_access_admin(db, current_user_id)
+        or await is_app_owner_group_owner(db, current_user_id, app_group=group if isinstance(group, AppGroup) else None)
     ):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
-    existing = db.scalars(
-        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .where(func.lower(OktaGroup.name) == func.lower(group.name))
-        .where(OktaGroup.deleted_at.is_(None))
+    existing = (
+        await db.scalars(
+            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(func.lower(OktaGroup.name) == func.lower(group.name))
+            .where(OktaGroup.deleted_at.is_(None))
+        )
     ).first()
     if existing is not None:
         raise HTTPException(400, "Group already exists with the same name")
@@ -192,13 +196,13 @@ def post_group(
             400, "App owner groups cannot be created directly. They are created automatically when an app is created."
         )
 
-    created = CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
-    refreshed = _load_group_with_options(db, created.id)
+    created = await CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
+    refreshed = await _load_group_with_options(db, created.id)
     return _group_adapter.validate_python(refreshed, from_attributes=True)
 
 
 @router.put("/{group_id}", name="group_by_id_put")
-def put_group(
+async def put_group(
     group_id: str,
     request: Request,
     body: UpdateGroupBody,
@@ -211,7 +215,7 @@ def put_group(
     )
 
     fields_set = body.model_fields_set
-    group = _load_group_with_options(db, group_id)
+    group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
@@ -230,7 +234,7 @@ def put_group(
             if errors:
                 raise HTTPException(400, f"plugin_data: {errors}")
 
-    if not _perms.can_manage_group(db, current_user_id, group):
+    if not await _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
@@ -240,15 +244,15 @@ def put_group(
     )
     if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
         if not (
-            is_access_admin(db, current_user_id)
-            or (type(group) is AppGroup and is_app_owner_group_owner(db, current_user_id, app_group=group))
+            await is_access_admin(db, current_user_id)
+            or (type(group) is AppGroup and await is_app_owner_group_owner(db, current_user_id, app_group=group))
         ):
             raise HTTPException(
                 403, "Only Access owners and app owners are allowed to configure plugins at the group level"
             )
 
     if body.tags_to_remove and len(body.tags_to_remove) > 0:
-        if not is_access_admin(db, current_user_id):
+        if not await is_access_admin(db, current_user_id):
             raise HTTPException(
                 403, "Current user is not an Access Admin and not allowed to remove tags from this group"
             )
@@ -265,12 +269,14 @@ def put_group(
     ):
         from api.models import App
 
-        target_app = db.scalars(select(App).where(App.id == body.app_id).where(App.deleted_at.is_(None))).first()
+        target_app = (
+            await db.scalars(select(App).where(App.id == body.app_id).where(App.deleted_at.is_(None)))
+        ).first()
         if target_app is None:
             raise HTTPException(404, "Not Found")
         if not (
-            _perms.is_access_admin(db, current_user_id)
-            or _perms.is_app_owner_group_owner(db, current_user_id, app=target_app)
+            await _perms.is_access_admin(db, current_user_id)
+            or await _perms.is_app_owner_group_owner(db, current_user_id, app=target_app)
         ):
             raise HTTPException(
                 403, "Current user is not an app owner of the target app and not allowed to reassign this group"
@@ -284,13 +290,13 @@ def put_group(
     # App owner groups: only tag changes allowed
     if type(group) is AppGroup and group.is_owner:
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
-            ModifyGroupTags(
+            await ModifyGroupTags(
                 group=group,
                 tags_to_add=tags_to_add,
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = _load_group_with_options(db, group.id)
+            refreshed = await _load_group_with_options(db, group.id)
             return _group_adapter.validate_python(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modifed for application owner groups")
 
@@ -311,7 +317,7 @@ def put_group(
             )
 
     try:
-        ModifyGroupDetails(
+        await ModifyGroupDetails(
             group=group,
             name=body.name if "name" in fields_set else None,
             description=description,
@@ -321,7 +327,7 @@ def put_group(
 
     body_type = body.type
     if body_type != group.type:
-        if not is_access_admin(db, current_user_id):
+        if not await is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
         new_group = type_klass()
@@ -331,7 +337,9 @@ def put_group(
             new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
             new_group.is_owner = False
         try:
-            group = ModifyGroupType(group=group, group_changes=new_group, current_user_id=current_user_id).execute()
+            group = await ModifyGroupType(
+                group=group, group_changes=new_group, current_user_id=current_user_id
+            ).execute()
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -345,16 +353,16 @@ def put_group(
                     group.plugin_data[key] = old_plugin_data[key]
             if type(group) is AppGroup:
                 merge_app_lifecycle_plugin_data(group, old_plugin_data)
-    db.commit()
+    await db.commit()
 
-    ModifyGroupTags(
+    await ModifyGroupTags(
         group=group,
         tags_to_add=tags_to_add,
         tags_to_remove=tags_to_remove,
         current_user_id=current_user_id,
     ).execute()
 
-    refreshed = _load_group_with_options(db, group.id)
+    refreshed = await _load_group_with_options(db, group.id)
 
     # Audit log — plugin configuration changes at the group level
     if old_plugin_data_for_audit != (refreshed.plugin_data or {}):
@@ -364,7 +372,7 @@ def put_group(
         import logging as _logging
 
         _ctx = get_request_context()
-        email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
+        email = getattr(await db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
         _logging.getLogger("access.audit").info(
             AuditLogSchema().dumps(
                 {
@@ -383,22 +391,22 @@ def put_group(
 
 
 @router.delete("/{group_id}", name="group_by_id_delete")
-def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> DeleteMessage:
-    group = _load_group_with_options(db, group_id)
+async def delete_group(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> DeleteMessage:
+    group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
-    if not _perms.can_delete_group(db, current_user_id, group):
+    if not await _perms.can_delete_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
     if type(group) is AppGroup and group.is_owner:
         raise HTTPException(400, "Application owner groups cannot be deleted without first deleting the application")
-    DeleteGroup(group=group, current_user_id=current_user_id).execute()
+    await DeleteGroup(group=group, current_user_id=current_user_id).execute()
     return DeleteMessage(deleted=True)
 
 
 @router.get("/{group_id}/audit", name="group_audit_by_id")
-def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
+async def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     from urllib.parse import urlencode
 
     qp = dict(request.query_params)
@@ -407,11 +415,13 @@ def get_group_audit(group_id: str, request: Request, current_user_id: CurrentUse
 
 
 @router.get("/{group_id}/members", name="group_members_by_id")
-def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupMembersSummary:
-    group = db.scalars(
-        select(OktaGroup)
-        .where(OktaGroup.deleted_at.is_(None))
-        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+async def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupMembersSummary:
+    group = (
+        await db.scalars(
+            select(OktaGroup)
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        )
     ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
@@ -427,7 +437,7 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
         .where(OktaUserGroupMember.group_id == group.id)
         .group_by(OktaUserGroupMember.user_id, OktaUserGroupMember.is_owner)
     )
-    rows = db.execute(base_stmt).all()
+    rows = (await db.execute(base_stmt)).all()
     return GroupMembersSummary(
         members=[r.user_id for r in rows if not r.is_owner],
         owners=[r.user_id for r in rows if r.is_owner],
@@ -435,16 +445,18 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
 
 
 @router.put("/{group_id}/members", name="group_members_by_id_put")
-def put_group_members(
+async def put_group_members(
     group_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
     body: GroupMember | None = None,
 ) -> GroupMembersSummary:
-    group = db.scalars(
-        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .where(OktaGroup.deleted_at.is_(None))
-        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+    group = (
+        await db.scalars(
+            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+        )
     ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
@@ -456,7 +468,7 @@ def put_group_members(
     if not group.is_managed:
         raise HTTPException(400, "Groups not managed by Access cannot be modified")
 
-    if not _perms.can_manage_group(db, current_user_id, group):
+    if not await _perms.can_manage_group(db, current_user_id, group):
         if (
             len(body.members_to_add) > 0
             or len(body.owners_to_add) > 0
@@ -468,7 +480,7 @@ def put_group_members(
             if user_id != current_user_id:
                 raise HTTPException(403, "Current user is not allowed to perform this action")
 
-    valid, err_message = CheckForSelfAdd(
+    valid, err_message = await CheckForSelfAdd(
         group=group,
         current_user=current_user_id,
         members_to_add=body.members_to_add,
@@ -477,7 +489,7 @@ def put_group_members(
     if not valid:
         raise HTTPException(400, err_message)
 
-    valid, err_message = CheckForReason(
+    valid, err_message = await CheckForReason(
         group=group,
         reason=body.created_reason or "",
         members_to_add=body.members_to_add,
@@ -486,7 +498,7 @@ def put_group_members(
     if not valid:
         raise HTTPException(400, err_message)
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=group,
         current_user_id=current_user_id,
         users_added_ended_at=body.users_added_ending_at,
@@ -499,4 +511,4 @@ def put_group_members(
         created_reason=body.created_reason or "",
     ).execute()
 
-    return get_group_members(group_id, db, current_user_id)
+    return await get_group_members(group_id, db, current_user_id)

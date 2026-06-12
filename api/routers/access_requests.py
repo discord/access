@@ -23,7 +23,7 @@ from api.models import (
     RoleGroup,
 )
 from api.operations import ApproveAccessRequest, CreateAccessRequest, RejectAccessRequest
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
@@ -85,7 +85,7 @@ def _summary_load_options() -> tuple:
 
 
 @router.get("", name="access_requests")
-def list_access_requests(
+async def list_access_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -122,8 +122,10 @@ def list_access_requests(
 
     if q_args.assignee_user_id:
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
-        assignee_user = db.scalars(
-            select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+        assignee_user = (
+            await db.scalars(
+                select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+            )
         ).first()
         if assignee_user is not None:
             groups_owned_subquery = (
@@ -199,13 +201,17 @@ def list_access_requests(
                 )
             )
         )
-    return paginate(db, stmt, transformer=validated(AccessRequestSummary))
+    return await apaginate(db, stmt, transformer=validated(AccessRequestSummary))
 
 
 @router.get("/{access_request_id}", name="access_request_by_id")
-def get_access_request(access_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> AccessRequestDetail:
-    ar = db.scalars(
-        select(AccessRequest).options(*_detail_load_options()).where(AccessRequest.id == access_request_id)
+async def get_access_request(
+    access_request_id: str, db: DbSession, current_user_id: CurrentUserId
+) -> AccessRequestDetail:
+    ar = (
+        await db.scalars(
+            select(AccessRequest).options(*_detail_load_options()).where(AccessRequest.id == access_request_id)
+        )
     ).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
@@ -213,18 +219,18 @@ def get_access_request(access_request_id: str, db: DbSession, current_user_id: C
 
 
 @router.post("", name="access_requests_create", status_code=201)
-def post_access_request(
+async def post_access_request(
     body: CreateAccessRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> AccessRequestSummary:
-    requester = db.scalars(
-        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+    requester = (
+        await db.scalars(select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id))
     ).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
-    group = db.scalars(
-        select(OktaGroup).where(OktaGroup.id == body.group_id).where(OktaGroup.deleted_at.is_(None))
+    group = (
+        await db.scalars(select(OktaGroup).where(OktaGroup.id == body.group_id).where(OktaGroup.deleted_at.is_(None)))
     ).first()
     if group is None:
         raise HTTPException(404, "Group not found")
@@ -234,23 +240,25 @@ def post_access_request(
     # Auto-cancel any prior PENDING access request from the same user for the
     # same group + ownership mode. Without this, a user clicking "Request"
     # twice produces multiple PENDING rows that approvers see as duplicates.
-    existing_pending = db.scalars(
-        select(AccessRequest)
-        .where(AccessRequest.status == AccessRequestStatus.PENDING)
-        .where(AccessRequest.requester_user_id == requester.id)
-        .where(AccessRequest.requested_group_id == group.id)
-        .where(AccessRequest.request_ownership.is_(body.group_owner))
-        .where(AccessRequest.resolved_at.is_(None))
+    existing_pending = (
+        await db.scalars(
+            select(AccessRequest)
+            .where(AccessRequest.status == AccessRequestStatus.PENDING)
+            .where(AccessRequest.requester_user_id == requester.id)
+            .where(AccessRequest.requested_group_id == group.id)
+            .where(AccessRequest.request_ownership.is_(body.group_owner))
+            .where(AccessRequest.resolved_at.is_(None))
+        )
     ).all()
     for prior in existing_pending:
-        RejectAccessRequest(
+        await RejectAccessRequest(
             access_request=prior,
             current_user_id=current_user_id,
             rejection_reason="Superseded by a newer request from the same user",
             notify_requester=False,
         ).execute()
 
-    ar = CreateAccessRequest(
+    ar = await CreateAccessRequest(
         requester_user=requester,
         requested_group=group,
         request_ownership=body.group_owner,
@@ -264,14 +272,14 @@ def post_access_request(
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     db.expire_all()
-    refreshed = db.scalars(
-        select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id)
+    refreshed = (
+        await db.scalars(select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id))
     ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)
 
 
 @router.put("/{access_request_id}", name="access_request_by_id_put")
-def put_access_request(
+async def put_access_request(
     access_request_id: str,
     body: ResolveAccessRequestBody,
     db: DbSession,
@@ -280,10 +288,12 @@ def put_access_request(
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
-    ar = db.scalars(
-        select(AccessRequest)
-        .options(joinedload(AccessRequest.active_requested_group))
-        .where(AccessRequest.id == access_request_id)
+    ar = (
+        await db.scalars(
+            select(AccessRequest)
+            .options(joinedload(AccessRequest.active_requested_group))
+            .where(AccessRequest.id == access_request_id)
+        )
     ).first()
     if ar is None:
         raise HTTPException(404, "Not Found")
@@ -292,11 +302,11 @@ def put_access_request(
     if ar.requester_user_id == current_user_id:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
-    elif not can_manage_group(db, current_user_id, ar.active_requested_group):
+    elif not await can_manage_group(db, current_user_id, ar.active_requested_group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
 
     if body.approved:
-        valid, err_message = CheckForReason(
+        valid, err_message = await CheckForReason(
             group=ar.active_requested_group,
             reason=body.reason,
             members_to_add=[ar.requester_user_id] if not ar.request_ownership else [],
@@ -311,14 +321,14 @@ def put_access_request(
     if body.approved:
         if not ar.requested_group.is_managed:
             raise HTTPException(400, "Groups not managed by Access cannot be modified")
-        ApproveAccessRequest(
+        await ApproveAccessRequest(
             access_request=ar,
             approver_user=current_user_id,
             approval_reason=body.reason or "",
             ending_at=body.ending_at,
         ).execute()
     else:
-        RejectAccessRequest(
+        await RejectAccessRequest(
             access_request=ar,
             rejection_reason=body.reason or "",
             notify_requester=ar.requester_user_id != current_user_id,
@@ -327,7 +337,9 @@ def put_access_request(
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     db.expire_all()
-    refreshed = db.scalars(
-        select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == access_request_id)
+    refreshed = (
+        await db.scalars(
+            select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == access_request_id)
+        )
     ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)

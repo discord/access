@@ -1,6 +1,9 @@
+import functools
 from typing import Optional
 
 import logging
+
+import anyio.to_thread
 
 from api.context import get_request_context
 from sqlalchemy import func, select
@@ -47,7 +50,7 @@ class ApproveGroupRequest:
         self.bypass_self_approval = bypass_self_approval
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         group_request = self._group_request_arg
         approver_user = self._approver_user_arg
 
@@ -55,26 +58,27 @@ class ApproveGroupRequest:
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
         # (Postgres rejects that); no-op on SQLite.
-        self.group_request = db.session.scalars(
+        request_result = await db.session.scalars(
             select(GroupRequest)
             .options(joinedload(GroupRequest.active_requester))
             .where(GroupRequest.id == (group_request if isinstance(group_request, str) else group_request.id))
             .with_for_update(of=GroupRequest)
-        ).first()
+        )
+        self.group_request = request_result.first()
 
         self.approver_id: str | None = None
         if approver_user is None:
             self.approver_email = None
         elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+            approver = await db.session.get(OktaUser, approver_user)
             self.approver_id = approver.id
             self.approver_email = approver.email
         else:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-    def execute(self) -> Optional[GroupRequest]:
-        self._resolve()
+    async def execute(self) -> Optional[GroupRequest]:
+        await self._resolve()
         # Guard against missing group_request
         if self.group_request is None:
             return None
@@ -93,7 +97,7 @@ class ApproveGroupRequest:
         # a deleted requester usually can't even load above — active_requester
         # is an inner join filtering deleted_at — so this is a belt-and-braces
         # check that mirrors the historical no-op rather than a 4xx path.)
-        requester = db.session.get(OktaUser, self.group_request.requester_user_id)
+        requester = await db.session.get(OktaUser, self.group_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             return self.group_request
 
@@ -125,7 +129,7 @@ class ApproveGroupRequest:
         )
 
         # authorization
-        access_owner_ids = {u.id for u in get_access_owners()}
+        access_owner_ids = {u.id for u in await get_access_owners()}
         is_admin = self.approver_id in access_owner_ids
 
         if not is_admin:
@@ -137,16 +141,18 @@ class ApproveGroupRequest:
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
             if not is_admin:
-                is_app_owner = db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                    .where(
-                        AppGroup.app_id == resolved_app_id,
-                        AppGroup.is_owner.is_(True),
-                        AppGroup.deleted_at.is_(None),
-                        OktaUserGroupMember.user_id == self.approver_id,
-                        OktaUserGroupMember.is_owner.is_(True),
-                        OktaUserGroupMember.ended_at.is_(None),
+                is_app_owner = (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
+                        .where(
+                            AppGroup.app_id == resolved_app_id,
+                            AppGroup.is_owner.is_(True),
+                            AppGroup.deleted_at.is_(None),
+                            OktaUserGroupMember.user_id == self.approver_id,
+                            OktaUserGroupMember.is_owner.is_(True),
+                            OktaUserGroupMember.ended_at.is_(None),
+                        )
                     )
                 ).first()
 
@@ -168,15 +174,17 @@ class ApproveGroupRequest:
         ):
             return self.group_request
 
-        existing_group = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
-            .where(OktaGroup.deleted_at.is_(None))
+        existing_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).first()
         if existing_group is not None:
             return self.group_request
 
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
         _ctx = get_request_context()
@@ -190,7 +198,7 @@ class ApproveGroupRequest:
                     "current_user_id": self.approver_id,
                     "current_user_email": self.approver_email,
                     "group_request": self.group_request,
-                    "requester": db.session.get(OktaUser, self.group_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, self.group_request.requester_user_id),
                 }
             )
         )
@@ -213,21 +221,23 @@ class ApproveGroupRequest:
                 description=resolved_description,
             )
 
-        created_group: AppGroup | OktaGroup | RoleGroup = CreateGroup(
+        created_group: AppGroup | OktaGroup | RoleGroup = await CreateGroup(
             group=new_group,
             tags=resolved_tags,
             current_user_id=self.approver_id,
         ).execute()
 
         # Check tags on created group for ownership length constraints including propagated app tags
-        created_group_with_tags = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+        created_group_with_tags = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                )
+                .where(OktaGroup.id == created_group.id)
+                .where(OktaGroup.deleted_at.is_(None))
             )
-            .where(OktaGroup.id == created_group.id)
-            .where(OktaGroup.deleted_at.is_(None))
         ).first()
 
         tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
@@ -253,12 +263,12 @@ class ApproveGroupRequest:
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
         if self.bypass_self_approval and self.approver_id is not None:
-            can_add_owner, _ = CheckForSelfAdd(
+            can_add_owner, _ = await CheckForSelfAdd(
                 group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]
             ).execute_for_group()
 
         if can_add_owner:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=created_group_with_tags,
                 owners_to_add=[self.group_request.requester_user_id],
                 users_added_ended_at=coalesced_ownership_ending_at,
@@ -273,17 +283,22 @@ class ApproveGroupRequest:
         self.group_request.resolution_reason = self.approval_reason
         self.group_request.approved_group_id = created_group.id
 
-        db.session.commit()
+        await db.session.commit()
 
         if self.notify:
-            requester = db.session.get(OktaUser, self.group_request.requester_user_id)
-            approvers = get_all_possible_request_approvers(self.group_request)
-            self.notification_hook.access_group_request_completed(
-                group_request=self.group_request,
-                group=created_group,
-                requester=requester,
-                approvers=approvers,
-                notify_requester=True,
+            requester = await db.session.get(OktaUser, self.group_request.requester_user_id)
+            approvers = await get_all_possible_request_approvers(self.group_request)
+            # Sync notification hook may do network I/O; run it on a worker
+            # thread so it doesn't block the event loop.
+            await anyio.to_thread.run_sync(
+                functools.partial(
+                    self.notification_hook.access_group_request_completed,
+                    group_request=self.group_request,
+                    group=created_group,
+                    requester=requester,
+                    approvers=approvers,
+                    notify_requester=True,
+                )
             )
 
         return self.group_request

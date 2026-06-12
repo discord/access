@@ -12,7 +12,8 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, HTTPException
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from api.auth.dependencies import CurrentUserId
 from api.config import settings
@@ -20,7 +21,7 @@ from api.database import DbSession
 from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember
 
 
-def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
+async def is_group_owner(db: AsyncSession, current_user_id: str, group: OktaGroup) -> bool:
     stmt = (
         select(OktaUserGroupMember)
         .where(OktaUserGroupMember.group_id == group.id)
@@ -33,11 +34,11 @@ def is_group_owner(db: Session, current_user_id: str, group: OktaGroup) -> bool:
             )
         )
     )
-    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
+    return (await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
-def is_app_owner_group_owner(
-    db: Session,
+async def is_app_owner_group_owner(
+    db: AsyncSession,
     current_user_id: str,
     *,
     app_group: Optional[AppGroup] = None,
@@ -56,12 +57,13 @@ def is_app_owner_group_owner(
         .where(AppGroup.app_id == app_id)
         .where(AppGroup.is_owner.is_(True))
     )
-    if (db.scalar(select(func.count()).select_from(owner_app_groups_stmt.subquery())) or 0) == 0:
+    if (await db.scalar(select(func.count()).select_from(owner_app_groups_stmt.subquery())) or 0) == 0:
         return False
 
+    owner_app_groups = (await db.scalars(owner_app_groups_stmt)).all()
     stmt = (
         select(OktaUserGroupMember)
-        .where(OktaUserGroupMember.group_id.in_([ag.id for ag in db.scalars(owner_app_groups_stmt)]))
+        .where(OktaUserGroupMember.group_id.in_([ag.id for ag in owner_app_groups]))
         .where(OktaUserGroupMember.user_id == current_user_id)
         .where(OktaUserGroupMember.is_owner.is_(True))
         .where(
@@ -71,15 +73,17 @@ def is_app_owner_group_owner(
             )
         )
     )
-    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
+    return (await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
-def is_access_admin(db: Session, current_user_id: str) -> bool:
-    access_app = db.scalars(
-        select(App)
-        .options(selectinload(App.active_owner_app_groups))
-        .where(App.deleted_at.is_(None))
-        .where(App.name == App.ACCESS_APP_RESERVED_NAME)
+async def is_access_admin(db: AsyncSession, current_user_id: str) -> bool:
+    access_app = (
+        await db.scalars(
+            select(App)
+            .options(selectinload(App.active_owner_app_groups))
+            .where(App.deleted_at.is_(None))
+            .where(App.name == App.ACCESS_APP_RESERVED_NAME)
+        )
     ).first()
     if access_app is None or len(access_app.active_owner_app_groups) == 0:
         return False
@@ -95,61 +99,61 @@ def is_access_admin(db: Session, current_user_id: str) -> bool:
             )
         )
     )
-    return (db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
+    return (await db.scalar(select(func.count()).select_from(stmt.subquery())) or 0) > 0
 
 
-def can_manage_group(db: Session, current_user_id: str, group: OktaGroup) -> bool:
-    if is_group_owner(db, current_user_id, group):
+async def can_manage_group(db: AsyncSession, current_user_id: str, group: OktaGroup) -> bool:
+    if await is_group_owner(db, current_user_id, group):
         return True
-    if is_app_owner_group_owner(db, current_user_id, app_group=group):
+    if await is_app_owner_group_owner(db, current_user_id, app_group=group):
         return True
-    if is_access_admin(db, current_user_id):
+    if await is_access_admin(db, current_user_id):
         return True
     return False
 
 
-def can_delete_group(db: Session, current_user_id: str, group: OktaGroup) -> bool:
+async def can_delete_group(db: AsyncSession, current_user_id: str, group: OktaGroup) -> bool:
     if current_user_id in settings.app_group_deleter_ids and type(group) is AppGroup and group.is_managed:
         return True
-    return can_manage_group(db, current_user_id, group)
+    return await can_manage_group(db, current_user_id, group)
 
 
 # --- Depends factories -----------------------------------------------------
 
 
-def require_access_admin(
+async def require_access_admin(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> str:
-    if not is_access_admin(db, current_user_id):
+    if not await is_access_admin(db, current_user_id):
         raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
     return current_user_id
 
 
-def require_access_admin_or_app_creator(
+async def require_access_admin_or_app_creator(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> str:
     if current_user_id in settings.app_creator_ids:
         return current_user_id
-    if is_access_admin(db, current_user_id):
+    if await is_access_admin(db, current_user_id):
         return current_user_id
     raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
 
 
-def require_app_owner_or_access_admin_for_app(
+async def require_app_owner_or_access_admin_for_app(
     app_id: str,
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> App:
-    app_obj = db.scalars(
-        select(App).where(App.deleted_at.is_(None)).where(or_(App.id == app_id, App.name == app_id))
+    app_obj = (
+        await db.scalars(select(App).where(App.deleted_at.is_(None)).where(or_(App.id == app_id, App.name == app_id)))
     ).first()
     if app_obj is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    if is_app_owner_group_owner(db, current_user_id, app=app_obj):
+    if await is_app_owner_group_owner(db, current_user_id, app=app_obj):
         return app_obj
-    if is_access_admin(db, current_user_id):
+    if await is_access_admin(db, current_user_id):
         return app_obj
     raise HTTPException(status_code=403, detail="Current user is not allowed to perform this action")
 

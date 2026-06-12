@@ -15,23 +15,28 @@ class DeleteTag:
         self._tag_arg = tag
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
+    async def _resolve(self) -> None:
         tag = self._tag_arg
-        self.tag = db.session.scalars(select(Tag).where(Tag.id == (tag if isinstance(tag, str) else tag.id))).first()
+        tag_result = await db.session.scalars(select(Tag).where(Tag.id == (tag if isinstance(tag, str) else tag.id)))
+        self.tag = tag_result.first()
         self.current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+            (
+                await db.session.scalars(
+                    select(OktaUser)
+                    .where(OktaUser.deleted_at.is_(None))
+                    .where(OktaUser.id == self._current_user_id_arg)
+                )
             ).first(),
             "id",
             None,
         )
 
-    def execute(self) -> None:
-        self._resolve()
+    async def execute(self) -> None:
+        await self._resolve()
         # Audit logging
         email = None
         if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, self.current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -53,7 +58,7 @@ class DeleteTag:
         self.tag.deleted_at = func.now()
 
         # End all active group tag mappings for tag
-        db.session.execute(
+        await db.session.execute(
             update(OktaGroupTagMap)
             .where(
                 or_(
@@ -67,7 +72,7 @@ class DeleteTag:
         )
 
         # End all active app tag mappings for tag
-        db.session.execute(
+        await db.session.execute(
             update(AppTagMap)
             .where(
                 or_(
@@ -80,4 +85,4 @@ class DeleteTag:
             .execution_options(synchronize_session="fetch")
         )
 
-        db.session.commit()
+        await db.session.commit()
