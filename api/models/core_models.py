@@ -21,7 +21,7 @@ from sqlalchemy.sql import expression
 from sqlalchemy_json import mutable_json_type
 
 from api import config
-from api.extensions import Base, db
+from api.extensions import Base
 
 
 class OktaUserGroupMember(Base):
@@ -629,20 +629,10 @@ class AppGroup(OktaGroup):
         "polymorphic_identity": "app_group",
     }
 
-    @validates("name")
-    def validate_group(self, key: str, name: str) -> str:
-        app = db.session.query(App).filter(App.id == self.app_id).filter(App.deleted_at.is_(None)).first()
-        if app is None:
-            raise ValueError(f"Specified App with app_id: {self.app_id} does not exist")
-        # app_groups should have app name prepended always
-        app_group_name_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
-        if not name.startswith(app_group_name_prefix):
-            raise ValueError(
-                'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
-                    name, app_group_name_prefix
-                )
-            )
-        return name
+    # NOTE: do not add an @validates("name") hook here — `name` is mapped on the
+    # OktaGroup base mapper, so with joined-table inheritance a subclass validator
+    # never fires. The "App-{app name}-" prefix rule is enforced in the operations
+    # layer instead (CreateGroup and ModifyGroupDetails).
 
 
 class App(Base):

@@ -49,13 +49,23 @@ class CreateGroup:
         if existing_group is not None:
             return existing_group
 
-        # Make sure the app exists if we're creating an app group
-        if (
-            type(self.group) is AppGroup
-            and db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
-            is None
-        ):
-            raise ValueError("App for AppGroup does not exist")
+        # Make sure the app exists if we're creating an app group, and that the
+        # group name carries the "App-{app name}-" prefix. The prefix convention
+        # is load-bearing: app renames rewrite group names by prefix substitution
+        # and group request approval reasons about reserved prefixes.
+        if type(self.group) is AppGroup:
+            app = db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            if app is None:
+                raise ValueError("App for AppGroup does not exist")
+            app_group_name_prefix = (
+                f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+            )
+            if not self.group.name.startswith(app_group_name_prefix):
+                raise ValueError(
+                    'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
+                        self.group.name, app_group_name_prefix
+                    )
+                )
 
         okta_group = okta.create_group(self.group.name, self.group.description)
         if okta_group is None:

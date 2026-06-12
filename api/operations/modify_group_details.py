@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
-from api.models import AppGroup, OktaGroup, OktaUser, RoleGroup
+from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
@@ -21,11 +21,17 @@ class ModifyGroupDetails:
         name: str | None = None,
         description: str | None = None,
         current_user_id: str | None = None,
+        validate_app_group_prefix: bool = True,
     ):
         self.group = group
         self.name = name
         self.description = description
         self.current_user_id = current_user_id
+        # Renaming an app group must keep the "App-{app name}-" prefix, except
+        # when the rename is part of a group type conversion: converting away
+        # from an app group legitimately drops the prefix (ModifyGroupType
+        # requires it gone before it will convert).
+        self.validate_app_group_prefix = validate_app_group_prefix
 
     def execute(self) -> OktaGroup:
         old_name = self.group.name
@@ -41,6 +47,28 @@ class ModifyGroupDetails:
             )
             if existing_group is not None:
                 raise ValueError("Group already exists with the same name")
+
+        # Enforce the "App-{app name}-" prefix on app group renames. Unchanged
+        # names are tolerated so description-only edits of legacy non-conforming
+        # groups keep working.
+        if (
+            self.validate_app_group_prefix
+            and self.name is not None
+            and self.name != old_name
+            and type(self.group) is AppGroup
+        ):
+            app = db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            if app is None:
+                raise ValueError("App for AppGroup does not exist")
+            app_group_name_prefix = (
+                f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+            )
+            if not self.name.startswith(app_group_name_prefix):
+                raise ValueError(
+                    'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
+                        self.name, app_group_name_prefix
+                    )
+                )
 
         if self.name is not None:
             self.group.name = self.name
