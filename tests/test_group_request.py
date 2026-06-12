@@ -14,6 +14,7 @@ from api.models import (
     AccessRequestStatus,
     AppGroup,
     AppTagMap,
+    GroupRequest,
     OktaGroup,
     OktaUser,
     OktaUserGroupMember,
@@ -2554,6 +2555,10 @@ def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected
     assert rep.status_code == 200
 
     db.session.refresh(group_request)
-    assert group_request.status == AccessRequestStatus.APPROVED
-    created_group = db.session.get(OktaGroup, group_request.approved_group_id)
+    # Re-fetch instead of reusing `group_request` — mypy narrows `status` to
+    # PENDING after the assert above and doesn't know refresh() mutates it.
+    approved_request = db.session.get(GroupRequest, group_request.id)
+    assert approved_request is not None
+    assert approved_request.status == AccessRequestStatus.APPROVED
+    created_group = db.session.get(OktaGroup, approved_request.approved_group_id)
     assert created_group.name == f"App-{app_name}-RenamedGroup"
