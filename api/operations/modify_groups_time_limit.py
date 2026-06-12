@@ -8,6 +8,11 @@ from api.models.tag import coalesce_constraints
 
 class ModifyGroupsTimeLimit:
     def __init__(self, groups: list[str] | set[str], tags: list[str] | set[str]):
+        self._groups_arg = groups
+        self._tags_arg = tags
+
+    def _resolve(self) -> None:
+        groups = self._groups_arg
         # Only include groups that are managed
         self.groups = db.session.scalars(
             select(OktaGroup)
@@ -22,9 +27,12 @@ class ModifyGroupsTimeLimit:
             .where(RoleGroup.is_managed.is_(True))
         ).all()
 
-        self.tags = db.session.scalars(select(Tag).where(Tag.id.in_(tags)).where(Tag.deleted_at.is_(None))).all()
+        self.tags = db.session.scalars(
+            select(Tag).where(Tag.id.in_(self._tags_arg)).where(Tag.deleted_at.is_(None))
+        ).all()
 
     def execute(self) -> None:
+        self._resolve()
         if len(self.groups) == 0:
             return
 

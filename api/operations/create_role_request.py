@@ -43,6 +43,22 @@ class CreateRoleRequest:
     ):
         self.id = self.__generate_id()
 
+        self._requester_user_arg = requester_user
+        self._requester_role_arg = requester_role
+        self._requested_group_arg = requested_group
+
+        self.request_ownership = request_ownership
+        self.request_reason = request_reason
+        self.request_ending_at = request_ending_at
+
+        self.conditional_access_hook = get_conditional_access_hook()
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        requester_user = self._requester_user_arg
+        requester_role = self._requester_role_arg
+        requested_group = self._requested_group_arg
+
         if isinstance(requester_user, str):
             self.requester = db.session.get(OktaUser, requester_user)
         else:
@@ -73,14 +89,8 @@ class CreateRoleRequest:
             .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
         ).first()
 
-        self.request_ownership = request_ownership
-        self.request_reason = request_reason
-        self.request_ending_at = request_ending_at
-
-        self.conditional_access_hook = get_conditional_access_hook()
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> Optional[RoleRequest]:
+        self._resolve()
         # Don't allow creating a request for an unmanaged group
         if not self.requested_group.is_managed:
             return None

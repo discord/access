@@ -12,16 +12,22 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteTag:
     def __init__(self, *, tag: Tag | str, current_user_id: Optional[str] = None):
+        self._tag_arg = tag
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        tag = self._tag_arg
         self.tag = db.session.scalars(select(Tag).where(Tag.id == (tag if isinstance(tag, str) else tag.id))).first()
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> None:
+        self._resolve()
         # Audit logging
         email = None
         if self.current_user_id is not None:

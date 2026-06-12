@@ -21,6 +21,13 @@ class ModifyGroupTags:
         tags_to_remove: list[str] = [],
         current_user_id: Optional[str],
     ):
+        self._group_arg = group
+        self._tags_to_add_arg = tags_to_add
+        self._tags_to_remove_arg = tags_to_remove
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        group = self._group_arg
         self.group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
@@ -29,22 +36,23 @@ class ModifyGroupTags:
         ).first()
 
         self.tags_to_add = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_add))
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_to_add_arg))
         ).all()
 
         self.tags_to_remove = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_remove))
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_to_remove_arg))
         ).all()
 
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> OktaGroup:
+        self._resolve()
         if len(self.tags_to_add) > 0:
             # Only add tags that are not already associated with the group
             tag_ids_to_add = [t.id for t in self.tags_to_add]

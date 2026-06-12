@@ -24,6 +24,19 @@ class RejectGroupRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
+        self._group_request_arg = group_request
+        self._current_user_id_arg = current_user_id
+
+        self.rejection_reason = rejection_reason
+        self.notify = notify
+        self.notify_requester = notify_requester
+
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        group_request = self._group_request_arg
+        current_user_id = self._current_user_id_arg
+
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
@@ -42,13 +55,8 @@ class RejectGroupRequest:
         else:
             self.rejecter_id = current_user_id.id
 
-        self.rejection_reason = rejection_reason
-        self.notify = notify
-        self.notify_requester = notify_requester
-
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> GroupRequest:
+        self._resolve()
         # Already resolved — raise rather than silently no-op so a stale/
         # concurrent rejection surfaces as a conflict instead of a success.
         if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
