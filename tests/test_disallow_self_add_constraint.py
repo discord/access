@@ -1,10 +1,11 @@
 from typing import Any
 
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 
 from fastapi import FastAPI
 
+from sqlalchemy import select
 from api.config import settings
 from api.extensions import Db
 from api.models import (
@@ -21,12 +22,13 @@ from api.models import (
 )
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
+from tests.helpers import db_count
 from tests.factories import OktaUserFactory, RoleGroupFactory, TagFactory
 
 
-def test_disallow_self_add_modify_group_users(
+async def test_disallow_self_add_modify_group_users(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -61,12 +63,12 @@ def test_disallow_self_add_modify_group_users(
     db.session.add(role_group)
     db.session.add(user)
     db.session.add(current_user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -86,33 +88,42 @@ def test_disallow_self_add_modify_group_users(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # drop identity-map state staled by the ops above (expire_on_commit=False)
     db.session.expire_all()
+    # reload the objects read below — sync lazy-loads of expired state raise under async
+    await db.session.refresh(okta_group)
+    await db.session.refresh(current_user)
 
     # Add non-admin current_user as the owner of okta_group
-    ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -124,21 +135,30 @@ def test_disallow_self_add_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(current_user)
 
     # Add the current user to the okta group as member and owner
     data = {
@@ -147,21 +167,30 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(user)
 
     # Add another user to the okta group as owner and member
     data = {
@@ -170,7 +199,7 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -182,15 +211,21 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -199,8 +234,12 @@ def test_disallow_self_add_modify_group_users(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
 
+    # reload state expired by the earlier 400 response's rollback
+    await db.session.refresh(app_group)
+    await db.session.refresh(current_user)
+
     # Add non-admin current_user as app group owner
-    ModifyGroupUsers(group=app_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=app_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 
     # Add the current user to the app group as member
     data = {
@@ -210,7 +249,7 @@ def test_disallow_self_add_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=app_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -222,15 +261,21 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
 
@@ -246,21 +291,30 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(current_user)
 
     # Add the user to the app group as member and owner
     data = {
@@ -269,21 +323,30 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(user)
 
     # Add another user to the app group as member and owner
     data = {
@@ -292,7 +355,7 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -304,15 +367,21 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
 
@@ -321,8 +390,12 @@ def test_disallow_self_add_modify_group_users(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
 
+    # reload state expired by the earlier 400 response's rollback
+    await db.session.refresh(role_group)
+    await db.session.refresh(current_user)
+
     # Add non-admin current_user as app group owner
-    ModifyGroupUsers(group=role_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 
     # Add the current user to the role group as member
     data = {
@@ -332,21 +405,30 @@ def test_disallow_self_add_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(current_user)
 
     # Add the user to the role group as member and owner
     data = {
@@ -355,21 +437,30 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(user)
 
     # Add another user to the role group as member and owner
     data = {
@@ -378,7 +469,7 @@ def test_disallow_self_add_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -390,22 +481,28 @@ def test_disallow_self_add_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 8
     )
 
 
-def test_disallow_self_add_modify_role_groups(
+async def test_disallow_self_add_modify_role_groups(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -441,16 +538,18 @@ def test_disallow_self_add_modify_role_groups(
     db.session.add_all(role_groups)
     db.session.add(user)
     db.session.add(current_user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_groups[0], members_to_add=[current_user.id], owners_to_add=[], sync_to_okta=False
     ).execute()
 
-    ModifyGroupUsers(group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
+    await ModifyGroupUsers(
+        group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False
+    ).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
@@ -460,40 +559,50 @@ def test_disallow_self_add_modify_role_groups(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
     # Add current_user as owner of role_groups[0]
-    ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 
     # Add the current user role group as a member to the okta group
     data: dict[str, Any] = {
@@ -503,29 +612,42 @@ def test_disallow_self_add_modify_role_groups(
         "owner_groups_to_remove": [],
     }
     current_user_role_url = url_for("api-roles.role_members_by_id", role_id=role_groups[0].id)
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(okta_group)
 
     # Add the current user role group as a owner to the okta group
     data = {
@@ -534,7 +656,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -542,23 +664,33 @@ def test_disallow_self_add_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -574,27 +706,37 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -602,6 +744,10 @@ def test_disallow_self_add_modify_role_groups(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(okta_group)
+    await db.session.refresh(role_groups[1])
 
     # Add the user role group as a member to the okta group
     data = {
@@ -611,7 +757,7 @@ def test_disallow_self_add_modify_role_groups(
         "owner_groups_to_remove": [],
     }
     user_role_url = url_for("api-roles.role_members_by_id", role_id=role_groups[1].id)
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -620,23 +766,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -652,7 +808,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -661,23 +817,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -693,7 +859,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -702,23 +868,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -727,8 +903,12 @@ def test_disallow_self_add_modify_role_groups(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
 
+    # reload state expired by the earlier 400 response's rollback
+    await db.session.refresh(app_group)
+    await db.session.refresh(current_user)
+
     # Add current_user as owner of the app group
-    ModifyGroupUsers(group=app_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=app_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 
     # Add the current user role group as a member to the app group
     data = {
@@ -737,7 +917,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -745,23 +925,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -777,29 +967,42 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(app_group)
 
     # Add the current user role group as a member and owner to the app group
     data = {
@@ -808,29 +1011,42 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 400
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
+
+    # reload state expired by the 400 response's rollback
+    await db.session.refresh(app_group)
 
     # Add the user role group as a member to the app group
     data = {
@@ -839,7 +1055,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -848,23 +1064,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -880,7 +1106,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -889,23 +1115,33 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
 
@@ -921,7 +1157,7 @@ def test_disallow_self_add_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -930,31 +1166,41 @@ def test_disallow_self_add_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
 
 
 # Admin should be allowed to bypass the constraints in all cases
-def test_disallow_self_add_admin_modify_group_users(
+async def test_disallow_self_add_admin_modify_group_users(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -964,7 +1210,9 @@ def test_disallow_self_add_admin_modify_group_users(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    current_user = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     tags = TagFactory.create_batch(
         3,
@@ -987,12 +1235,12 @@ def test_disallow_self_add_admin_modify_group_users(
     db.session.add(access_app)
     db.session.add(role_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -1012,27 +1260,33 @@ def test_disallow_self_add_admin_modify_group_users(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
 
@@ -1044,19 +1298,25 @@ def test_disallow_self_add_admin_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
 
@@ -1067,7 +1327,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1079,15 +1339,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -1103,7 +1369,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1111,15 +1377,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
 
@@ -1135,7 +1407,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1147,15 +1419,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1172,7 +1450,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=app_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1184,15 +1462,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
 
@@ -1208,7 +1492,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1216,15 +1500,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
 
@@ -1240,7 +1530,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1248,15 +1538,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
 
@@ -1272,7 +1568,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1284,15 +1580,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
 
@@ -1309,7 +1611,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -1317,15 +1619,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 8
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
 
@@ -1341,7 +1649,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1353,15 +1661,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 8
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
 
@@ -1377,7 +1691,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -1385,15 +1699,21 @@ def test_disallow_self_add_admin_modify_group_users(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 8
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
 
@@ -1409,7 +1729,7 @@ def test_disallow_self_add_admin_modify_group_users(
         "members_to_remove": [],
         "owners_to_remove": [],
     }
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 3
     assert remove_user_from_group_spy.call_count == 0
@@ -1421,23 +1741,29 @@ def test_disallow_self_add_admin_modify_group_users(
     assert len(data["owners"]) == 2
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 11
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 10
     )
 
 
 # Admin should be allowed to bypass the constraints in all cases
-def test_disallow_self_add_admin_modify_role_groups(
+async def test_disallow_self_add_admin_modify_role_groups(
     app: FastAPI,
-    client: TestClient,
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     access_app: App,
@@ -1446,7 +1772,9 @@ def test_disallow_self_add_admin_modify_role_groups(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    current_user = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
 
     role_groups = RoleGroupFactory.create_batch(2)
 
@@ -1471,16 +1799,18 @@ def test_disallow_self_add_admin_modify_role_groups(
     db.session.add(access_app)
     db.session.add_all(role_groups)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_groups[0], members_to_add=[current_user.id], owners_to_add=[], sync_to_okta=False
     ).execute()
 
-    ModifyGroupUsers(group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
+    await ModifyGroupUsers(
+        group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False
+    ).execute()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
@@ -1490,35 +1820,45 @@ def test_disallow_self_add_admin_modify_role_groups(
     db.session.add(app_tag_map)
     app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
     db.session.add(app_tag_map2)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    db.session.commit()
+    await db.session.commit()
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Establish a baseline of user memberships/ownerships
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -1530,7 +1870,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "owner_groups_to_remove": [],
     }
     current_user_role_url = url_for("api-roles.role_members_by_id", role_id=role_groups[0].id)
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1538,23 +1878,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 0
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 0
     )
 
@@ -1570,7 +1920,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -1578,23 +1928,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -1610,27 +1970,37 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -1647,7 +2017,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "owner_groups_to_remove": [],
     }
     user_role_url = url_for("api-roles.role_members_by_id", role_id=role_groups[1].id)
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -1656,23 +2026,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 1
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 1
     )
 
@@ -1688,7 +2068,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -1697,23 +2077,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -1729,7 +2119,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -1738,23 +2128,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 5
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -1770,7 +2170,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1778,23 +2178,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 2
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 2
     )
 
@@ -1810,7 +2220,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1818,23 +2228,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
 
@@ -1850,7 +2270,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(current_user_role_url, json=data)
+    rep = await client.put(current_user_role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -1858,23 +2278,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 6
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
 
@@ -1885,7 +2315,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 2
@@ -1894,23 +2324,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 3
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 3
     )
 
@@ -1926,7 +2366,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 0
@@ -1935,23 +2375,33 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
 
@@ -1967,7 +2417,7 @@ def test_disallow_self_add_admin_modify_role_groups(
         "groups_to_remove": [],
         "owner_groups_to_remove": [],
     }
-    rep = client.put(user_role_url, json=data)
+    rep = await client.put(user_role_url, json=data)
     assert rep.status_code == 200
 
     assert add_user_to_group_spy.call_count == 1
@@ -1976,22 +2426,32 @@ def test_disallow_self_add_admin_modify_role_groups(
     assert remove_owner_from_group_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(False), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 7
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.is_owner.is_(True), OktaUserGroupMember.ended_at.is_(None)
+            ),
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(False), RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )
     assert (
-        db.session.query(RoleGroupMap).filter(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None)).count()
+        await db_count(
+            db.session, select(RoleGroupMap).where(RoleGroupMap.is_owner.is_(True), RoleGroupMap.ended_at.is_(None))
+        )
         == 4
     )

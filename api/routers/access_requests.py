@@ -278,9 +278,10 @@ async def post_access_request(
         raise HTTPException(400, "Access request could not be created")
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    ar_id = ar.id
     db.expire_all()
     refreshed = (
-        await db.scalars(select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id))
+        await db.scalars(select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar_id))
     ).first()
     return AccessRequestSummary.model_validate(refreshed, from_attributes=True)
 

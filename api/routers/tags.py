@@ -103,8 +103,9 @@ async def post_tag(
     created = await CreateTag(tag=tag, current_user_id=current_user_id).execute()
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    created_id = created.id
     db.expire_all()
-    refreshed = (await db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == created.id))).first()
+    refreshed = (await db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == created_id))).first()
     return TagDetail.model_validate(refreshed or created, from_attributes=True)
 
 
@@ -174,8 +175,9 @@ async def put_tag(
 
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    tag_id_val = tag.id
     db.expire_all()
-    refreshed = (await db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == tag.id))).first()
+    refreshed = (await db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == tag_id_val))).first()
 
     email = getattr(await db.get(OktaUser, current_user_id), "email", None) if current_user_id else None
     _ctx = get_request_context()

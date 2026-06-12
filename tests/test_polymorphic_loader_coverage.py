@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 from api.extensions import Db, db as _db
 from api.models import AppTagMap, OktaGroupTagMap
@@ -46,7 +46,7 @@ from tests.factories import (
 
 
 @pytest.fixture
-def production_shape(db: Db) -> dict[str, Any]:
+async def production_shape(db: Db) -> dict[str, Any]:
     """Build the data shape from the production error reports.
 
     A tagged role group with member+owner associations to a tagged app group
@@ -64,7 +64,7 @@ def production_shape(db: Db) -> dict[str, Any]:
     tags = [TagFactory.build(constraints={}) for _ in range(4)]
 
     db.session.add_all([user, requester, app, app_group, okta_group, role_group, *tags])
-    db.session.commit()
+    await db.session.commit()
     # tags[3] is an app-level tag (AppTagMap) that propagates to the app group,
     # so the app group's OktaGroupTagMap carries a non-None
     # `active_app_tag_mapping` — the only way that relationship's non-None
@@ -72,7 +72,7 @@ def production_shape(db: Db) -> dict[str, Any]:
     # direct group tags (active_app_tag_mapping is None).
     app_tag_map = AppTagMap(tag_id=tags[3].id, app_id=app.id)
     db.session.add(app_tag_map)
-    db.session.commit()
+    await db.session.commit()
     db.session.add_all(
         [
             OktaGroupTagMap(tag_id=tags[0].id, group_id=app_group.id),
@@ -81,18 +81,18 @@ def production_shape(db: Db) -> dict[str, Any]:
             OktaGroupTagMap(tag_id=tags[3].id, group_id=app_group.id, app_tag_map_id=app_tag_map.id),
         ]
     )
-    db.session.commit()
+    await db.session.commit()
 
     # Role memberships first, then associate the role to both groups as
     # member AND owner so `active_role_associated_group_*_mappings` rows
     # exist with polymorphic `active_group` targets (AppGroup + OktaGroup).
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_group.id, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
     ).execute()
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=okta_group.id, members_to_add=[requester.id], owners_to_add=[user.id], sync_to_okta=False
     ).execute()
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group.id,
         groups_to_add=[app_group.id, okta_group.id],
         owner_groups_to_add=[app_group.id],
@@ -102,13 +102,13 @@ def production_shape(db: Db) -> dict[str, Any]:
     # Pending access request targeting the ROLE group: the detail ref
     # serializes the role's associated-group mappings, and through them each
     # mapping's active_group and its app.
-    request_role_target = CreateAccessRequest(
+    request_role_target = await CreateAccessRequest(
         requester_user=requester, requested_group=role_group, request_reason="role target"
     ).execute()
-    request_app_target = CreateAccessRequest(
+    request_app_target = await CreateAccessRequest(
         requester_user=requester, requested_group=app_group, request_reason="app target"
     ).execute()
-    role_request = CreateRoleRequest(
+    role_request = await CreateRoleRequest(
         requester_user=user,
         requester_role=role_group,
         requested_group=app_group,
@@ -140,22 +140,22 @@ def production_shape(db: Db) -> dict[str, Any]:
     return shape
 
 
-def _get_ok(client: TestClient, url: str) -> Any:
-    # The TestClient shares this session, so a prior request (or fixture setup)
+async def _get_ok(client: AsyncClient, url: str) -> Any:
+    # The async client shares this session, so a prior request (or fixture setup)
     # can leave relationships warm in the identity map and mask a route whose
     # own loaders never eager-loaded them. Production gives each request a cold
     # session, so evict before every call: a missing eager-load then raises
     # `lazy="raise_on_sql"` deterministically instead of flaking by test order.
     _db.session.expunge_all()
-    rep = client.get(url)
+    rep = await client.get(url)
     assert rep.status_code == 200, f"{url} -> {rep.status_code}: {rep.text[:500]}"
     return rep.json()
 
 
-def test_group_list_serializes_role_associations_and_apps(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_group_list_serializes_role_associations_and_apps(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    data = _get_ok(client, url_for("api-groups.groups"))
+    data = await _get_ok(client, url_for("api-groups.groups"))
     by_id = {g["id"]: g for g in data["items"]}
     role = by_id[production_shape["role_group"]]
     # the role row exposes its associated-group mappings…
@@ -173,10 +173,10 @@ def test_group_list_serializes_role_associations_and_apps(
 
 
 @pytest.mark.parametrize("key", ["role_group", "app_group", "okta_group"])
-def test_group_detail_for_each_type(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any, key: str
+async def test_group_detail_for_each_type(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any, key: str
 ) -> None:
-    data = _get_ok(client, url_for("api-groups.group_by_id", group_id=production_shape[key]))
+    data = await _get_ok(client, url_for("api-groups.group_by_id", group_id=production_shape[key]))
     assert data["active_group_tags"]
     if key == "role_group":
         mappings = data["active_role_associated_group_member_mappings"]
@@ -197,30 +197,32 @@ def test_group_detail_for_each_type(
         assert propagated[0]["active_app_tag_mapping"]["active_tag"] is not None
 
 
-def test_role_routes(app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any) -> None:
-    _get_ok(client, url_for("api-roles.roles"))
-    detail = _get_ok(client, url_for("api-roles.role_by_id", role_id=production_shape["role_group"]))
+async def test_role_routes(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
+) -> None:
+    await _get_ok(client, url_for("api-roles.roles"))
+    detail = await _get_ok(client, url_for("api-roles.role_by_id", role_id=production_shape["role_group"]))
     mappings = detail["active_role_associated_group_member_mappings"]
     assert mappings
     assert any(m["active_group"]["type"] == "app_group" and m["active_group"]["app"] for m in mappings)
-    _get_ok(client, url_for("api-roles.role_members_by_id", role_id=production_shape["role_group"]))
+    await _get_ok(client, url_for("api-roles.role_members_by_id", role_id=production_shape["role_group"]))
 
 
-def test_user_routes_with_via_role_app_group_memberships(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_user_routes_with_via_role_app_group_memberships(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    _get_ok(client, url_for("api-users.users"))
-    data = _get_ok(client, url_for("api-users.user_by_id", user_id=production_shape["user"]))
+    await _get_ok(client, url_for("api-users.users"))
+    data = await _get_ok(client, url_for("api-users.user_by_id", user_id=production_shape["user"]))
     groups = [m["active_group"] for m in data["active_group_memberships"] if m.get("active_group")]
     app_groups = [g for g in groups if g["type"] == "app_group"]
     # via-role membership rows reach app groups; their `app` ref must be loaded
     assert app_groups and all(g["app"] is not None for g in app_groups)
 
 
-def test_access_request_detail_role_group_target(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_access_request_detail_role_group_target(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    data = _get_ok(
+    data = await _get_ok(
         client,
         url_for(
             "api-access-requests.access_request_by_id",
@@ -238,10 +240,10 @@ def test_access_request_detail_role_group_target(
     assert app_actives and all(a["app"] is not None for a in app_actives)
 
 
-def test_access_request_detail_app_group_target_and_lists(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_access_request_detail_app_group_target_and_lists(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    data = _get_ok(
+    data = await _get_ok(
         client,
         url_for(
             "api-access-requests.access_request_by_id",
@@ -251,21 +253,21 @@ def test_access_request_detail_app_group_target_and_lists(
     assert data["requested_group"]["type"] == "app_group"
     assert data["requested_group"]["app"] is not None
     assert data["requested_group"]["active_group_tags"]
-    _get_ok(client, url_for("api-access-requests.access_requests"))
+    await _get_ok(client, url_for("api-access-requests.access_requests"))
 
 
-def test_role_request_routes(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_role_request_routes(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    _get_ok(client, url_for("api-role-requests.role_requests"))
+    await _get_ok(client, url_for("api-role-requests.role_requests"))
     # The assignee ("requests I can resolve") filter runs an admin-only branch
     # that reads `tm.active_tag` for each tag on every pending request's target
     # group — a code path, not serialization, so it needs its own nested
     # active_tag loader. The bootstrap user is an Access admin and there's a
     # pending role request targeting the tagged app group, so this exercises it.
     base = url_for("api-role-requests.role_requests")
-    _get_ok(client, f"{base}?assignee_user_id=@me")
-    data = _get_ok(
+    await _get_ok(client, f"{base}?assignee_user_id=@me")
+    data = await _get_ok(
         client, url_for("api-role-requests.role_request_by_id", role_request_id=production_shape["role_request"])
     )
     assert data["requested_group"]["type"] == "app_group"
@@ -274,16 +276,16 @@ def test_role_request_routes(
     assert data["requested_group"]["active_group_tags"]
 
 
-def test_tag_and_app_routes(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
+async def test_tag_and_app_routes(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
-    _get_ok(client, url_for("api-tags.tags"))
-    tag_detail = _get_ok(client, url_for("api-tags.tag_by_id", tag_id=production_shape["tag"]))
+    await _get_ok(client, url_for("api-tags.tags"))
+    tag_detail = await _get_ok(client, url_for("api-tags.tag_by_id", tag_id=production_shape["tag"]))
     # the tag is attached to the APP group: the nested active_group must carry its app
     actives = [t["active_group"] for t in tag_detail["active_group_tags"] if t.get("active_group")]
     assert any(g["type"] == "app_group" and g.get("app") for g in actives)
-    _get_ok(client, url_for("api-apps.apps"))
-    _get_ok(client, url_for("api-apps.app_by_id", app_id=production_shape["app"]))
+    await _get_ok(client, url_for("api-apps.apps"))
+    await _get_ok(client, url_for("api-apps.app_by_id", app_id=production_shape["app"]))
 
 
 @pytest.mark.parametrize(
@@ -295,22 +297,22 @@ def test_tag_and_app_routes(
         "group_id={app_group}",
     ],
 )
-def test_audit_users_with_polymorphic_rows(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any, params: str
+async def test_audit_users_with_polymorphic_rows(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any, params: str
 ) -> None:
     # The user_id / group_id filters are the historical unloadable case that
     # forced lazy="select" on these relationships.
     url = url_for("api-audit.users_and_groups")
     qs = params.format(**production_shape)
-    data = _get_ok(client, f"{url}?{qs}" if qs else url)
+    data = await _get_ok(client, f"{url}?{qs}" if qs else url)
     assert data["items"]
 
 
 @pytest.mark.parametrize("params", ["", "role_id={role_group}", "group_id={app_group}"])
-def test_audit_groups_with_polymorphic_rows(
-    app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any, params: str
+async def test_audit_groups_with_polymorphic_rows(
+    app: FastAPI, client: AsyncClient, db: Db, production_shape: dict[str, Any], url_for: Any, params: str
 ) -> None:
     url = url_for("api-audit.groups_and_roles")
     qs = params.format(**production_shape)
-    data = _get_ok(client, f"{url}?{qs}" if qs else url)
+    data = await _get_ok(client, f"{url}?{qs}" if qs else url)
     assert data["items"]
