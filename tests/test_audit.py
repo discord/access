@@ -587,6 +587,9 @@ def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
     ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
     ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     rep = client.get(url_for("api-audit.users_and_groups"))
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]

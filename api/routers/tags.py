@@ -97,6 +97,9 @@ def post_tag(
         enabled=body.enabled,
     )
     created = CreateTag(tag=tag, current_user_id=current_user_id).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == created.id)).first()
     return TagDetail.model_validate(refreshed or created, from_attributes=True)
 
@@ -161,6 +164,9 @@ def put_tag(
             tags=[pre_refresh.id],
         ).execute()
 
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == tag.id)).first()
 
     email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id else None

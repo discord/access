@@ -400,6 +400,9 @@ def post_role_request(
         request_reason=body.reason or "",
         request_ending_at=body.ending_at,
     ).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == rr.id)).first()
     return RoleRequestSummary.model_validate(refreshed or rr, from_attributes=True)
 
@@ -459,6 +462,9 @@ def put_role_request(
             rejection_reason=body.reason or "",
             notify_requester=rr.requester_user_id != current_user_id,
         ).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(
         select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == role_request_id)
     ).first()

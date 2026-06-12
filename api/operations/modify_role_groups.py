@@ -6,12 +6,13 @@ import logging
 
 from sqlalchemy import func, or_, select, update
 from api.context import get_request_context
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
+    AppGroup,
     OktaGroup,
     OktaGroupTagMap,
     OktaUser,
@@ -59,7 +60,11 @@ class ModifyRoleGroups:
         if len(groups_to_add) > 0:
             self.groups_to_add = db.session.scalars(
                 select(OktaGroup)
-                .options(selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag))
+                .options(
+                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                    selectin_polymorphic(OktaGroup, [AppGroup]),
+                    joinedload(AppGroup.app),
+                )
                 .where(OktaGroup.id.in_(groups_to_add))
                 .where(OktaGroup.is_managed.is_(True))
                 .where(OktaGroup.deleted_at.is_(None))
@@ -380,6 +385,7 @@ class ModifyRoleGroups:
                 .where(OktaUserGroupMember.group_id == self.role.id)
                 .where(OktaUserGroupMember.is_owner.is_(False))
             ).all()
+            groups_added_by_id = {group.id: group for group in self.groups_to_add}
             group_memberships_added: Dict[str, Dict[str, OktaUserGroupMember]] = {}
             for role_associated_group_map in role_memberships_added.values():
                 group_memberships_added[role_associated_group_map.group_id] = role_associated_membership_added = {}
@@ -399,7 +405,7 @@ class ModifyRoleGroups:
 
                 # Invoke app group lifecycle plugin hooks for added members
                 if len(members_gaining_access_ids) > 0:
-                    group = role_associated_group_map.active_group
+                    group = groups_added_by_id[role_associated_group_map.group_id]
                     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                     if plugin_id is not None:
                         members_gaining_access = db.session.scalars(
