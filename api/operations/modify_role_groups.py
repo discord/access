@@ -47,14 +47,42 @@ class ModifyRoleGroups:
         created_reason: str = "",
         notify: bool = True,
     ):
+        self._role_group_arg = role_group
+
+        self.groups_added_ended_at = groups_added_ended_at
+
+        self._groups_to_add_arg = groups_to_add
+        self._owner_groups_to_add_arg = owner_groups_to_add
+        self._groups_should_expire_arg = groups_should_expire
+        self._owner_groups_should_expire_arg = owner_groups_should_expire
+        self._groups_to_remove_arg = groups_to_remove
+        self._owner_groups_to_remove_arg = owner_groups_to_remove
+
+        self.sync_to_okta = sync_to_okta
+
+        self._current_user_id_arg = current_user_id
+
+        self.created_reason = created_reason
+
+        self.notify = notify
+
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        role_group = self._role_group_arg
+        groups_to_add = self._groups_to_add_arg
+        owner_groups_to_add = self._owner_groups_to_add_arg
+        groups_should_expire = self._groups_should_expire_arg
+        owner_groups_should_expire = self._owner_groups_should_expire_arg
+        groups_to_remove = self._groups_to_remove_arg
+        owner_groups_to_remove = self._owner_groups_to_remove_arg
+
         if isinstance(role_group, str):
             self.role = db.session.scalars(
                 select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == role_group)
             ).first()
         else:
             self.role = role_group
-
-        self.groups_added_ended_at = groups_added_ended_at
 
         self.groups_to_add = []
         if len(groups_to_add) > 0:
@@ -120,23 +148,16 @@ class ModifyRoleGroups:
                 select(OktaGroup).where(OktaGroup.id.in_(owner_groups_to_remove)).where(OktaGroup.deleted_at.is_(None))
             ).all()
 
-        self.sync_to_okta = sync_to_okta
-
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
-        self.created_reason = created_reason
-
-        self.notify = notify
-
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> RoleGroup:
+        self._resolve()
         # Run asychronously to parallelize Okta API requests
         return asyncio.run(self._execute())
 

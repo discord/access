@@ -27,6 +27,21 @@ class ApproveAccessRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
+        self._access_request_arg = access_request
+        self._approver_user_arg = approver_user
+
+        self.approval_reason = approval_reason
+
+        self.ending_at = ending_at
+
+        self.notify = notify
+
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        access_request = self._access_request_arg
+        approver_user = self._approver_user_arg
+
         # Lock the request row for the duration of the transaction so two
         # concurrent approvers can't both pass the pending-state guard below
         # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
@@ -50,15 +65,8 @@ class ApproveAccessRequest:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-        self.approval_reason = approval_reason
-
-        self.ending_at = ending_at
-
-        self.notify = notify
-
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> AccessRequest:
+        self._resolve()
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.

@@ -27,6 +27,21 @@ class ApproveRoleRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
+        self._role_request_arg = role_request
+        self._approver_user_arg = approver_user
+
+        self.approval_reason = approval_reason
+
+        self.ending_at = ending_at
+
+        self.notify = notify
+
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        role_request = self._role_request_arg
+        approver_user = self._approver_user_arg
+
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-grant. `of=` keeps
         # FOR UPDATE off the joinedloads' nullable outer-join sides (Postgres
@@ -49,15 +64,8 @@ class ApproveRoleRequest:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-        self.approval_reason = approval_reason
-
-        self.ending_at = ending_at
-
-        self.notify = notify
-
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> RoleRequest:
+        self._resolve()
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.

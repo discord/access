@@ -13,6 +13,11 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteApp:
     def __init__(self, *, app: App | str, current_user_id: Optional[str] = None):
+        self._app_arg = app
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        app = self._app_arg
         if isinstance(app, str):
             self.app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == app)).first()
         else:
@@ -20,13 +25,14 @@ class DeleteApp:
 
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self) -> None:
+        self._resolve()
         # Prevent access app deletion
         if self.app.name == App.ACCESS_APP_RESERVED_NAME:
             raise ValueError("The Access Application cannot be deleted")

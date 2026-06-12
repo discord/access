@@ -39,6 +39,18 @@ class ApproveGroupRequest:
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
+        self._group_request_arg = group_request
+        self._approver_user_arg = approver_user
+
+        self.approval_reason = approval_reason
+        self.notify = notify
+        self.bypass_self_approval = bypass_self_approval
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        group_request = self._group_request_arg
+        approver_user = self._approver_user_arg
+
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
@@ -61,12 +73,8 @@ class ApproveGroupRequest:
             self.approver_id = approver_user.id
             self.approver_email = approver_user.email
 
-        self.approval_reason = approval_reason
-        self.notify = notify
-        self.bypass_self_approval = bypass_self_approval
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> Optional[GroupRequest]:
+        self._resolve()
         # Guard against missing group_request
         if self.group_request is None:
             return None

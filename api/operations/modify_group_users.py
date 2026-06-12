@@ -47,6 +47,34 @@ class ModifyGroupUsers:
         created_reason: str = "",
         notify: bool = True,
     ):
+        self._group_arg = group
+        self._users_added_ended_at_arg = users_added_ended_at
+        self._members_to_add_arg = members_to_add
+        self._owners_to_add_arg = owners_to_add
+        self._members_should_expire_arg = members_should_expire
+        self._owners_should_expire_arg = owners_should_expire
+        self._members_to_remove_arg = members_to_remove
+        self._owners_to_remove_arg = owners_to_remove
+
+        self.sync_to_okta = sync_to_okta
+
+        self._current_user_id_arg = current_user_id
+
+        self.created_reason = created_reason
+        self.notify = notify
+
+        self.notification_hook = get_notification_hook()
+
+    def _resolve(self) -> None:
+        group = self._group_arg
+        users_added_ended_at = self._users_added_ended_at_arg
+        members_to_add = self._members_to_add_arg
+        owners_to_add = self._owners_to_add_arg
+        members_should_expire = self._members_should_expire_arg
+        owners_should_expire = self._owners_should_expire_arg
+        members_to_remove = self._members_to_remove_arg
+        owners_to_remove = self._owners_to_remove_arg
+
         self.group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -117,22 +145,16 @@ class ModifyGroupUsers:
                 select(OktaUser).where(OktaUser.id.in_(owners_to_remove)).where(OktaUser.deleted_at.is_(None))
             ).all()
 
-        self.sync_to_okta = sync_to_okta
-
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
-        self.created_reason = created_reason
-        self.notify = notify
-
-        self.notification_hook = get_notification_hook()
-
     def execute(self) -> OktaGroup:
+        self._resolve()
         # Run asychronously to parallelize Okta API requests
         return asyncio.run(self._execute())
 

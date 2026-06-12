@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 # Run this operation when a group becomes unmanaged by Access
 class UnmanageGroup:
     def __init__(self, *, group: OktaGroup | str, current_user_id: Optional[str] = None):
+        self._group_arg = group
+        self._current_user_id_arg = current_user_id
+
+    def _resolve(self) -> None:
+        group = self._group_arg
         self.group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
@@ -33,13 +38,14 @@ class UnmanageGroup:
 
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
             "id",
             None,
         )
 
     def execute(self, dry_run: bool = False) -> None:
+        self._resolve()
         if self.group.is_managed:
             return
 
