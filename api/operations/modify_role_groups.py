@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 import logging
 
@@ -218,6 +218,10 @@ class ModifyRoleGroups:
 
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         async_tasks = []
+        # Requests approved by this operation; their notifications are
+        # prepared after the final commit and dispatched alongside async_tasks.
+        approved_access_requests: list[AccessRequest] = []
+        approved_role_requests: list[RoleRequest] = []
 
         # First remove all groups from the role including those that we wish to add.
         # That way we can easily extend time-bounded group memberships and audit when
@@ -520,6 +524,7 @@ class ModifyRoleGroups:
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (
                 select(AccessRequest)
+                .options(joinedload(AccessRequest.requested_group))
                 .where(AccessRequest.status == AccessRequestStatus.PENDING)
                 .where(AccessRequest.resolved_at.is_(None))
             )
@@ -532,7 +537,7 @@ class ModifyRoleGroups:
                 .where(AccessRequest.request_ownership.is_(False))
             ).all()
             for access_request in pending_member_requests:
-                async_tasks.append(
+                approved_access_requests.append(
                     self._approve_access_request(
                         access_request,
                         group_memberships_added[access_request.requested_group_id][access_request.requester_user_id],
@@ -546,7 +551,7 @@ class ModifyRoleGroups:
                 .where(AccessRequest.request_ownership.is_(True))
             ).all()
             for access_request in pending_role_associated_owner_requests:
-                async_tasks.append(
+                approved_access_requests.append(
                     self._approve_access_request(
                         access_request,
                         group_ownerships_added[access_request.requested_group_id][access_request.requester_user_id],
@@ -556,6 +561,7 @@ class ModifyRoleGroups:
             # Approve any pending role requests for memberships granted by this operation
             pending_role_requests_query = (
                 select(RoleRequest)
+                .options(joinedload(RoleRequest.requested_group), joinedload(RoleRequest.requester_role))
                 .where(RoleRequest.status == AccessRequestStatus.PENDING)
                 .where(RoleRequest.resolved_at.is_(None))
                 .where(RoleRequest.requester_role == self.role)
@@ -568,7 +574,7 @@ class ModifyRoleGroups:
                 )
             ).all()
             for role_request in pending_role_memberships:
-                async_tasks.append(
+                approved_role_requests.append(
                     self._approve_role_request(role_request, role_memberships_added[role_request.requested_group_id])
                 )
 
@@ -580,7 +586,7 @@ class ModifyRoleGroups:
                 )
             ).all()
             for role_request in pending_role_ownerships:
-                async_tasks.append(
+                approved_role_requests.append(
                     self._approve_role_request(role_request, role_ownerships_added[role_request.requested_group_id])
                 )
 
@@ -588,6 +594,32 @@ class ModifyRoleGroups:
 
         # Commit all changes
         db.session.commit()
+
+        # Resolve everything the notification hooks need on the main coroutine
+        # before spawning tasks: spawned tasks must only perform network I/O,
+        # never db.session access (a session cannot be used concurrently, and
+        # under async SQLAlchemy that raises rather than interleaving).
+        for access_request in approved_access_requests:
+            group = access_request.requested_group
+            # `resolved_at` was assigned func.now() and expired at flush;
+            # reload it explicitly so the hook sees a concrete value.
+            db.session.refresh(access_request, attribute_names=["resolved_at"])
+            requester = db.session.get(OktaUser, access_request.requester_user_id)
+            approvers = get_all_possible_request_approvers(access_request)
+            async_tasks.append(
+                asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
+            )
+
+        if self.notify:
+            for role_request in approved_role_requests:
+                role = role_request.requester_role
+                group = role_request.requested_group
+                db.session.refresh(role_request, attribute_names=["resolved_at"])
+                requester = db.session.get(OktaUser, role_request.requester_user_id)
+                approvers = get_all_possible_request_approvers(role_request)
+                async_tasks.append(
+                    asyncio.create_task(self._notify_role_request(role_request, role, group, requester, approvers))
+                )
 
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)
@@ -641,7 +673,7 @@ class ModifyRoleGroups:
 
     def _approve_access_request(
         self, access_request: AccessRequest, added_okta_user_group_member: OktaUserGroupMember
-    ) -> asyncio.Task[None]:
+    ) -> AccessRequest:
         access_request.status = AccessRequestStatus.APPROVED
         access_request.resolved_at = func.now()
         access_request.resolver_user_id = self.current_user_id
@@ -649,24 +681,24 @@ class ModifyRoleGroups:
         access_request.approval_ending_at = added_okta_user_group_member.ended_at
         access_request.approved_membership_id = added_okta_user_group_member.id
 
-        return asyncio.create_task(self._notify_access_request(access_request))
+        return access_request
 
-    async def _notify_access_request(self, access_request: AccessRequest) -> None:
-        requester = db.session.get(OktaUser, access_request.requester_user_id)
-
-        approvers = get_all_possible_request_approvers(access_request)
-
+    async def _notify_access_request(
+        self,
+        access_request: AccessRequest,
+        group: OktaGroup,
+        requester: Optional[OktaUser],
+        approvers: Set[OktaUser],
+    ) -> None:
         self.notification_hook.access_request_completed(
             access_request=access_request,
-            group=access_request.requested_group,
+            group=group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,
         )
 
-    def _approve_role_request(
-        self, role_request: RoleRequest, added_role_group_map: RoleGroupMap
-    ) -> asyncio.Task[None]:
+    def _approve_role_request(self, role_request: RoleRequest, added_role_group_map: RoleGroupMap) -> RoleRequest:
         role_request.status = AccessRequestStatus.APPROVED
         role_request.resolved_at = func.now()
         role_request.resolver_user_id = self.current_user_id
@@ -674,20 +706,20 @@ class ModifyRoleGroups:
         role_request.approval_ending_at = added_role_group_map.ended_at
         role_request.approved_membership_id = added_role_group_map.id
 
-        return asyncio.create_task(self._notify_role_request(role_request))
+        return role_request
 
-    async def _notify_role_request(self, role_request: RoleRequest) -> None:
-        if not self.notify:
-            return
-
-        requester = db.session.get(OktaUser, role_request.requester_user_id)
-
-        approvers = get_all_possible_request_approvers(role_request)
-
+    async def _notify_role_request(
+        self,
+        role_request: RoleRequest,
+        role: OktaGroup,
+        group: OktaGroup,
+        requester: Optional[OktaUser],
+        approvers: Set[OktaUser],
+    ) -> None:
         self.notification_hook.access_role_request_completed(
             role_request=role_request,
-            role=role_request.requester_role,
-            group=role_request.requested_group,
+            role=role,
+            group=group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,
