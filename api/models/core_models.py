@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any, Callable, Dict, List, Optional
 
@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    TypeDecorator,
     Unicode,
     func,
     text,
@@ -22,6 +23,28 @@ from sqlalchemy_json import mutable_json_type
 
 from api import config
 from api.extensions import Base
+
+
+class NaiveUTCDateTime(TypeDecorator[datetime]):
+    """``TIMESTAMP WITHOUT TIME ZONE`` column that accepts aware datetimes.
+
+    The schema stores naive UTC. Callers (request bodies, expiring-access
+    windows, time-limit constraints) routinely supply timezone-aware UTC
+    datetimes; pg8000 and sqlite historically coerced those silently, but
+    asyncpg rejects an aware datetime bound to a naive ``timestamp`` column.
+    Normalize at bind time - covers INSERT/UPDATE values and WHERE
+    comparisons alike. Naive values pass through unchanged.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: Optional[datetime], dialect: Any) -> Optional[datetime]:
+        # `date` instances (no tzinfo attribute) bind against these columns in
+        # the expiring-access window queries - pass them through untouched.
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
 
 
 class OktaUserGroupMember(Base):
@@ -42,9 +65,11 @@ class OktaUserGroupMember(Base):
     # Is this user an owner of the group and can administer the group and manage membership?
     # Or is this user only a member of this group?
     is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     # Save the user IDs of the person who added/removed someone from a group
     created_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
@@ -122,9 +147,11 @@ class OktaUserGroupMember(Base):
 
 class OktaUser(Base):
     id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
     # https://developer.okta.com/docs/reference/api/users/#default-profile-properties
     email: Mapped[str] = mapped_column(Unicode(100), nullable=False)
     first_name: Mapped[str] = mapped_column(Unicode(50), nullable=False)
@@ -271,9 +298,11 @@ class OktaGroup(Base):
     __tablename__ = "okta_group"
     id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
     type: Mapped[str] = mapped_column(Unicode(50), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
     # https://developer.okta.com/docs/reference/api/groups/#default-profile-properties
     name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
     description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -468,9 +497,11 @@ class RoleGroupMap(Base):
     # Does this role grant ownership of the group and allow role members to administer the group and manage membership?
     # Or does this role grant only membership to the group?
     is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     # Save the user IDs of the person who added/removed someone from a group
     created_actor_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
@@ -626,9 +657,11 @@ class App(Base):
 
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
     description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -702,9 +735,11 @@ class AccessRequestStatus(StrEnum):
 class AccessRequest(Base):
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
         Enum(AccessRequestStatus),
@@ -716,12 +751,12 @@ class AccessRequest(Base):
     requested_group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
     request_ownership: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
-    request_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    request_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     resolver_user_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
-    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     # See https://stackoverflow.com/a/60840921
     approved_membership_id: Mapped[Optional[int]] = mapped_column(
@@ -784,9 +819,11 @@ class AccessRequest(Base):
 class RoleRequest(Base):
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
         Enum(AccessRequestStatus),
@@ -801,12 +838,12 @@ class RoleRequest(Base):
     requested_group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"))
     request_ownership: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
-    request_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    request_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     resolver_user_id: Mapped[Optional[str]] = mapped_column(Unicode(50), ForeignKey("okta_user.id"))
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
-    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    approval_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     # See https://stackoverflow.com/a/60840921
     approved_membership_id: Mapped[Optional[int]] = mapped_column(
@@ -885,9 +922,11 @@ class RoleRequest(Base):
 class GroupRequest(Base):
     # A 20 character random string like Okta IDs
     id: Mapped[str] = mapped_column(Unicode(20), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     status: Mapped[AccessRequestStatus] = mapped_column(
         Enum(AccessRequestStatus),
@@ -903,7 +942,7 @@ class GroupRequest(Base):
     requested_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
     requested_group_type: Mapped[str] = mapped_column(Unicode(50), nullable=False)
     requested_app_id: Mapped[Optional[str]] = mapped_column(Unicode(20), ForeignKey("app.id"))
-    requested_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    requested_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
     # Tag ids
     requested_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(
@@ -924,7 +963,7 @@ class GroupRequest(Base):
     resolved_group_description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
     resolved_group_type: Mapped[str] = mapped_column(Unicode(50), nullable=False, default="")
     resolved_app_id: Mapped[Optional[str]] = mapped_column(Unicode(20), ForeignKey("app.id"))
-    resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    resolved_ownership_ending_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
     # Tag ids
     resolved_group_tags: Mapped[List[str]] = mapped_column(
         mutable_json_type(
@@ -1052,9 +1091,11 @@ class Tag(Base):
     }
 
     id: Mapped[str] = mapped_column(Unicode(50), primary_key=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     name: Mapped[str] = mapped_column(Unicode(255), nullable=False)
     description: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
@@ -1118,9 +1159,11 @@ class OktaGroupTagMap(Base):
         ForeignKey("app_tag_map.id"),
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     tag: Mapped[Tag] = relationship(
         "Tag",
@@ -1185,9 +1228,11 @@ class AppTagMap(Base):
     tag_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("tag.id"))
     app_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("app.id"))
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False, default=func.now(), onupdate=func.now())
-    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime())
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        NaiveUTCDateTime(), nullable=False, default=func.now(), onupdate=func.now()
+    )
+    ended_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
 
     tag: Mapped[Tag] = relationship(
         "Tag",
