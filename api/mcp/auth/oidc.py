@@ -34,7 +34,7 @@ from typing import Any, Optional
 
 import httpx
 import jwt
-from sqlalchemy import func
+from sqlalchemy import func, select
 from starlette.types import Scope
 
 from api.config import settings
@@ -144,12 +144,9 @@ def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
         return None
 
     db = _db_shim.session
-    user = (
-        db.query(OktaUser)
-        .filter(func.lower(OktaUser.email) == func.lower(email))
-        .filter(OktaUser.deleted_at.is_(None))
-        .first()
-    )
+    user = db.scalars(
+        select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+    ).first()
     if user is None:
         logger.warning(f"OIDC token verified for email={email!r} but no matching active OktaUser exists")
         return None
