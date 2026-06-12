@@ -51,14 +51,16 @@ class CreateAccessRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> Optional[AccessRequest]:
-        requester = db.session.get(OktaUser, self.requester_user_id)
+    async def execute(self) -> Optional[AccessRequest]:
+        requester = await db.session.get(OktaUser, self.requester_user_id)
 
-        requested_group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.requested_group_id)
+        requested_group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.requested_group_id)
+            )
         ).first()
 
         # Don't allow creating a request for an unmanaged group
@@ -76,10 +78,10 @@ class CreateAccessRequest:
         )
 
         db.session.add(access_request)
-        db.session.commit()
+        await db.session.commit()
 
         # Fetch the users to notify
-        approvers = get_group_managers(requested_group.id)
+        approvers = await get_group_managers(requested_group.id)
 
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
@@ -88,23 +90,26 @@ class CreateAccessRequest:
             or (len(approvers) == 1 and approvers[0].id == requester.id)
             and type(requested_group) is AppGroup
         ):
-            approvers = get_app_managers(requested_group.app_id)
+            approvers = await get_app_managers(requested_group.app_id)
 
         # If there are still no approvers, try to get the access owners
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == requester.id):
-            approvers = get_access_owners()
+            approvers = await get_access_owners()
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(
-                    joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
-                ),
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    joinedload(AppGroup.app),
+                    selectinload(OktaGroup.active_group_tags).options(
+                        joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                        joinedload(OktaGroupTagMap.enabled_active_tag),
+                    ),
+                )
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == requested_group.id)
             )
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == requested_group.id)
         ).first()
 
         # Audit logging
@@ -136,14 +141,14 @@ class CreateAccessRequest:
         for response in conditional_access_responses:
             if response is not None:
                 if response.approved:
-                    ApproveAccessRequest(
+                    await ApproveAccessRequest(
                         access_request=access_request,
                         approval_reason=response.reason,
                         ending_at=response.ending_at,
                         notify=False,
                     ).execute()
                 else:
-                    RejectAccessRequest(
+                    await RejectAccessRequest(
                         access_request=access_request,
                         rejection_reason=response.reason,
                         notify=False,

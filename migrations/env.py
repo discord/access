@@ -9,7 +9,7 @@ from alembic import context
 from sqlalchemy import JSON
 
 from api.config import settings
-from api.database import build_engine
+from api.database import build_async_engine
 from api.extensions import Base
 
 # Make sure all models are imported so Base.metadata is populated
@@ -49,7 +49,7 @@ def compare_type(context, inspected_column, metadata_column, inspected_type, met
     return None
 
 
-def run_migrations_online() -> None:
+def _do_run_migrations(connection) -> None:
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, "autogenerate", False):
             script = directives[0]
@@ -57,17 +57,33 @@ def run_migrations_online() -> None:
                 directives[:] = []
                 logger.info("No changes in schema detected.")
 
-    connectable = build_engine()
-    with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            process_revision_directives=process_revision_directives,
-            compare_type=compare_type,
-            render_as_batch=connection.dialect.name == "sqlite",
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        process_revision_directives=process_revision_directives,
+        compare_type=compare_type,
+        render_as_batch=connection.dialect.name == "sqlite",
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations through the async engine.
+
+    Alembic's migration machinery is synchronous; `connection.run_sync`
+    bridges it onto the AsyncEngine so the same engine builder (including
+    the Cloud SQL IAM connector path) serves the app and migrations.
+    """
+    import asyncio
+
+    async def _run() -> None:
+        connectable = build_async_engine()
+        async with connectable.connect() as connection:
+            await connection.run_sync(_do_run_migrations)
+        await connectable.dispose()
+
+    asyncio.run(_run())
 
 
 if context.is_offline_mode():

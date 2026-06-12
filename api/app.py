@@ -21,7 +21,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api import exception_handlers, middleware
 from api.config import settings
-from api.database import build_engine
+from api.database import build_async_engine
 from api.extensions import db
 from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
 from api.schemas.core_schemas import ProblemDetail
@@ -257,7 +257,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # fixture rebuilds with a sqlite-in-memory engine, so we only bind here
     # when not testing.
     if not testing and (settings.SQLALCHEMY_DATABASE_URI or settings.CLOUDSQL_CONNECTION_NAME):
-        db.init_app(engine=build_engine())
+        db.init_app(engine=build_async_engine())
 
     # OIDC: Authlib + SessionMiddleware. Only mounted if configured.
     if settings.OIDC_CLIENT_SECRETS is not None and settings.SECRET_KEY:

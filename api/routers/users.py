@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import cast, func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
@@ -41,7 +41,7 @@ ALL_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup, RoleGroup])
 
 
 @router.get("", name="users")
-def list_users(
+async def list_users(
     db: DbSession,
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchUserQuery, Query()],
@@ -95,23 +95,25 @@ def list_users(
                 )
             )
 
-    return paginate(db, stmt, transformer=validated(OktaUserSummary))
+    return await apaginate(db, stmt, transformer=validated(OktaUserSummary))
 
 
 @router.get("/{user_id}", name="user_by_id")
-def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> OktaUserDetail:
+async def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> OktaUserDetail:
     if user_id == "@me":
         user_id = current_user_id
 
-    user = db.scalars(
-        select(OktaUser)
-        .options(
-            selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
-            selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
-            joinedload(OktaUser.manager),
+    user = (
+        await db.scalars(
+            select(OktaUser)
+            .options(
+                selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
+                selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
+                joinedload(OktaUser.manager),
+            )
+            .where(or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
+            .order_by(nullsfirst(OktaUser.deleted_at.desc()))
         )
-        .where(or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
-        .order_by(nullsfirst(OktaUser.deleted_at.desc()))
     ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="Not Found")
@@ -119,7 +121,7 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> Okt
 
 
 @router.get("/{user_id}/audit", name="user_audit_by_id")
-def get_user_audit(user_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
+async def get_user_audit(user_id: str, request: Request, current_user_id: CurrentUserId) -> RedirectResponse:
     qp = dict(request.query_params)
     qp["user_id"] = user_id
     from urllib.parse import urlencode

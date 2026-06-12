@@ -67,39 +67,47 @@ class CreateApp:
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
         self.current_user_id = current_user_id
 
-    def execute(self) -> App:
+    async def execute(self) -> App:
         tag_ids = [
             tag.id
-            for tag in db.session.scalars(
-                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids))
+            for tag in (
+                await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids)))
             ).all()
         ]
 
         owner_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.owner_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.owner_id)
+                )
             ).first(),
             "id",
             None,
         )
         owner_role_ids: Optional[list[str]] = None
         if self.owner_role_ids is not None:
-            owner_roles = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.id.in_(self.owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+            owner_roles = (
+                await db.session.scalars(
+                    select(RoleGroup).where(RoleGroup.id.in_(self.owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+                )
             ).all()
             owner_role_ids = [role.id for role in owner_roles]
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
         )
 
         # Do not allow non-deleted apps with the same name
-        existing_app = db.session.scalars(
-            select(App).where(func.lower(App.name) == func.lower(self.app.name)).where(App.deleted_at.is_(None))
+        existing_app = (
+            await db.session.scalars(
+                select(App).where(func.lower(App.name) == func.lower(self.app.name)).where(App.deleted_at.is_(None))
+            )
         ).first()
         if existing_app is not None:
             return existing_app
@@ -107,7 +115,7 @@ class CreateApp:
         # Audit logging
         email = None
         if current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -126,14 +134,16 @@ class CreateApp:
         )
 
         db.session.add(self.app)
-        db.session.commit()
+        await db.session.commit()
 
         app_id = self.app.id
 
-        existing_owner_group = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
-            .where(OktaGroup.deleted_at.is_(None))
+        existing_owner_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).first()
 
         if existing_owner_group is None:
@@ -143,23 +153,23 @@ class CreateApp:
                 name=self.owner_group_name,
                 description=app_owners_group_description(self.app.name),
             )
-            owner_app_group = CreateGroup(group=owner_app_group, current_user_id=current_user_id).execute()
+            owner_app_group = await CreateGroup(group=owner_app_group, current_user_id=current_user_id).execute()
         else:
             group_id = existing_owner_group.id
             if type(existing_owner_group) is not AppGroup:
-                ModifyGroupType(
+                await ModifyGroupType(
                     group=existing_owner_group,
                     group_changes=AppGroup(app_id=app_id, is_owner=True),
                     current_user_id=current_user_id,
                 ).execute()
-            owner_app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
+            owner_app_group = (await db.session.scalars(select(AppGroup).where(AppGroup.id == group_id))).first()
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
-            db.session.commit()
+            await db.session.commit()
 
         if owner_id is not None:
             # Add the app owner to the app owner group as members and owners
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=owner_app_group,
                 current_user_id=current_user_id,
                 members_to_add=[owner_id],
@@ -168,7 +178,7 @@ class CreateApp:
 
         if owner_role_ids is not None:
             for role_id in owner_role_ids:
-                ModifyRoleGroups(
+                await ModifyRoleGroups(
                     role_group=role_id,
                     current_user_id=current_user_id,
                     groups_to_add=[owner_app_group.id],
@@ -176,11 +186,13 @@ class CreateApp:
                 ).execute()
 
         # Find other app groups with the same app name prefix and update them
-        other_existing_app_groups = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(OktaGroup.name.ilike(f"{self.app_group_prefix}%"))
-            .where(func.lower(OktaGroup.name) != func.lower(self.owner_group_name))
-            .where(OktaGroup.deleted_at.is_(None))
+        other_existing_app_groups = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(OktaGroup.name.ilike(f"{self.app_group_prefix}%"))
+                .where(func.lower(OktaGroup.name) != func.lower(self.owner_group_name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).all()
         existing_app_group_ids_to_update = []
         for existing_app_group in other_existing_app_groups:
@@ -188,7 +200,7 @@ class CreateApp:
                 existing_app_group_ids_to_update.append(existing_app_group.id)
 
         for existing_app_group_id in existing_app_group_ids_to_update:
-            ModifyGroupType(
+            await ModifyGroupType(
                 group=existing_app_group_id,
                 group_changes=AppGroup(app_id=app_id, is_owner=False),
                 current_user_id=current_user_id,
@@ -199,30 +211,34 @@ class CreateApp:
             for app_group in self.additional_app_groups:
                 app_group.app_id = app_id
 
-                existing_group = db.session.scalars(
-                    select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                    .where(func.lower(OktaGroup.name) == func.lower(app_group.name))
-                    .where(OktaGroup.deleted_at.is_(None))
+                existing_group = (
+                    await db.session.scalars(
+                        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                        .where(func.lower(OktaGroup.name) == func.lower(app_group.name))
+                        .where(OktaGroup.deleted_at.is_(None))
+                    )
                 ).first()
 
                 if existing_group is None:
-                    CreateGroup(group=app_group, current_user_id=current_user_id).execute()
+                    await CreateGroup(group=app_group, current_user_id=current_user_id).execute()
                 else:
                     group_id = existing_group.id
                     if type(existing_owner_group) is not AppGroup:
-                        ModifyGroupType(
+                        await ModifyGroupType(
                             group=existing_owner_group,
                             group_changes=AppGroup(app_id=app_id, is_owner=False),
                             current_user_id=current_user_id,
                         ).execute()
-                    app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
+                    app_group = (await db.session.scalars(select(AppGroup).where(AppGroup.id == group_id))).first()
                     app_group.app_id = app_id
                     app_group.is_owner = False
-                    db.session.commit()
+                    await db.session.commit()
 
         if len(tag_ids) > 0:
-            all_app_groups = db.session.scalars(
-                select(AppGroup).where(AppGroup.app_id == app_id).where(AppGroup.deleted_at.is_(None))
+            all_app_groups = (
+                await db.session.scalars(
+                    select(AppGroup).where(AppGroup.app_id == app_id).where(AppGroup.deleted_at.is_(None))
+                )
             ).all()
 
             for tag_id in tag_ids:
@@ -232,15 +248,17 @@ class CreateApp:
                         app_id=app_id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
-            new_app_tag_maps = db.session.scalars(
-                select(AppTagMap)
-                .where(AppTagMap.app_id == app_id)
-                .where(
-                    or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > func.now(),
+            new_app_tag_maps = (
+                await db.session.scalars(
+                    select(AppTagMap)
+                    .where(AppTagMap.app_id == app_id)
+                    .where(
+                        or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
@@ -254,9 +272,9 @@ class CreateApp:
                             app_tag_map_id=app_tag_map.id,
                         )
                     )
-            db.session.commit()
+            await db.session.commit()
 
-        return db.session.get(App, app_id)
+        return await db.session.get(App, app_id)
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
     def __generate_id(self) -> str:
