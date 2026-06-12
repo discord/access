@@ -5,7 +5,7 @@ from typing import Any, Optional, TypedDict
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func
+from sqlalchemy import func, select
 
 from api.extensions import db
 from api.models import OktaUser, Tag
@@ -28,22 +28,18 @@ class CreateTag:
             self.tag = tag
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
 
     def execute(self) -> Tag:
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        existing_tag = (
-            db.session.query(Tag)
-            .filter(func.lower(Tag.name) == func.lower(self.tag.name))
-            .filter(Tag.deleted_at.is_(None))
-            .first()
-        )
+        existing_tag = db.session.scalars(
+            select(Tag).where(func.lower(Tag.name) == func.lower(self.tag.name)).where(Tag.deleted_at.is_(None))
+        ).first()
         if existing_tag is not None:
             return existing_tag
 

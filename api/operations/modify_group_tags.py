@@ -2,7 +2,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select, update
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
@@ -21,25 +21,25 @@ class ModifyGroupTags:
         tags_to_remove: list[str] = [],
         current_user_id: Optional[str],
     ):
-        self.group = (
-            db.session.query(OktaGroup)
+        self.group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+        ).first()
 
-        self.tags_to_add = db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_add)).all()
+        self.tags_to_add = db.session.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_add))
+        ).all()
 
-        self.tags_to_remove = (
-            db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags_to_remove)).all()
-        )
+        self.tags_to_remove = db.session.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_remove))
+        ).all()
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
@@ -48,25 +48,24 @@ class ModifyGroupTags:
         if len(self.tags_to_add) > 0:
             # Only add tags that are not already associated with the group
             tag_ids_to_add = [t.id for t in self.tags_to_add]
-            existing_tag_maps = (
-                db.session.query(OktaGroupTagMap)
-                .filter(
+            existing_tag_maps = db.session.scalars(
+                select(OktaGroupTagMap)
+                .where(
                     or_(
                         OktaGroupTagMap.ended_at.is_(None),
                         OktaGroupTagMap.ended_at > func.now(),
                     )
                 )
-                .filter(
+                .where(
                     OktaGroupTagMap.group_id == self.group.id,
                 )
-                .filter(
+                .where(
                     OktaGroupTagMap.tag_id.in_(tag_ids_to_add),
                 )
-                .filter(
+                .where(
                     OktaGroupTagMap.app_tag_map_id.is_(None),
                 )
-                .all()
-            )
+            ).all()
 
             new_tag_ids_to_add = set(tag_ids_to_add) - set([m.tag_id for m in existing_tag_maps])
 
@@ -85,20 +84,25 @@ class ModifyGroupTags:
             db.session.commit()
 
         if len(self.tags_to_remove) > 0:
-            db.session.query(OktaGroupTagMap).filter(
-                or_(
-                    OktaGroupTagMap.ended_at.is_(None),
-                    OktaGroupTagMap.ended_at > func.now(),
+            db.session.execute(
+                update(OktaGroupTagMap)
+                .where(
+                    or_(
+                        OktaGroupTagMap.ended_at.is_(None),
+                        OktaGroupTagMap.ended_at > func.now(),
+                    )
                 )
-            ).filter(
-                OktaGroupTagMap.group_id == self.group.id,
-            ).filter(
-                OktaGroupTagMap.tag_id.in_([t.id for t in self.tags_to_remove]),
-            ).filter(
-                OktaGroupTagMap.app_tag_map_id.is_(None),
-            ).update(
-                {OktaGroupTagMap.ended_at: func.now()},
-                synchronize_session="fetch",
+                .where(
+                    OktaGroupTagMap.group_id == self.group.id,
+                )
+                .where(
+                    OktaGroupTagMap.tag_id.in_([t.id for t in self.tags_to_remove]),
+                )
+                .where(
+                    OktaGroupTagMap.app_tag_map_id.is_(None),
+                )
+                .values({OktaGroupTagMap.ended_at: func.now()})
+                .execution_options(synchronize_session="fetch")
             )
             db.session.commit()
 
@@ -107,13 +111,12 @@ class ModifyGroupTags:
             email = None
             if self.current_user_id is not None:
                 email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
-                group = (
-                    db.session.query(OktaGroup)
+                group = db.session.scalars(
+                    select(OktaGroup)
                     .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-                    .filter(OktaGroup.deleted_at.is_(None))
-                    .filter(OktaGroup.id == self.group.id)
-                    .first()
-                )
+                    .where(OktaGroup.deleted_at.is_(None))
+                    .where(OktaGroup.id == self.group.id)
+                ).first()
 
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(

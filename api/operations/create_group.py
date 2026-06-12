@@ -3,7 +3,7 @@ from typing import Optional, TypedDict, TypeVar
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
@@ -27,25 +27,23 @@ class CreateGroup:
         else:
             self.group = group
 
-        self.tags = db.session.query(Tag).filter(Tag.deleted_at.is_(None)).filter(Tag.id.in_(tags)).all()
+        self.tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags))).all()
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
 
     def execute(self, *, _group: Optional[T] = None) -> T:
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        existing_group = (
-            db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .filter(func.lower(OktaGroup.name) == func.lower(self.group.name))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .first()
-        )
+        existing_group = db.session.scalars(
+            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+            .where(func.lower(OktaGroup.name) == func.lower(self.group.name))
+            .where(OktaGroup.deleted_at.is_(None))
+        ).first()
         if existing_group is not None:
             return existing_group
 
@@ -54,7 +52,9 @@ class CreateGroup:
         # is load-bearing: app renames rewrite group names by prefix substitution
         # and group request approval reasons about reserved prefixes.
         if type(self.group) is AppGroup:
-            app = db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            app = db.session.scalars(
+                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            ).first()
             if app is None:
                 raise ValueError("App for AppGroup does not exist")
             app_group_name_prefix = (
@@ -76,17 +76,16 @@ class CreateGroup:
 
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
-            app_tag_maps = (
-                db.session.query(AppTagMap)
-                .filter(AppTagMap.app_id == self.group.app_id)
-                .filter(
+            app_tag_maps = db.session.scalars(
+                select(AppTagMap)
+                .where(AppTagMap.app_id == self.group.app_id)
+                .where(
                     or_(
                         AppTagMap.ended_at.is_(None),
                         AppTagMap.ended_at > func.now(),
                     )
                 )
-                .all()
-            )
+            ).all()
 
             for app_tag_map in app_tag_maps:
                 db.session.add(
@@ -127,13 +126,12 @@ class CreateGroup:
         if self.current_user_id is not None:
             email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
 
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.group.id)
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.group.id)
+        ).first()
 
         _ctx = get_request_context()
 

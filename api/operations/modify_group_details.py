@@ -1,7 +1,7 @@
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
@@ -39,12 +39,11 @@ class ModifyGroupDetails:
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
         if self.name is not None and old_name.lower() != self.name.lower():
-            existing_group = (
-                db.session.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .filter(func.lower(OktaGroup.name) == func.lower(self.name))
-                .filter(OktaGroup.deleted_at.is_(None))
-                .first()
-            )
+            existing_group = db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(self.name))
+                .where(OktaGroup.deleted_at.is_(None))
+            ).first()
             if existing_group is not None:
                 raise ValueError("Group already exists with the same name")
 

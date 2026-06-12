@@ -2,7 +2,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from api.context import get_request_context
 
 from api.exceptions import ConflictError
@@ -28,19 +28,16 @@ class RejectGroupRequest:
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
         request_id = group_request if isinstance(group_request, str) else group_request.id
-        self.group_request = (
-            db.session.query(GroupRequest).filter(GroupRequest.id == request_id).with_for_update().first()
-        )
+        self.group_request = db.session.scalars(
+            select(GroupRequest).where(GroupRequest.id == request_id).with_for_update()
+        ).first()
 
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
-            user = (
-                db.session.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first()
-            )
+            user = db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first()
             self.rejecter_id = user.id if user else None
         else:
             self.rejecter_id = current_user_id.id
@@ -73,10 +70,10 @@ class RejectGroupRequest:
                 if not is_global_admin:
                     # Check app ownership if this is an app group request
                     if resolved_app_id is not None:
-                        is_app_owner = (
-                            db.session.query(OktaUserGroupMember)
+                        is_app_owner = db.session.scalars(
+                            select(OktaUserGroupMember)
                             .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                            .filter(
+                            .where(
                                 AppGroup.app_id == resolved_app_id,
                                 AppGroup.is_owner.is_(True),
                                 AppGroup.deleted_at.is_(None),
@@ -84,8 +81,7 @@ class RejectGroupRequest:
                                 OktaUserGroupMember.is_owner.is_(True),
                                 OktaUserGroupMember.ended_at.is_(None),
                             )
-                            .first()
-                        )
+                        ).first()
 
                         if not is_app_owner:
                             return self.group_request

@@ -3,7 +3,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select, update
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
@@ -30,20 +30,18 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteGroup:
     def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
-        self.group = (
-            db.session.query(OktaGroup)
+        self.group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
-            .first()
-        )
+            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+        ).first()
 
         self.sync_to_okta = sync_to_okta
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
@@ -58,7 +56,9 @@ class DeleteGroup:
 
         # Prevent deletion of the Access owner group
         if type(self.group) is AppGroup and self.group.is_owner:
-            app = db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            app = db.session.scalars(
+                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            ).first()
             if app is not None and app.name == App.ACCESS_APP_RESERVED_NAME:
                 raise ValueError("Access application owner group cannot be deleted")
 
@@ -89,95 +89,113 @@ class DeleteGroup:
 
         # End all group members including group members via a role
         group_memberships_query = (
-            db.session.query(OktaUserGroupMember)
-            .filter(
+            select(OktaUserGroupMember)
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .filter(OktaUserGroupMember.group_id == self.group.id)
+            .where(OktaUserGroupMember.group_id == self.group.id)
         )
 
         direct_members_to_remove_ids = [
             m.user_id
-            for m in group_memberships_query.filter(OktaUserGroupMember.is_owner.is_(False))
-            .filter(OktaUserGroupMember.role_group_map_id.is_(None))
-            .all()
+            for m in db.session.scalars(
+                group_memberships_query.where(OktaUserGroupMember.is_owner.is_(False)).where(
+                    OktaUserGroupMember.role_group_map_id.is_(None)
+                )
+            ).all()
         ]
         direct_owners_to_remove_ids = [
             m.user_id
-            for m in group_memberships_query.filter(OktaUserGroupMember.is_owner.is_(True))
-            .filter(OktaUserGroupMember.role_group_map_id.is_(None))
-            .all()
+            for m in db.session.scalars(
+                group_memberships_query.where(OktaUserGroupMember.is_owner.is_(True)).where(
+                    OktaUserGroupMember.role_group_map_id.is_(None)
+                )
+            ).all()
         ]
 
-        group_memberships_query.update({OktaUserGroupMember.ended_at: func.now()}, synchronize_session="fetch")
-
-        # End all roles associations where this group was a member
-        db.session.query(RoleGroupMap).filter(
-            or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now())
-        ).filter(RoleGroupMap.group_id == self.group.id).update(
-            {RoleGroupMap.ended_at: func.now()}, synchronize_session="fetch"
-        )
-
-        if type(self.group) is RoleGroup:
-            # End all group memberships via the role grant
-            db.session.query(OktaUserGroupMember).filter(
+        db.session.execute(
+            update(OktaUserGroupMember)
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
-            ).filter(
-                OktaUserGroupMember.role_group_map_id.in_(
-                    db.session.query(RoleGroupMap.id)
-                    .filter(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
-                        )
+            )
+            .where(OktaUserGroupMember.group_id == self.group.id)
+            .values({OktaUserGroupMember.ended_at: func.now()})
+            .execution_options(synchronize_session="fetch")
+        )
+
+        # End all roles associations where this group was a member
+        db.session.execute(
+            update(RoleGroupMap)
+            .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+            .where(RoleGroupMap.group_id == self.group.id)
+            .values({RoleGroupMap.ended_at: func.now()})
+            .execution_options(synchronize_session="fetch")
+        )
+
+        if type(self.group) is RoleGroup:
+            # End all group memberships via the role grant
+            db.session.execute(
+                update(OktaUserGroupMember)
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
                     )
-                    .filter(RoleGroupMap.role_group_id == self.group.id)
                 )
-            ).update(
-                {OktaUserGroupMember.ended_at: func.now()},
-                synchronize_session="fetch",
+                .where(
+                    OktaUserGroupMember.role_group_map_id.in_(
+                        select(RoleGroupMap.id)
+                        .where(
+                            or_(
+                                RoleGroupMap.ended_at.is_(None),
+                                RoleGroupMap.ended_at > func.now(),
+                            )
+                        )
+                        .where(RoleGroupMap.role_group_id == self.group.id)
+                    )
+                )
+                .values({OktaUserGroupMember.ended_at: func.now()})
+                .execution_options(synchronize_session="fetch")
             )
 
             # Check if there are other OktaUserGroupMembers for this user/group
             # combination before removing group membership in Okta, there can be multiple role groups
             # which allow group access for this user
             role_associated_groups_mappings_query = (
-                db.session.query(RoleGroupMap)
-                .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
-                .filter(RoleGroupMap.role_group_id == self.group.id)
+                select(RoleGroupMap)
+                .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+                .where(RoleGroupMap.role_group_id == self.group.id)
             )
 
             if self.sync_to_okta:
-                role_associated_groups_mappings = role_associated_groups_mappings_query.all()
+                role_associated_groups_mappings = db.session.scalars(role_associated_groups_mappings_query).all()
 
-                removed_role_group_users_with_other_access = (
-                    db.session.query(OktaUserGroupMember)
-                    .with_entities(
+                removed_role_group_users_with_other_access = db.session.execute(
+                    select(
                         OktaUserGroupMember.user_id,
                         OktaUserGroupMember.group_id,
                         OktaUserGroupMember.is_owner,
                     )
-                    .filter(
+                    .where(
                         or_(
                             OktaUserGroupMember.ended_at.is_(None),
                             OktaUserGroupMember.ended_at > func.now(),
                         )
                     )
-                    .filter(OktaUserGroupMember.user_id.in_(direct_members_to_remove_ids + direct_owners_to_remove_ids))
-                    .filter(OktaUserGroupMember.group_id.in_([r.group_id for r in role_associated_groups_mappings]))
+                    .where(OktaUserGroupMember.user_id.in_(direct_members_to_remove_ids + direct_owners_to_remove_ids))
+                    .where(OktaUserGroupMember.group_id.in_([r.group_id for r in role_associated_groups_mappings]))
                     .group_by(
                         OktaUserGroupMember.user_id,
                         OktaUserGroupMember.group_id,
                         OktaUserGroupMember.is_owner,
                     )
-                    .all()
-                )
+                ).all()
 
                 for role_associated_group_map in role_associated_groups_mappings:
                     if not role_associated_group_map.is_owner:
@@ -214,20 +232,23 @@ class DeleteGroup:
                             )
 
             # End all group attachments to this role
-            role_associated_groups_mappings_query.update(
-                {RoleGroupMap.ended_at: func.now()}, synchronize_session="fetch"
+            db.session.execute(
+                update(RoleGroupMap)
+                .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+                .where(RoleGroupMap.role_group_id == self.group.id)
+                .values({RoleGroupMap.ended_at: func.now()})
+                .execution_options(synchronize_session="fetch")
             )
 
         db.session.commit()
 
         # Reject all pending access requests for this group
-        obsolete_access_requests = (
-            db.session.query(AccessRequest)
-            .filter(AccessRequest.requested_group_id == self.group.id)
-            .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-            .filter(AccessRequest.resolved_at.is_(None))
-            .all()
-        )
+        obsolete_access_requests = db.session.scalars(
+            select(AccessRequest)
+            .where(AccessRequest.requested_group_id == self.group.id)
+            .where(AccessRequest.status == AccessRequestStatus.PENDING)
+            .where(AccessRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_access_request in obsolete_access_requests:
             RejectAccessRequest(
                 access_request=obsolete_access_request,
@@ -237,18 +258,17 @@ class DeleteGroup:
 
         # Reject all pending role requests touching this group, either as the
         # requested target or as the requester role.
-        obsolete_role_requests = (
-            db.session.query(RoleRequest)
-            .filter(
+        obsolete_role_requests = db.session.scalars(
+            select(RoleRequest)
+            .where(
                 or_(
                     RoleRequest.requested_group_id == self.group.id,
                     RoleRequest.requester_role_id == self.group.id,
                 )
             )
-            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-            .filter(RoleRequest.resolved_at.is_(None))
-            .all()
-        )
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_role_request in obsolete_role_requests:
             RejectRoleRequest(
                 role_request=obsolete_role_request,
@@ -257,16 +277,19 @@ class DeleteGroup:
             ).execute()
 
         # End all tag mappings for this group
-        db.session.query(OktaGroupTagMap).filter(
-            or_(
-                OktaGroupTagMap.ended_at.is_(None),
-                OktaGroupTagMap.ended_at > func.now(),
+        db.session.execute(
+            update(OktaGroupTagMap)
+            .where(
+                or_(
+                    OktaGroupTagMap.ended_at.is_(None),
+                    OktaGroupTagMap.ended_at > func.now(),
+                )
             )
-        ).filter(
-            OktaGroupTagMap.group_id == self.group.id,
-        ).update(
-            {OktaGroupTagMap.ended_at: func.now()},
-            synchronize_session="fetch",
+            .where(
+                OktaGroupTagMap.group_id == self.group.id,
+            )
+            .values({OktaGroupTagMap.ended_at: func.now()})
+            .execution_options(synchronize_session="fetch")
         )
         db.session.commit()
 

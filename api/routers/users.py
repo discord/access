@@ -13,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi_pagination.ext.sqlalchemy import paginate
-from sqlalchemy import cast, func, nullsfirst, or_
+from sqlalchemy import cast, func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectinload, with_polymorphic
 from sqlalchemy.sql import sqltypes
 
@@ -46,7 +46,7 @@ def list_users(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchUserQuery, Query()],
 ) -> Page[OktaUserSummary]:
-    query = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).order_by(func.lower(OktaUser.email))
+    stmt = select(OktaUser).where(OktaUser.deleted_at.is_(None)).order_by(func.lower(OktaUser.email))
 
     if q_args.q:
         like = f"%{q_args.q}%"
@@ -64,7 +64,7 @@ def list_users(
             attr_query = [f'@."{attr}" like_regex "%s" flag "i"' for attr in search_attributes]
             search_jsonpath = f"strict $ ? ({' || '.join(attr_query)})"
             format_params = [query_regex_quote_escaped] * len(search_attributes)
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     OktaUser.email.ilike(like),
                     OktaUser.first_name.ilike(like),
@@ -84,7 +84,7 @@ def list_users(
             )
         else:
             # Naive search of JSON field (matches both keys and values).
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     OktaUser.email.ilike(like),
                     OktaUser.first_name.ilike(like),
@@ -95,7 +95,7 @@ def list_users(
                 )
             )
 
-    return paginate(db, query, transformer=validated(OktaUserSummary))
+    return paginate(db, stmt, transformer=validated(OktaUserSummary))
 
 
 @router.get("/{user_id}", name="user_by_id")
@@ -103,17 +103,16 @@ def get_user(user_id: str, db: DbSession, current_user_id: CurrentUserId) -> Okt
     if user_id == "@me":
         user_id = current_user_id
 
-    user = (
-        db.query(OktaUser)
+    user = db.scalars(
+        select(OktaUser)
         .options(
             selectinload(OktaUser.active_group_memberships).options(*user_group_member_options()),
             selectinload(OktaUser.active_group_ownerships).options(*user_group_member_options()),
             joinedload(OktaUser.manager),
         )
-        .filter(or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
+        .where(or_(OktaUser.id == user_id, OktaUser.email.ilike(user_id)))
         .order_by(nullsfirst(OktaUser.deleted_at.desc()))
-        .first()
-    )
+    ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="Not Found")
     return OktaUserDetail.model_validate(user, from_attributes=True)

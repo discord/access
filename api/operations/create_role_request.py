@@ -5,7 +5,7 @@ from typing import Optional
 
 import logging
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
@@ -49,12 +49,9 @@ class CreateRoleRequest:
             self.requester = requester_user
 
         if isinstance(requester_role, str):
-            self.requester_role = (
-                db.session.query(RoleGroup)
-                .filter(RoleGroup.deleted_at.is_(None))
-                .filter(RoleGroup.id == requester_role)
-                .first()
-            )
+            self.requester_role = db.session.scalars(
+                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == requester_role)
+            ).first()
             # self.requester_role = (
             #     db.session.query(RoleGroup)
             #     .options(joinedload(OktaUserGroupMember.user))
@@ -65,17 +62,16 @@ class CreateRoleRequest:
         else:
             self.requester_role = requester_role
 
-        self.requested_group = (
-            db.session.query(OktaGroup)
+        self.requested_group = db.session.scalars(
+            select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup]),
                 joinedload(AppGroup.app),
                 selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
             )
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
+        ).first()
 
         self.request_ownership = request_ownership
         self.request_reason = request_reason
@@ -114,18 +110,17 @@ class CreateRoleRequest:
 
         role_memberships = [
             u.user_id
-            for u in (
-                db.session.query(OktaUserGroupMember)
-                .filter(OktaUserGroupMember.group_id == self.requester_role.id)
-                .filter(OktaUserGroupMember.is_owner.is_(False))
-                .filter(
+            for u in db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(OktaUserGroupMember.group_id == self.requester_role.id)
+                .where(OktaUserGroupMember.is_owner.is_(False))
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .all()
-            )
+            ).all()
         ]
 
         # If group tagged with disallow self add constraint, filter out approvers who are also members of the role
@@ -157,8 +152,8 @@ class CreateRoleRequest:
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
             approvers = get_access_owners()
 
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                 joinedload(AppGroup.app),
@@ -166,10 +161,9 @@ class CreateRoleRequest:
                     joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
                 ),
             )
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.requested_group.id)
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.requested_group.id)
+        ).first()
 
         # Audit logging
         _ctx = get_request_context()

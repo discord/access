@@ -18,7 +18,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from sentry_sdk import set_user
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -31,12 +31,9 @@ logger = logging.getLogger(__name__)
 
 
 def _lookup_user_by_email(db: Session, email: str) -> OktaUser:
-    user = (
-        db.query(OktaUser)
-        .filter(func.lower(OktaUser.email) == func.lower(email))
-        .filter(OktaUser.deleted_at.is_(None))
-        .first()
-    )
+    user = db.scalars(
+        select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+    ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
@@ -111,7 +108,9 @@ def get_current_user(
     db: DbSession,
     current_user_id: Annotated[str, Depends(get_current_user_id)],
 ) -> OktaUser:
-    user = db.query(OktaUser).filter(OktaUser.id == current_user_id).filter(OktaUser.deleted_at.is_(None)).first()
+    user = db.scalars(
+        select(OktaUser).where(OktaUser.id == current_user_id).where(OktaUser.deleted_at.is_(None))
+    ).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user

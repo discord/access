@@ -4,6 +4,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.exceptions import ConflictError, InvalidRequestError, ResourceGoneError
@@ -30,13 +31,12 @@ class ApproveRoleRequest:
         # can't both pass the pending-state guard and double-grant. `of=` keeps
         # FOR UPDATE off the joinedloads' nullable outer-join sides (Postgres
         # rejects that); no-op on SQLite.
-        self.role_request = (
-            db.session.query(RoleRequest)
+        self.role_request = db.session.scalars(
+            select(RoleRequest)
             .options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
-            .filter(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
+            .where(RoleRequest.id == (role_request if isinstance(role_request, str) else role_request.id))
             .with_for_update(of=RoleRequest)
-            .first()
-        )
+        ).first()
 
         if approver_user is None:
             self.approver_id = None
@@ -92,13 +92,12 @@ class ApproveRoleRequest:
         db.session.commit()
 
         # Audit logging
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.role_request.requested_group_id)
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.role_request.requested_group_id)
+        ).first()
 
         _ctx = get_request_context()
 
