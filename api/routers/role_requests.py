@@ -414,9 +414,10 @@ async def post_role_request(
     ).execute()
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    rr_id = rr.id
     db.expire_all()
     refreshed = (
-        await db.scalars(select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == rr.id))
+        await db.scalars(select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == rr_id))
     ).first()
     return RoleRequestSummary.model_validate(refreshed or rr, from_attributes=True)
 

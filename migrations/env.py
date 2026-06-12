@@ -6,7 +6,7 @@ import logging
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Connection
 
 from api.config import settings
 from api.database import build_async_engine
@@ -49,7 +49,7 @@ def compare_type(context, inspected_column, metadata_column, inspected_type, met
     return None
 
 
-def _do_run_migrations(connection) -> None:
+def _do_run_migrations(connection: Connection) -> None:
     def process_revision_directives(context, revision, directives):
         if getattr(config.cmd_opts, "autogenerate", False):
             script = directives[0]

@@ -1235,12 +1235,13 @@ def _register_write_tools(mcp: "FastMCP") -> None:
 
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            ar_id = ar.id
             db.expire_all()
             refreshed = (
                 await db.scalars(
                     select(AccessRequest)
                     .options(*_access_request_summary_load_options())
-                    .where(AccessRequest.id == ar.id)
+                    .where(AccessRequest.id == ar_id)
                 )
             ).first()
             # Log the MCP-origin tag onto the audit channel separately
@@ -1362,10 +1363,11 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 return _error("Role request could not be created")
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            rr_id = rr.id
             db.expire_all()
             refreshed = (
                 await db.scalars(
-                    select(RoleRequest).options(*_role_request_summary_load_options()).where(RoleRequest.id == rr.id)
+                    select(RoleRequest).options(*_role_request_summary_load_options()).where(RoleRequest.id == rr_id)
                 )
             ).first()
             _ctx = get_request_context()
@@ -1493,10 +1495,11 @@ def _register_write_tools(mcp: "FastMCP") -> None:
                 return _error("Group request could not be created")
             # Drop cached ORM state so the response reflects what the operation
             # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            gr_id = gr.id
             db.expire_all()
             refreshed = (
                 await db.scalars(
-                    select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == gr.id)
+                    select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == gr_id)
                 )
             ).first()
             _ctx = get_request_context()
