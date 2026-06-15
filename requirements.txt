@@ -24,7 +24,7 @@ pg8000==1.31.5
 httpx==0.28.1
 
 # Security / auth
-PyJWT[crypto]==2.12.1
+PyJWT[crypto]==2.13.0
 cachetools==7.1.1
 authlib==1.7.2
 
