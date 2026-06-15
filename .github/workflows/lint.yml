@@ -15,7 +15,12 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
+      # Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
+      # regardless of the npm bundled with Node. (--engine-strict=false so this
+      # bootstrap step itself isn't gated by package.json "engines".)
+      - name: Upgrade npm to enforce npm v12 install defaults
+        run: npm install -g npm@11.16.0 --engine-strict=false
       - name: Install dependencies
         run: npm ci
       - name: Check prettier formatting

@@ -32,6 +32,15 @@
     "test": "vitest",
     "prepare": "husky install"
   },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=11.16.0"
+  },
+  "allowScripts": {
+    "@sentry/cli": true,
+    "esbuild": true,
+    "fsevents": true
+  },
   "browserslist": {
     "production": [
       ">0.2%",
@@ -72,7 +81,6 @@
     "@rollup/rollup-linux-arm-musleabihf": "4.60.1",
     "@rollup/rollup-linux-arm64-gnu": "4.60.1",
     "@rollup/rollup-linux-arm64-musl": "4.60.1",
-    "@rollup/rollup-linux-loongarch64-gnu": "4.60.1",
     "@rollup/rollup-linux-ppc64-gnu": "4.60.1",
     "@rollup/rollup-linux-riscv64-gnu": "4.60.1",
     "@rollup/rollup-linux-riscv64-musl": "4.60.1",

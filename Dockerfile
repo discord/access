@@ -3,10 +3,14 @@
 ARG PUSH_SENTRY_RELEASE="false"
 
 # Build step #1: build the React front end
-FROM node:22-alpine AS build-step
+FROM node:24-alpine AS build-step
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
-COPY index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
+# Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
+# regardless of the npm bundled with the base image. Run before copying the
+# project so this step isn't gated by package.json "engines".
+RUN npm install -g npm@11.16.0
+COPY .npmrc index.html package.json package-lock.json tsconfig.json tsconfig.paths.json vite.config.ts .env.production* ./
 COPY ./src ./src
 COPY ./public ./public
 COPY ./config ./config
