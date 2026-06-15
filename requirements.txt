@@ -12,10 +12,12 @@ pydantic>=2.7,<3
 pydantic-settings>=2.6,<3
 
 # Database
-SQLAlchemy==2.0.36
+SQLAlchemy[asyncio]==2.0.50
 alembic==1.18.4
 sqlalchemy-json==0.7.0
-cloud-sql-python-connector==1.14.0
+asyncpg==0.31.0
+aiosqlite==0.22.1
+cloud-sql-python-connector[asyncpg]==1.20.3
 pg8000==1.31.5
 
 # HTTP
