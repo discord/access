@@ -14,6 +14,7 @@ from api.models import (
     AccessRequestStatus,
     AppGroup,
     AppTagMap,
+    GroupRequest,
     OktaGroup,
     OktaUser,
     OktaUserGroupMember,
@@ -2502,3 +2503,62 @@ def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
     assert group_request.approved_group_id is None
     role_evil = db.session.query(RoleGroup).filter(func.lower(OktaGroup.name) == func.lower("Role-evil")).first()
     assert role_evil is None
+
+
+def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Approving an app group request whose resolved name lacks the
+    "App-{app name}-" prefix is a 400 and leaves the request pending."""
+    app_obj = AppFactory.create()
+    db.session.add_all([user, app_obj])
+    db.session.commit()
+    app_name = app_obj.name
+
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name=f"App-{app_name}-NewGroup",
+        requested_group_description="New group",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        request_reason="Need a new group",
+    ).execute()
+    assert group_request is not None
+
+    resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
+    rep = client.put(resolve_url, json={"approved": True, "reason": "ok", "resolved_group_name": "Whatever"})
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == (
+        f'App Group name "Whatever" should be prefixed with App name. For example: "App-{app_name}-"'
+    )
+
+    db.session.refresh(group_request)
+    assert group_request.status == AccessRequestStatus.PENDING
+    assert group_request.approved_group_id is None
+
+    # A conforming resolved name approves cleanly
+    rep = client.put(
+        resolve_url,
+        json={"approved": True, "reason": "ok", "resolved_group_name": f"App-{app_name}-RenamedGroup"},
+    )
+    assert rep.status_code == 200
+
+    db.session.refresh(group_request)
+    # Re-fetch instead of reusing `group_request` — mypy narrows `status` to
+    # PENDING after the assert above and doesn't know refresh() mutates it.
+    approved_request = db.session.get(GroupRequest, group_request.id)
+    assert approved_request is not None
+    assert approved_request.status == AccessRequestStatus.APPROVED
+    created_group = db.session.get(OktaGroup, approved_request.approved_group_id)
+    assert created_group.name == f"App-{app_name}-RenamedGroup"

@@ -29,7 +29,7 @@ from api.auth.permissions import (
     is_app_owner_group_owner,
 )
 from api.database import DbSession
-from api.models import AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
+from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -190,7 +190,10 @@ def post_group(
             400, "App owner groups cannot be created directly. They are created automatically when an app is created."
         )
 
-    created = CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
+    try:
+        created = CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
     refreshed = _load_group_with_options(db, created.id)
     return _group_adapter.validate_python(refreshed, from_attributes=True)
 
@@ -261,8 +264,6 @@ def put_group(
         and "app_id" in fields_set
         and body.app_id != group.app_id
     ):
-        from api.models import App
-
         target_app = db.query(App).filter(App.id == body.app_id).filter(App.deleted_at.is_(None)).first()
         if target_app is None:
             raise HTTPException(404, "Not Found")
@@ -308,11 +309,41 @@ def put_group(
                 400, "The Role- prefix cannot be used for non-role groups. Please choose a different group name."
             )
 
+    # Converting a group to an app group must yield a name carrying the target
+    # app's "App-{app name}-" prefix, whether or not the request also renames.
+    # Same-type renames are enforced in ModifyGroupDetails; conversions are
+    # checked here because the rename runs while the group is still its old
+    # type. Validating before ModifyGroupDetails also keeps an invalid
+    # conversion from committing the rename.
+    if body.type == "app_group" and type(group) is not AppGroup:
+        final_name = body.name if "name" in fields_set and body.name is not None else group.name
+        target_app_id = (
+            body.app_id
+            if isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set
+            else getattr(group, "app_id", None)
+        )
+        conversion_app = db.query(App).filter(App.id == target_app_id).filter(App.deleted_at.is_(None)).first()
+        if conversion_app is None:
+            raise HTTPException(400, "App for AppGroup does not exist")
+        app_group_name_prefix = (
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{conversion_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        )
+        if not final_name.startswith(app_group_name_prefix):
+            raise HTTPException(
+                400,
+                'App Group name "{}" should be prefixed with App name. For example: "{}"'.format(
+                    final_name, app_group_name_prefix
+                ),
+            )
+
     try:
         ModifyGroupDetails(
             group=group,
             name=body.name if "name" in fields_set else None,
             description=description,
+            # A type conversion legitimately renames away from the App- prefix;
+            # the final-state name rules are enforced above and by ModifyGroupType.
+            validate_app_group_prefix=body.type == group.type,
         ).execute()
     except ValueError as e:
         raise HTTPException(400, str(e)) from e

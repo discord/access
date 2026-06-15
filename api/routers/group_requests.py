@@ -276,11 +276,14 @@ def put_group_request(
 
     resolution_reason = body.reason or ""
     if body.approved:
-        ApproveGroupRequest(
-            group_request=gr,
-            approver_user=current_user_id,
-            approval_reason=resolution_reason,
-        ).execute()
+        try:
+            ApproveGroupRequest(
+                group_request=gr,
+                approver_user=current_user_id,
+                approval_reason=resolution_reason,
+            ).execute()
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
     else:
         RejectGroupRequest(
             group_request=gr,

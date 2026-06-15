@@ -1298,6 +1298,195 @@ def test_cannot_create_group_with_reserved_app_prefix(
     assert rep.status_code == 201
 
 
+def test_create_app_group_requires_app_name_prefix(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    access_app: App,
+    url_for: Any,
+) -> None:
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+
+    db.session.add(access_app)
+    db.session.commit()
+    app_name = access_app.name
+
+    groups_url = url_for("api-groups.groups")
+    expected_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+
+    # app_group with no App- prefix at all is blocked
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": access_app.id, "name": "Whatever", "description": ""}
+    )
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == (
+        f'App Group name "Whatever" should be prefixed with App name. For example: "{expected_prefix}"'
+    )
+
+    # app_group prefixed with a different app's name is blocked
+    wrong_app_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}NotTheApp{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Group"
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": access_app.id, "name": wrong_app_name, "description": ""}
+    )
+    assert rep.status_code == 400
+
+    # app_group referencing a non-existent app is a 400, not a 500
+    conforming_name = f"{expected_prefix}Group"
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": "nonexistent-app", "name": conforming_name, "description": ""}
+    )
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == "App for AppGroup does not exist"
+
+    # conforming name is allowed
+    rep = client.post(
+        groups_url, json={"type": "app_group", "app_id": access_app.id, "name": conforming_name, "description": ""}
+    )
+    assert rep.status_code == 201
+    assert rep.json()["name"] == conforming_name
+
+
+def test_cannot_rename_app_group_to_non_conforming_name(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    url_for: Any,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    target_app = AppFactory.create()
+    app_group = AppGroupFactory.create(
+        app_id=target_app.id,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Conforming",
+    )
+    db.session.add_all([target_app, app_group])
+    db.session.commit()
+    app_name = target_app.name
+    app_id = target_app.id
+
+    group_url = url_for("api-groups.group_by_id", group_id=app_group.id)
+    expected_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+
+    # Renaming an app group to a name without the app prefix is blocked
+    rep = client.put(group_url, json={"type": "app_group", "app_id": app_id, "name": "Renamed", "description": ""})
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == (
+        f'App Group name "Renamed" should be prefixed with App name. For example: "{expected_prefix}"'
+    )
+
+    # Renaming to a different app's prefix is blocked
+    wrong_prefix_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}OtherApp{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Renamed"
+    rep = client.put(
+        group_url, json={"type": "app_group", "app_id": app_id, "name": wrong_prefix_name, "description": ""}
+    )
+    assert rep.status_code == 400
+
+    # Renaming within the app's prefix is allowed
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": app_id, "name": f"{expected_prefix}Renamed", "description": ""},
+    )
+    assert rep.status_code == 200
+    assert rep.json()["name"] == f"{expected_prefix}Renamed"
+
+
+def test_convert_to_app_group_requires_app_name_prefix(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    url_for: Any,
+) -> None:
+    mocker.patch.object(okta, "update_group")
+
+    okta_group = OktaGroupFactory.create(name="PlainGroup")
+    db.session.add_all([access_app, okta_group])
+    db.session.commit()
+    app_name = access_app.name
+    app_id = access_app.id
+    group_name = okta_group.name
+
+    group_url = url_for("api-groups.group_by_id", group_id=okta_group.id)
+    expected_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+
+    # Converting with a rename to a non-conforming name is blocked
+    rep = client.put(
+        group_url, json={"type": "app_group", "app_id": app_id, "name": "NonConforming", "description": ""}
+    )
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == (
+        f'App Group name "NonConforming" should be prefixed with App name. For example: "{expected_prefix}"'
+    )
+
+    # Converting without a rename is blocked when the current name doesn't conform
+    rep = client.put(group_url, json={"type": "app_group", "app_id": app_id})
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == (
+        f'App Group name "{group_name}" should be prefixed with App name. For example: "{expected_prefix}"'
+    )
+
+    # Converting against a non-existent app is a 400, not a rename + 500
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": "nonexistent-app", "name": f"{expected_prefix}Members", "description": ""},
+    )
+    assert rep.status_code == 400
+    assert rep.json()["detail"] == "App for AppGroup does not exist"
+
+    # Nothing above should have renamed or converted the group
+    db.session.expire_all()
+    unchanged = db.session.get(OktaGroup, okta_group.id)
+    assert unchanged.name == group_name
+    assert unchanged.type == "okta_group"
+
+    # Converting with a conforming name succeeds
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": app_id, "name": f"{expected_prefix}Members", "description": ""},
+    )
+    assert rep.status_code == 200
+    assert rep.json()["type"] == "app_group"
+    assert rep.json()["name"] == f"{expected_prefix}Members"
+
+
+def test_legacy_non_conforming_app_group_tolerates_unchanged_name(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    url_for: Any,
+) -> None:
+    """Pre-enforcement rows may carry non-conforming names; edits that resend
+    the unchanged name (the frontend always sends `name`) must keep working."""
+    mocker.patch.object(okta, "update_group")
+
+    target_app = AppFactory.create()
+    legacy_group = AppGroupFactory.create(app_id=target_app.id, name="App-SomethingElse-Group")
+    db.session.add_all([target_app, legacy_group])
+    db.session.commit()
+    legacy_name = legacy_group.name
+
+    group_url = url_for("api-groups.group_by_id", group_id=legacy_group.id)
+
+    # Description-only edit resending the same name succeeds
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": target_app.id, "name": legacy_name, "description": "updated"},
+    )
+    assert rep.status_code == 200
+    assert rep.json()["name"] == legacy_name
+    assert rep.json()["description"] == "updated"
+
+    # But an actual rename must conform
+    rep = client.put(
+        group_url,
+        json={"type": "app_group", "app_id": target_app.id, "name": "App-SomethingElse-Renamed", "description": ""},
+    )
+    assert rep.status_code == 400
+
+
 def test_cannot_rename_non_app_group_to_app_prefix(
     client: TestClient,
     db: Db,
