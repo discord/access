@@ -40,7 +40,7 @@ import {
 } from '../../api/apiComponents';
 import {
   GroupDetail,
-  GroupRefForMembership,
+  GroupSummary,
   AppGroupDetail,
   OktaGroupDetail,
   OktaUserGroupMemberDetail,
@@ -97,15 +97,6 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const navigate = useNavigate();
   const currentUser = useCurrentUser();
 
-  const disallowedGroups = (
-    currentUser.active_group_ownerships?.reduce((out: GroupRefForMembership[], curr: OktaUserGroupMemberDetail) => {
-      curr != null && curr.active_group != null ? out.push(curr.active_group) : null;
-      return out;
-    }, new Array<GroupRefForMembership>()) ?? []
-  )
-    .filter((group: GroupRefForMembership) => ownerCantAddSelfGroups([group], props.owner))
-    .map((group: GroupRefForMembership) => group.id!);
-
   const currUserRoleGroupMember =
     props.group.active_user_memberships?.map((membership) => membership.active_user!.id).includes(currentUser.id) ??
     false;
@@ -156,6 +147,22 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
     },
   });
   const groupSearchOptions = groupSearchData?.items ?? [];
+
+  // Preload the non-admin's owned groups so they appear the moment the dialog opens, before any
+  // typing — otherwise the empty search returns the first page of all managed groups (none owned),
+  // and the filter below correctly drops them, leaving a confusing "No options". Shares its query
+  // key with the gate's managed-groups fetch, so it's already cached (no extra request). Admins
+  // (userOwnedNonRoleGroupIds == null) can add any group, so they keep the search-driven options.
+  const {data: managedGroupsData} = useGroups(
+    {queryParams: {managed: true, page: 1, size: 1000}},
+    {enabled: userOwnedNonRoleGroupIds != null},
+  );
+  const ownedGroupOptions = (managedGroupsData?.items ?? []).filter(
+    (group: GroupSummary) => userOwnedNonRoleGroupIds != null && userOwnedNonRoleGroupIds.includes(group.id),
+  );
+  // With no search text, a non-admin sees their owned groups; once they type, defer to the search.
+  const autocompleteOptions =
+    userOwnedNonRoleGroupIds != null && groupSearchInput.trim() === '' ? ownedGroupOptions : groupSearchOptions;
 
   const updateUntil = (time: number | null) => {
     setTimeLimit(time);
@@ -233,8 +240,9 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         <DialogContent>
           {!isAccessAdmin(currentUser) ? (
             <Alert severity="info" sx={{my: 1}}>
-              You can only add groups that you own from this dialog. To add groups that you do not own to this role,
-              please create a role request from the group's page.
+              You can only add groups that you own that do not have certain tag constraints from this dialog. To add
+              this role to groups you do not own or that have tags preventing you from directly adding the role to the
+              group, please create a role request.
             </Alert>
           ) : null}
           <Typography variant="subtitle1" color="text.accent">
@@ -243,13 +251,6 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                 'one or more selected groups is limited to ' +
                 Math.floor(timeLimit / 86400) +
                 ' days.'
-              : null}
-          </Typography>
-          <Typography variant="subtitle1" color="text.accent">
-            {disallowedGroups.length != 0 && !isAccessAdmin(currentUser)
-              ? // this case will never be hit as-is since admins are exempt from owner add constraints
-                // leaving in in case we change the visibility of this dialog in the future
-                'Some groups may not be added due to group tag constraints.'
               : null}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
@@ -304,20 +305,31 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
             <AutocompleteElement
               label={'Search for ' + addGroupsText + ' to Add'}
               name="group"
-              options={groupSearchOptions}
+              options={autocompleteOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
                 isOptionEqualToValue: (option, value) => option.id == value.id,
                 filterOptions: (options) =>
                   options.filter(
                     (option) =>
+                      // A role cannot contain another role.
                       option.type != 'role_group' &&
+                      // Externally managed groups have their membership managed outside Access,
+                      // so the role can't be added to them — true even for admins.
                       option.is_managed == true &&
+                      // Non-admins may only add the role to non-role groups they own; admins (null) to any.
                       (userOwnedNonRoleGroupIds == null || userOwnedNonRoleGroupIds.includes(option.id!)) &&
-                      (!groups.map((group) => group.id).includes(option.id) ||
-                        (currUserRoleGroupMember && !isAccessAdmin(currentUser)
-                          ? !disallowedGroups.includes(option.id!)
-                          : false)),
+                      // Don't offer groups already staged for addition.
+                      !groups.map((group) => group.id).includes(option.id) &&
+                      // Enforce the self-add tag constraint: a non-admin who is a member of the role
+                      // can't add it to a group whose tags disallow self-add for this dimension
+                      // (membership or ownership, per props.owner). Checked against the option's own
+                      // tags, since the current user's ownership refs carry no tag data. Admins are exempt.
+                      !(
+                        currUserRoleGroupMember &&
+                        !isAccessAdmin(currentUser) &&
+                        ownerCantAddSelfGroups([option], props.owner)
+                      ),
                   ),
                 onInputChange: (event, newInputValue, reason) => {
                   if (reason != 'reset') {
@@ -404,26 +416,64 @@ interface AddGroupsProps {
 
 export default function AddGroups(props: AddGroupsProps) {
   const [open, setOpen] = React.useState(false);
+  const owner = props.owner ?? false;
 
-  const ownsAtLeastOneNonRoleGroup = (props.currentUser.active_group_ownerships ?? []).some(
-    (ownership) => ownership.active_group != null && ownership.active_group.type !== 'role_group',
+  const isAdmin = isAccessAdmin(props.currentUser);
+  const isRoleOwner = isGroupOwner(props.currentUser, props.group.id ?? '');
+  const isRoleMember = (props.group.active_user_memberships ?? []).some(
+    (membership) => membership.active_user?.id === props.currentUser.id,
   );
-  const isRoleOwnerWithGroups = isGroupOwner(props.currentUser, props.group.id ?? '') && ownsAtLeastOneNonRoleGroup;
 
-  if (props.group.deleted_at != null || !isAccessAdmin(props.currentUser) || !isRoleOwnerWithGroups) {
+  // The managed, non-role groups this user owns — the only groups a non-admin can add the role to.
+  // type/is_managed are available on the ownership refs in the current-user payload (tags are not).
+  const ownedTargetGroups = (props.currentUser.active_group_ownerships ?? [])
+    .map((ownership) => ownership.active_group)
+    .filter((group) => group != null && group.type !== 'role_group' && group.is_managed === true);
+
+  // The self-add tag constraint only bites when the owner is also a member of the role (adding the
+  // role then adds themselves) and isn't an admin (admins are exempt). Only then must we know each
+  // owned group's tags — which the current-user payload omits — so fetch the managed groups (those
+  // summaries carry tags) to check whether any owned group is still addable. Otherwise skip the call.
+  const needsConstraintCheck = !isAdmin && isRoleOwner && isRoleMember && ownedTargetGroups.length > 0;
+  const {data: managedGroupsData, isLoading: managedGroupsLoading} = useGroups(
+    {queryParams: {managed: true, page: 1, size: 1000}},
+    {enabled: needsConstraintCheck},
+  );
+
+  if (props.group.deleted_at != null) {
     return null;
+  }
+
+  // Admins can always add the role to groups (even an externally managed role).
+  if (!isAdmin) {
+    // A non-admin must own at least one managed, non-role group to have somewhere to add the role.
+    if (!isRoleOwner || ownedTargetGroups.length === 0) {
+      return null;
+    }
+    if (needsConstraintCheck) {
+      // Hide until the managed groups (with tags) load, so we don't flash a button we may remove.
+      if (managedGroupsLoading || managedGroupsData == null) {
+        return null;
+      }
+      const ownedTargetIds = new Set(ownedTargetGroups.map((group) => group!.id));
+      const fetchedOwnedGroups = managedGroupsData.items.filter((item: GroupSummary) => ownedTargetIds.has(item.id));
+      const someOwnedGroupAddable = fetchedOwnedGroups.some(
+        (group: GroupSummary) => !ownerCantAddSelfGroups([group], owner),
+      );
+      // If the list was truncated (more managed groups than one page holds) we can't see every
+      // owned group's tags — don't hide the button on incomplete data.
+      const listComplete = managedGroupsData.items.length >= managedGroupsData.total;
+      if (!someOwnedGroupAddable && listComplete) {
+        return null;
+      }
+    }
   }
 
   return (
     <>
-      <AddGroupsButton setOpen={setOpen} owner={props.owner ?? false} />
+      <AddGroupsButton setOpen={setOpen} owner={owner} />
       {open ? (
-        <AddGroupsDialog
-          currentUser={props.currentUser}
-          group={props.group}
-          owner={props.owner ?? false}
-          setOpen={setOpen}
-        />
+        <AddGroupsDialog currentUser={props.currentUser} group={props.group} owner={owner} setOpen={setOpen} />
       ) : null}
     </>
   );
