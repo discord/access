@@ -38,6 +38,7 @@
   },
   "allowScripts": {
     "@sentry/cli": true,
+    "@swc/core": true,
     "esbuild": true,
     "fsevents": true
   },
