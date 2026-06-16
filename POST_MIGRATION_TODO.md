@@ -37,18 +37,6 @@ re-used across `apps.py`, `groups.py`, `tags.py`, `users.py`,
 `role_requests.py`, and `audit.py`, so the loader stays in lockstep
 with the schema. 281/281 tests green.
 
-**Lazy-loading audit landed.** The five `lazy="select"` relationships
-(`OktaGroup.active_group_tags`, `RoleGroupMap.active_group`,
-`AppGroup.app`, `OktaGroupTagMap.active_tag`,
-`OktaGroupTagMap.active_app_tag_mapping`) are now `lazy="raise_on_sql"`
-like everything else — the audit-route eager topology covers the nested
-`active_role_associated_group_*_mappings.active_group` paths the old
-Flask-era comment claimed were unsupported. The sessionmaker also runs
-`expire_on_commit=False` now (required for async: expired-attribute
-access on an `AsyncSession` raises `MissingGreenlet`); post-operation
-reload sites in routers call `db.expire_all()` before re-querying so
-responses reflect committed state.
-
 **Still to do under this item:**
 - Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins; some routes
   pre-load more than they emit.
