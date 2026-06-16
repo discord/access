@@ -27,7 +27,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from api.extensions import Db
+from api.extensions import Db, db as _db
 from api.models import OktaGroupTagMap
 from api.operations import (
     CreateAccessRequest,
@@ -119,13 +119,24 @@ def production_shape(db: Db) -> dict[str, Any]:
         "access_request_app_target": request_app_target.id,
         "role_request": role_request.id,
     }
-    # Drop identity-map state staled by the ops above (expire_on_commit=False)
-    # so the routes under test load everything through their own loaders.
-    db.session.expire_all()
+    # Evict every object the setup ops loaded. In tests the HTTP request reuses
+    # this same session, so a warm identity map can serve relationships the
+    # route's own loaders never eager-loaded — masking gaps that fail in
+    # production, where each request gets a cold session. `expunge_all` (not
+    # `expire_all`, which keeps objects in the map) forces the routes to load
+    # everything through their declared options, so a missing eager-load raises
+    # `lazy="raise_on_sql"` deterministically here instead of flaking in CI.
+    db.session.expunge_all()
     return shape
 
 
 def _get_ok(client: TestClient, url: str) -> Any:
+    # The TestClient shares this session, so a prior request (or fixture setup)
+    # can leave relationships warm in the identity map and mask a route whose
+    # own loaders never eager-loaded them. Production gives each request a cold
+    # session, so evict before every call: a missing eager-load then raises
+    # `lazy="raise_on_sql"` deterministically instead of flaking by test order.
+    _db.session.expunge_all()
     rep = client.get(url)
     assert rep.status_code == 200, f"{url} -> {rep.status_code}: {rep.text[:500]}"
     return rep.json()

@@ -72,13 +72,20 @@ def _detail_load_options() -> tuple:
 def _summary_load_options() -> tuple:
     """Slim eager-loads for list / POST / PUT (`AccessRequestSummary`).
     Skips the per-type tag and role-association loaders the summary shape
-    doesn't expose."""
-    return (
+    doesn't expose. The polymorphic + `AppGroup.app` loaders must be nested
+    under each group relationship — applied at the top level of a
+    `select(AccessRequest)` they target the wrong entity and never run,
+    leaving `AppGroup.app` unloaded so the `requested_group` app ref raises
+    `lazy="raise_on_sql"` at serialization time."""
+    group_load_options = (
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+    )
+    return (
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
-        selectinload(AccessRequest.requested_group),
-        selectinload(AccessRequest.active_requested_group),
+        selectinload(AccessRequest.requested_group).options(*group_load_options),
+        selectinload(AccessRequest.active_requested_group).options(*group_load_options),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
