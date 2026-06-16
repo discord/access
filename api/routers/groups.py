@@ -320,7 +320,7 @@ def put_group(
             if isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set
             else getattr(group, "app_id", None)
         )
-        conversion_app = db.query(App).filter(App.id == target_app_id).filter(App.deleted_at.is_(None)).first()
+        conversion_app = db.scalars(select(App).where(App.id == target_app_id).where(App.deleted_at.is_(None))).first()
         if conversion_app is None:
             raise HTTPException(400, "App for AppGroup does not exist")
         app_group_name_prefix = (

@@ -56,7 +56,9 @@ class ModifyGroupDetails:
             and self.name != old_name
             and type(self.group) is AppGroup
         ):
-            app = db.session.query(App).filter(App.id == self.group.app_id).filter(App.deleted_at.is_(None)).first()
+            app = db.session.scalars(
+                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            ).first()
             if app is None:
                 raise ValueError("App for AppGroup does not exist")
             app_group_name_prefix = (

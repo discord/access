@@ -120,13 +120,12 @@ class DeleteUser:
         # Reject pending role requests by the deleted user. ApproveRoleRequest
         # doesn't guard on a deleted requester, so a surviving one would still
         # grant the role access to the group after the requester is gone.
-        obsolete_role_requests = (
-            db.session.query(RoleRequest)
-            .filter(RoleRequest.requester_user_id == self.user.id)
-            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-            .filter(RoleRequest.resolved_at.is_(None))
-            .all()
-        )
+        obsolete_role_requests = db.session.scalars(
+            select(RoleRequest)
+            .where(RoleRequest.requester_user_id == self.user.id)
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_role_request in obsolete_role_requests:
             RejectRoleRequest(
                 role_request=obsolete_role_request,
@@ -135,13 +134,12 @@ class DeleteUser:
             ).execute()
 
         # Reject pending group requests by the deleted user, mirroring above.
-        obsolete_group_requests = (
-            db.session.query(GroupRequest)
-            .filter(GroupRequest.requester_user_id == self.user.id)
-            .filter(GroupRequest.status == AccessRequestStatus.PENDING)
-            .filter(GroupRequest.resolved_at.is_(None))
-            .all()
-        )
+        obsolete_group_requests = db.session.scalars(
+            select(GroupRequest)
+            .where(GroupRequest.requester_user_id == self.user.id)
+            .where(GroupRequest.status == AccessRequestStatus.PENDING)
+            .where(GroupRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_group_request in obsolete_group_requests:
             RejectGroupRequest(
                 group_request=obsolete_group_request,
