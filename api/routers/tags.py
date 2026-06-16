@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import func, nullsfirst, or_
+from sqlalchemy import func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -51,11 +51,11 @@ def list_tags(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchTagQuery, Query()],
 ) -> Page[TagListItem]:
-    query = db.query(Tag).filter(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
+    stmt = select(Tag).where(Tag.deleted_at.is_(None)).order_by(func.lower(Tag.name))
     if q_args.q:
         like = f"%{q_args.q}%"
-        query = query.filter(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
-    return paginate(db, query, transformer=validated(TagListItem))
+        stmt = stmt.where(or_(Tag.name.ilike(like), Tag.description.ilike(like)))
+    return paginate(db, stmt, transformer=validated(TagListItem))
 
 
 @router.get("/{tag_id}", name="tag_by_id")
@@ -63,13 +63,12 @@ def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) -> TagDe
     # `nullsfirst(deleted_at.desc())` makes an active row beat a soft-deleted
     # row that shares the same name. Without the order, `.first()` may return
     # an old deleted tag and 404 on a name that still exists.
-    tag = (
-        db.query(Tag)
+    tag = db.scalars(
+        select(Tag)
         .options(*_TAG_LOAD_OPTIONS)
-        .filter(or_(Tag.id == tag_id, Tag.name == tag_id))
+        .where(or_(Tag.id == tag_id, Tag.name == tag_id))
         .order_by(nullsfirst(Tag.deleted_at.desc()))
-        .first()
-    )
+    ).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     return TagDetail.model_validate(tag, from_attributes=True)
@@ -85,9 +84,9 @@ def post_tag(
     # Reject duplicates by name. Without this, CreateTag.execute() silently
     # returns the existing tag and the endpoint replies 201 with the wrong
     # row, which clients don't expect.
-    existing = (
-        db.query(Tag).filter(func.lower(Tag.name) == func.lower(body.name)).filter(Tag.deleted_at.is_(None)).first()
-    )
+    existing = db.scalars(
+        select(Tag).where(func.lower(Tag.name) == func.lower(body.name)).where(Tag.deleted_at.is_(None))
+    ).first()
     if existing is not None:
         raise HTTPException(400, "Tag already exists with the same name")
 
@@ -98,7 +97,7 @@ def post_tag(
         enabled=body.enabled,
     )
     created = CreateTag(tag=tag, current_user_id=current_user_id).execute()
-    refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == created.id).first()
+    refreshed = db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == created.id)).first()
     return TagDetail.model_validate(refreshed or created, from_attributes=True)
 
 
@@ -114,7 +113,9 @@ def put_tag(
 
     from api.operations import ModifyGroupsTimeLimit
 
-    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = db.scalars(
+        select(Tag).where(Tag.deleted_at.is_(None)).where(or_(Tag.id == tag_id, Tag.name == tag_id))
+    ).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     payload = body.model_dump(exclude_unset=True)
@@ -132,13 +133,12 @@ def put_tag(
     # Reject renames that collide with another existing tag (case-insensitive).
     new_name = payload.get("name")
     if new_name and new_name.lower() != tag.name.lower():
-        collision = (
-            db.query(Tag)
-            .filter(Tag.id != tag.id)
-            .filter(func.lower(Tag.name) == func.lower(new_name))
-            .filter(Tag.deleted_at.is_(None))
-            .first()
-        )
+        collision = db.scalars(
+            select(Tag)
+            .where(Tag.id != tag.id)
+            .where(func.lower(Tag.name) == func.lower(new_name))
+            .where(Tag.deleted_at.is_(None))
+        ).first()
         if collision is not None:
             raise HTTPException(400, "Tag already exists with the same name")
 
@@ -154,14 +154,14 @@ def put_tag(
     # Re-evaluate time-limit constraints for groups associated with this tag.
     # `ModifyGroupsTimeLimit` commits, expiring objects, so we re-load
     # `refreshed` afterwards before serializing.
-    pre_refresh = db.query(Tag).options(selectinload(Tag.active_group_tags)).filter(Tag.id == tag.id).first()
+    pre_refresh = db.scalars(select(Tag).options(selectinload(Tag.active_group_tags)).where(Tag.id == tag.id)).first()
     if pre_refresh is not None and pre_refresh.active_group_tags:
         ModifyGroupsTimeLimit(
             groups=[tm.group_id for tm in pre_refresh.active_group_tags],
             tags=[pre_refresh.id],
         ).execute()
 
-    refreshed = db.query(Tag).options(*_TAG_LOAD_OPTIONS).filter(Tag.id == tag.id).first()
+    refreshed = db.scalars(select(Tag).options(*_TAG_LOAD_OPTIONS).where(Tag.id == tag.id)).first()
 
     email = getattr(db.get(OktaUser, current_user_id), "email", None) if current_user_id else None
     _ctx = get_request_context()
@@ -189,7 +189,9 @@ def delete_tag(
     _admin: str = Depends(require_access_admin),
     current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> DeleteMessage:
-    tag = db.query(Tag).filter(Tag.deleted_at.is_(None)).filter(or_(Tag.id == tag_id, Tag.name == tag_id)).first()
+    tag = db.scalars(
+        select(Tag).where(Tag.deleted_at.is_(None)).where(or_(Tag.id == tag_id, Tag.name == tag_id))
+    ).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
     DeleteTag(tag=tag, current_user_id=current_user_id).execute()

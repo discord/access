@@ -3,7 +3,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import func, nullsfirst
+from sqlalchemy import func, nullsfirst, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.exceptions import ConflictError
@@ -28,18 +28,17 @@ class RejectAccessRequest:
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
         request_id = access_request if isinstance(access_request, str) else access_request.id
-        self.access_request = (
-            db.session.query(AccessRequest).filter(AccessRequest.id == request_id).with_for_update().first()
-        )
+        self.access_request = db.session.scalars(
+            select(AccessRequest).where(AccessRequest.id == request_id).with_for_update()
+        ).first()
 
         if current_user_id is None:
             self.rejecter_id = None
         elif isinstance(current_user_id, str):
             self.rejecter_id = getattr(
-                db.session.query(OktaUser)
-                .filter(OktaUser.deleted_at.is_(None))
-                .filter(OktaUser.id == current_user_id)
-                .first(),
+                db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                ).first(),
                 "id",
                 None,
             )
@@ -71,13 +70,12 @@ class RejectAccessRequest:
         if self.rejecter_id is not None:
             email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None)
 
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.id == self.access_request.requested_group_id)
+            .where(OktaGroup.id == self.access_request.requested_group_id)
             .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
-            .first()
-        )
+        ).first()
 
         _ctx = get_request_context()
 

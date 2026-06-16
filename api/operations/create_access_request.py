@@ -6,6 +6,7 @@ from typing import Optional
 import logging
 
 from api.context import get_request_context
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
@@ -43,19 +44,18 @@ class CreateAccessRequest:
         else:
             self.requester = requester_user
 
-        self.requested_group = (
-            db.session.query(OktaGroup)
+        self.requested_group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
+        ).first()
 
         self.request_ownership = request_ownership
         self.request_reason = request_reason
         self.request_ending_at = request_ending_at
 
-        self.request_approvers = db.session.query()
+        self.request_approvers = select()
 
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
@@ -94,8 +94,8 @@ class CreateAccessRequest:
         if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
             approvers = get_access_owners()
 
-        group = (
-            db.session.query(OktaGroup)
+        group = db.session.scalars(
+            select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                 joinedload(AppGroup.app),
@@ -103,10 +103,9 @@ class CreateAccessRequest:
                     joinedload(OktaGroupTagMap.active_app_tag_mapping), joinedload(OktaGroupTagMap.enabled_active_tag)
                 ),
             )
-            .filter(OktaGroup.deleted_at.is_(None))
-            .filter(OktaGroup.id == self.requested_group.id)
-            .first()
-        )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.requested_group.id)
+        ).first()
 
         # Audit logging
         _ctx = get_request_context()

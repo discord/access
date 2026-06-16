@@ -16,7 +16,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_
+from sqlalchemy import and_, func, not_, nullsfirst, nullslast, or_, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
@@ -75,12 +75,11 @@ def _resolve_me(value: str | None, current_user_id: str) -> str | None:
 def _resolve_user(db: DbSession, value: str | None) -> OktaUser | None:
     if value is None:
         return None
-    user = (
-        db.query(OktaUser)
-        .filter(or_(OktaUser.id == value, OktaUser.email.ilike(value)))
+    user = db.scalars(
+        select(OktaUser)
+        .where(or_(OktaUser.id == value, OktaUser.email.ilike(value)))
         .order_by(nullsfirst(OktaUser.deleted_at.desc()))
-        .first()
-    )
+    ).first()
     if user is None:
         raise HTTPException(404, "Not Found")
     return user
@@ -89,12 +88,11 @@ def _resolve_user(db: DbSession, value: str | None) -> OktaUser | None:
 def _resolve_group(db: DbSession, value: str | None) -> OktaGroup | None:
     if value is None:
         return None
-    group = (
-        db.query(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-        .filter(or_(OktaGroup.id == value, OktaGroup.name == value))
+    group = db.scalars(
+        select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+        .where(or_(OktaGroup.id == value, OktaGroup.name == value))
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
-        .first()
-    )
+    ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
     return group
@@ -103,12 +101,11 @@ def _resolve_group(db: DbSession, value: str | None) -> OktaGroup | None:
 def _resolve_role(db: DbSession, value: str | None) -> RoleGroup | None:
     if value is None:
         return None
-    role = (
-        db.query(RoleGroup)
-        .filter(or_(RoleGroup.id == value, RoleGroup.name == value))
+    role = db.scalars(
+        select(RoleGroup)
+        .where(or_(RoleGroup.id == value, RoleGroup.name == value))
         .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
-        .first()
-    )
+    ).first()
     if role is None:
         raise HTTPException(404, "Not Found")
     return role
@@ -314,8 +311,8 @@ def users_and_groups(
             ),
         )
 
-    query = (
-        db.query(OktaUserGroupMember)
+    stmt = (
+        select(OktaUserGroupMember)
         .options(
             joinedload(OktaUserGroupMember.user),
             joinedload(OktaUserGroupMember.created_actor),
@@ -329,43 +326,39 @@ def users_and_groups(
     )
 
     if user is not None:
-        query = query.filter(OktaUserGroupMember.user_id == user.id)
+        stmt = stmt.where(OktaUserGroupMember.user_id == user.id)
     if group is not None:
-        query = query.filter(OktaUserGroupMember.group_id == group.id)
+        stmt = stmt.where(OktaUserGroupMember.group_id == group.id)
 
     # Owner filter — only return memberships in groups owned by `owner`,
     # either directly or transitively via the owning app.
     if owner is not None:
-        owner_group_ids = [
-            row.group_id
-            for row in db.query(OktaUserGroupMember.group_id)
-            .filter(OktaUserGroupMember.user_id == owner.id)
-            .filter(OktaUserGroupMember.is_owner.is_(True))
-            .filter(
+        owner_group_ids = db.scalars(
+            select(OktaUserGroupMember.group_id)
+            .where(OktaUserGroupMember.user_id == owner.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .all()
-        ]
+        ).all()
         app_owner_group_ids = [
             ag.id
-            for ag in db.query(AppGroup)
-            .filter(AppGroup.id.in_(owner_group_ids))
-            .filter(AppGroup.is_owner.is_(True))
-            .all()
+            for ag in db.scalars(
+                select(AppGroup).where(AppGroup.id.in_(owner_group_ids)).where(AppGroup.is_owner.is_(True))
+            ).all()
         ]
-        app_ids = [ag.app_id for ag in db.query(AppGroup).filter(AppGroup.id.in_(app_owner_group_ids)).all()]
+        app_ids = [ag.app_id for ag in db.scalars(select(AppGroup).where(AppGroup.id.in_(app_owner_group_ids))).all()]
         app_groups_owned_ids = [
             ag.id
-            for ag in db.query(AppGroup)
-            .filter(AppGroup.app_id.in_(app_ids))
-            .filter(AppGroup.deleted_at.is_(None))
-            .all()
+            for ag in db.scalars(
+                select(AppGroup).where(AppGroup.app_id.in_(app_ids)).where(AppGroup.deleted_at.is_(None))
+            ).all()
         ]
         if q_args.app_owner is True:
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     OktaUserGroupMember.group_id.in_(owner_group_ids),
                     OktaUserGroupMember.group_id.in_(app_groups_owned_ids),
@@ -373,22 +366,20 @@ def users_and_groups(
             )
         else:
             # Exclude app groups that have at least one direct owner who isn't `owner`.
-            directly_owned_by_others_ids = [
-                m.group_id
-                for m in db.query(OktaUserGroupMember.group_id)
-                .filter(OktaUserGroupMember.group_id.in_(app_groups_owned_ids))
-                .filter(OktaUserGroupMember.user_id != owner.id)
-                .filter(OktaUserGroupMember.is_owner.is_(True))
-                .filter(
+            directly_owned_by_others_ids = db.scalars(
+                select(OktaUserGroupMember.group_id)
+                .where(OktaUserGroupMember.group_id.in_(app_groups_owned_ids))
+                .where(OktaUserGroupMember.user_id != owner.id)
+                .where(OktaUserGroupMember.is_owner.is_(True))
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .all()
-            ]
+            ).all()
             visible_app_groups = set(app_groups_owned_ids) - set(directly_owned_by_others_ids)
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     OktaUserGroupMember.group_id.in_(owner_group_ids),
                     OktaUserGroupMember.group_id.in_(visible_app_groups),
@@ -397,20 +388,20 @@ def users_and_groups(
         # When filtering by `owner_id`, exclude the owner's own memberships:
         # the frontend's "expiring access" review page expects to see *other*
         # users whose access the owner needs to renew, not the owner.
-        query = query.filter(OktaUserGroupMember.user_id != owner.id)
+        stmt = stmt.where(OktaUserGroupMember.user_id != owner.id)
 
     if q_args.owner is not None:
-        query = query.filter(OktaUserGroupMember.is_owner == q_args.owner)
+        stmt = stmt.where(OktaUserGroupMember.is_owner == q_args.owner)
 
     if q_args.active is True:
-        query = query.filter(
+        stmt = stmt.where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
                 OktaUserGroupMember.ended_at > func.now(),
             )
         )
     elif q_args.active is False:
-        query = query.filter(
+        stmt = stmt.where(
             and_(
                 OktaUserGroupMember.ended_at.is_not(None),
                 OktaUserGroupMember.ended_at < func.now(),
@@ -418,19 +409,19 @@ def users_and_groups(
         )
 
     if q_args.needs_review is True:
-        query = query.filter(OktaUserGroupMember.should_expire.is_(False))
+        stmt = stmt.where(OktaUserGroupMember.should_expire.is_(False))
 
     if q_args.direct is True:
-        query = query.filter(not_(OktaUserGroupMember.active_role_group_mapping.has()))
+        stmt = stmt.where(not_(OktaUserGroupMember.active_role_group_mapping.has()))
 
     if q_args.deleted is False:
-        query = query.filter(OktaUser.deleted_at.is_(None))
+        stmt = stmt.where(OktaUser.deleted_at.is_(None))
 
     if q_args.managed is not None:
-        query = query.filter(group_alias.is_managed == q_args.managed)
+        stmt = stmt.where(group_alias.is_managed == q_args.managed)
 
     if q_args.start_date is not None and q_args.end_date is not None:
-        query = query.filter(
+        stmt = stmt.where(
             and_(
                 OktaUserGroupMember.ended_at.is_not(None),
                 OktaUserGroupMember.ended_at > _unix_to_utc_naive(q_args.start_date),
@@ -458,11 +449,11 @@ def users_and_groups(
             (OktaUser.first_name + " " + OktaUser.last_name).ilike(like),
         )
         if user is not None:
-            query = query.filter(or_(*group_cols))
+            stmt = stmt.where(or_(*group_cols))
         if group is not None:
-            query = query.filter(or_(*user_cols))
+            stmt = stmt.where(or_(*user_cols))
         if owner is not None or (user is None and group is None):
-            query = query.filter(or_(*group_cols, *user_cols))
+            stmt = stmt.where(or_(*group_cols, *user_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable
     # when two rows share the primary sort value. Without it, paginated
@@ -479,7 +470,7 @@ def users_and_groups(
         tail = (group_alias.name if user is not None else func.lower(OktaUser.email)).asc()
         return (nulls_order(primary_dir), tail)
 
-    query = query.order_by(*_users_audit_ordering())
+    stmt = stmt.order_by(*_users_audit_ordering())
 
     # When `direct` is present and neither `user_id` nor `owner_id` is set,
     # re-apply the order_by using the email/created_at compound shape so
@@ -489,15 +480,15 @@ def users_and_groups(
         if q_args.order_by == AuditOrderBy.moniker:
             primary = func.lower(OktaUser.email)
             primary_dir = primary.desc() if q_args.order_desc else primary.asc()
-            query = query.order_by(nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
+            stmt = stmt.order_by(nulls_order(primary_dir), nullslast(OktaUserGroupMember.created_at.asc()))
         else:
             col = getattr(OktaUserGroupMember, q_args.order_by.value)
             primary_dir = col.desc() if q_args.order_desc else col.asc()
-            query = query.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc())
+            stmt = stmt.order_by(nulls_order(primary_dir), func.lower(OktaUser.email).asc())
 
     return paginate(
         db,
-        query,
+        stmt,
         transformer=lambda items: [_audit_user_group_row(m, include_role_associations) for m in items],
     )
 
@@ -520,8 +511,8 @@ def groups_and_roles(
 
     group_alias = aliased(OktaGroup)
 
-    query = (
-        db.query(RoleGroupMap)
+    stmt = (
+        select(RoleGroupMap)
         .options(
             joinedload(RoleGroupMap.role_group),
             joinedload(RoleGroupMap.created_actor),
@@ -540,63 +531,57 @@ def groups_and_roles(
     )
 
     if role is not None:
-        query = query.filter(RoleGroupMap.role_group_id == role.id)
+        stmt = stmt.where(RoleGroupMap.role_group_id == role.id)
     if group is not None:
-        query = query.filter(RoleGroupMap.group_id == group.id)
+        stmt = stmt.where(RoleGroupMap.group_id == group.id)
 
     if owner is not None:
-        owner_group_ids = [
-            row.group_id
-            for row in db.query(OktaUserGroupMember.group_id)
-            .filter(OktaUserGroupMember.user_id == owner.id)
-            .filter(OktaUserGroupMember.is_owner.is_(True))
-            .filter(
+        owner_group_ids = db.scalars(
+            select(OktaUserGroupMember.group_id)
+            .where(OktaUserGroupMember.user_id == owner.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .all()
-        ]
+        ).all()
         app_owner_group_ids = [
             ag.id
-            for ag in db.query(AppGroup)
-            .filter(AppGroup.id.in_(owner_group_ids))
-            .filter(AppGroup.is_owner.is_(True))
-            .all()
+            for ag in db.scalars(
+                select(AppGroup).where(AppGroup.id.in_(owner_group_ids)).where(AppGroup.is_owner.is_(True))
+            ).all()
         ]
-        app_ids = [ag.app_id for ag in db.query(AppGroup).filter(AppGroup.id.in_(app_owner_group_ids)).all()]
+        app_ids = [ag.app_id for ag in db.scalars(select(AppGroup).where(AppGroup.id.in_(app_owner_group_ids))).all()]
         app_groups_owned_ids = [
             ag.id
-            for ag in db.query(AppGroup)
-            .filter(AppGroup.app_id.in_(app_ids))
-            .filter(AppGroup.deleted_at.is_(None))
-            .all()
+            for ag in db.scalars(
+                select(AppGroup).where(AppGroup.app_id.in_(app_ids)).where(AppGroup.deleted_at.is_(None))
+            ).all()
         ]
         if q_args.app_owner is True:
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     RoleGroupMap.group_id.in_(owner_group_ids),
                     RoleGroupMap.group_id.in_(app_groups_owned_ids),
                 )
             )
         else:
-            directly_owned_by_others_ids = [
-                m.group_id
-                for m in db.query(OktaUserGroupMember.group_id)
-                .filter(OktaUserGroupMember.group_id.in_(app_groups_owned_ids))
-                .filter(OktaUserGroupMember.user_id != owner.id)
-                .filter(OktaUserGroupMember.is_owner.is_(True))
-                .filter(
+            directly_owned_by_others_ids = db.scalars(
+                select(OktaUserGroupMember.group_id)
+                .where(OktaUserGroupMember.group_id.in_(app_groups_owned_ids))
+                .where(OktaUserGroupMember.user_id != owner.id)
+                .where(OktaUserGroupMember.is_owner.is_(True))
+                .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .all()
-            ]
+            ).all()
             visible_app_groups = set(app_groups_owned_ids) - set(directly_owned_by_others_ids)
-            query = query.filter(
+            stmt = stmt.where(
                 or_(
                     RoleGroupMap.group_id.in_(owner_group_ids),
                     RoleGroupMap.group_id.in_(visible_app_groups),
@@ -604,26 +589,24 @@ def groups_and_roles(
             )
 
     if role_owner is not None:
-        role_owner_role_ids = [
-            row.group_id
-            for row in db.query(OktaUserGroupMember.group_id)
-            .filter(OktaUserGroupMember.user_id == role_owner.id)
-            .filter(OktaUserGroupMember.is_owner.is_(True))
-            .filter(
+        role_owner_role_ids = db.scalars(
+            select(OktaUserGroupMember.group_id)
+            .where(OktaUserGroupMember.user_id == role_owner.id)
+            .where(OktaUserGroupMember.is_owner.is_(True))
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .all()
-        ]
+        ).all()
         # Access admins additionally see roles that have NO active owner —
         # those are the roles only an admin can resolve expiring access for.
         unowned_admin_role_ids: list[str] = []
         if is_access_admin(db, role_owner.id):
             owners_subquery = (
-                db.query(OktaUserGroupMember.group_id)
-                .filter(
+                select(OktaUserGroupMember.group_id)
+                .where(
                     and_(
                         OktaUserGroupMember.is_owner.is_(True),
                         or_(
@@ -636,11 +619,11 @@ def groups_and_roles(
             )
             unowned_admin_role_ids = [
                 rg.id
-                for rg in db.query(RoleGroup)
-                .filter(and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery)))
-                .all()
+                for rg in db.scalars(
+                    select(RoleGroup).where(and_(RoleGroup.deleted_at.is_(None), ~RoleGroup.id.in_(owners_subquery)))
+                ).all()
             ]
-        query = query.filter(
+        stmt = stmt.where(
             or_(
                 RoleGroupMap.role_group_id.in_(role_owner_role_ids),
                 RoleGroupMap.role_group_id.in_(unowned_admin_role_ids),
@@ -648,17 +631,17 @@ def groups_and_roles(
         )
 
     if q_args.owner is not None:
-        query = query.filter(RoleGroupMap.is_owner == q_args.owner)
+        stmt = stmt.where(RoleGroupMap.is_owner == q_args.owner)
 
     if q_args.active is True:
-        query = query.filter(
+        stmt = stmt.where(
             or_(
                 RoleGroupMap.ended_at.is_(None),
                 RoleGroupMap.ended_at > func.now(),
             )
         )
     elif q_args.active is False:
-        query = query.filter(
+        stmt = stmt.where(
             and_(
                 RoleGroupMap.ended_at.is_not(None),
                 RoleGroupMap.ended_at < func.now(),
@@ -666,13 +649,13 @@ def groups_and_roles(
         )
 
     if q_args.needs_review is True:
-        query = query.filter(RoleGroupMap.should_expire.is_(False))
+        stmt = stmt.where(RoleGroupMap.should_expire.is_(False))
 
     if q_args.managed is not None:
-        query = query.filter(group_alias.is_managed == q_args.managed)
+        stmt = stmt.where(group_alias.is_managed == q_args.managed)
 
     if q_args.start_date is not None and q_args.end_date is not None:
-        query = query.filter(
+        stmt = stmt.where(
             and_(
                 RoleGroupMap.ended_at.is_not(None),
                 RoleGroupMap.ended_at > _unix_to_utc_naive(q_args.start_date),
@@ -697,11 +680,11 @@ def groups_and_roles(
             group_alias.description.ilike(like),
         )
         if group is not None:
-            query = query.filter(or_(*role_cols))
+            stmt = stmt.where(or_(*role_cols))
         if role is not None:
-            query = query.filter(or_(*group_cols))
+            stmt = stmt.where(or_(*group_cols))
         if owner is not None or (group is None and role is None):
-            query = query.filter(or_(*role_cols, *group_cols))
+            stmt = stmt.where(or_(*role_cols, *group_cols))
 
     # Compound order_by — the tail tie-breaker keeps page boundaries stable.
     # Primary column depends on context: when `group_id` is pinned, the
@@ -719,10 +702,10 @@ def groups_and_roles(
         tail = (RoleGroup.name if role is None and group is not None else group_alias.name).asc()
         return (nulls_order(primary_dir), tail)
 
-    query = query.order_by(*_groups_audit_ordering())
+    stmt = stmt.order_by(*_groups_audit_ordering())
 
     return paginate(
         db,
-        query,
+        stmt,
         transformer=lambda items: [_audit_group_role_row(rgm) for rgm in items],
     )

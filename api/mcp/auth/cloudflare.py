@@ -45,7 +45,7 @@ from typing import Optional
 
 import jwt
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, select
 from starlette.types import Scope
 
 from api.auth.cloudflare import verify_cloudflare_token
@@ -157,12 +157,11 @@ def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     if "email" not in payload:
         logger.warning("CF Access JWT verified but carries no 'email' claim")
         return None
-    user = (
-        db.query(OktaUser)
-        .filter(func.lower(OktaUser.email) == func.lower(payload["email"]))
-        .filter(OktaUser.deleted_at.is_(None))
-        .first()
-    )
+    user = db.scalars(
+        select(OktaUser)
+        .where(func.lower(OktaUser.email) == func.lower(payload["email"]))
+        .where(OktaUser.deleted_at.is_(None))
+    ).first()
     if user is None:
         logger.warning(f"CF Access JWT verified for email={payload['email']!r} but no matching active OktaUser exists")
         return None

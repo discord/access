@@ -3,7 +3,7 @@ from typing import Optional
 
 from sqlalchemy.orm import selectin_polymorphic
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select, update
 from api.extensions import db
 from api.models import (
     AccessRequest,
@@ -25,18 +25,16 @@ logger = logging.getLogger(__name__)
 # Run this operation when a group becomes unmanaged by Access
 class UnmanageGroup:
     def __init__(self, *, group: OktaGroup | str, current_user_id: Optional[str] = None):
-        self.group = (
-            db.session.query(OktaGroup)
+        self.group = db.session.scalars(
+            select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .filter(OktaGroup.id == (group if isinstance(group, str) else group.id))
-            .first()
-        )
+            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+        ).first()
 
         self.current_user_id = getattr(
-            db.session.query(OktaUser)
-            .filter(OktaUser.deleted_at.is_(None))
-            .filter(OktaUser.id == current_user_id)
-            .first(),
+            db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+            ).first(),
             "id",
             None,
         )
@@ -49,18 +47,18 @@ class UnmanageGroup:
 
         # End all group memberships and ownerships via a role (not direct memberships or ownerships)
         active_access_via_roles_query = (
-            db.session.query(OktaUserGroupMember)
-            .filter(
+            select(OktaUserGroupMember)
+            .where(
                 or_(
                     OktaUserGroupMember.ended_at.is_(None),
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .filter(OktaUserGroupMember.group_id == self.group.id)
-            .filter(OktaUserGroupMember.role_group_map_id.isnot(None))
+            .where(OktaUserGroupMember.group_id == self.group.id)
+            .where(OktaUserGroupMember.role_group_map_id.isnot(None))
         )
 
-        for active_access_via_role in active_access_via_roles_query.all():
+        for active_access_via_role in db.session.scalars(active_access_via_roles_query).all():
             logger.info(
                 f"User {active_access_via_role.user_id} has invalid "
                 f"{'ownership' if active_access_via_role.is_owner else 'membership'} "
@@ -68,19 +66,29 @@ class UnmanageGroup:
             )
 
         if not dry_run:
-            active_access_via_roles_query.update(
-                {OktaUserGroupMember.ended_at: func.now()}, synchronize_session="fetch"
+            db.session.execute(
+                update(OktaUserGroupMember)
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
+                    )
+                )
+                .where(OktaUserGroupMember.group_id == self.group.id)
+                .where(OktaUserGroupMember.role_group_map_id.isnot(None))
+                .values({OktaUserGroupMember.ended_at: func.now()})
+                .execution_options(synchronize_session="fetch")
             )
             db.session.commit()
 
         # End all roles associations where this group was a member
         active_role_assignments_query = (
-            db.session.query(RoleGroupMap)
-            .filter(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
-            .filter(RoleGroupMap.group_id == self.group.id)
+            select(RoleGroupMap)
+            .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+            .where(RoleGroupMap.group_id == self.group.id)
         )
 
-        for active_role_assignment in active_role_assignments_query.all():
+        for active_role_assignment in db.session.scalars(active_role_assignments_query).all():
             logger.info(
                 f"Role {active_role_assignment.role_group_id} has invalid "
                 f"{'ownership' if active_role_assignment.is_owner else 'membership'} "
@@ -88,20 +96,25 @@ class UnmanageGroup:
             )
 
         if not dry_run:
-            active_role_assignments_query.update({RoleGroupMap.ended_at: func.now()}, synchronize_session="fetch")
+            db.session.execute(
+                update(RoleGroupMap)
+                .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
+                .where(RoleGroupMap.group_id == self.group.id)
+                .values({RoleGroupMap.ended_at: func.now()})
+                .execution_options(synchronize_session="fetch")
+            )
             db.session.commit()
 
         # If this groups is a RoleGroup, do not remove the groups associated with the role
         # Unmanaged roles can still be associated with groups
 
         # Reject all pending access requests for this group
-        obsolete_access_requests = (
-            db.session.query(AccessRequest)
-            .filter(AccessRequest.requested_group_id == self.group.id)
-            .filter(AccessRequest.status == AccessRequestStatus.PENDING)
-            .filter(AccessRequest.resolved_at.is_(None))
-            .all()
-        )
+        obsolete_access_requests = db.session.scalars(
+            select(AccessRequest)
+            .where(AccessRequest.requested_group_id == self.group.id)
+            .where(AccessRequest.status == AccessRequestStatus.PENDING)
+            .where(AccessRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_access_request in obsolete_access_requests:
             logger.info(
                 f"Rejecting obsolete access request {obsolete_access_request.id} "
@@ -116,18 +129,17 @@ class UnmanageGroup:
 
         # Reject all pending role requests touching this group, either as the
         # requested target or as the requester role.
-        obsolete_role_requests = (
-            db.session.query(RoleRequest)
-            .filter(
+        obsolete_role_requests = db.session.scalars(
+            select(RoleRequest)
+            .where(
                 or_(
                     RoleRequest.requested_group_id == self.group.id,
                     RoleRequest.requester_role_id == self.group.id,
                 )
             )
-            .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-            .filter(RoleRequest.resolved_at.is_(None))
-            .all()
-        )
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+        ).all()
         for obsolete_role_request in obsolete_role_requests:
             logger.info(
                 f"Rejecting obsolete role request {obsolete_role_request.id} for unmanaged group {self.group.id}"

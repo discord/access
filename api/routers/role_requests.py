@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from sqlalchemy import String, and_, cast, not_, or_
+from sqlalchemy import String, and_, cast, not_, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
 
@@ -92,17 +92,17 @@ def list_role_requests(
 ) -> Page[RoleRequestSummary]:
     from api.auth.permissions import is_access_admin
 
-    query = db.query(RoleRequest).options(*_summary_load_options()).order_by(RoleRequest.created_at.desc())
+    stmt = select(RoleRequest).options(*_summary_load_options()).order_by(RoleRequest.created_at.desc())
 
     if q_args.status:
-        query = query.filter(RoleRequest.status == q_args.status)
+        stmt = stmt.where(RoleRequest.status == q_args.status)
 
     if q_args.requester_user_id:
         if q_args.requester_user_id == "@me":
-            query = query.filter(RoleRequest.requester_user_id == current_user_id)
+            stmt = stmt.where(RoleRequest.requester_user_id == current_user_id)
         else:
             requester_alias = aliased(OktaUser)
-            query = query.join(RoleRequest.requester.of_type(requester_alias)).filter(
+            stmt = stmt.join(RoleRequest.requester.of_type(requester_alias)).where(
                 or_(
                     RoleRequest.requester_user_id == q_args.requester_user_id,
                     requester_alias.email.ilike(q_args.requester_user_id),
@@ -110,7 +110,7 @@ def list_role_requests(
             )
 
     if q_args.requester_role_id:
-        query = query.join(RoleRequest.requester_role).filter(
+        stmt = stmt.join(RoleRequest.requester_role).where(
             or_(
                 RoleRequest.requester_role_id == q_args.requester_role_id,
                 RoleGroup.name.ilike(q_args.requester_role_id),
@@ -118,7 +118,7 @@ def list_role_requests(
         )
 
     if q_args.requested_group_id:
-        query = query.join(RoleRequest.requested_group).filter(
+        stmt = stmt.join(RoleRequest.requested_group).where(
             or_(
                 RoleRequest.requested_group_id == q_args.requested_group_id,
                 OktaGroup.name.ilike(q_args.requested_group_id),
@@ -133,23 +133,21 @@ def list_role_requests(
         # Non-admins are restricted to groups they own, and pre-filtered to
         # exclude requests they can't resolve due to those same tags.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
-        assignee_user = (
-            db.query(OktaUser)
-            .filter(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
-            .first()
-        )
+        assignee_user = db.scalars(
+            select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+        ).first()
         if assignee_user is not None:
             groups_owned_subquery = (
-                db.query(OktaGroup.id)
+                select(OktaGroup.id)
                 .options(selectinload(OktaGroup.active_user_ownerships))
                 .join(OktaGroup.active_user_ownerships)
-                .filter(OktaGroup.deleted_at.is_(None))
-                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaUserGroupMember.user_id == assignee_user.id)
                 .subquery()
             )
             owner_app_group_alias = aliased(AppGroup)
             app_groups_owned_subquery = (
-                db.query(AppGroup.id)
+                select(AppGroup.id)
                 .options(
                     joinedload(AppGroup.app)
                     .joinedload(App.active_owner_app_groups.of_type(owner_app_group_alias))
@@ -158,8 +156,8 @@ def list_role_requests(
                 .join(AppGroup.app)
                 .join(App.active_owner_app_groups.of_type(owner_app_group_alias))
                 .join(owner_app_group_alias.active_user_ownerships)
-                .filter(AppGroup.deleted_at.is_(None))
-                .filter(OktaUserGroupMember.user_id == assignee_user.id)
+                .where(AppGroup.deleted_at.is_(None))
+                .where(OktaUserGroupMember.user_id == assignee_user.id)
                 .subquery()
             )
 
@@ -169,8 +167,8 @@ def list_role_requests(
                 # existing owner is in the requester role's membership.
                 tagged_owner_requests = [
                     rr
-                    for rr in (
-                        db.query(RoleRequest)
+                    for rr in db.scalars(
+                        select(RoleRequest)
                         .options(
                             joinedload(RoleRequest.requester_role).options(
                                 selectinload(OktaGroup.active_user_memberships)
@@ -180,10 +178,9 @@ def list_role_requests(
                                 selectinload(OktaGroup.active_user_ownerships),
                             ),
                         )
-                        .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-                        .filter(RoleRequest.request_ownership.is_(True))
-                        .all()
-                    )
+                        .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                        .where(RoleRequest.request_ownership.is_(True))
+                    ).all()
                     if coalesce_constraints(
                         constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
                         tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
@@ -191,8 +188,8 @@ def list_role_requests(
                 ]
                 tagged_member_requests = [
                     rr
-                    for rr in (
-                        db.query(RoleRequest)
+                    for rr in db.scalars(
+                        select(RoleRequest)
                         .options(
                             joinedload(RoleRequest.requester_role).options(
                                 selectinload(OktaGroup.active_user_memberships)
@@ -202,10 +199,9 @@ def list_role_requests(
                                 selectinload(OktaGroup.active_user_ownerships),
                             ),
                         )
-                        .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-                        .filter(RoleRequest.request_ownership.is_(False))
-                        .all()
-                    )
+                        .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                        .where(RoleRequest.request_ownership.is_(False))
+                    ).all()
                     if coalesce_constraints(
                         constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
                         tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
@@ -218,7 +214,7 @@ def list_role_requests(
                     if all(o.user_id in role_member_ids for o in req.requested_group.active_user_ownerships):
                         blocked_request_ids.append(req.id)
 
-                query = query.join(RoleRequest.requested_group).filter(
+                stmt = stmt.join(RoleRequest.requested_group).where(
                     or_(
                         OktaGroup.id.in_(groups_owned_subquery),
                         OktaGroup.id.in_(app_groups_owned_subquery),
@@ -226,7 +222,7 @@ def list_role_requests(
                     )
                 )
             else:
-                query = query.join(RoleRequest.requested_group).filter(
+                stmt = stmt.join(RoleRequest.requested_group).where(
                     or_(
                         OktaGroup.id.in_(groups_owned_subquery),
                         OktaGroup.id.in_(app_groups_owned_subquery),
@@ -234,14 +230,17 @@ def list_role_requests(
                 )
 
                 owned_groups = (
-                    db.query(OktaGroup)
-                    .options(joinedload(OktaGroup.active_group_tags))
-                    .filter(
-                        or_(
-                            OktaGroup.id.in_(groups_owned_subquery),
-                            OktaGroup.id.in_(app_groups_owned_subquery),
+                    db.scalars(
+                        select(OktaGroup)
+                        .options(joinedload(OktaGroup.active_group_tags))
+                        .where(
+                            or_(
+                                OktaGroup.id.in_(groups_owned_subquery),
+                                OktaGroup.id.in_(app_groups_owned_subquery),
+                            )
                         )
                     )
+                    .unique()
                     .all()
                 )
                 owned_groups_no_self_owner = [
@@ -262,10 +261,12 @@ def list_role_requests(
                 ]
                 role_membership_ids = [
                     rg.id
-                    for rg in db.query(RoleGroup).options(joinedload(RoleGroup.active_user_memberships)).all()
+                    for rg in db.scalars(select(RoleGroup).options(joinedload(RoleGroup.active_user_memberships)))
+                    .unique()
+                    .all()
                     if assignee_user.id in [m.user_id for m in rg.active_user_memberships]
                 ]
-                query = query.filter(
+                stmt = stmt.where(
                     not_(
                         or_(
                             and_(
@@ -282,16 +283,16 @@ def list_role_requests(
                     )
                 )
             # Whether admin or not, never include the assignee's own requests.
-            query = query.filter(RoleRequest.requester_user_id != assignee_user.id)
+            stmt = stmt.where(RoleRequest.requester_user_id != assignee_user.id)
         else:
-            query = query.filter(False)
+            stmt = stmt.where(False)
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":
-            query = query.filter(RoleRequest.resolver_user_id == current_user_id)
+            stmt = stmt.where(RoleRequest.resolver_user_id == current_user_id)
         else:
             resolver_alias = aliased(OktaUser)
-            query = query.outerjoin(RoleRequest.resolver.of_type(resolver_alias)).filter(
+            stmt = stmt.outerjoin(RoleRequest.resolver.of_type(resolver_alias)).where(
                 or_(
                     RoleRequest.resolver_user_id == q_args.resolver_user_id,
                     resolver_alias.email.ilike(q_args.resolver_user_id),
@@ -306,12 +307,12 @@ def list_role_requests(
         q_resolver_alias = aliased(OktaUser)
         q_role_alias = aliased(OktaGroup)
         q_group_alias = aliased(OktaGroup)
-        query = (
-            query.join(RoleRequest.requester.of_type(q_requester_alias))
+        stmt = (
+            stmt.join(RoleRequest.requester.of_type(q_requester_alias))
             .join(RoleRequest.requester_role.of_type(q_role_alias))
             .join(RoleRequest.requested_group.of_type(q_group_alias))
             .outerjoin(RoleRequest.resolver.of_type(q_resolver_alias))
-            .filter(
+            .where(
                 or_(
                     RoleRequest.id.like(f"{q_args.q}%"),
                     cast(RoleRequest.status, String).ilike(like),
@@ -333,12 +334,14 @@ def list_role_requests(
             )
         )
 
-    return paginate(db, query, transformer=validated(RoleRequestSummary))
+    return paginate(db, stmt, transformer=validated(RoleRequestSummary))
 
 
 @router.get("/{role_request_id}", name="role_request_by_id")
 def get_role_request(role_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> RoleRequestDetail:
-    rr = db.query(RoleRequest).options(*_detail_load_options()).filter(RoleRequest.id == role_request_id).first()
+    rr = db.scalars(
+        select(RoleRequest).options(*_detail_load_options()).where(RoleRequest.id == role_request_id)
+    ).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
     return RoleRequestDetail.model_validate(rr, from_attributes=True)
@@ -352,13 +355,19 @@ def post_role_request(
 ) -> RoleRequestSummary:
     from api.auth import permissions as _perms
 
-    requester = db.query(OktaUser).filter(OktaUser.deleted_at.is_(None)).filter(OktaUser.id == current_user_id).first()
-    role = db.query(RoleGroup).filter(RoleGroup.deleted_at.is_(None)).filter(RoleGroup.id == body.role_id).first()
+    requester = db.scalars(
+        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+    ).first()
+    role = db.scalars(
+        select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == body.role_id)
+    ).first()
     if role is None:
         raise HTTPException(404, "Not Found")
     if requester is None or not _perms.can_manage_group(db, current_user_id, role):
         raise HTTPException(403, "Current user is not allowed to perform this action")
-    group = db.query(OktaGroup).filter(OktaGroup.deleted_at.is_(None)).filter(OktaGroup.id == body.group_id).first()
+    group = db.scalars(
+        select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == body.group_id)
+    ).first()
     if group is None:
         raise HTTPException(404, "Not Found")
     if not group.is_managed:
@@ -367,16 +376,15 @@ def post_role_request(
         raise HTTPException(400, "Role requests may only be made for groups and app groups (not roles).")
 
     # Close any existing pending duplicate requests
-    existing = (
-        db.query(RoleRequest)
-        .filter(RoleRequest.requester_user_id == current_user_id)
-        .filter(RoleRequest.requester_role_id == body.role_id)
-        .filter(RoleRequest.requested_group_id == body.group_id)
-        .filter(RoleRequest.request_ownership == body.group_owner)
-        .filter(RoleRequest.status == AccessRequestStatus.PENDING)
-        .filter(RoleRequest.resolved_at.is_(None))
-        .all()
-    )
+    existing = db.scalars(
+        select(RoleRequest)
+        .where(RoleRequest.requester_user_id == current_user_id)
+        .where(RoleRequest.requester_role_id == body.role_id)
+        .where(RoleRequest.requested_group_id == body.group_id)
+        .where(RoleRequest.request_ownership == body.group_owner)
+        .where(RoleRequest.status == AccessRequestStatus.PENDING)
+        .where(RoleRequest.resolved_at.is_(None))
+    ).all()
     for old in existing:
         RejectRoleRequest(
             role_request=old,
@@ -392,7 +400,7 @@ def post_role_request(
         request_reason=body.reason or "",
         request_ending_at=body.ending_at,
     ).execute()
-    refreshed = db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == rr.id).first()
+    refreshed = db.scalars(select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == rr.id)).first()
     return RoleRequestSummary.model_validate(refreshed or rr, from_attributes=True)
 
 
@@ -406,7 +414,9 @@ def put_role_request(
     from api.auth import permissions as _perms
     from api.operations.constraints import CheckForReason
 
-    rr = db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == role_request_id).first()
+    rr = db.scalars(
+        select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == role_request_id)
+    ).first()
     if rr is None:
         raise HTTPException(404, "Not Found")
 
@@ -449,7 +459,7 @@ def put_role_request(
             rejection_reason=body.reason or "",
             notify_requester=rr.requester_user_id != current_user_id,
         ).execute()
-    refreshed = (
-        db.query(RoleRequest).options(*_summary_load_options()).filter(RoleRequest.id == role_request_id).first()
-    )
+    refreshed = db.scalars(
+        select(RoleRequest).options(*_summary_load_options()).where(RoleRequest.id == role_request_id)
+    ).first()
     return RoleRequestSummary.model_validate(refreshed, from_attributes=True)
