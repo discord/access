@@ -22,6 +22,15 @@ updates:
       interval: "weekly"
     ignore:
       - dependency-name: "@rollup/rollup-*"
+      # Vite 8's Rolldown-based dep optimizer miscompiles our MUI v5 +
+      # styled-components dependency graph (rolldown/rolldown#9515 and #8950),
+      # blank-screening the dev server. Re-attempt the major bump once a Vite 8
+      # release ships a Rolldown with both fixed. @vitejs/plugin-react >=6
+      # requires Vite 8, so it is held back with it (5.x still supports Vite 7).
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitejs/plugin-react"
+        versions: [">=6"]
     groups:
       mui:
         patterns:

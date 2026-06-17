@@ -94,5 +94,8 @@
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": "prettier --write"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
   }
 }
