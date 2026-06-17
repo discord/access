@@ -55,7 +55,7 @@ import Loading from '../../components/Loading';
 import RemoveGroupsDialog, {RemoveGroupsDialogParameters} from '../roles/RemoveGroups';
 import RemoveOwnDirectAccessDialog, {RemoveOwnDirectAccessDialogParameters} from '../groups/RemoveOwnDirectAccess';
 import {groupBy, displayUserName} from '../../helpers';
-import {canManageGroup, isGroupOwner} from '../../authorization';
+import {canManageGroup, isGroupOwner, isAccessAdmin} from '../../authorization';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MembershipChip from '../../components/MembershipChip';
 
@@ -644,7 +644,7 @@ export default function ReadUser() {
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>
-                  <IdpLinkButton url={idpUserUrl(user.id)} />
+                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpUserUrl(user.id)} />}
                 </Box>
               </Stack>
             </Paper>

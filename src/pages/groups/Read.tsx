@@ -57,7 +57,7 @@ import {
   RoleGroupDetail,
   GroupMember,
 } from '../../api/apiSchemas';
-import {canManageGroup} from '../../authorization';
+import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import {Diversity3 as RoleIcon} from '@mui/icons-material';
 import AppLinkButton from './AppLinkButton';
@@ -301,7 +301,7 @@ export default function ReadGroup() {
                       </IconButton>
                     </Tooltip>
                   ) : null}
-                  <IdpLinkButton url={idpGroupUrl(group.id)} />
+                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpGroupUrl(group.id)} />}
                 </Stack>
               </Stack>
             </Paper>
