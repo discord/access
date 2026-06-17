@@ -331,6 +331,7 @@ To override values on the front-end, modify these key-value pairs inside the `FR
 | `APP_GROUP_NAME_PREFIX`         | Specifies the prefix prepended to app group names. **Must match the `BACKEND` value.**                                                                                                                 | `"App-"`                                                       |
 | `APP_NAME_GROUP_NAME_SEPARATOR` | Specifies the separator between the app name and the group name suffix within an app group name. **Must match the `BACKEND` value.**                                                                   | `"-"`                                                          |
 | `ROLE_GROUP_NAME_PREFIX`        | Specifies the prefix prepended to role group names. **Must match the `BACKEND` value.**                                                                                                                | `"Role-"`                                                      |
+| `APP_OWNERS_GROUP_NAME_SUFFIX`  | Specifies the suffix appended to the name of an app's owner group. **Must match the `BACKEND` value.**                                                                                                  | `"Owners"`                                                     |
 
 The front-end config is loaded in [`vite.config.ts`](vite.config.ts). See
 [`src/config/loadAccessConfig.js`](src/config/loadAccessConfig.js) for more details.
@@ -348,6 +349,7 @@ To override values on the back-end, modify these key-value pairs inside the `BAC
 | `APP_GROUP_NAME_PREFIX`         | Prefix prepended to app group names. **Must match the `FRONTEND` value.**                                                                                                                          | `App-`                                                                                 |
 | `APP_NAME_GROUP_NAME_SEPARATOR` | Separator between the app name and the group name suffix within an app group name. **Must match the `FRONTEND` value.**                                                                            | `-`                                                                                    |
 | `ROLE_GROUP_NAME_PREFIX`        | Prefix prepended to role group names. **Must match the `FRONTEND` value.**                                                                                                                         | `Role-`                                                                                |
+| `APP_OWNERS_GROUP_NAME_SUFFIX`  | Suffix appended to the name of an app's owner group. **Must match the `FRONTEND` value.**                                                                                                          | `Owners`                                                                               |
 
 The back-end config is loaded in [`api/access_config.py`](api/access_config.py).
 

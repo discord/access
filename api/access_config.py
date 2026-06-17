@@ -12,6 +12,7 @@ NAME_VALIDATION_ERROR = "NAME_VALIDATION_ERROR"
 APP_GROUP_NAME_PREFIX = "APP_GROUP_NAME_PREFIX"
 APP_NAME_GROUP_NAME_SEPARATOR = "APP_NAME_GROUP_NAME_SEPARATOR"
 ROLE_GROUP_NAME_PREFIX = "ROLE_GROUP_NAME_PREFIX"
+APP_OWNERS_GROUP_NAME_SUFFIX = "APP_OWNERS_GROUP_NAME_SUFFIX"
 
 
 class UndefinedConfigKeyError(Exception):
@@ -37,12 +38,14 @@ class AccessConfig:
         app_group_name_prefix: str,
         app_name_group_name_separator: str,
         role_group_name_prefix: str,
+        app_owners_group_name_suffix: str,
     ):
         self.name_pattern = name_pattern
         self.name_validation_error = name_validation_error
         self.app_group_name_prefix = app_group_name_prefix
         self.app_name_group_name_separator = app_name_group_name_separator
         self.role_group_name_prefix = role_group_name_prefix
+        self.app_owners_group_name_suffix = app_owners_group_name_suffix
 
 
 def _get_config_value(config: dict[str, Any], key: str) -> Any:
@@ -109,6 +112,7 @@ def _load_access_config() -> AccessConfig:
     app_group_name_prefix = _get_config_value(config, APP_GROUP_NAME_PREFIX)
     app_name_group_name_separator = _get_config_value(config, APP_NAME_GROUP_NAME_SEPARATOR)
     role_group_name_prefix = _get_config_value(config, ROLE_GROUP_NAME_PREFIX)
+    app_owners_group_name_suffix = _get_config_value(config, APP_OWNERS_GROUP_NAME_SUFFIX)
 
     return AccessConfig(
         name_pattern=name_pattern,
@@ -116,6 +120,7 @@ def _load_access_config() -> AccessConfig:
         app_group_name_prefix=app_group_name_prefix,
         app_name_group_name_separator=app_name_group_name_separator,
         role_group_name_prefix=role_group_name_prefix,
+        app_owners_group_name_suffix=app_owners_group_name_suffix,
     )
 
 

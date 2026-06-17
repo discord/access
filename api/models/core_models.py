@@ -604,7 +604,7 @@ class RoleGroup(OktaGroup):
 class AppGroup(OktaGroup):
     APP_GROUP_NAME_PREFIX: ClassVar[str]  # set from config at module load, see bottom of file
     APP_NAME_GROUP_NAME_SEPARATOR: ClassVar[str]  # set from config at module load, see bottom of file
-    APP_OWNERS_GROUP_NAME_SUFFIX = "Owners"
+    APP_OWNERS_GROUP_NAME_SUFFIX: ClassVar[str]  # set from config at module load, see bottom of file
 
     __tablename__ = "app_group"
     id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), primary_key=True)
@@ -1252,6 +1252,7 @@ def _init_group_name_prefixes() -> None:
     RoleGroup.ROLE_GROUP_NAME_PREFIX = cfg.role_group_name_prefix
     AppGroup.APP_GROUP_NAME_PREFIX = cfg.app_group_name_prefix
     AppGroup.APP_NAME_GROUP_NAME_SEPARATOR = cfg.app_name_group_name_separator
+    AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX = cfg.app_owners_group_name_suffix
 
 
 _init_group_name_prefixes()

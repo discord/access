@@ -9,6 +9,7 @@ export interface AccessConfig {
   APP_GROUP_NAME_PREFIX: string;
   APP_NAME_GROUP_NAME_SEPARATOR: string;
   ROLE_GROUP_NAME_PREFIX: string;
+  APP_OWNERS_GROUP_NAME_SUFFIX: string;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface

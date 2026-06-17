@@ -21,6 +21,7 @@ from api.access_config import (
     APP_GROUP_NAME_PREFIX,
     APP_NAME_GROUP_NAME_SEPARATOR,
     ROLE_GROUP_NAME_PREFIX,
+    APP_OWNERS_GROUP_NAME_SUFFIX,
     ConfigValidationError,
     _validate_override_config,
 )
@@ -36,6 +37,7 @@ def mock_load_default_config() -> Generator[Any, Any, Any]:
             APP_GROUP_NAME_PREFIX: "App-",
             APP_NAME_GROUP_NAME_SEPARATOR: "-",
             ROLE_GROUP_NAME_PREFIX: "Role-",
+            APP_OWNERS_GROUP_NAME_SUFFIX: "Owners",
         },
     ):
         yield
@@ -51,6 +53,7 @@ def mock_merge_override_config() -> Generator[Any, Any, Any]:
                 APP_GROUP_NAME_PREFIX: "Override-",
                 APP_NAME_GROUP_NAME_SEPARATOR: "_",
                 ROLE_GROUP_NAME_PREFIX: "OverrideRole-",
+                APP_OWNERS_GROUP_NAME_SUFFIX: "OverrideOwners",
             }
         )
         yield mock_merge
@@ -64,6 +67,7 @@ def test_load_config_default(mock_load_default_config: None) -> None:
     assert config.app_group_name_prefix == "App-"
     assert config.app_name_group_name_separator == "-"
     assert config.role_group_name_prefix == "Role-"
+    assert config.app_owners_group_name_suffix == "Owners"
 
 
 def test_load_config_with_override(
@@ -81,6 +85,7 @@ def test_load_config_with_override(
     assert config.app_group_name_prefix == "Override-"
     assert config.app_name_group_name_separator == "_"
     assert config.role_group_name_prefix == "OverrideRole-"
+    assert config.app_owners_group_name_suffix == "OverrideOwners"
 
 
 def test_load_default_config() -> None:
