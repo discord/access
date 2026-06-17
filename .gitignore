@@ -126,6 +126,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Nix dev shell — project-local npm global prefix (see flake.nix shellHook)
+.nix-npm-global/
+
 # Spyder project settings
 .spyderproject
 .spyproject
