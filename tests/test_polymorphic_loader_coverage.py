@@ -258,6 +258,13 @@ def test_role_request_routes(
     app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any
 ) -> None:
     _get_ok(client, url_for("api-role-requests.role_requests"))
+    # The assignee ("requests I can resolve") filter runs an admin-only branch
+    # that reads `tm.active_tag` for each tag on every pending request's target
+    # group — a code path, not serialization, so it needs its own nested
+    # active_tag loader. The bootstrap user is an Access admin and there's a
+    # pending role request targeting the tagged app group, so this exercises it.
+    base = url_for("api-role-requests.role_requests")
+    _get_ok(client, f"{base}?assignee_user_id=@me")
     data = _get_ok(
         client, url_for("api-role-requests.role_request_by_id", role_request_id=production_shape["role_request"])
     )

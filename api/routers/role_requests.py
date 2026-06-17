@@ -17,6 +17,7 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -174,7 +175,13 @@ def list_role_requests(
                                 selectinload(OktaGroup.active_user_memberships)
                             ),
                             joinedload(RoleRequest.requested_group).options(
-                                selectinload(OktaGroup.active_group_tags),
+                                # `active_tag` is read per tag below in the
+                                # disallow-self-add constraint check, so nest its
+                                # loader — selectinload of the collection alone
+                                # leaves OktaGroupTagMap.active_tag on raise_on_sql.
+                                selectinload(OktaGroup.active_group_tags).options(
+                                    joinedload(OktaGroupTagMap.active_tag)
+                                ),
                                 selectinload(OktaGroup.active_user_ownerships),
                             ),
                         )
@@ -195,7 +202,13 @@ def list_role_requests(
                                 selectinload(OktaGroup.active_user_memberships)
                             ),
                             joinedload(RoleRequest.requested_group).options(
-                                selectinload(OktaGroup.active_group_tags),
+                                # `active_tag` is read per tag below in the
+                                # disallow-self-add constraint check, so nest its
+                                # loader — selectinload of the collection alone
+                                # leaves OktaGroupTagMap.active_tag on raise_on_sql.
+                                selectinload(OktaGroup.active_group_tags).options(
+                                    joinedload(OktaGroupTagMap.active_tag)
+                                ),
                                 selectinload(OktaGroup.active_user_ownerships),
                             ),
                         )
@@ -232,7 +245,11 @@ def list_role_requests(
                 owned_groups = (
                     db.scalars(
                         select(OktaGroup)
-                        .options(joinedload(OktaGroup.active_group_tags))
+                        # `active_tag` is read per tag below; nest its loader so
+                        # OktaGroupTagMap.active_tag isn't left on raise_on_sql.
+                        .options(
+                            selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag))
+                        )
                         .where(
                             or_(
                                 OktaGroup.id.in_(groups_owned_subquery),
