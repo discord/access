@@ -27,7 +27,6 @@ import {useRoles} from '../../api/apiComponents';
 import {RoleGroupListItem} from '../../api/apiSchemas';
 import TablePaginationActions from '../../components/actions/TablePaginationActions';
 import TableTopBar, {TableTopBarAutocomplete} from '../../components/TableTopBar';
-import {EmptyListEntry} from '../../components/EmptyListEntry';
 import LinkTableRow from '../../components/LinkTableRow';
 import MarkdownDescription from '../../components/MarkdownDescription';
 
@@ -142,12 +141,10 @@ export default function ListRoles() {
                 </TableCell>
               </LinkTableRow>
             ))}
-            {emptyRows > 0 ? (
+            {emptyRows > 0 && (
               <TableRow style={{height: 33 * emptyRows}}>
                 <TableCell colSpan={2} />
               </TableRow>
-            ) : (
-              <EmptyListEntry cellProps={{colSpan: 2}} />
             )}
           </TableBody>
           <TableFooter>
