@@ -740,6 +740,9 @@ def test_role_request_approvers_tagged(
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
     db.session.commit()
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
 
@@ -1197,6 +1200,8 @@ def test_owner_cant_add_self_constraint_tag(
 
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
     db.session.commit()
+
+    db.session.expire_all()
 
     hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")

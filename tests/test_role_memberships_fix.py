@@ -129,6 +129,9 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
     db.session.add(owner_role_group_map)
     db.session.commit()
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
     add_ownership_spy = mocker.patch.object(okta, "add_owner_to_group")
 

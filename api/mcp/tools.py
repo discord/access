@@ -260,19 +260,30 @@ def _access_request_detail_load_options() -> tuple:
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
         requested_group_load,
-        selectinload(AccessRequest.active_requested_group),
+        # Must carry its own polymorphic + app loaders; see the matching
+        # comment in api/routers/access_requests.py.
+        selectinload(AccessRequest.active_requested_group).options(
+            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+            joinedload(AppGroup.app),
+        ),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
 
 
 def _access_request_summary_load_options() -> tuple:
-    return (
+    # The polymorphic + AppGroup.app loaders must be nested under each group
+    # relationship - applied at the top level of a select(AccessRequest) they
+    # target the wrong entity and never run.
+    group_load_options = (
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+    )
+    return (
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
-        selectinload(AccessRequest.requested_group),
-        selectinload(AccessRequest.active_requested_group),
+        selectinload(AccessRequest.requested_group).options(*group_load_options),
+        selectinload(AccessRequest.active_requested_group).options(*group_load_options),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
@@ -1196,6 +1207,9 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             if ar is None:
                 return _error("Access request could not be created")
 
+            # Drop cached ORM state so the response reflects what the operation
+            # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            db.expire_all()
             refreshed = db.scalars(
                 select(AccessRequest).options(*_access_request_summary_load_options()).where(AccessRequest.id == ar.id)
             ).first()
@@ -1308,6 +1322,9 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             ).execute()
             if rr is None:
                 return _error("Role request could not be created")
+            # Drop cached ORM state so the response reflects what the operation
+            # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            db.expire_all()
             refreshed = db.scalars(
                 select(RoleRequest).options(*_role_request_summary_load_options()).where(RoleRequest.id == rr.id)
             ).first()
@@ -1428,6 +1445,9 @@ def _register_write_tools(mcp: "FastMCP") -> None:
             ).execute()
             if gr is None:
                 return _error("Group request could not be created")
+            # Drop cached ORM state so the response reflects what the operation
+            # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            db.expire_all()
             refreshed = db.scalars(
                 select(GroupRequest).options(*_group_request_load_options()).where(GroupRequest.id == gr.id)
             ).first()

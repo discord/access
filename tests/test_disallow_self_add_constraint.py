@@ -96,6 +96,9 @@ def test_disallow_self_add_modify_group_users(
     add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
     remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     # Add non-admin current_user as the owner of okta_group
     ModifyGroupUsers(group=okta_group, owners_to_add=[current_user.id], sync_to_okta=False).execute()
 

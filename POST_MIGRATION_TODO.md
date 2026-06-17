@@ -38,8 +38,6 @@ re-used across `apps.py`, `groups.py`, `tags.py`, `users.py`,
 with the schema. 281/281 tests green.
 
 **Still to do under this item:**
-- Audit `lazy="raise_on_sql"` usages on models — confirm each is still
-  load-bearing now that `dump_orm` is the strict default.
 - Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins; some routes
   pre-load more than they emit.
 

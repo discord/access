@@ -55,7 +55,15 @@ def _detail_load_options() -> tuple:
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
         requested_group_load,
-        selectinload(AccessRequest.active_requested_group),
+        # `active_requested_group` resolves to the same row as
+        # `requested_group`, but it must carry its own polymorphic + app
+        # loaders: relying on the sibling loader to warm the identity map is
+        # ordering-dependent (loader paths are applied in unordered-dict
+        # order) and leaves `AppGroup.app` unloaded when this one runs first.
+        selectinload(AccessRequest.active_requested_group).options(
+            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+            joinedload(AppGroup.app),
+        ),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
@@ -64,13 +72,20 @@ def _detail_load_options() -> tuple:
 def _summary_load_options() -> tuple:
     """Slim eager-loads for list / POST / PUT (`AccessRequestSummary`).
     Skips the per-type tag and role-association loaders the summary shape
-    doesn't expose."""
-    return (
+    doesn't expose. The polymorphic + `AppGroup.app` loaders must be nested
+    under each group relationship — applied at the top level of a
+    `select(AccessRequest)` they target the wrong entity and never run,
+    leaving `AppGroup.app` unloaded so the `requested_group` app ref raises
+    `lazy="raise_on_sql"` at serialization time."""
+    group_load_options = (
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+        joinedload(AppGroup.app),
+    )
+    return (
         joinedload(AccessRequest.requester),
         joinedload(AccessRequest.active_requester),
-        selectinload(AccessRequest.requested_group),
-        selectinload(AccessRequest.active_requested_group),
+        selectinload(AccessRequest.requested_group).options(*group_load_options),
+        selectinload(AccessRequest.active_requested_group).options(*group_load_options),
         joinedload(AccessRequest.resolver),
         joinedload(AccessRequest.active_resolver),
     )
@@ -253,6 +268,9 @@ def post_access_request(
         # Belt and suspenders — `is_managed` is the only path that returns
         # None today, but covering the contract guards against drift.
         raise HTTPException(400, "Access request could not be created")
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(
         select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == ar.id)
     ).first()
@@ -313,6 +331,9 @@ def put_access_request(
             notify_requester=ar.requester_user_id != current_user_id,
             current_user_id=current_user_id,
         ).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(
         select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == access_request_id)
     ).first()

@@ -441,16 +441,13 @@ class OktaGroup(Base):
         back_populates="group",
         lazy="raise_on_sql",
     )
-    # SQLAlchemy doesn't seem to support loading
-    # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
-    # in GET /api/audit/users so we have to enable "select" lazy loading.
     active_group_tags: Mapped[List["OktaGroupTagMap"]] = relationship(
         "OktaGroupTagMap",
         primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, "
         "or_(OktaGroupTagMap.ended_at.is_(None), OktaGroupTagMap.ended_at > func.now()))",
         back_populates="active_group",
         viewonly=True,
-        lazy="select",
+        lazy="raise_on_sql",
     )
 
     __mapper_args__ = {
@@ -516,10 +513,7 @@ class RoleGroupMap(Base):
         back_populates="active_role_mappings",
         foreign_keys=[group_id],
         viewonly=True,
-        # SQLAlchemy doesn't seem to support loading
-        # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
-        # in GET /api/audit/users so we have to enable "select" lazy loading.
-        lazy="select",
+        lazy="raise_on_sql",
         innerjoin=True,
     )
 
@@ -620,10 +614,7 @@ class AppGroup(OktaGroup):
     # group to administer and manage membership of the app owner group
     is_owner: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=expression.false(), default=False)
 
-    # SQLAlchemy doesn't seem to support loading
-    # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
-    # in GET /api/audit/users so we have to enable "select" lazy loading.
-    app: Mapped["App"] = relationship("App", back_populates="app_groups", lazy="select")
+    app: Mapped["App"] = relationship("App", back_populates="app_groups", lazy="raise_on_sql")
 
     __mapper_args__ = {
         "polymorphic_identity": "app_group",
@@ -1142,15 +1133,12 @@ class OktaGroupTagMap(Base):
         foreign_keys=[tag_id],
         lazy="raise_on_sql",
     )
-    # SQLAlchemy doesn't seem to support loading
-    # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
-    # in GET /api/audit/users so we have to enable "select" lazy loading.
     active_tag: Mapped[Tag] = relationship(
         "Tag",
         primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None))",
         back_populates="active_group_tags",
         viewonly=True,
-        lazy="select",
+        lazy="raise_on_sql",
         innerjoin=True,
     )
     enabled_active_tag: Mapped[Tag] = relationship(
@@ -1181,9 +1169,6 @@ class OktaGroupTagMap(Base):
         foreign_keys=[app_tag_map_id],
         lazy="raise_on_sql",
     )
-    # SQLAlchemy doesn't seem to support loading
-    # group.active_role_associated_group_[member|owner]_mappings.active_group when a group_id or user_id is specified
-    # in GET /api/audit/users so we have to enable "select" lazy loading.
     active_app_tag_mapping: Mapped["AppTagMap"] = relationship(
         "AppTagMap",
         primaryjoin="and_(AppTagMap.id == OktaGroupTagMap.app_tag_map_id, "
@@ -1191,7 +1176,7 @@ class OktaGroupTagMap(Base):
         back_populates="active_group_tag_mappings",
         foreign_keys=[app_tag_map_id],
         viewonly=True,
-        lazy="select",
+        lazy="raise_on_sql",
     )
 
 

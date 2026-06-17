@@ -92,7 +92,12 @@ class _DB:
         self._sessionmaker = sessionmaker(
             bind=engine,
             autoflush=False,
-            expire_on_commit=True,
+            # Loaded state survives commits. Required for the async flip:
+            # expired-attribute access on an AsyncSession raises MissingGreenlet,
+            # and operations/syncer keep using ORM objects across mid-flow
+            # commits. Attributes assigned SQL expressions (e.g. func.now())
+            # still expire at flush and need an explicit refresh before use.
+            expire_on_commit=False,
         )
         self._scoped = scoped_session(self._sessionmaker, scopefunc=lambda: _session_scope.get())
 

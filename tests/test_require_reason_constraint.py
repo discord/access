@@ -102,6 +102,9 @@ def test_require_reason_modify_group_users(
         == 1
     )
 
+    # drop identity-map state staled by the ops above (expire_on_commit=False)
+    db.session.expire_all()
+
     # Add the user to the okta group as member without a reason
     data: dict[str, Any] = {
         "members_to_add": [user.id],
@@ -1134,6 +1137,8 @@ def test_require_reason_approve_access_request(
         request_ownership=False,
         request_reason="test reason",
     ).execute()
+
+    db.session.expire_all()
 
     data = {"approved": True, "reason": ""}
 

@@ -217,6 +217,9 @@ def post_group_request(
     ).execute()
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr.id)).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
 
@@ -293,6 +296,9 @@ def put_group_request(
             rejection_reason=resolution_reason,
             notify_requester=gr.requester_user_id != current_user_id,
         ).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(
         select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)
     ).first()

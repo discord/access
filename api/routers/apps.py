@@ -175,6 +175,9 @@ def post_app(
         tags=body.tags_to_add or [],
         current_user_id=current_user_id,
     ).execute()
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == created.id)).first()
     return AppDetail.model_validate(refreshed, from_attributes=True)
 
@@ -257,6 +260,9 @@ def put_app(
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
+            # Drop cached ORM state so the response reflects what the operation
+            # committed (expire_on_commit=False keeps pre-operation state otherwise).
+            db.expire_all()
             refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
             return AppDetail.model_validate(refreshed, from_attributes=True)
         raise HTTPException(400, "Only tags can be modified for the Access application")
@@ -301,6 +307,9 @@ def put_app(
         current_user_id=current_user_id,
     ).execute()
 
+    # Drop cached ORM state so the response reflects what the operation
+    # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    db.expire_all()
     refreshed = db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_obj.id)).first()
 
     # Audit logging — both name renames and plugin assignment/configuration
