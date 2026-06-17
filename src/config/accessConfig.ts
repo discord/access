@@ -3,6 +3,9 @@ export interface AccessConfig {
   DEFAULT_ACCESS_TIME: string;
   NAME_VALIDATION_PATTERN: string;
   NAME_VALIDATION_ERROR: string;
+  IDP_NAME: string;
+  IDP_USER_URL_TEMPLATE: string;
+  IDP_GROUP_URL_TEMPLATE: string;
 }
 
 // use the globally-injected ACCESS_CONFIG from src/globals.d.ts, typed to AccessConfig interface
