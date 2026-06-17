@@ -28,7 +28,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from api.extensions import Db, db as _db
-from api.models import OktaGroupTagMap
+from api.models import AppTagMap, OktaGroupTagMap
 from api.operations import (
     CreateAccessRequest,
     CreateRoleRequest,
@@ -61,15 +61,24 @@ def production_shape(db: Db) -> dict[str, Any]:
     app_group = AppGroupFactory.build(app_id=app.id, name=f"App-{app.name}-Eng")
     okta_group = OktaGroupFactory.build()
     role_group = RoleGroupFactory.build()
-    tags = [TagFactory.build(constraints={}) for _ in range(3)]
+    tags = [TagFactory.build(constraints={}) for _ in range(4)]
 
     db.session.add_all([user, requester, app, app_group, okta_group, role_group, *tags])
+    db.session.commit()
+    # tags[3] is an app-level tag (AppTagMap) that propagates to the app group,
+    # so the app group's OktaGroupTagMap carries a non-None
+    # `active_app_tag_mapping` — the only way that relationship's non-None
+    # serialization path (-> AppTagMapDetail) gets exercised. tags[0..2] are
+    # direct group tags (active_app_tag_mapping is None).
+    app_tag_map = AppTagMap(tag_id=tags[3].id, app_id=app.id)
+    db.session.add(app_tag_map)
     db.session.commit()
     db.session.add_all(
         [
             OktaGroupTagMap(tag_id=tags[0].id, group_id=app_group.id),
             OktaGroupTagMap(tag_id=tags[1].id, group_id=okta_group.id),
             OktaGroupTagMap(tag_id=tags[2].id, group_id=role_group.id),
+            OktaGroupTagMap(tag_id=tags[3].id, group_id=app_group.id, app_tag_map_id=app_tag_map.id),
         ]
     )
     db.session.commit()
@@ -115,6 +124,7 @@ def production_shape(db: Db) -> dict[str, Any]:
         "okta_group": okta_group.id,
         "role_group": role_group.id,
         "tag": tags[0].id,
+        "app_propagated_tag": tags[3].id,
         "access_request_role_target": request_role_target.id,
         "access_request_app_target": request_app_target.id,
         "role_request": role_request.id,
@@ -175,6 +185,16 @@ def test_group_detail_for_each_type(
         assert app_actives and all(a["app"] is not None for a in app_actives)
     if key == "app_group":
         assert data["app"] is not None
+        # Reverse role-association: a role is associated to this app group, so its
+        # mappings serialize RoleGroupMap.active_group from the group side.
+        assert data["active_role_member_mappings"]
+        assert all(m["active_group"] is not None for m in data["active_role_member_mappings"])
+        # The app-propagated tag carries a non-None OktaGroupTagMap.active_app_tag_mapping
+        # (-> AppTagMapDetail); direct tags leave it None, so this is the only place
+        # that relationship's non-None serialization is exercised.
+        propagated = [t for t in data["active_group_tags"] if t.get("active_app_tag_mapping")]
+        assert propagated, "expected the app-propagated tag to serialize active_app_tag_mapping"
+        assert propagated[0]["active_app_tag_mapping"]["active_tag"] is not None
 
 
 def test_role_routes(app: FastAPI, client: TestClient, db: Db, production_shape: dict[str, Any], url_for: Any) -> None:
@@ -243,6 +263,8 @@ def test_role_request_routes(
     )
     assert data["requested_group"]["type"] == "app_group"
     assert data["requested_group"]["app"] is not None
+    # The role-request detail ref serializes OktaGroup.active_group_tags too.
+    assert data["requested_group"]["active_group_tags"]
 
 
 def test_tag_and_app_routes(
