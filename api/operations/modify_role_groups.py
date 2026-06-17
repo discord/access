@@ -106,7 +106,12 @@ class ModifyRoleGroups:
         self.groups_to_remove = []
         if len(groups_to_remove) > 0:
             self.groups_to_remove = db.session.scalars(
-                select(OktaGroup).where(OktaGroup.id.in_(groups_to_remove)).where(OktaGroup.deleted_at.is_(None))
+                select(OktaGroup)
+                # `app` is eager-loaded so the app-group-lifecycle hook path below
+                # can read `group.app` without tripping `lazy="raise_on_sql"`.
+                .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.id.in_(groups_to_remove))
+                .where(OktaGroup.deleted_at.is_(None))
             ).all()
 
         self.owner_groups_to_remove = []
@@ -249,6 +254,7 @@ class ModifyRoleGroups:
                 )
             ).all()
 
+            groups_to_remove_by_id = {group.id: group for group in self.groups_to_remove}
             for group_id in groups_to_remove_ids:
                 removed_members_with_other_access_ids = [
                     m.user_id
@@ -261,7 +267,9 @@ class ModifyRoleGroups:
 
                 # Invoke app group lifecycle plugin hooks for removed members
                 if len(okta_members_to_remove_ids) > 0:
-                    group = db.session.get(OktaGroup, group_id)
+                    # Use the eager-loaded group (with `app`) rather than a bare
+                    # db.session.get, so the hook path can read `group.app`.
+                    group = groups_to_remove_by_id[group_id]
                     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                     if plugin_id is not None:
                         members_losing_access = db.session.scalars(

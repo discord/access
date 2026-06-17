@@ -325,7 +325,15 @@ class ModifyGroupUsers:
             if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = db.session.scalars(
                     select(RoleGroupMap)
-                    .options(joinedload(RoleGroupMap.active_group))
+                    # Eager-load `active_group` with its polymorphic subtype and
+                    # `AppGroup.app` so the app-group-lifecycle hook path below can
+                    # read `associated_group.app` without tripping raise_on_sql.
+                    .options(
+                        selectinload(RoleGroupMap.active_group).options(
+                            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                            joinedload(AppGroup.app),
+                        )
+                    )
                     .join(RoleGroupMap.active_group)
                     .where(OktaGroup.is_managed.is_(True))
                     .where(
@@ -515,7 +523,15 @@ class ModifyGroupUsers:
             if type(self.group) is RoleGroup:
                 role_associated_groups_mappings = db.session.scalars(
                     select(RoleGroupMap)
-                    .options(joinedload(RoleGroupMap.active_group))
+                    # Eager-load `active_group` with its polymorphic subtype and
+                    # `AppGroup.app` so the app-group-lifecycle hook path below can
+                    # read `associated_group.app` without tripping raise_on_sql.
+                    .options(
+                        selectinload(RoleGroupMap.active_group).options(
+                            selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                            joinedload(AppGroup.app),
+                        )
+                    )
                     .join(RoleGroupMap.active_group)
                     .where(OktaGroup.is_managed.is_(True))
                     .where(

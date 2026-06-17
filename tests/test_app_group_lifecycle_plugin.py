@@ -1486,6 +1486,62 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_removed_calls) == 1
         assert test_plugin.members_removed_calls[0] == (test_group.id, [user.id])
 
+    def test_role_associated_lifecycle_hooks_survive_cold_session(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Regression for the AppGroup.app raise_on_sql flip: the role-associated
+        lifecycle paths read `group.app` via get_app_group_lifecycle_plugin_to_invoke,
+        so the operation's own query must eager-load `active_group` + `AppGroup.app`.
+        Warm-session tests miss a missing eager-load because `app` is many-to-one
+        and resolves from the identity map without SQL; each membership change here
+        runs after `expunge_all()` to force the cold load a production request sees.
+        Covers modify_group_users add/remove cascades and the modify_role_groups
+        group-removal cascade.
+        """
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        test_app = AppFactory.build(
+            name="TestApp_ColdSession",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}ColdGroup",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "external_cold"}}},
+        )
+        role_group = RoleGroupFactory.build(name="TestRoleCold", is_managed=True)
+        user = OktaUserFactory.build()
+        db.session.add_all([test_app, test_group, role_group, user])
+        db.session.commit()
+
+        mocker.patch.object(okta, "async_add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "async_remove_user_from_group", return_value=None)
+
+        ModifyRoleGroups(role_group=role_group, groups_to_add=[test_group.id], sync_to_okta=False).execute()
+
+        # Add a member to the role on a cold session -> modify_group_users add
+        # cascade reads associated_group.app.
+        db.session.expunge_all()
+        test_plugin.members_added_calls.clear()
+        ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+        assert test_plugin.members_added_calls == [(test_group.id, [user.id])]
+
+        # Remove the member on a cold session -> modify_group_users remove cascade.
+        db.session.expunge_all()
+        test_plugin.members_removed_calls.clear()
+        ModifyGroupUsers(group=role_group.id, members_to_remove=[user.id], sync_to_okta=False).execute()
+        assert test_plugin.members_removed_calls == [(test_group.id, [user.id])]
+
+        # Re-add the member, then remove the *group* from the role on a cold
+        # session -> modify_role_groups groups_to_remove cascade reads group.app.
+        ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+        db.session.expunge_all()
+        test_plugin.members_removed_calls.clear()
+        ModifyRoleGroups(role_group=role_group.id, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
+        assert test_plugin.members_removed_calls == [(test_group.id, [user.id])]
+
     def test_role_member_removed_but_has_redundant_access_via_another_role(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
