@@ -22,6 +22,8 @@ import Typography from '@mui/material/Typography';
 
 import AuditGroupIcon from '@mui/icons-material/History';
 import AuditRoleIcon from '@mui/icons-material/Diversity2';
+import IdpLinkButton from '../../components/IdpLinkButton';
+import {idpGroupUrl} from '../../config/idpLink';
 import DeleteIcon from '@mui/icons-material/Close';
 import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
@@ -299,6 +301,7 @@ export default function ReadGroup() {
                       </IconButton>
                     </Tooltip>
                   ) : null}
+                  <IdpLinkButton url={idpGroupUrl(group.id)} />
                 </Stack>
               </Stack>
             </Paper>

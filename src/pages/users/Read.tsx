@@ -2,6 +2,8 @@ import React from 'react';
 import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
 import AuditIcon from '@mui/icons-material/History';
+import IdpLinkButton from '../../components/IdpLinkButton';
+import {idpUserUrl} from '../../config/idpLink';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
@@ -642,6 +644,7 @@ export default function ReadUser() {
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>
+                  <IdpLinkButton url={idpUserUrl(user.id)} />
                 </Box>
               </Stack>
             </Paper>
