@@ -14,14 +14,14 @@ from api.schemas import AuditLogSchema, EventType
 class DeleteApp:
     def __init__(self, *, app: App | str, current_user_id: Optional[str] = None):
         self.app_id = app if isinstance(app, str) else app.id
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self) -> None:
         app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

@@ -29,7 +29,7 @@ class ModifyGroupType:
         self.group_id = group if isinstance(group, str) else group.id
 
         self.group_changes = group_changes
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self) -> OktaGroup:
         group = db.session.scalars(
@@ -41,7 +41,7 @@ class ModifyGroupType:
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

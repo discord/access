@@ -27,15 +27,15 @@ class CreateGroup:
         else:
             self.group = group
 
-        self._tags_arg = tags
-        self._current_user_id_arg = current_user_id
+        self.tag_ids = tags
+        self.current_user_id = current_user_id
 
     def execute(self, *, _group: Optional[T] = None) -> T:
-        tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))).all()
+        tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids))).all()
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

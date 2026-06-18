@@ -13,13 +13,13 @@ from api.schemas import AuditLogSchema, EventType
 class DeleteTag:
     def __init__(self, *, tag: Tag | str, current_user_id: Optional[str] = None):
         self.tag_id = tag if isinstance(tag, str) else tag.id
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self) -> None:
         tag = db.session.scalars(select(Tag).where(Tag.id == self.tag_id)).first()
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

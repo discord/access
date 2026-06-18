@@ -21,24 +21,24 @@ class ModifyAppTags:
         current_user_id: Optional[str],
     ):
         self.app_id = app if isinstance(app, str) else app.id
-        self._tags_to_add_arg = tags_to_add
-        self._tags_to_remove_arg = tags_to_remove
-        self._current_user_id_arg = current_user_id
+        self.tag_ids_to_add = tags_to_add
+        self.tag_ids_to_remove = tags_to_remove
+        self.current_user_id = current_user_id
 
     def execute(self) -> App:
         app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
 
         tags_to_add = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_to_add_arg))
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add))
         ).all()
 
         tags_to_remove = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_to_remove_arg))
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
         ).all()
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

@@ -34,7 +34,7 @@ class DeleteGroup:
 
         self.sync_to_okta = sync_to_okta
 
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self) -> None:
         # Run asychronously to parallelize Okta API requests
@@ -49,7 +49,7 @@ class DeleteGroup:
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

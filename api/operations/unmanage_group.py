@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class UnmanageGroup:
     def __init__(self, *, group: OktaGroup | str, current_user_id: Optional[str] = None):
         self.group_id = group if isinstance(group, str) else group.id
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self, dry_run: bool = False) -> None:
         group = db.session.scalars(
@@ -37,7 +37,7 @@ class UnmanageGroup:
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

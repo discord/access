@@ -41,9 +41,9 @@ class CreateApp:
             app.id = id
             self.app = app
 
-        self._tags_arg = tags
-        self._owner_id_arg = owner_id
-        self._owner_role_ids_arg = owner_role_ids
+        self.tag_ids = tags
+        self.owner_id = owner_id
+        self.owner_role_ids = owner_role_ids
 
         self.app_group_prefix = (
             f"{AppGroup.APP_GROUP_NAME_PREFIX}{self.app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
@@ -65,34 +65,33 @@ class CreateApp:
                 if name == self.owner_group_name:
                     continue
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
     def execute(self) -> App:
         tag_ids = [
             tag.id
             for tag in db.session.scalars(
-                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
+                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids))
             ).all()
         ]
 
         owner_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._owner_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.owner_id)
             ).first(),
             "id",
             None,
         )
-        owner_role_ids_arg = self._owner_role_ids_arg
         owner_role_ids: Optional[list[str]] = None
-        if owner_role_ids_arg is not None:
+        if self.owner_role_ids is not None:
             owner_roles = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids_arg)).where(RoleGroup.deleted_at.is_(None))
+                select(RoleGroup).where(RoleGroup.id.in_(self.owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
             ).all()
             owner_role_ids = [role.id for role in owner_roles]
 
         current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,

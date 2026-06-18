@@ -48,17 +48,17 @@ class ModifyGroupUsers:
         notify: bool = True,
     ):
         self.group_id = group if isinstance(group, str) else group.id
-        self._users_added_ended_at_arg = users_added_ended_at
-        self._members_to_add_arg = members_to_add
-        self._owners_to_add_arg = owners_to_add
-        self._members_should_expire_arg = members_should_expire
-        self._owners_should_expire_arg = owners_should_expire
-        self._members_to_remove_arg = members_to_remove
-        self._owners_to_remove_arg = owners_to_remove
+        self.users_added_ended_at = users_added_ended_at
+        self.member_ids_to_add = members_to_add
+        self.owner_ids_to_add = owners_to_add
+        self.member_should_expire_ids = members_should_expire
+        self.owner_should_expire_ids = owners_should_expire
+        self.member_ids_to_remove = members_to_remove
+        self.owner_ids_to_remove = owners_to_remove
 
         self.sync_to_okta = sync_to_okta
 
-        self._current_user_id_arg = current_user_id
+        self.current_user_id = current_user_id
 
         self.created_reason = created_reason
         self.notify = notify
@@ -70,14 +70,6 @@ class ModifyGroupUsers:
         return asyncio.run(self._execute())
 
     async def _execute(self) -> OktaGroup:
-        users_added_ended_at = self._users_added_ended_at_arg
-        members_to_add_arg = self._members_to_add_arg
-        owners_to_add_arg = self._owners_to_add_arg
-        members_should_expire_arg = self._members_should_expire_arg
-        owners_should_expire_arg = self._owners_should_expire_arg
-        members_to_remove_arg = self._members_to_remove_arg
-        owners_to_remove_arg = self._owners_to_remove_arg
-
         group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -94,63 +86,63 @@ class ModifyGroupUsers:
         members_added_ended_at = coalesce_ended_at(
             constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
             tags=tags,
-            initial_ended_at=users_added_ended_at,
+            initial_ended_at=self.users_added_ended_at,
             group_is_managed=group.is_managed,
         )
         owners_added_ended_at = coalesce_ended_at(
             constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
             tags=tags,
-            initial_ended_at=users_added_ended_at,
+            initial_ended_at=self.users_added_ended_at,
             group_is_managed=group.is_managed,
         )
 
         members_to_add: list[OktaUser] = []
-        if len(members_to_add_arg) > 0:
+        if len(self.member_ids_to_add) > 0:
             members_to_add = db.session.scalars(
-                select(OktaUser).where(OktaUser.id.in_(members_to_add_arg)).where(OktaUser.deleted_at.is_(None))
+                select(OktaUser).where(OktaUser.id.in_(self.member_ids_to_add)).where(OktaUser.deleted_at.is_(None))
             ).all()
 
         owners_to_add: list[OktaUser] = []
-        if len(owners_to_add_arg) > 0:
+        if len(self.owner_ids_to_add) > 0:
             owners_to_add = db.session.scalars(
-                select(OktaUser).where(OktaUser.id.in_(owners_to_add_arg)).where(OktaUser.deleted_at.is_(None))
+                select(OktaUser).where(OktaUser.id.in_(self.owner_ids_to_add)).where(OktaUser.deleted_at.is_(None))
             ).all()
 
         members_should_expire: list[OktaUserGroupMember] = []
-        if len(members_should_expire_arg) > 0:
+        if len(self.member_should_expire_ids) > 0:
             members_should_expire = db.session.scalars(
                 select(OktaUserGroupMember)
-                .where(OktaUserGroupMember.id.in_(members_should_expire_arg))
+                .where(OktaUserGroupMember.id.in_(self.member_should_expire_ids))
                 .where(OktaUserGroupMember.group_id == group.id)
                 .where(OktaUserGroupMember.ended_at > func.now())
                 .where(OktaUserGroupMember.is_owner.is_(False))
             ).all()
 
         owners_should_expire: list[OktaUserGroupMember] = []
-        if len(owners_should_expire_arg) > 0:
+        if len(self.owner_should_expire_ids) > 0:
             owners_should_expire = db.session.scalars(
                 select(OktaUserGroupMember)
-                .where(OktaUserGroupMember.id.in_(owners_should_expire_arg))
+                .where(OktaUserGroupMember.id.in_(self.owner_should_expire_ids))
                 .where(OktaUserGroupMember.group_id == group.id)
                 .where(OktaUserGroupMember.ended_at > func.now())
                 .where(OktaUserGroupMember.is_owner.is_(True))
             ).all()
 
         members_to_remove: list[OktaUser] = []
-        if len(members_to_remove_arg) > 0:
+        if len(self.member_ids_to_remove) > 0:
             members_to_remove = db.session.scalars(
-                select(OktaUser).where(OktaUser.id.in_(members_to_remove_arg)).where(OktaUser.deleted_at.is_(None))
+                select(OktaUser).where(OktaUser.id.in_(self.member_ids_to_remove)).where(OktaUser.deleted_at.is_(None))
             ).all()
 
         owners_to_remove: list[OktaUser] = []
-        if len(owners_to_remove_arg) > 0:
+        if len(self.owner_ids_to_remove) > 0:
             owners_to_remove = db.session.scalars(
-                select(OktaUser).where(OktaUser.id.in_(owners_to_remove_arg)).where(OktaUser.deleted_at.is_(None))
+                select(OktaUser).where(OktaUser.id.in_(self.owner_ids_to_remove)).where(OktaUser.deleted_at.is_(None))
             ).all()
 
         self.current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,
