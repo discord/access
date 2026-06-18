@@ -20,18 +20,13 @@ class ModifyAppTags:
         tags_to_remove: list[str] = [],
         current_user_id: Optional[str],
     ):
-        self._app_arg = app
+        self.app_id = app if isinstance(app, str) else app.id
         self._tags_to_add_arg = tags_to_add
         self._tags_to_remove_arg = tags_to_remove
         self._current_user_id_arg = current_user_id
 
     def execute(self) -> App:
-        app_arg = self._app_arg
-        app = db.session.scalars(
-            select(App)
-            .where(App.deleted_at.is_(None))
-            .where(App.id == (app_arg if isinstance(app_arg, str) else app_arg.id))
-        ).first()
+        app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
 
         tags_to_add = db.session.scalars(
             select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_to_add_arg))

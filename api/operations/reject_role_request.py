@@ -24,8 +24,12 @@ class RejectRoleRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
-        self._role_request_arg = role_request
-        self._current_user_id_arg = current_user_id
+        self.role_request_id = role_request if isinstance(role_request, str) else role_request.id
+        self.current_user_id = (
+            current_user_id.id
+            if current_user_id is not None and not isinstance(current_user_id, str)
+            else current_user_id
+        )
 
         self.rejection_reason = rejection_reason
         self.notify = notify
@@ -34,29 +38,23 @@ class RejectRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> RoleRequest:
-        role_request_arg = self._role_request_arg
-        current_user_id = self._current_user_id_arg
-
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        request_id = role_request_arg if isinstance(role_request_arg, str) else role_request_arg.id
         role_request = db.session.scalars(
-            select(RoleRequest).where(RoleRequest.id == request_id).with_for_update()
+            select(RoleRequest).where(RoleRequest.id == self.role_request_id).with_for_update()
         ).first()
 
-        if current_user_id is None:
+        if self.current_user_id is None:
             rejecter_id = None
-        elif isinstance(current_user_id, str):
+        else:
             rejecter_id = getattr(
                 db.session.scalars(
-                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
                 ).first(),
                 "id",
                 None,
             )
-        else:
-            rejecter_id = current_user_id.id
 
         # Don't allow rejecting a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent rejection surfaces

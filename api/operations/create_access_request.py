@@ -39,8 +39,8 @@ class CreateAccessRequest:
     ):
         self.id = self.__generate_id()
 
-        self._requester_user_arg = requester_user
-        self._requested_group_arg = requested_group
+        self.requester_user_id = requester_user if isinstance(requester_user, str) else requester_user.id
+        self.requested_group_id = requested_group if isinstance(requested_group, str) else requested_group.id
 
         self.request_ownership = request_ownership
         self.request_reason = request_reason
@@ -52,22 +52,13 @@ class CreateAccessRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[AccessRequest]:
-        requester_user = self._requester_user_arg
-        requested_group_arg = self._requested_group_arg
-
-        if isinstance(requester_user, str):
-            requester = db.session.get(OktaUser, requester_user)
-        else:
-            requester = requester_user
+        requester = db.session.get(OktaUser, self.requester_user_id)
 
         requested_group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
             .where(OktaGroup.deleted_at.is_(None))
-            .where(
-                OktaGroup.id
-                == (requested_group_arg if isinstance(requested_group_arg, str) else requested_group_arg.id)
-            )
+            .where(OktaGroup.id == self.requested_group_id)
         ).first()
 
         # Don't allow creating a request for an unmanaged group

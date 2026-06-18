@@ -27,8 +27,10 @@ class ApproveAccessRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
-        self._access_request_arg = access_request
-        self._approver_user_arg = approver_user
+        self.access_request_id = access_request if isinstance(access_request, str) else access_request.id
+        self.approver_user_id = (
+            approver_user.id if approver_user is not None and not isinstance(approver_user, str) else approver_user
+        )
 
         self.approval_reason = approval_reason
 
@@ -39,9 +41,6 @@ class ApproveAccessRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> AccessRequest:
-        access_request_arg = self._access_request_arg
-        approver_user = self._approver_user_arg
-
         # Lock the request row for the duration of the transaction so two
         # concurrent approvers can't both pass the pending-state guard below
         # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
@@ -50,23 +49,17 @@ class ApproveAccessRequest:
         access_request = db.session.scalars(
             select(AccessRequest)
             .options(joinedload(AccessRequest.active_requested_group))
-            .where(
-                AccessRequest.id
-                == (access_request_arg if isinstance(access_request_arg, str) else access_request_arg.id)
-            )
+            .where(AccessRequest.id == self.access_request_id)
             .with_for_update(of=AccessRequest)
         ).first()
 
-        if approver_user is None:
+        if self.approver_user_id is None:
             approver_id = None
             approver_email = None
-        elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+        else:
+            approver = db.session.get(OktaUser, self.approver_user_id)
             approver_id = approver.id
             approver_email = approver.email
-        else:
-            approver_id = approver_user.id
-            approver_email = approver_user.email
 
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces

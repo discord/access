@@ -22,7 +22,7 @@ from api.services import okta
 
 class DeleteUser:
     def __init__(self, *, user: OktaUser | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
-        self._user_arg = user
+        self.user_id = user if isinstance(user, str) else user.id
 
         self.sync_to_okta = sync_to_okta
 
@@ -33,11 +33,7 @@ class DeleteUser:
         return asyncio.run(self._execute())
 
     async def _execute(self) -> None:
-        user_arg = self._user_arg
-        if isinstance(user_arg, str):
-            user = db.session.scalars(select(OktaUser).where(OktaUser.id == user_arg)).first()
-        else:
-            user = user_arg
+        user = db.session.scalars(select(OktaUser).where(OktaUser.id == self.user_id)).first()
 
         current_user_id = getattr(
             db.session.scalars(

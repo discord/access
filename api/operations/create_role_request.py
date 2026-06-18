@@ -43,9 +43,9 @@ class CreateRoleRequest:
     ):
         self.id = self.__generate_id()
 
-        self._requester_user_arg = requester_user
-        self._requester_role_arg = requester_role
-        self._requested_group_arg = requested_group
+        self.requester_user_id = requester_user if isinstance(requester_user, str) else requester_user.id
+        self.requester_role_id = requester_role if isinstance(requester_role, str) else requester_role.id
+        self.requested_group_id = requested_group if isinstance(requested_group, str) else requested_group.id
 
         self.request_ownership = request_ownership
         self.request_reason = request_reason
@@ -55,28 +55,11 @@ class CreateRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[RoleRequest]:
-        requester_user = self._requester_user_arg
-        requester_role_arg = self._requester_role_arg
-        requested_group_arg = self._requested_group_arg
+        requester = db.session.get(OktaUser, self.requester_user_id)
 
-        if isinstance(requester_user, str):
-            requester = db.session.get(OktaUser, requester_user)
-        else:
-            requester = requester_user
-
-        if isinstance(requester_role_arg, str):
-            requester_role = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == requester_role_arg)
-            ).first()
-            # self.requester_role = (
-            #     db.session.query(RoleGroup)
-            #     .options(joinedload(OktaUserGroupMember.user))
-            #     .filter(RoleGroup.deleted_at.is_(None))
-            #     .filter(RoleGroup.id == requester_role)
-            #     .first()
-            # )
-        else:
-            requester_role = requester_role_arg
+        requester_role = db.session.scalars(
+            select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.requester_role_id)
+        ).first()
 
         requested_group = db.session.scalars(
             select(OktaGroup)
@@ -86,10 +69,7 @@ class CreateRoleRequest:
                 selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(
-                OktaGroup.id
-                == (requested_group_arg if isinstance(requested_group_arg, str) else requested_group_arg.id)
-            )
+            .where(OktaGroup.id == self.requested_group_id)
         ).first()
 
         # Don't allow creating a request for an unmanaged group

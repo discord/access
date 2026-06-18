@@ -21,18 +21,17 @@ class ModifyGroupTags:
         tags_to_remove: list[str] = [],
         current_user_id: Optional[str],
     ):
-        self._group_arg = group
+        self.group_id = group if isinstance(group, str) else group.id
         self._tags_to_add_arg = tags_to_add
         self._tags_to_remove_arg = tags_to_remove
         self._current_user_id_arg = current_user_id
 
     def execute(self) -> OktaGroup:
-        group_arg = self._group_arg
         group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
         tags_to_add = db.session.scalars(

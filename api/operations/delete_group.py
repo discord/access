@@ -30,7 +30,7 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteGroup:
     def __init__(self, *, group: OktaGroup | str, sync_to_okta: bool = True, current_user_id: Optional[str] = None):
-        self._group_arg = group
+        self.group_id = group if isinstance(group, str) else group.id
 
         self.sync_to_okta = sync_to_okta
 
@@ -41,11 +41,10 @@ class DeleteGroup:
         asyncio.run(self._execute())
 
     async def _execute(self) -> None:
-        group_arg = self._group_arg
         group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
         current_user_id = getattr(

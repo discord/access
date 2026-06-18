@@ -24,8 +24,12 @@ class RejectGroupRequest:
         notify_requester: bool = True,
         current_user_id: Optional[str | OktaUser] = None,
     ):
-        self._group_request_arg = group_request
-        self._current_user_id_arg = current_user_id
+        self.group_request_id = group_request if isinstance(group_request, str) else group_request.id
+        self.current_user_id = (
+            current_user_id.id
+            if current_user_id is not None and not isinstance(current_user_id, str)
+            else current_user_id
+        )
 
         self.rejection_reason = rejection_reason
         self.notify = notify
@@ -34,26 +38,20 @@ class RejectGroupRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> GroupRequest:
-        group_request_arg = self._group_request_arg
-        current_user_id = self._current_user_id_arg
-
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        request_id = group_request_arg if isinstance(group_request_arg, str) else group_request_arg.id
         group_request = db.session.scalars(
-            select(GroupRequest).where(GroupRequest.id == request_id).with_for_update()
+            select(GroupRequest).where(GroupRequest.id == self.group_request_id).with_for_update()
         ).first()
 
-        if current_user_id is None:
+        if self.current_user_id is None:
             rejecter_id = None
-        elif isinstance(current_user_id, str):
+        else:
             user = db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first()
             rejecter_id = user.id if user else None
-        else:
-            rejecter_id = current_user_id.id
 
         # Already resolved — raise rather than silently no-op so a stale/
         # concurrent rejection surfaces as a conflict instead of a success.

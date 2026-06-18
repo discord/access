@@ -27,8 +27,10 @@ class ApproveRoleRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
-        self._role_request_arg = role_request
-        self._approver_user_arg = approver_user
+        self.role_request_id = role_request if isinstance(role_request, str) else role_request.id
+        self.approver_user_id = (
+            approver_user.id if approver_user is not None and not isinstance(approver_user, str) else approver_user
+        )
 
         self.approval_reason = approval_reason
 
@@ -39,9 +41,6 @@ class ApproveRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> RoleRequest:
-        role_request_arg = self._role_request_arg
-        approver_user = self._approver_user_arg
-
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-grant. `of=` keeps
         # FOR UPDATE off the joinedloads' nullable outer-join sides (Postgres
@@ -49,20 +48,17 @@ class ApproveRoleRequest:
         role_request = db.session.scalars(
             select(RoleRequest)
             .options(joinedload(RoleRequest.active_requested_group), joinedload(RoleRequest.active_requester_role))
-            .where(RoleRequest.id == (role_request_arg if isinstance(role_request_arg, str) else role_request_arg.id))
+            .where(RoleRequest.id == self.role_request_id)
             .with_for_update(of=RoleRequest)
         ).first()
 
-        if approver_user is None:
+        if self.approver_user_id is None:
             approver_id = None
             approver_email = None
-        elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+        else:
+            approver = db.session.get(OktaUser, self.approver_user_id)
             approver_id = approver.id
             approver_email = approver.email
-        else:
-            approver_id = approver_user.id
-            approver_email = approver_user.email
 
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces

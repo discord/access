@@ -47,7 +47,7 @@ class ModifyGroupUsers:
         created_reason: str = "",
         notify: bool = True,
     ):
-        self._group_arg = group
+        self.group_id = group if isinstance(group, str) else group.id
         self._users_added_ended_at_arg = users_added_ended_at
         self._members_to_add_arg = members_to_add
         self._owners_to_add_arg = owners_to_add
@@ -70,7 +70,6 @@ class ModifyGroupUsers:
         return asyncio.run(self._execute())
 
     async def _execute(self) -> OktaGroup:
-        group_arg = self._group_arg
         users_added_ended_at = self._users_added_ended_at_arg
         members_to_add_arg = self._members_to_add_arg
         owners_to_add_arg = self._owners_to_add_arg
@@ -87,7 +86,7 @@ class ModifyGroupUsers:
                 selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
         # Determine the minimum time allowed for group membership and ownership by current group tags

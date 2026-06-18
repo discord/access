@@ -39,8 +39,10 @@ class ApproveGroupRequest:
         notify: bool = True,
         bypass_self_approval: bool = False,
     ):
-        self._group_request_arg = group_request
-        self._approver_user_arg = approver_user
+        self.group_request_id = group_request if isinstance(group_request, str) else group_request.id
+        self.approver_user_id = (
+            approver_user.id if approver_user is not None and not isinstance(approver_user, str) else approver_user
+        )
 
         self.approval_reason = approval_reason
         self.notify = notify
@@ -48,9 +50,6 @@ class ApproveGroupRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[GroupRequest]:
-        group_request_arg = self._group_request_arg
-        approver_user = self._approver_user_arg
-
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
@@ -58,22 +57,17 @@ class ApproveGroupRequest:
         group_request = db.session.scalars(
             select(GroupRequest)
             .options(joinedload(GroupRequest.active_requester))
-            .where(
-                GroupRequest.id == (group_request_arg if isinstance(group_request_arg, str) else group_request_arg.id)
-            )
+            .where(GroupRequest.id == self.group_request_id)
             .with_for_update(of=GroupRequest)
         ).first()
 
         approver_id: str | None = None
-        if approver_user is None:
+        if self.approver_user_id is None:
             approver_email = None
-        elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
+        else:
+            approver = db.session.get(OktaUser, self.approver_user_id)
             approver_id = approver.id
             approver_email = approver.email
-        else:
-            approver_id = approver_user.id
-            approver_email = approver_user.email
 
         # Guard against missing group_request
         if group_request is None:

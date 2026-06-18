@@ -47,7 +47,7 @@ class ModifyRoleGroups:
         created_reason: str = "",
         notify: bool = True,
     ):
-        self._role_group_arg = role_group
+        self.role_group_id = role_group if isinstance(role_group, str) else role_group.id
 
         self.groups_added_ended_at = groups_added_ended_at
 
@@ -73,7 +73,6 @@ class ModifyRoleGroups:
         return asyncio.run(self._execute())
 
     async def _execute(self) -> RoleGroup:
-        role_group_arg = self._role_group_arg
         groups_to_add_arg = self._groups_to_add_arg
         owner_groups_to_add_arg = self._owner_groups_to_add_arg
         groups_should_expire_arg = self._groups_should_expire_arg
@@ -81,12 +80,9 @@ class ModifyRoleGroups:
         groups_to_remove_arg = self._groups_to_remove_arg
         owner_groups_to_remove_arg = self._owner_groups_to_remove_arg
 
-        if isinstance(role_group_arg, str):
-            self.role = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == role_group_arg)
-            ).first()
-        else:
-            self.role = role_group_arg
+        self.role = db.session.scalars(
+            select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.role_group_id)
+        ).first()
 
         groups_to_add: list[OktaGroup] = []
         if len(groups_to_add_arg) > 0:

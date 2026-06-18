@@ -19,7 +19,7 @@ class CheckForReason:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
-        self._group_arg = group
+        self.group_id = group if isinstance(group, str) else group.id
 
         self.reason = reason
 
@@ -31,7 +31,6 @@ class CheckForReason:
         return reason is None or reason.strip() == ""
 
     def execute_for_group(self) -> Tuple[bool, str]:
-        group_arg = self._group_arg
         group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -47,7 +46,7 @@ class CheckForReason:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
         if self.invalid_reason(self.reason):
@@ -95,7 +94,6 @@ class CheckForReason:
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
-        group_arg = self._group_arg
         group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -111,7 +109,7 @@ class CheckForReason:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
         if type(group) is not RoleGroup:

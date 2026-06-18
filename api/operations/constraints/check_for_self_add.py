@@ -20,16 +20,15 @@ class CheckForSelfAdd:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
-        self._group_arg = group
-        self._current_user_arg = current_user
+        self.group_id = group if isinstance(group, str) else group.id
+        self.current_user_id = (
+            current_user.id if current_user is not None and not isinstance(current_user, str) else current_user
+        )
 
         self.members_to_add = members_to_add
         self.owners_to_add = owners_to_add
 
     def execute_for_group(self) -> Tuple[bool, str]:
-        group_arg = self._group_arg
-        current_user_arg = self._current_user_arg
-
         group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -45,16 +44,14 @@ class CheckForSelfAdd:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
-        if current_user_arg is None:
+        if self.current_user_id is None:
             current_user = None
         else:
             current_user = db.session.scalars(
-                select(OktaUser)
-                .where(OktaUser.deleted_at.is_(None))
-                .where(OktaUser.id == (current_user_arg if isinstance(current_user_arg, str) else current_user_arg.id))
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first()
 
         if current_user is None or _is_access_admin(db.session, current_user.id):
@@ -115,9 +112,6 @@ class CheckForSelfAdd:
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
-        group_arg = self._group_arg
-        current_user_arg = self._current_user_arg
-
         group = db.session.scalars(
             select(OktaGroup)
             .options(
@@ -133,16 +127,14 @@ class CheckForSelfAdd:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
-        if current_user_arg is None:
+        if self.current_user_id is None:
             current_user = None
         else:
             current_user = db.session.scalars(
-                select(OktaUser)
-                .where(OktaUser.deleted_at.is_(None))
-                .where(OktaUser.id == (current_user_arg if isinstance(current_user_arg, str) else current_user_arg.id))
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first()
 
         if current_user is None or _is_access_admin(db.session, current_user.id):
