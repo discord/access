@@ -13,7 +13,9 @@ from api.config import settings
 
 def test_config_endpoint_returns_idp_settings(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "IDP_NAME", "Okta")
-    monkeypatch.setattr(settings, "IDP_USER_URL_TEMPLATE", "https://example-admin.okta.com/admin/user/profile/view/{id}")
+    monkeypatch.setattr(
+        settings, "IDP_USER_URL_TEMPLATE", "https://example-admin.okta.com/admin/user/profile/view/{id}"
+    )
     monkeypatch.setattr(settings, "IDP_GROUP_URL_TEMPLATE", "https://example-admin.okta.com/admin/group/{id}")
 
     rep = client.get("/api/config")
