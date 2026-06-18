@@ -7,6 +7,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy import func, or_
 from api.extensions import Db
 from api.models import (
+    AccessRequest,
     AccessRequestStatus,
     App,
     AppGroup,
@@ -15,9 +16,11 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
 )
 from api.auth import permissions as AuthorizationHelpers
-from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
+from api.operations import CreateAccessRequest, CreateRoleRequest, ModifyGroupUsers, ModifyRoleGroups
+from api.plugins import get_notification_hook
 from api.services import okta
 from tests.factories import OktaUserFactory, RoleGroupFactory
 
@@ -345,6 +348,77 @@ def test_put_role_members(
     assert membership_access_request.approved_membership_id is not None
     assert ownership_access_request.status == AccessRequestStatus.APPROVED
     assert ownership_access_request.approved_membership_id is not None
+
+
+def test_role_group_add_approves_pending_requests_on_cold_session(
+    db: Db,
+    mocker: MockerFixture,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
+    """Cold-session guard for ModifyRoleGroups auto-approval + notification.
+
+    Adding a group to a role auto-approves pending member/owner AccessRequests
+    and RoleRequests for the granted access, then spawns notification tasks. The
+    notify step reads `access_request.requested_group`, `role_request.requester_role`,
+    and `role_request.requested_group` (all `lazy="raise_on_sql"`). We
+    `expunge_all()` first so the request rows are re-loaded cold, mirroring
+    production where the approving request runs in a different session than the
+    one that created the requests.
+
+    Note: this does not isolate the defensive `joinedload(...)` eager-loads on
+    the pending-request queries. By the time the notify loop runs, the operation
+    has already loaded those exact groups (as `groups_to_add`/`owner_groups_to_add`)
+    and the role (`self.role`) into the identity map, so the many-to-one reads
+    resolve without SQL whether or not the eager-loads are present — there's no
+    reachable path through `execute()` where the target isn't resident. The test
+    still guards the broader path: it fails if a future change reads a genuinely
+    non-resident `raise_on_sql` relationship in the notify loop, or stops firing
+    the completion hooks.
+    """
+    db.session.add_all([role_group, okta_group, user])
+    db.session.commit()
+
+    # `user` must be an active role member so adding `okta_group` to the role
+    # grants them access and approves their pending membership request.
+    ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+
+    access_request = CreateAccessRequest(
+        requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
+    ).execute()
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert access_request is not None and role_request is not None
+    assert access_request.status == AccessRequestStatus.PENDING
+    assert role_request.status == AccessRequestStatus.PENDING
+    access_request_id, role_request_id = access_request.id, role_request.id
+
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+    hook = get_notification_hook()
+    access_completed_spy = mocker.patch.object(hook, "access_request_completed")
+    role_completed_spy = mocker.patch.object(hook, "access_role_request_completed")
+
+    # Cold session: force ModifyRoleGroups to re-query the request rows rather
+    # than reuse the warm instances created above.
+    db.session.expunge_all()
+
+    ModifyRoleGroups(
+        role_group=role_group.id, groups_to_add=[okta_group.id], current_user_id=user.id, sync_to_okta=False
+    ).execute()
+
+    # Both pending requests were auto-approved and their completion hooks fired,
+    # i.e. the notify loop read its relationships without tripping raise_on_sql.
+    assert db.session.get(AccessRequest, access_request_id).status == AccessRequestStatus.APPROVED
+    assert db.session.get(RoleRequest, role_request_id).status == AccessRequestStatus.APPROVED
+    assert access_completed_spy.call_count == 1
+    assert role_completed_spy.call_count == 1
 
 
 def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
