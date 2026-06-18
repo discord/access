@@ -47,92 +47,90 @@ class ApproveGroupRequest:
         self.bypass_self_approval = bypass_self_approval
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
-        group_request = self._group_request_arg
+    def execute(self) -> Optional[GroupRequest]:
+        group_request_arg = self._group_request_arg
         approver_user = self._approver_user_arg
 
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
         # (Postgres rejects that); no-op on SQLite.
-        self.group_request = db.session.scalars(
+        group_request = db.session.scalars(
             select(GroupRequest)
             .options(joinedload(GroupRequest.active_requester))
-            .where(GroupRequest.id == (group_request if isinstance(group_request, str) else group_request.id))
+            .where(
+                GroupRequest.id == (group_request_arg if isinstance(group_request_arg, str) else group_request_arg.id)
+            )
             .with_for_update(of=GroupRequest)
         ).first()
 
-        self.approver_id: str | None = None
+        approver_id: str | None = None
         if approver_user is None:
-            self.approver_email = None
+            approver_email = None
         elif isinstance(approver_user, str):
             approver = db.session.get(OktaUser, approver_user)
-            self.approver_id = approver.id
-            self.approver_email = approver.email
+            approver_id = approver.id
+            approver_email = approver.email
         else:
-            self.approver_id = approver_user.id
-            self.approver_email = approver_user.email
+            approver_id = approver_user.id
+            approver_email = approver_user.email
 
-    def execute(self) -> Optional[GroupRequest]:
-        self._resolve()
         # Guard against missing group_request
-        if self.group_request is None:
+        if group_request is None:
             return None
 
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
-        if self.group_request.status != AccessRequestStatus.PENDING or self.group_request.resolved_at is not None:
+        if group_request.status != AccessRequestStatus.PENDING or group_request.resolved_at is not None:
             raise ConflictError("Group request is no longer pending")
 
         # Don't allow requester to approve their own request
-        if self.group_request.requester_user_id == self.approver_id and not self.bypass_self_approval:
-            return self.group_request
+        if group_request.requester_user_id == approver_id and not self.bypass_self_approval:
+            return group_request
 
         # Don't allow approving a request if the requester is deleted. (Note:
         # a deleted requester usually can't even load above — active_requester
         # is an inner join filtering deleted_at — so this is a belt-and-braces
         # check that mirrors the historical no-op rather than a 4xx path.)
-        requester = db.session.get(OktaUser, self.group_request.requester_user_id)
+        requester = db.session.get(OktaUser, group_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
-            return self.group_request
+            return group_request
 
         # Resolve group fields: use resolved_* if set, otherwise fall back to requested_*
         resolved_name = (
-            self.group_request.resolved_group_name
-            if self.group_request.resolved_group_name
-            else self.group_request.requested_group_name
+            group_request.resolved_group_name
+            if group_request.resolved_group_name
+            else group_request.requested_group_name
         )
         resolved_description = (
-            self.group_request.resolved_group_description
-            if self.group_request.resolved_group_description
-            else self.group_request.requested_group_description
+            group_request.resolved_group_description
+            if group_request.resolved_group_description
+            else group_request.requested_group_description
         )
         resolved_type = (
-            self.group_request.resolved_group_type
-            if self.group_request.resolved_group_type
-            else self.group_request.requested_group_type
+            group_request.resolved_group_type
+            if group_request.resolved_group_type
+            else group_request.requested_group_type
         )
         resolved_app_id = (
-            self.group_request.resolved_app_id
-            if self.group_request.resolved_app_id
-            else self.group_request.requested_app_id
+            group_request.resolved_app_id if group_request.resolved_app_id else group_request.requested_app_id
         )
         resolved_tags = (
-            self.group_request.resolved_group_tags
-            if self.group_request.resolved_group_tags
-            else self.group_request.requested_group_tags
+            group_request.resolved_group_tags
+            if group_request.resolved_group_tags
+            else group_request.requested_group_tags
         )
 
         # authorization
         access_owner_ids = {u.id for u in get_access_owners()}
-        is_admin = self.approver_id in access_owner_ids
+        is_admin = approver_id in access_owner_ids
 
         if not is_admin:
-            type_changed = resolved_type != self.group_request.requested_group_type
-            app_changed = resolved_app_id != self.group_request.requested_app_id
+            type_changed = resolved_type != group_request.requested_group_type
+            app_changed = resolved_app_id != group_request.requested_app_id
             if type_changed or app_changed:
-                return self.group_request
+                return group_request
 
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
@@ -144,29 +142,29 @@ class ApproveGroupRequest:
                         AppGroup.app_id == resolved_app_id,
                         AppGroup.is_owner.is_(True),
                         AppGroup.deleted_at.is_(None),
-                        OktaUserGroupMember.user_id == self.approver_id,
+                        OktaUserGroupMember.user_id == approver_id,
                         OktaUserGroupMember.is_owner.is_(True),
                         OktaUserGroupMember.ended_at.is_(None),
                     )
                 ).first()
 
                 if not is_app_owner:
-                    return self.group_request
+                    return group_request
         else:
             # okta_group / role_group request: only admins can approve
             if not is_admin:
-                return self.group_request
+                return group_request
 
         if resolved_type != "app_group" and resolved_name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
-            return self.group_request
+            return group_request
 
         if resolved_type != "role_group" and resolved_name.startswith(RoleGroup.ROLE_GROUP_NAME_PREFIX):
-            return self.group_request
+            return group_request
 
         if resolved_type == "app_group" and resolved_name.endswith(
             f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
         ):
-            return self.group_request
+            return group_request
 
         existing_group = db.session.scalars(
             select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
@@ -174,7 +172,7 @@ class ApproveGroupRequest:
             .where(OktaGroup.deleted_at.is_(None))
         ).first()
         if existing_group is not None:
-            return self.group_request
+            return group_request
 
         db.session.commit()
 
@@ -187,10 +185,10 @@ class ApproveGroupRequest:
                     "event_type": EventType.group_request_approve,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.approver_id,
-                    "current_user_email": self.approver_email,
-                    "group_request": self.group_request,
-                    "requester": db.session.get(OktaUser, self.group_request.requester_user_id),
+                    "current_user_id": approver_id,
+                    "current_user_email": approver_email,
+                    "group_request": group_request,
+                    "requester": db.session.get(OktaUser, group_request.requester_user_id),
                 }
             )
         )
@@ -216,7 +214,7 @@ class ApproveGroupRequest:
         created_group: AppGroup | OktaGroup | RoleGroup = CreateGroup(
             group=new_group,
             tags=resolved_tags,
-            current_user_id=self.approver_id,
+            current_user_id=approver_id,
         ).execute()
 
         # Check tags on created group for ownership length constraints including propagated app tags
@@ -234,9 +232,9 @@ class ApproveGroupRequest:
 
         # Determine the initial ending time: prefer resolved, fall back to requested
         initial_ending_at = (
-            self.group_request.resolved_ownership_ending_at
-            if self.group_request.resolved_ownership_ending_at
-            else self.group_request.requested_ownership_ending_at
+            group_request.resolved_ownership_ending_at
+            if group_request.resolved_ownership_ending_at
+            else group_request.requested_ownership_ending_at
         )
 
         coalesced_ownership_ending_at = coalesce_ended_at(
@@ -247,43 +245,43 @@ class ApproveGroupRequest:
         )
 
         # Update the group request with the coalesced value to ensure consistency
-        self.group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
+        group_request.resolved_ownership_ending_at = coalesced_ownership_ending_at
 
         # Add the requester as an owner of the newly created group
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
-        if self.bypass_self_approval and self.approver_id is not None:
+        if self.bypass_self_approval and approver_id is not None:
             can_add_owner, _ = CheckForSelfAdd(
-                group=created_group_with_tags, current_user=self.approver_id, owners_to_add=[self.approver_id]
+                group=created_group_with_tags, current_user=approver_id, owners_to_add=[approver_id]
             ).execute_for_group()
 
         if can_add_owner:
             ModifyGroupUsers(
                 group=created_group_with_tags,
-                owners_to_add=[self.group_request.requester_user_id],
+                owners_to_add=[group_request.requester_user_id],
                 users_added_ended_at=coalesced_ownership_ending_at,
-                current_user_id=self.approver_id,
-                created_reason=f"Group request approved: {self.group_request.request_reason}",
+                current_user_id=approver_id,
+                created_reason=f"Group request approved: {group_request.request_reason}",
                 notify=self.notify,
             ).execute()
 
-        self.group_request.status = AccessRequestStatus.APPROVED
-        self.group_request.resolved_at = func.now()
-        self.group_request.resolver_user_id = self.approver_id
-        self.group_request.resolution_reason = self.approval_reason
-        self.group_request.approved_group_id = created_group.id
+        group_request.status = AccessRequestStatus.APPROVED
+        group_request.resolved_at = func.now()
+        group_request.resolver_user_id = approver_id
+        group_request.resolution_reason = self.approval_reason
+        group_request.approved_group_id = created_group.id
 
         db.session.commit()
 
         if self.notify:
-            requester = db.session.get(OktaUser, self.group_request.requester_user_id)
-            approvers = get_all_possible_request_approvers(self.group_request)
+            requester = db.session.get(OktaUser, group_request.requester_user_id)
+            approvers = get_all_possible_request_approvers(group_request)
             self.notification_hook.access_group_request_completed(
-                group_request=self.group_request,
+                group_request=group_request,
                 group=created_group,
                 requester=requester,
                 approvers=approvers,
                 notify_requester=True,
             )
 
-        return self.group_request
+        return group_request

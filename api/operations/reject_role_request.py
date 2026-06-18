@@ -33,22 +33,22 @@ class RejectRoleRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
-        role_request = self._role_request_arg
+    def execute(self) -> RoleRequest:
+        role_request_arg = self._role_request_arg
         current_user_id = self._current_user_id_arg
 
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        request_id = role_request if isinstance(role_request, str) else role_request.id
-        self.role_request = db.session.scalars(
+        request_id = role_request_arg if isinstance(role_request_arg, str) else role_request_arg.id
+        role_request = db.session.scalars(
             select(RoleRequest).where(RoleRequest.id == request_id).with_for_update()
         ).first()
 
         if current_user_id is None:
-            self.rejecter_id = None
+            rejecter_id = None
         elif isinstance(current_user_id, str):
-            self.rejecter_id = getattr(
+            rejecter_id = getattr(
                 db.session.scalars(
                     select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
                 ).first(),
@@ -56,32 +56,30 @@ class RejectRoleRequest:
                 None,
             )
         else:
-            self.rejecter_id = current_user_id.id
+            rejecter_id = current_user_id.id
 
-    def execute(self) -> RoleRequest:
-        self._resolve()
         # Don't allow rejecting a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent rejection surfaces
         # as a conflict instead of looking like a success.
-        if self.role_request.status != AccessRequestStatus.PENDING or self.role_request.resolved_at is not None:
+        if role_request.status != AccessRequestStatus.PENDING or role_request.resolved_at is not None:
             raise ConflictError("Role request is no longer pending")
 
-        self.role_request.status = AccessRequestStatus.REJECTED
-        self.role_request.resolved_at = func.now()
-        self.role_request.resolver_user_id = self.rejecter_id
-        self.role_request.resolution_reason = self.rejection_reason
+        role_request.status = AccessRequestStatus.REJECTED
+        role_request.resolved_at = func.now()
+        role_request.resolver_user_id = rejecter_id
+        role_request.resolution_reason = self.rejection_reason
 
         db.session.commit()
 
         # Audit logging
         email = None
-        if self.rejecter_id is not None:
-            email = getattr(db.session.get(OktaUser, self.rejecter_id), "email", None)
+        if rejecter_id is not None:
+            email = getattr(db.session.get(OktaUser, rejecter_id), "email", None)
 
         group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.id == self.role_request.requested_group_id)
+            .where(OktaGroup.id == role_request.requested_group_id)
             .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
         ).first()
 
@@ -93,23 +91,23 @@ class RejectRoleRequest:
                     "event_type": EventType.role_request_reject,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.rejecter_id,
+                    "current_user_id": rejecter_id,
                     "current_user_email": email,
                     "group": group,
-                    "role_request": self.role_request,
-                    "requester": db.session.get(OktaUser, self.role_request.requester_user_id),
+                    "role_request": role_request,
+                    "requester": db.session.get(OktaUser, role_request.requester_user_id),
                 }
             )
         )
 
         if self.notify:
-            requester = db.session.get(OktaUser, self.role_request.requester_user_id)
-            requester_role = db.session.get(OktaGroup, self.role_request.requester_role_id)
+            requester = db.session.get(OktaUser, role_request.requester_user_id)
+            requester_role = db.session.get(OktaGroup, role_request.requester_role_id)
 
-            approvers = get_all_possible_request_approvers(self.role_request)
+            approvers = get_all_possible_request_approvers(role_request)
 
             self.notification_hook.access_role_request_completed(
-                role_request=self.role_request,
+                role_request=role_request,
                 role=requester_role,
                 group=group,
                 requester=requester,
@@ -117,4 +115,4 @@ class RejectRoleRequest:
                 notify_requester=self.notify_requester,
             )
 
-        return self.role_request
+        return role_request

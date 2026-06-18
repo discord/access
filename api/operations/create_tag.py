@@ -29,8 +29,8 @@ class CreateTag:
 
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
-        self.current_user_id = getattr(
+    def execute(self) -> Tag:
+        current_user_id = getattr(
             db.session.scalars(
                 select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
@@ -38,8 +38,6 @@ class CreateTag:
             None,
         )
 
-    def execute(self) -> Tag:
-        self._resolve()
         # Do not allow non-deleted groups with the same name (case-insensitive)
         existing_tag = db.session.scalars(
             select(Tag).where(func.lower(Tag.name) == func.lower(self.tag.name)).where(Tag.deleted_at.is_(None))
@@ -52,8 +50,8 @@ class CreateTag:
 
         # Audit logging
         email = None
-        if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+        if current_user_id is not None:
+            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -63,7 +61,7 @@ class CreateTag:
                     "event_type": EventType.tag_create,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.current_user_id,
+                    "current_user_id": current_user_id,
                     "current_user_email": email,
                     "tag": self.tag,
                 }

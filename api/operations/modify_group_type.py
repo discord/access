@@ -31,16 +31,16 @@ class ModifyGroupType:
         self.group_changes = group_changes
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
-        group = self._group_arg
-        self.group = db.session.scalars(
+    def execute(self) -> OktaGroup:
+        group_arg = self._group_arg
+        group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+            .where(OktaGroup.id == (group_arg if isinstance(group_arg, str) else group_arg.id))
         ).first()
 
-        self.current_user_id = getattr(
+        current_user_id = getattr(
             db.session.scalars(
                 select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
@@ -48,18 +48,16 @@ class ModifyGroupType:
             None,
         )
 
-    def execute(self) -> OktaGroup:
-        self._resolve()
         # Update group type if it's being modified
-        if type(self.group) is not type(self.group_changes):
-            group_id = self.group.id
-            old_group_type = self.group.type
+        if type(group) is not type(self.group_changes):
+            group_id = group.id
+            old_group_type = group.type
 
             # Clean-up the old child table row
-            if type(self.group) is RoleGroup:
+            if type(group) is RoleGroup:
                 # Bail if changing away from RoleGroup for a group whose name uses the
                 # reserved Role- prefix; non-RoleGroup groups must not carry that prefix
-                if type(self.group_changes) is not RoleGroup and self.group.name.startswith(
+                if type(self.group_changes) is not RoleGroup and group.name.startswith(
                     RoleGroup.ROLE_GROUP_NAME_PREFIX
                 ):
                     raise ValueError(
@@ -75,28 +73,26 @@ class ModifyGroupType:
                             RoleGroupMap.ended_at > func.now(),
                         )
                     )
-                    .where(RoleGroupMap.role_group_id == self.group.id)
+                    .where(RoleGroupMap.role_group_id == group.id)
                 ).all()
                 ModifyRoleGroups(
-                    role_group=self.group,
-                    current_user_id=self.current_user_id,
+                    role_group=group,
+                    current_user_id=current_user_id,
                     groups_to_remove=[g.group_id for g in active_role_associated_groups if not g.is_owner],
                     owner_groups_to_remove=[g.group_id for g in active_role_associated_groups if g.is_owner],
                 ).execute()
                 db.session.commit()
 
                 db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
-            elif type(self.group) is AppGroup:
+            elif type(group) is AppGroup:
                 # Bail if this is the owner group for the app
                 # which cannot have its type changed
-                if self.group.is_owner:
+                if group.is_owner:
                     raise ValueError("Owner app groups cannot have their type modified")
 
                 # Bail if changing away from AppGroup for a group whose name uses the
                 # reserved App- prefix; non-AppGroup groups must not carry that prefix
-                if type(self.group_changes) is not AppGroup and self.group.name.startswith(
-                    AppGroup.APP_GROUP_NAME_PREFIX
-                ):
+                if type(self.group_changes) is not AppGroup and group.name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
                     raise ValueError(
                         "The App- prefix cannot be used for non-app groups. Please choose a different group name."
                     )
@@ -104,15 +100,15 @@ class ModifyGroupType:
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
                 # the linked GitHub team).
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+                plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                 if plugin_id is not None:
                     try:
                         hook = get_app_group_lifecycle_hook()
-                        hook.group_deleted(session=db.session, group=self.group, plugin_id=plugin_id)
+                        hook.group_deleted(session=db.session, group=group, plugin_id=plugin_id)
                         db.session.commit()
                     except Exception:
                         logging.getLogger("api").exception(
-                            f"Failed to invoke group_deleted hook for group {self.group.id} with plugin '{plugin_id}'"
+                            f"Failed to invoke group_deleted hook for group {group.id} with plugin '{plugin_id}'"
                         )
                         db.session.rollback()
 
@@ -125,7 +121,7 @@ class ModifyGroupType:
                             OktaGroupTagMap.ended_at > func.now(),
                         )
                     )
-                    .where(OktaGroupTagMap.group_id == self.group.id)
+                    .where(OktaGroupTagMap.group_id == group.id)
                     .where(OktaGroupTagMap.app_tag_map_id.isnot(None))
                     .values({OktaGroupTagMap.app_tag_map_id: None})
                     .execution_options(synchronize_session="fetch")
@@ -139,10 +135,10 @@ class ModifyGroupType:
 
             # We've deleted the group child class row group,
             # update the type to the base class type "okta_group"
-            self.group.type = OktaGroup.__mapper_args__["polymorphic_identity"]
+            group.type = OktaGroup.__mapper_args__["polymorphic_identity"]
             db.session.commit()
 
-            self.group = db.session.scalars(
+            group = db.session.scalars(
                 select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == group_id)
             ).first()
 
@@ -166,14 +162,14 @@ class ModifyGroupType:
                     if group_user.is_owner:
                         ModifyGroupUsers(
                             group=group_id,
-                            current_user_id=self.current_user_id,
+                            current_user_id=current_user_id,
                             owners_to_add=[group_user.user_id],
                             users_added_ended_at=group_user.ended_at,
                         ).execute()
                     else:
                         ModifyGroupUsers(
                             group=group_id,
-                            current_user_id=self.current_user_id,
+                            current_user_id=current_user_id,
                             members_to_add=[group_user.user_id],
                             users_added_ended_at=group_user.ended_at,
                         ).execute()
@@ -193,13 +189,13 @@ class ModifyGroupType:
                     if role_group_map.is_owner:
                         ModifyRoleGroups(
                             role_group=role_group_map.role_group_id,
-                            current_user_id=self.current_user_id,
+                            current_user_id=current_user_id,
                             owner_groups_to_remove=[role_group_map.group_id],
                         ).execute()
                     else:
                         ModifyRoleGroups(
                             role_group=role_group_map.role_group_id,
-                            current_user_id=self.current_user_id,
+                            current_user_id=current_user_id,
                             groups_to_remove=[role_group_map.group_id],
                         ).execute()
 
@@ -213,7 +209,7 @@ class ModifyGroupType:
                 )
 
             # Update the group type
-            self.group.type = self.group_changes.type
+            group.type = self.group_changes.type
             db.session.commit()
 
             # Expunge the session so the changed object is flushed from the ORM
@@ -250,7 +246,7 @@ class ModifyGroupType:
                 ).execute()
 
             # Return a new lookup for the group
-            self.group = db.session.scalars(
+            group = db.session.scalars(
                 select(OktaGroup)
                 .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
                 .where(OktaGroup.deleted_at.is_(None))
@@ -260,24 +256,23 @@ class ModifyGroupType:
             # Invoke group_created hook after converting to an AppGroup (symmetric
             # with group_deleted which fires when converting away from AppGroup).
             if type(self.group_changes) is AppGroup:
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
+                plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
                 if plugin_id is not None:
                     try:
                         hook = get_app_group_lifecycle_hook()
-                        hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
+                        hook.group_created(session=db.session, group=group, plugin_id=plugin_id)
                         db.session.commit()
                     except Exception:
                         logging.getLogger("api").exception(
-                            f"Failed to invoke group_created hook for group {self.group.id}"
-                            f" with plugin '{plugin_id}'"
+                            f"Failed to invoke group_created hook for group {group.id}" f" with plugin '{plugin_id}'"
                         )
                         db.session.rollback()
 
         # Audit logging if type changed
-        if self.group.type != old_group_type:
+        if group.type != old_group_type:
             email = None
-            if self.current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+            if current_user_id is not None:
+                email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(
@@ -286,12 +281,12 @@ class ModifyGroupType:
                         "event_type": EventType.group_modify_type,
                         "user_agent": _ctx.user_agent if _ctx else None,
                         "ip": _ctx.ip if _ctx else None,
-                        "current_user_id": self.current_user_id,
+                        "current_user_id": current_user_id,
                         "current_user_email": email,
-                        "group": self.group,
+                        "group": group,
                         "old_group_type": old_group_type,
                     }
                 )
             )
 
-        return self.group
+        return group

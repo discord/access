@@ -30,12 +30,10 @@ class CreateGroup:
         self._tags_arg = tags
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
-        self.tags = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
-        ).all()
+    def execute(self, *, _group: Optional[T] = None) -> T:
+        tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))).all()
 
-        self.current_user_id = getattr(
+        current_user_id = getattr(
             db.session.scalars(
                 select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
@@ -43,8 +41,6 @@ class CreateGroup:
             None,
         )
 
-    def execute(self, *, _group: Optional[T] = None) -> T:
-        self._resolve()
         # Do not allow non-deleted groups with the same name (case-insensitive)
         existing_group = db.session.scalars(
             select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
@@ -105,8 +101,8 @@ class CreateGroup:
             db.session.commit()
 
         # Add direct tags
-        if len(self.tags) > 0:
-            for tag in self.tags:
+        if len(tags) > 0:
+            for tag in tags:
                 db.session.add(
                     OktaGroupTagMap(
                         tag_id=tag.id,
@@ -130,8 +126,8 @@ class CreateGroup:
 
         # Audit logging
         email = None
-        if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+        if current_user_id is not None:
+            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
         group = db.session.scalars(
             select(OktaGroup)
@@ -148,7 +144,7 @@ class CreateGroup:
                     "event_type": EventType.group_create,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.current_user_id,
+                    "current_user_id": current_user_id,
                     "current_user_email": email,
                     "group": group,
                 }

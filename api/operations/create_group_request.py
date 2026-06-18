@@ -54,15 +54,13 @@ class CreateGroupRequest:
         self.conditional_access_hook = get_conditional_access_hook()
         self.notification_hook = get_notification_hook()
 
-    def _resolve(self) -> None:
+    def execute(self) -> Optional[GroupRequest]:
         requester_user = self._requester_user_arg
         if isinstance(requester_user, str):
-            self.requester = db.session.get(OktaUser, requester_user)
+            requester = db.session.get(OktaUser, requester_user)
         else:
-            self.requester = requester_user
+            requester = requester_user
 
-    def execute(self) -> Optional[GroupRequest]:
-        self._resolve()
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
             return None
@@ -122,7 +120,7 @@ class CreateGroupRequest:
         group_request = GroupRequest(
             id=self.id,
             status=AccessRequestStatus.PENDING,
-            requester_user_id=self.requester.id,
+            requester_user_id=requester.id,
             requested_group_name=self.requested_group_name,
             requested_group_description=self.requested_group_description,
             requested_group_type=self.requested_group_type,
@@ -140,10 +138,10 @@ class CreateGroupRequest:
             # Get app owners by checking active owner app groups
             app_owner_user_ids = {u.id for u in get_app_managers(app.id)}
 
-            if self.requester.id in app_owner_user_ids:
+            if requester.id in app_owner_user_ids:
                 ApproveGroupRequest(
                     group_request=group_request,
-                    approver_user=self.requester,
+                    approver_user=requester,
                     approval_reason="Requester owns parent app and can create app groups",
                     notify=False,
                     bypass_self_approval=True,
@@ -176,10 +174,10 @@ class CreateGroupRequest:
                     "event_type": EventType.group_request_create,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.requester.id,
-                    "current_user_email": self.requester.email,
+                    "current_user_id": requester.id,
+                    "current_user_email": requester.email,
                     "group_request": group_request,
-                    "requester": self.requester,
+                    "requester": requester,
                 }
             )
         )
@@ -187,7 +185,7 @@ class CreateGroupRequest:
         # Check conditional access hook
         conditional_access_responses = self.conditional_access_hook.group_request_created(
             group_request=group_request,
-            requester=self.requester,
+            requester=requester,
         )
 
         for response in conditional_access_responses:
@@ -210,7 +208,7 @@ class CreateGroupRequest:
         # Send notification to approvers
         self.notification_hook.access_group_request_created(
             group_request=group_request,
-            requester=self.requester,
+            requester=requester,
             approvers=approvers,
         )
 

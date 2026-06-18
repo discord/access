@@ -67,30 +67,30 @@ class CreateApp:
                 self.additional_app_groups.append(AppGroup(is_owner=False, name=name, description=description))
         self._current_user_id_arg = current_user_id
 
-    def _resolve(self) -> None:
-        self.tag_ids = [
+    def execute(self) -> App:
+        tag_ids = [
             tag.id
             for tag in db.session.scalars(
                 select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self._tags_arg))
             ).all()
         ]
 
-        self.owner_id = getattr(
+        owner_id = getattr(
             db.session.scalars(
                 select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._owner_id_arg)
             ).first(),
             "id",
             None,
         )
-        owner_role_ids = self._owner_role_ids_arg
-        self.owner_role_ids = None
-        if owner_role_ids is not None:
-            self.owner_roles = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids)).where(RoleGroup.deleted_at.is_(None))
+        owner_role_ids_arg = self._owner_role_ids_arg
+        owner_role_ids: Optional[list[str]] = None
+        if owner_role_ids_arg is not None:
+            owner_roles = db.session.scalars(
+                select(RoleGroup).where(RoleGroup.id.in_(owner_role_ids_arg)).where(RoleGroup.deleted_at.is_(None))
             ).all()
-            self.owner_role_ids = [role.id for role in self.owner_roles]
+            owner_role_ids = [role.id for role in owner_roles]
 
-        self.current_user_id = getattr(
+        current_user_id = getattr(
             db.session.scalars(
                 select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self._current_user_id_arg)
             ).first(),
@@ -98,8 +98,6 @@ class CreateApp:
             None,
         )
 
-    def execute(self) -> App:
-        self._resolve()
         # Do not allow non-deleted apps with the same name
         existing_app = db.session.scalars(
             select(App).where(func.lower(App.name) == func.lower(self.app.name)).where(App.deleted_at.is_(None))
@@ -109,8 +107,8 @@ class CreateApp:
 
         # Audit logging
         email = None
-        if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+        if current_user_id is not None:
+            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -120,10 +118,10 @@ class CreateApp:
                     "event_type": EventType.app_create,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.current_user_id,
+                    "current_user_id": current_user_id,
                     "current_user_email": email,
                     "app": self.app,
-                    "owner_id": self.owner_id,
+                    "owner_id": owner_id,
                 }
             )
         )
@@ -146,34 +144,34 @@ class CreateApp:
                 name=self.owner_group_name,
                 description=app_owners_group_description(self.app.name),
             )
-            owner_app_group = CreateGroup(group=owner_app_group, current_user_id=self.current_user_id).execute()
+            owner_app_group = CreateGroup(group=owner_app_group, current_user_id=current_user_id).execute()
         else:
             group_id = existing_owner_group.id
             if type(existing_owner_group) is not AppGroup:
                 ModifyGroupType(
                     group=existing_owner_group,
                     group_changes=AppGroup(app_id=app_id, is_owner=True),
-                    current_user_id=self.current_user_id,
+                    current_user_id=current_user_id,
                 ).execute()
             owner_app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             db.session.commit()
 
-        if self.owner_id is not None:
+        if owner_id is not None:
             # Add the app owner to the app owner group as members and owners
             ModifyGroupUsers(
                 group=owner_app_group,
-                current_user_id=self.current_user_id,
-                members_to_add=[self.owner_id],
-                owners_to_add=[self.owner_id],
+                current_user_id=current_user_id,
+                members_to_add=[owner_id],
+                owners_to_add=[owner_id],
             ).execute()
 
-        if self.owner_role_ids is not None:
-            for role_id in self.owner_role_ids:
+        if owner_role_ids is not None:
+            for role_id in owner_role_ids:
                 ModifyRoleGroups(
                     role_group=role_id,
-                    current_user_id=self.current_user_id,
+                    current_user_id=current_user_id,
                     groups_to_add=[owner_app_group.id],
                     owner_groups_to_add=[owner_app_group.id],
                 ).execute()
@@ -194,7 +192,7 @@ class CreateApp:
             ModifyGroupType(
                 group=existing_app_group_id,
                 group_changes=AppGroup(app_id=app_id, is_owner=False),
-                current_user_id=self.current_user_id,
+                current_user_id=current_user_id,
             ).execute()
 
         # Create any additional app groups for the app
@@ -209,26 +207,26 @@ class CreateApp:
                 ).first()
 
                 if existing_group is None:
-                    CreateGroup(group=app_group, current_user_id=self.current_user_id).execute()
+                    CreateGroup(group=app_group, current_user_id=current_user_id).execute()
                 else:
                     group_id = existing_group.id
                     if type(existing_owner_group) is not AppGroup:
                         ModifyGroupType(
                             group=existing_owner_group,
                             group_changes=AppGroup(app_id=app_id, is_owner=False),
-                            current_user_id=self.current_user_id,
+                            current_user_id=current_user_id,
                         ).execute()
                     app_group = db.session.scalars(select(AppGroup).where(AppGroup.id == group_id)).first()
                     app_group.app_id = app_id
                     app_group.is_owner = False
                     db.session.commit()
 
-        if len(self.tag_ids) > 0:
+        if len(tag_ids) > 0:
             all_app_groups = db.session.scalars(
                 select(AppGroup).where(AppGroup.app_id == app_id).where(AppGroup.deleted_at.is_(None))
             ).all()
 
-            for tag_id in self.tag_ids:
+            for tag_id in tag_ids:
                 db.session.add(
                     AppTagMap(
                         tag_id=tag_id,
