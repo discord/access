@@ -20,30 +20,33 @@ class ModifyAppTags:
         tags_to_remove: list[str] = [],
         current_user_id: Optional[str],
     ):
-        self.app = db.session.scalars(
-            select(App).where(App.deleted_at.is_(None)).where(App.id == (app if isinstance(app, str) else app.id))
-        ).first()
+        self.app_id = app if isinstance(app, str) else app.id
+        self.tag_ids_to_add = tags_to_add
+        self.tag_ids_to_remove = tags_to_remove
+        self.current_user_id = current_user_id
 
-        self.tags_to_add = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_add))
+    def execute(self) -> App:
+        app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
+
+        tags_to_add = db.session.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add))
         ).all()
 
-        self.tags_to_remove = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(tags_to_remove))
+        tags_to_remove = db.session.scalars(
+            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
         ).all()
 
-        self.current_user_id = getattr(
+        current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,
         )
 
-    def execute(self) -> App:
-        if len(self.tags_to_add) > 0:
+        if len(tags_to_add) > 0:
             # Only add tags that are not already associated with this app
-            tag_ids_to_add = [t.id for t in self.tags_to_add]
+            tag_ids_to_add = [t.id for t in tags_to_add]
             existing_tag_maps = db.session.scalars(
                 select(AppTagMap)
                 .where(
@@ -53,7 +56,7 @@ class ModifyAppTags:
                     )
                 )
                 .where(
-                    AppTagMap.app_id == self.app.id,
+                    AppTagMap.app_id == app.id,
                 )
                 .where(
                     AppTagMap.tag_id.in_(tag_ids_to_add),
@@ -66,7 +69,7 @@ class ModifyAppTags:
                 db.session.add(
                     AppTagMap(
                         tag_id=tag_id,
-                        app_id=self.app.id,
+                        app_id=app.id,
                     )
                 )
             db.session.commit()
@@ -74,7 +77,7 @@ class ModifyAppTags:
             new_app_tag_maps = db.session.scalars(
                 select(AppTagMap)
                 .where(AppTagMap.tag_id.in_(new_tag_ids_to_add))
-                .where(AppTagMap.app_id == self.app.id)
+                .where(AppTagMap.app_id == app.id)
                 .where(
                     or_(
                         AppTagMap.ended_at.is_(None),
@@ -84,7 +87,7 @@ class ModifyAppTags:
             ).all()
 
             all_app_groups = db.session.scalars(
-                select(AppGroup).where(AppGroup.app_id == self.app.id).where(AppGroup.deleted_at.is_(None))
+                select(AppGroup).where(AppGroup.app_id == app.id).where(AppGroup.deleted_at.is_(None))
             ).all()
             for app_tag_map in new_app_tag_maps:
                 for app_group in all_app_groups:
@@ -102,12 +105,12 @@ class ModifyAppTags:
 
             db.session.commit()
 
-        if len(self.tags_to_remove) > 0:
-            tag_ids_to_remove = [t.id for t in self.tags_to_remove]
+        if len(tags_to_remove) > 0:
+            tag_ids_to_remove = [t.id for t in tags_to_remove]
             existing_tag_maps_query = (
                 select(AppTagMap)
                 .where(AppTagMap.tag_id.in_(tag_ids_to_remove))
-                .where(AppTagMap.app_id == self.app.id)
+                .where(AppTagMap.app_id == app.id)
                 .where(
                     or_(
                         AppTagMap.ended_at.is_(None),
@@ -135,7 +138,7 @@ class ModifyAppTags:
             db.session.execute(
                 update(AppTagMap)
                 .where(AppTagMap.tag_id.in_(tag_ids_to_remove))
-                .where(AppTagMap.app_id == self.app.id)
+                .where(AppTagMap.app_id == app.id)
                 .where(
                     or_(
                         AppTagMap.ended_at.is_(None),
@@ -148,10 +151,10 @@ class ModifyAppTags:
             db.session.commit()
 
         # Audit log if tags changed
-        if len(self.tags_to_add) > 0 or len(self.tags_to_remove) > 0:
+        if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             email = None
-            if self.current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+            if current_user_id is not None:
+                email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(
@@ -160,13 +163,13 @@ class ModifyAppTags:
                         "event_type": EventType.app_modify_tags,
                         "user_agent": _ctx.user_agent if _ctx else None,
                         "ip": _ctx.ip if _ctx else None,
-                        "current_user_id": self.current_user_id,
+                        "current_user_id": current_user_id,
                         "current_user_email": email,
-                        "app": self.app,
-                        "tags_added": self.tags_to_add,
-                        "tags_removed": self.tags_to_remove,
+                        "app": app,
+                        "tags_added": tags_to_add,
+                        "tags_removed": tags_to_remove,
                     }
                 )
             )
 
-        return self.app
+        return app

@@ -20,7 +20,16 @@ class CheckForSelfAdd:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
-        self.group = db.session.scalars(
+        self.group_id = group if isinstance(group, str) else group.id
+        self.current_user_id = (
+            current_user.id if current_user is not None and not isinstance(current_user, str) else current_user
+        )
+
+        self.members_to_add = members_to_add
+        self.owners_to_add = owners_to_add
+
+    def execute_for_group(self) -> Tuple[bool, str]:
+        group = db.session.scalars(
             select(OktaGroup)
             .options(
                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
@@ -35,52 +44,46 @@ class CheckForSelfAdd:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
-        if current_user is None:
-            self.current_user = None
+        if self.current_user_id is None:
+            current_user = None
         else:
-            self.current_user = db.session.scalars(
-                select(OktaUser)
-                .where(OktaUser.deleted_at.is_(None))
-                .where(OktaUser.id == (current_user if isinstance(current_user, str) else current_user.id))
+            current_user = db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first()
 
-        self.members_to_add = members_to_add
-        self.owners_to_add = owners_to_add
-
-    def execute_for_group(self) -> Tuple[bool, str]:
-        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
+        if current_user is None or _is_access_admin(db.session, current_user.id):
             return True, ""
 
-        if len(self.owners_to_add) > 0 and self.current_user.id in self.owners_to_add:
+        if len(self.owners_to_add) > 0 and current_user.id in self.owners_to_add:
             disallow_self_add_ownership = coalesce_constraints(
                 constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                tags=[tag_map.active_tag for tag_map in self.group.active_group_tags],
+                tags=[tag_map.active_tag for tag_map in group.active_group_tags],
             )
-            if self.group.is_managed and disallow_self_add_ownership is True:
+            if group.is_managed and disallow_self_add_ownership is True:
                 return (
                     False,
                     "Current user is an group owner who is restricted "
-                    + f"from readding themself as owner to {self.group.name} due to group tags",
+                    + f"from readding themself as owner to {group.name} due to group tags",
                 )
-        if len(self.members_to_add) > 0 and self.current_user.id in self.members_to_add:
+        if len(self.members_to_add) > 0 and current_user.id in self.members_to_add:
             disallow_self_add_membership = coalesce_constraints(
                 constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                tags=[tag_map.active_tag for tag_map in self.group.active_group_tags],
+                tags=[tag_map.active_tag for tag_map in group.active_group_tags],
             )
-            if self.group.is_managed and disallow_self_add_membership is True:
+            if group.is_managed and disallow_self_add_membership is True:
                 return (
                     False,
                     "Current user is a group owner who is restricted "
-                    + f"from adding themself as member to {self.group.name} due to group tags",
+                    + f"from adding themself as member to {group.name} due to group tags",
                 )
 
             # If the group is a role group check to see if a reason is required for adding members or owners
             # to the associated groups
-            if type(self.group) is RoleGroup and self.group.is_managed:
-                member_groups = [rm.active_group for rm in self.group.active_role_associated_group_member_mappings]
+            if type(group) is RoleGroup and group.is_managed:
+                member_groups = [rm.active_group for rm in group.active_role_associated_group_member_mappings]
                 for member_group in member_groups:
                     disallow_self_add_membership = coalesce_constraints(
                         constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
@@ -90,10 +93,10 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {self.group.name} because the associated group {member_group.name} "
+                            + f"member to {group.name} because the associated group {member_group.name} "
                             + "has group tags which restricts self-adding membership",
                         )
-                owner_groups = [rm.active_group for rm in self.group.active_role_associated_group_owner_mappings]
+                owner_groups = [rm.active_group for rm in group.active_role_associated_group_owner_mappings]
                 for owner_group in owner_groups:
                     disallow_self_add_ownership = coalesce_constraints(
                         constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
@@ -103,16 +106,41 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {self.group.name} because the associated group {member_group.name} "
+                            + f"member to {group.name} because the associated group {member_group.name} "
                             + "has group tags which restricts self-adding ownership",
                         )
         return True, ""
 
     def execute_for_role(self) -> Tuple[bool, str]:
-        if self.current_user is None or _is_access_admin(db.session, self.current_user.id):
+        group = db.session.scalars(
+            select(OktaGroup)
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                .joinedload(RoleGroupMap.active_group)
+                .selectinload(OktaGroup.active_group_tags)
+                .joinedload(OktaGroupTagMap.active_tag),
+                selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                .joinedload(RoleGroupMap.active_group)
+                .selectinload(OktaGroup.active_group_tags)
+                .joinedload(OktaGroupTagMap.active_tag),
+            )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.group_id)
+        ).first()
+
+        if self.current_user_id is None:
+            current_user = None
+        else:
+            current_user = db.session.scalars(
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            ).first()
+
+        if current_user is None or _is_access_admin(db.session, current_user.id):
             return True, ""
 
-        if type(self.group) is not RoleGroup:
+        if type(group) is not RoleGroup:
             return True, ""
 
         # Check to see if the current user is a member of the role,
@@ -121,8 +149,8 @@ class CheckForSelfAdd:
             db.session.scalar(
                 select(func.count()).select_from(
                     select(OktaUserGroupMember)
-                    .where(OktaUserGroupMember.group_id == self.group.id)
-                    .where(OktaUserGroupMember.user_id == self.current_user.id)
+                    .where(OktaUserGroupMember.group_id == group.id)
+                    .where(OktaUserGroupMember.user_id == current_user.id)
                     .where(OktaUserGroupMember.is_owner.is_(False))
                     .where(
                         or_(
@@ -152,7 +180,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role member who is restricted from adding "
-                            + f"{self.group.name} as a member to {member_group.name} because that group  "
+                            + f"{group.name} as a member to {member_group.name} because that group  "
                             + "has tags which restricts self-adding membership",
                         )
 
@@ -173,7 +201,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role member who is restricted from adding "
-                            + f"{self.group.name} as an owner to {owner_group.name} because that group  "
+                            + f"{group.name} as an owner to {owner_group.name} because that group  "
                             + "has tags which restricts self-adding ownership",
                         )
         return True, ""

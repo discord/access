@@ -25,22 +25,25 @@ logger = logging.getLogger(__name__)
 # Run this operation when a group becomes unmanaged by Access
 class UnmanageGroup:
     def __init__(self, *, group: OktaGroup | str, current_user_id: Optional[str] = None):
-        self.group = db.session.scalars(
+        self.group_id = group if isinstance(group, str) else group.id
+        self.current_user_id = current_user_id
+
+    def execute(self, dry_run: bool = False) -> None:
+        group = db.session.scalars(
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(OktaGroup.id == (group if isinstance(group, str) else group.id))
+            .where(OktaGroup.id == self.group_id)
         ).first()
 
-        self.current_user_id = getattr(
+        current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,
         )
 
-    def execute(self, dry_run: bool = False) -> None:
-        if self.group.is_managed:
+        if group.is_managed:
             return
 
         # TODO: End all direct ownerships of the group?
@@ -54,7 +57,7 @@ class UnmanageGroup:
                     OktaUserGroupMember.ended_at > func.now(),
                 )
             )
-            .where(OktaUserGroupMember.group_id == self.group.id)
+            .where(OktaUserGroupMember.group_id == group.id)
             .where(OktaUserGroupMember.role_group_map_id.isnot(None))
         )
 
@@ -62,7 +65,7 @@ class UnmanageGroup:
             logger.info(
                 f"User {active_access_via_role.user_id} has invalid "
                 f"{'ownership' if active_access_via_role.is_owner else 'membership'} "
-                f"to unmanaged group {self.group.id} via role"
+                f"to unmanaged group {group.id} via role"
             )
 
         if not dry_run:
@@ -74,7 +77,7 @@ class UnmanageGroup:
                         OktaUserGroupMember.ended_at > func.now(),
                     )
                 )
-                .where(OktaUserGroupMember.group_id == self.group.id)
+                .where(OktaUserGroupMember.group_id == group.id)
                 .where(OktaUserGroupMember.role_group_map_id.isnot(None))
                 .values({OktaUserGroupMember.ended_at: func.now()})
                 .execution_options(synchronize_session="fetch")
@@ -85,21 +88,21 @@ class UnmanageGroup:
         active_role_assignments_query = (
             select(RoleGroupMap)
             .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
-            .where(RoleGroupMap.group_id == self.group.id)
+            .where(RoleGroupMap.group_id == group.id)
         )
 
         for active_role_assignment in db.session.scalars(active_role_assignments_query).all():
             logger.info(
                 f"Role {active_role_assignment.role_group_id} has invalid "
                 f"{'ownership' if active_role_assignment.is_owner else 'membership'} "
-                f"to unmanaged group {self.group.id}"
+                f"to unmanaged group {group.id}"
             )
 
         if not dry_run:
             db.session.execute(
                 update(RoleGroupMap)
                 .where(or_(RoleGroupMap.ended_at.is_(None), RoleGroupMap.ended_at > func.now()))
-                .where(RoleGroupMap.group_id == self.group.id)
+                .where(RoleGroupMap.group_id == group.id)
                 .values({RoleGroupMap.ended_at: func.now()})
                 .execution_options(synchronize_session="fetch")
             )
@@ -111,20 +114,19 @@ class UnmanageGroup:
         # Reject all pending access requests for this group
         obsolete_access_requests = db.session.scalars(
             select(AccessRequest)
-            .where(AccessRequest.requested_group_id == self.group.id)
+            .where(AccessRequest.requested_group_id == group.id)
             .where(AccessRequest.status == AccessRequestStatus.PENDING)
             .where(AccessRequest.resolved_at.is_(None))
         ).all()
         for obsolete_access_request in obsolete_access_requests:
             logger.info(
-                f"Rejecting obsolete access request {obsolete_access_request.id} "
-                f"for unmanaged group {self.group.id}"
+                f"Rejecting obsolete access request {obsolete_access_request.id} " f"for unmanaged group {group.id}"
             )
             if not dry_run:
                 RejectAccessRequest(
                     access_request=obsolete_access_request,
                     rejection_reason="Closed because the requested group is no longer managed by Access",
-                    current_user_id=self.current_user_id,
+                    current_user_id=current_user_id,
                 ).execute()
 
         # Reject all pending role requests touching this group, either as the
@@ -133,20 +135,18 @@ class UnmanageGroup:
             select(RoleRequest)
             .where(
                 or_(
-                    RoleRequest.requested_group_id == self.group.id,
-                    RoleRequest.requester_role_id == self.group.id,
+                    RoleRequest.requested_group_id == group.id,
+                    RoleRequest.requester_role_id == group.id,
                 )
             )
             .where(RoleRequest.status == AccessRequestStatus.PENDING)
             .where(RoleRequest.resolved_at.is_(None))
         ).all()
         for obsolete_role_request in obsolete_role_requests:
-            logger.info(
-                f"Rejecting obsolete role request {obsolete_role_request.id} for unmanaged group {self.group.id}"
-            )
+            logger.info(f"Rejecting obsolete role request {obsolete_role_request.id} for unmanaged group {group.id}")
             if not dry_run:
                 RejectRoleRequest(
                     role_request=obsolete_role_request,
                     rejection_reason="Closed because a group in this role request is no longer managed by Access",
-                    current_user_id=self.current_user_id,
+                    current_user_id=current_user_id,
                 ).execute()

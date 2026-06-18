@@ -43,35 +43,9 @@ class CreateRoleRequest:
     ):
         self.id = self.__generate_id()
 
-        if isinstance(requester_user, str):
-            self.requester = db.session.get(OktaUser, requester_user)
-        else:
-            self.requester = requester_user
-
-        if isinstance(requester_role, str):
-            self.requester_role = db.session.scalars(
-                select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == requester_role)
-            ).first()
-            # self.requester_role = (
-            #     db.session.query(RoleGroup)
-            #     .options(joinedload(OktaUserGroupMember.user))
-            #     .filter(RoleGroup.deleted_at.is_(None))
-            #     .filter(RoleGroup.id == requester_role)
-            #     .first()
-            # )
-        else:
-            self.requester_role = requester_role
-
-        self.requested_group = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup]),
-                joinedload(AppGroup.app),
-                selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
-            )
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == (requested_group if isinstance(requested_group, str) else requested_group.id))
-        ).first()
+        self.requester_user_id = requester_user if isinstance(requester_user, str) else requester_user.id
+        self.requester_role_id = requester_role if isinstance(requester_role, str) else requester_role.id
+        self.requested_group_id = requested_group if isinstance(requested_group, str) else requested_group.id
 
         self.request_ownership = request_ownership
         self.request_reason = request_reason
@@ -81,20 +55,37 @@ class CreateRoleRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> Optional[RoleRequest]:
+        requester = db.session.get(OktaUser, self.requester_user_id)
+
+        requester_role = db.session.scalars(
+            select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.requester_role_id)
+        ).first()
+
+        requested_group = db.session.scalars(
+            select(OktaGroup)
+            .options(
+                selectin_polymorphic(OktaGroup, [AppGroup]),
+                joinedload(AppGroup.app),
+                selectinload(OktaGroup.active_group_tags).options(joinedload(OktaGroupTagMap.active_tag)),
+            )
+            .where(OktaGroup.deleted_at.is_(None))
+            .where(OktaGroup.id == self.requested_group_id)
+        ).first()
+
         # Don't allow creating a request for an unmanaged group
-        if not self.requested_group.is_managed:
+        if not requested_group.is_managed:
             return None
 
         # Don't allow creating a request for a role group
-        if type(self.requested_group) is RoleGroup:
+        if type(requested_group) is RoleGroup:
             return None
 
         role_request = RoleRequest(
             id=self.id,
             status=AccessRequestStatus.PENDING,
-            requester_user_id=self.requester.id,
-            requester_role_id=self.requester_role.id,
-            requested_group_id=self.requested_group.id,
+            requester_user_id=requester.id,
+            requester_role_id=requester_role.id,
+            requested_group_id=requested_group.id,
             request_ownership=self.request_ownership,
             request_reason=self.request_reason,
             request_ending_at=self.request_ending_at,
@@ -104,15 +95,15 @@ class CreateRoleRequest:
         db.session.commit()
 
         # Fetch the users to notify
-        approvers = get_group_managers(self.requested_group.id)
+        approvers = get_group_managers(requested_group.id)
 
-        requested_group_tags = [tm.active_tag for tm in self.requested_group.active_group_tags]
+        requested_group_tags = [tm.active_tag for tm in requested_group.active_group_tags]
 
         role_memberships = [
             u.user_id
             for u in db.session.scalars(
                 select(OktaUserGroupMember)
-                .where(OktaUserGroupMember.group_id == self.requester_role.id)
+                .where(OktaUserGroupMember.group_id == requester_role.id)
                 .where(OktaUserGroupMember.is_owner.is_(False))
                 .where(
                     or_(
@@ -142,14 +133,14 @@ class CreateRoleRequest:
         # If there are no approvers, try to get the app managers
         # or if the only approver is the requester, try to get the app managers
         if (
-            (len(approvers) == 0 and type(self.requested_group) is AppGroup)
-            or (len(approvers) == 1 and approvers[0].id == self.requester.id)
-            and type(self.requested_group) is AppGroup
+            (len(approvers) == 0 and type(requested_group) is AppGroup)
+            or (len(approvers) == 1 and approvers[0].id == requester.id)
+            and type(requested_group) is AppGroup
         ):
-            approvers = get_app_managers(self.requested_group.app_id)
+            approvers = get_app_managers(requested_group.app_id)
 
         # If there are still no approvers, try to get the access owners
-        if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == self.requester.id):
+        if len(approvers) == 0 or (len(approvers) == 1 and approvers[0].id == requester.id):
             approvers = get_access_owners()
 
         group = db.session.scalars(
@@ -162,7 +153,7 @@ class CreateRoleRequest:
                 ),
             )
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.requested_group.id)
+            .where(OktaGroup.id == requested_group.id)
         ).first()
 
         # Audit logging
@@ -174,11 +165,11 @@ class CreateRoleRequest:
                     "event_type": EventType.role_request_create,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.requester.id,
-                    "current_user_email": self.requester.email,
+                    "current_user_id": requester.id,
+                    "current_user_email": requester.email,
                     "group": group,
                     "role_request": role_request,
-                    "requester": self.requester,
+                    "requester": requester,
                     "group_owners": approvers,
                 }
             )
@@ -186,11 +177,11 @@ class CreateRoleRequest:
 
         conditional_access_responses = self.conditional_access_hook.role_request_created(
             role_request=role_request,
-            role=self.requester_role,
-            group=self.requested_group,
+            role=requester_role,
+            group=requested_group,
             group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
-            requester=self.requester,
-            requester_role=self.requester_role,
+            requester=requester,
+            requester_role=requester_role,
         )
 
         for response in conditional_access_responses:
@@ -213,9 +204,9 @@ class CreateRoleRequest:
 
         self.notification_hook.access_role_request_created(
             role_request=role_request,
-            role=self.requester_role,
-            group=self.requested_group,
-            requester=self.requester,
+            role=requester_role,
+            group=requested_group,
+            requester=requester,
             approvers=approvers,
         )
 

@@ -27,28 +27,10 @@ class ApproveAccessRequest:
         ending_at: Optional[datetime] = None,
         notify: bool = True,
     ):
-        # Lock the request row for the duration of the transaction so two
-        # concurrent approvers can't both pass the pending-state guard below
-        # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
-        # joinedload's nullable outer-join side (Postgres rejects that); it's
-        # a no-op on SQLite.
-        self.access_request = db.session.scalars(
-            select(AccessRequest)
-            .options(joinedload(AccessRequest.active_requested_group))
-            .where(AccessRequest.id == (access_request if isinstance(access_request, str) else access_request.id))
-            .with_for_update(of=AccessRequest)
-        ).first()
-
-        if approver_user is None:
-            self.approver_id = None
-            self.approver_email = None
-        elif isinstance(approver_user, str):
-            approver = db.session.get(OktaUser, approver_user)
-            self.approver_id = approver.id
-            self.approver_email = approver.email
-        else:
-            self.approver_id = approver_user.id
-            self.approver_email = approver_user.email
+        self.access_request_id = access_request if isinstance(access_request, str) else access_request.id
+        self.approver_user_id = (
+            approver_user.id if approver_user is not None and not isinstance(approver_user, str) else approver_user
+        )
 
         self.approval_reason = approval_reason
 
@@ -59,35 +41,55 @@ class ApproveAccessRequest:
         self.notification_hook = get_notification_hook()
 
     def execute(self) -> AccessRequest:
+        # Lock the request row for the duration of the transaction so two
+        # concurrent approvers can't both pass the pending-state guard below
+        # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
+        # joinedload's nullable outer-join side (Postgres rejects that); it's
+        # a no-op on SQLite.
+        access_request = db.session.scalars(
+            select(AccessRequest)
+            .options(joinedload(AccessRequest.active_requested_group))
+            .where(AccessRequest.id == self.access_request_id)
+            .with_for_update(of=AccessRequest)
+        ).first()
+
+        if self.approver_user_id is None:
+            approver_id = None
+            approver_email = None
+        else:
+            approver = db.session.get(OktaUser, self.approver_user_id)
+            approver_id = approver.id
+            approver_email = approver.email
+
         # Don't allow approving a request that is already resolved. Raise
         # rather than silently no-op so a stale/concurrent approval surfaces
         # as a conflict instead of looking like a success.
-        if self.access_request.status != AccessRequestStatus.PENDING or self.access_request.resolved_at is not None:
+        if access_request.status != AccessRequestStatus.PENDING or access_request.resolved_at is not None:
             raise ConflictError("Access request is no longer pending")
 
         # Don't allow requester to approve their own request
-        if self.access_request.requester_user_id == self.approver_id:
-            return self.access_request
+        if access_request.requester_user_id == approver_id:
+            return access_request
 
         # Don't allow approving a request if the reason is invalid and required
         valid, _ = CheckForReason(
-            group=self.access_request.requested_group,
+            group=access_request.requested_group,
             reason=self.approval_reason,
-            members_to_add=[self.access_request.requester_user_id] if not self.access_request.request_ownership else [],
-            owners_to_add=[self.access_request.requester_user_id] if self.access_request.request_ownership else [],
+            members_to_add=[access_request.requester_user_id] if not access_request.request_ownership else [],
+            owners_to_add=[access_request.requester_user_id] if access_request.request_ownership else [],
         ).execute_for_group()
         if not valid:
-            return self.access_request
+            return access_request
 
         # Don't allow approving a request if the requester is deleted
-        requester = db.session.get(OktaUser, self.access_request.requester_user_id)
+        requester = db.session.get(OktaUser, access_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             raise ResourceGoneError("The requester no longer exists")
 
         # Don't allow approving a request for a deleted or unmanaged group
-        if self.access_request.active_requested_group is None:
+        if access_request.active_requested_group is None:
             raise ResourceGoneError("The requested group no longer exists")
-        if not self.access_request.active_requested_group.is_managed:
+        if not access_request.active_requested_group.is_managed:
             raise InvalidRequestError("Groups not managed by Access cannot be modified")
 
         # Now handled inside ModifyGroupUsers
@@ -102,7 +104,7 @@ class ApproveAccessRequest:
             select(OktaGroup)
             .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
             .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.access_request.requested_group_id)
+            .where(OktaGroup.id == access_request.requested_group_id)
         ).first()
 
         _ctx = get_request_context()
@@ -113,31 +115,31 @@ class ApproveAccessRequest:
                     "event_type": EventType.access_approve,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.approver_id,
-                    "current_user_email": self.approver_email,
+                    "current_user_id": approver_id,
+                    "current_user_email": approver_email,
                     "group": group,
-                    "request": self.access_request,
-                    "requester": db.session.get(OktaUser, self.access_request.requester_user_id),
+                    "request": access_request,
+                    "requester": db.session.get(OktaUser, access_request.requester_user_id),
                 }
             )
         )
 
-        if self.access_request.request_ownership:
+        if access_request.request_ownership:
             ModifyGroupUsers(
-                group=self.access_request.requested_group_id,
-                current_user_id=self.approver_id,
+                group=access_request.requested_group_id,
+                current_user_id=approver_id,
                 users_added_ended_at=self.ending_at,
                 created_reason=self.approval_reason,
-                owners_to_add=[self.access_request.requester_user_id],
+                owners_to_add=[access_request.requester_user_id],
                 notify=self.notify,
             ).execute()
         else:
             ModifyGroupUsers(
-                group=self.access_request.requested_group_id,
-                current_user_id=self.approver_id,
+                group=access_request.requested_group_id,
+                current_user_id=approver_id,
                 users_added_ended_at=self.ending_at,
                 created_reason=self.approval_reason,
-                members_to_add=[self.access_request.requester_user_id],
+                members_to_add=[access_request.requester_user_id],
                 notify=self.notify,
             ).execute()
 
@@ -171,4 +173,4 @@ class ApproveAccessRequest:
         #     notify_requester=True,
         # )
 
-        return self.access_request
+        return access_request

@@ -12,20 +12,23 @@ from api.schemas import AuditLogSchema, EventType
 
 class DeleteTag:
     def __init__(self, *, tag: Tag | str, current_user_id: Optional[str] = None):
-        self.tag = db.session.scalars(select(Tag).where(Tag.id == (tag if isinstance(tag, str) else tag.id))).first()
-        self.current_user_id = getattr(
+        self.tag_id = tag if isinstance(tag, str) else tag.id
+        self.current_user_id = current_user_id
+
+    def execute(self) -> None:
+        tag = db.session.scalars(select(Tag).where(Tag.id == self.tag_id)).first()
+        current_user_id = getattr(
             db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
             ).first(),
             "id",
             None,
         )
 
-    def execute(self) -> None:
         # Audit logging
         email = None
-        if self.current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+        if current_user_id is not None:
+            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -35,16 +38,16 @@ class DeleteTag:
                     "event_type": EventType.tag_delete,
                     "user_agent": _ctx.user_agent if _ctx else None,
                     "ip": _ctx.ip if _ctx else None,
-                    "current_user_id": self.current_user_id,
+                    "current_user_id": current_user_id,
                     "current_user_email": email,
-                    "tag": self.tag,
+                    "tag": tag,
                 }
             )
         )
 
         # Disable and delete tag
-        self.tag.enabled = False
-        self.tag.deleted_at = func.now()
+        tag.enabled = False
+        tag.deleted_at = func.now()
 
         # End all active group tag mappings for tag
         db.session.execute(
@@ -55,7 +58,7 @@ class DeleteTag:
                     OktaGroupTagMap.ended_at > func.now(),
                 )
             )
-            .where(OktaGroupTagMap.tag_id == self.tag.id)
+            .where(OktaGroupTagMap.tag_id == tag.id)
             .values({OktaGroupTagMap.ended_at: func.now()})
             .execution_options(synchronize_session="fetch")
         )
@@ -69,7 +72,7 @@ class DeleteTag:
                     AppTagMap.ended_at > func.now(),
                 )
             )
-            .where(AppTagMap.tag_id == self.tag.id)
+            .where(AppTagMap.tag_id == tag.id)
             .values({AppTagMap.ended_at: func.now()})
             .execution_options(synchronize_session="fetch")
         )
