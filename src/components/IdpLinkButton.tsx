@@ -2,15 +2,14 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
-import {idpName} from '../config/idpLink';
-
 const moveTooltip = {modifiers: [{name: 'offset', options: {offset: [0, -10]}}]};
 
 interface IdpLinkButtonProps {
   url: string | null;
+  idpName: string;
 }
 
-export default function IdpLinkButton({url}: IdpLinkButtonProps) {
+export default function IdpLinkButton({url, idpName}: IdpLinkButtonProps) {
   if (url == null) {
     return null;
   }

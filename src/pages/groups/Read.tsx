@@ -23,7 +23,7 @@ import Typography from '@mui/material/Typography';
 import AuditGroupIcon from '@mui/icons-material/History';
 import AuditRoleIcon from '@mui/icons-material/Diversity2';
 import IdpLinkButton from '../../components/IdpLinkButton';
-import {idpGroupUrl} from '../../config/idpLink';
+import {useIdpLinks} from '../../config/idpLink';
 import DeleteIcon from '@mui/icons-material/Close';
 import GroupIcon from '@mui/icons-material/People';
 import TagIcon from '@mui/icons-material/LocalOffer';
@@ -93,6 +93,7 @@ function sortRoleGroups(
 
 export default function ReadGroup() {
   const currentUser = useCurrentUser();
+  const {idpName, idpGroupUrl} = useIdpLinks();
 
   const {id} = useParams();
   const navigate = useNavigate();
@@ -301,7 +302,7 @@ export default function ReadGroup() {
                       </IconButton>
                     </Tooltip>
                   ) : null}
-                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpGroupUrl(group.id)} />}
+                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpGroupUrl(group.id)} idpName={idpName} />}
                 </Stack>
               </Stack>
             </Paper>

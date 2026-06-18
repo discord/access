@@ -126,6 +126,16 @@ class Settings(BaseSettings):
     APP_VERSION: str = "Not Defined"
     APP_NAME: str = "Access"
 
+    # IdP deep-linking. Surfaced to the frontend at runtime via GET /api/config
+    # and rendered as the "Open in IdP" button on user/group pages. Empty
+    # (default) hides the button, so existing deployments are unaffected until
+    # they opt in. `{id}` in the templates is replaced with the resource's
+    # underlying Okta id. Read at runtime (not baked into the build) so one
+    # bundle can target different IdP consoles per env.
+    IDP_NAME: str = ""
+    IDP_USER_URL_TEMPLATE: str = ""
+    IDP_GROUP_URL_TEMPLATE: str = ""
+
     # Sentry
     FASTAPI_SENTRY_DSN: Optional[str] = None
     REACT_SENTRY_DSN: Optional[str] = None

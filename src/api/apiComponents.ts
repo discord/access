@@ -855,6 +855,75 @@ export const useSentryBug = (
   });
 };
 
+export type AppConfigError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppConfigVariables = ApiContext['fetcherOptions'];
+
+export const fetchAppConfig = (variables: AppConfigVariables, signal?: AbortSignal) =>
+  apiFetch<Schemas.AppConfig, AppConfigError, undefined, {}, {}, {}>({
+    url: '/api/config',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+export function appConfigQuery(variables: AppConfigVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.AppConfig>;
+};
+
+export function appConfigQuery(variables: AppConfigVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.AppConfig>) | reactQuery.SkipToken;
+};
+
+export function appConfigQuery(variables: AppConfigVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/config',
+      operationId: 'appConfig',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAppConfig(variables, signal),
+  };
+}
+
+export const useSuspenseAppConfig = <TData = Schemas.AppConfig>(
+  variables: AppConfigVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppConfig, AppConfigError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.AppConfig, AppConfigError, TData>({
+    ...appConfigQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+export const useAppConfig = <TData = Schemas.AppConfig>(
+  variables: AppConfigVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.AppConfig, AppConfigError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.AppConfig, AppConfigError, TData>({
+    ...appConfigQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type GroupRequestsQueryParams = {
   q?: string | null;
   status?: string | null;
@@ -3234,6 +3303,11 @@ export type QueryOperation =
       path: '/api/audit/groups';
       operationId: 'groupsAndRoles';
       variables: GroupsAndRolesVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/config';
+      operationId: 'appConfig';
+      variables: AppConfigVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/group-requests';

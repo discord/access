@@ -3,7 +3,7 @@ import {Link as RouterLink, useParams, useNavigate} from 'react-router-dom';
 
 import AuditIcon from '@mui/icons-material/History';
 import IdpLinkButton from '../../components/IdpLinkButton';
-import {idpUserUrl} from '../../config/idpLink';
+import {useIdpLinks} from '../../config/idpLink';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
@@ -454,6 +454,7 @@ function collectGroupNames(ownerPartitions: PartitionedGroups, memberPartitions:
 
 export default function ReadUser() {
   const currentUser = useCurrentUser();
+  const {idpName, idpUserUrl} = useIdpLinks();
 
   const {id} = useParams();
 
@@ -644,7 +645,7 @@ export default function ReadUser() {
                       <AuditIcon />
                     </IconButton>
                   </Tooltip>
-                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpUserUrl(user.id)} />}
+                  {isAccessAdmin(currentUser) && <IdpLinkButton url={idpUserUrl(user.id)} idpName={idpName} />}
                 </Box>
               </Stack>
             </Paper>

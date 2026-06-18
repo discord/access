@@ -94,6 +94,10 @@ export type AccessRequestSummary = {
   active_resolver?: OktaUserSummary | null;
 };
 
+export type AppConfig = {
+  idp: IdpConfig;
+};
+
 /**
  * Full App detail.
  */
@@ -524,6 +528,15 @@ export type GroupSummary =
   | (Omit<AppGroupSummary, 'type'> & {
       type: 'app_group';
     });
+
+/**
+ * IdP deep-link configuration. Empty strings disable the feature.
+ */
+export type IdpConfig = {
+  name: string;
+  user_url_template: string;
+  group_url_template: string;
+};
 
 export type OktaGroupDetail = {
   id: string;

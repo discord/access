@@ -11,6 +11,7 @@ field.
 
 from api.schemas.audit_logs import AuditLogSchema, EventType  # noqa: F401
 from api.schemas.audit_rows import AuditGroupRoleRow, AuditUserGroupRow  # noqa: F401
+from api.schemas.config_schemas import AppConfig, IdpConfig  # noqa: F401
 from api.schemas.core_schemas import (  # noqa: F401
     AppDetail,
     AppGroupDetail,
