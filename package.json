@@ -65,14 +65,14 @@
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
     "@types/styled-components": "^5.1.26",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/ui": "^4.1.8",
     "husky": "^8.0.3",
     "jsdom": "^26.1.0",
     "lint-staged": "^15.2.10",
     "prettier": "^3.2.5",
     "typescript": "^4.9.5",
-    "vite": "^7.3.2",
+    "vite": "^8.0.16",
     "vitest": "^4.1.8"
   },
   "optionalDependencies": {
