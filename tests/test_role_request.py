@@ -1494,3 +1494,59 @@ def test_put_role_request_pending_check_includes_resolved_at(
     rep = client.put(put_url, json={"approved": False, "reason": "no"})
     assert rep.status_code == 409
     assert "is not pending" in rep.text
+
+
+def test_approve_role_request_notify_false_suppresses_completion(
+    db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the role-request completion DM; still APPROVED."""
+    db.session.add_all([role_group, okta_group, user])
+    db.session.commit()
+
+    # Requester must own the role to file a role request for it.
+    ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert role_request is not None
+
+    mocker.patch.object(okta, "async_add_user_to_group")
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_role_request_completed")
+
+    ApproveRoleRequest(role_request=role_request, approver_user=access_owner, notify=False).execute()
+
+    assert db.session.get(RoleRequest, role_request.id).status == AccessRequestStatus.APPROVED
+    assert completed_spy.call_count == 0
+
+
+def test_reject_role_request_notify_false_suppresses_completion(
+    db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the role-request completion DM; still REJECTED."""
+    db.session.add_all([role_group, okta_group, user])
+    db.session.commit()
+
+    ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert role_request is not None
+
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_role_request_completed")
+
+    RejectRoleRequest(role_request=role_request, current_user_id=access_owner, notify=False).execute()
+
+    assert db.session.get(RoleRequest, role_request.id).status == AccessRequestStatus.REJECTED
+    assert completed_spy.call_count == 0
