@@ -21,7 +21,11 @@ RUN touch .env.production
 ENV VITE_API_SERVER_URL=""
 # Set Sentry plugin environment variables for production build
 ENV NODE_ENV=production
-RUN npm run build
+# Bake the frontend config override (e.g. IdP deep-link URLs) from the build secret.
+ENV ACCESS_CONFIG_FILE=config.override.json
+RUN --mount=type=secret,id=ACCESS_CONFIG_OVERRIDE \
+  cp /run/secrets/ACCESS_CONFIG_OVERRIDE config/config.override.json && \
+  npm run build
 
 # Optional build step #2: upload source maps to Sentry
 FROM build-step AS sentry

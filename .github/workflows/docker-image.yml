@@ -51,3 +51,4 @@ jobs:
             "SENTRY_ORG=${{ secrets.SENTRY_ORG }}"
             "SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}"
             "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
+            "ACCESS_CONFIG_OVERRIDE=${{ secrets.ACCESS_CONFIG_OVERRIDE }}"
