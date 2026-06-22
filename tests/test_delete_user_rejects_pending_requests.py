@@ -9,7 +9,7 @@ from pytest_mock import MockerFixture
 
 from api.config import settings
 from api.extensions import Db
-from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup
+from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.operations import (
     CreateAccessRequest,
     CreateGroupRequest,
@@ -82,6 +82,47 @@ def test_delete_user_rejects_pending_role_request(
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None
     assert role_request.resolution_reason == DELETION_REASON
+
+
+def test_delete_user_rejects_pending_role_request_on_cold_session(
+    db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
+) -> None:
+    """Cold-session regression for the RejectRoleRequest audit-log eager-load.
+
+    `RejectRoleRequest`'s audit log serializes `RoleRequest.requester_role`,
+    which is `lazy="raise_on_sql"`. The warm test above passes because the role
+    group is resident in the shared session, but the `access sync` cronjob
+    deletes users on a session where it isn't — so the reject's own query must
+    eager-load `requester_role` or the audit dump raises `InvalidRequestError`.
+    `expunge_all()` before the delete forces that cold load here; without the
+    eager-load this raises rather than rejecting the request.
+    """
+    db.session.add_all([user, role_group, okta_group])
+    db.session.commit()
+
+    # Requester must own the role to file a role request for it.
+    ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_reason="role needs this group",
+    ).execute()
+    assert role_request is not None
+    role_request_id = role_request.id
+    user_id = user.id
+    owner_id = _access_owner(db).id
+
+    # Cold session: force RejectRoleRequest to re-load the role request with no
+    # resident role group, mirroring the sync cronjob that surfaced this.
+    db.session.expunge_all()
+
+    DeleteUser(user=user_id, sync_to_okta=False, current_user_id=owner_id).execute()
+
+    rejected = db.session.get(RoleRequest, role_request_id)
+    assert rejected is not None
+    assert rejected.status == AccessRequestStatus.REJECTED
+    assert rejected.resolution_reason == DELETION_REASON
 
 
 def test_delete_user_rejects_pending_group_request(db: Db, user: OktaUser) -> None:
