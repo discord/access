@@ -470,9 +470,13 @@ def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     # Requests are still approved — `notify` only controls the completion DMs.
     assert db.session.get(AccessRequest, access_request_id).status == AccessRequestStatus.APPROVED
     assert db.session.get(RoleRequest, role_request_id).status == AccessRequestStatus.APPROVED
-    # ...and neither completion notification fired.
-    assert access_completed_spy.call_count == 0
-    assert role_completed_spy.call_count == 0
+    # ...and neither completion notification fired. This covers both notify
+    # gates: `_notify_access_request` (the loop this change moved under
+    # `if self.notify:`) and `_notify_role_request` (already gated before it).
+    # Both requests were auto-approved above, so each notification *would* fire
+    # were its gate removed — the assertions aren't vacuous.
+    assert access_completed_spy.call_count == 0  # _notify_access_request gate
+    assert role_completed_spy.call_count == 0  # _notify_role_request gate
 
 
 def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
