@@ -421,6 +421,60 @@ def test_role_group_add_approves_pending_requests_on_cold_session(
     assert role_completed_spy.call_count == 1
 
 
+def test_role_group_add_with_notify_false_suppresses_completion_notifications(
+    db: Db,
+    mocker: MockerFixture,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+) -> None:
+    """`notify=False` must suppress BOTH completion DMs from the auto-approval
+    cascade. The role-request loop was already gated on `self.notify`; the
+    access-request loop was not, so individual access-request DMs leaked even
+    with `notify=False` (`ModifyGroupUsers` gates its equivalent — this aligns
+    the two). Approval itself is independent of `notify`, so the requests still
+    resolve to APPROVED.
+    """
+    db.session.add_all([role_group, okta_group, user])
+    db.session.commit()
+
+    ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+
+    access_request = CreateAccessRequest(
+        requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
+    ).execute()
+    role_request = CreateRoleRequest(
+        requester_user=user,
+        requester_role=role_group,
+        requested_group=okta_group,
+        request_ownership=False,
+        request_reason="please",
+    ).execute()
+    assert access_request is not None and role_request is not None
+    access_request_id, role_request_id = access_request.id, role_request.id
+
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+    hook = get_notification_hook()
+    access_completed_spy = mocker.patch.object(hook, "access_request_completed")
+    role_completed_spy = mocker.patch.object(hook, "access_role_request_completed")
+
+    ModifyRoleGroups(
+        role_group=role_group.id,
+        groups_to_add=[okta_group.id],
+        current_user_id=user.id,
+        sync_to_okta=False,
+        notify=False,
+    ).execute()
+
+    # Requests are still approved — `notify` only controls the completion DMs.
+    assert db.session.get(AccessRequest, access_request_id).status == AccessRequestStatus.APPROVED
+    assert db.session.get(RoleRequest, role_request_id).status == AccessRequestStatus.APPROVED
+    # ...and neither completion notification fired.
+    assert access_completed_spy.call_count == 0
+    assert role_completed_spy.call_count == 0
+
+
 def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
     groups = RoleGroupFactory.create_batch(10)

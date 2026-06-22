@@ -596,18 +596,18 @@ class ModifyRoleGroups:
         # before spawning tasks: spawned tasks must only perform network I/O,
         # never db.session access (a session cannot be used concurrently, and
         # under async SQLAlchemy that raises rather than interleaving).
-        for access_request in approved_access_requests:
-            group = access_request.requested_group
-            # `resolved_at` was assigned func.now() and expired at flush;
-            # reload it explicitly so the hook sees a concrete value.
-            db.session.refresh(access_request, attribute_names=["resolved_at"])
-            requester = db.session.get(OktaUser, access_request.requester_user_id)
-            approvers = get_all_possible_request_approvers(access_request)
-            async_tasks.append(
-                asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
-            )
-
         if self.notify:
+            for access_request in approved_access_requests:
+                group = access_request.requested_group
+                # `resolved_at` was assigned func.now() and expired at flush;
+                # reload it explicitly so the hook sees a concrete value.
+                db.session.refresh(access_request, attribute_names=["resolved_at"])
+                requester = db.session.get(OktaUser, access_request.requester_user_id)
+                approvers = get_all_possible_request_approvers(access_request)
+                async_tasks.append(
+                    asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
+                )
+
             for role_request in approved_role_requests:
                 role = role_request.requester_role
                 group = role_request.requested_group
