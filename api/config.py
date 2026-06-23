@@ -82,6 +82,34 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "access"
     DATABASE_USES_PUBLIC_IP: bool = False
 
+    # Concurrency & connection pool
+    #
+    # FastAPI runs every *sync* (`def`) route handler in an anyio worker
+    # thread. The anyio default thread limiter allows 40 such threads per
+    # event loop, so a single server worker can run up to 40 route handlers
+    # concurrently — each holding a DB connection and materializing its own
+    # ORM object graph. Peak memory and DB-connection demand therefore scale
+    # with that ceiling, not with the number of server worker processes,
+    # which makes a burst of expensive read requests able to drive a single
+    # worker's memory far higher than the process count would suggest.
+    #
+    # THREADPOOL_MAX_WORKERS caps that limiter so concurrency provides
+    # backpressure instead of unbounded fan-out. Set it to 0 to leave anyio's
+    # default (40) in place.
+    THREADPOOL_MAX_WORKERS: int = 16
+
+    # SQLAlchemy QueuePool sizing (ignored for SQLite, which uses a different
+    # pool). pool_size + max_overflow is the hard ceiling on concurrent
+    # checked-out connections per worker process; keep it at or above
+    # THREADPOOL_MAX_WORKERS so concurrent handlers aren't starved for a
+    # connection. pool_pre_ping discards connections a server-side timeout
+    # has already closed; pool_recycle proactively retires long-lived ones.
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+    DB_POOL_PRE_PING: bool = True
+
     # User attributes
     USER_DISPLAY_CUSTOM_ATTRIBUTES: str = "Title,Manager"
     USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None
