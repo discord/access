@@ -36,6 +36,17 @@ def build_engine() -> Engine:
 
     if url.startswith("sqlite"):
         kwargs.setdefault("connect_args", {"check_same_thread": False})
+    else:
+        # Bound and harden the QueuePool. The defaults (size 5 / overflow 10)
+        # can be smaller than the number of sync route handlers FastAPI runs
+        # concurrently on its threadpool, which starves handlers for a
+        # connection under load; size the pool from settings instead. SQLite
+        # uses a single-connection pool and ignores these.
+        kwargs.setdefault("pool_size", settings.DB_POOL_SIZE)
+        kwargs.setdefault("max_overflow", settings.DB_MAX_OVERFLOW)
+        kwargs.setdefault("pool_timeout", settings.DB_POOL_TIMEOUT)
+        kwargs.setdefault("pool_recycle", settings.DB_POOL_RECYCLE)
+        kwargs.setdefault("pool_pre_ping", settings.DB_POOL_PRE_PING)
 
     return create_engine(url, **kwargs)
 

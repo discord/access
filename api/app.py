@@ -167,6 +167,28 @@ def _configure_okta() -> None:
         )
 
 
+def _configure_threadpool_limit() -> None:
+    """Cap the anyio threadpool that runs sync (`def`) route handlers.
+
+    FastAPI dispatches every sync route handler to anyio's default worker
+    thread pool, whose default limit is 40 threads per event loop. That lets
+    one server worker process run up to 40 handlers at once, each holding a
+    DB connection and building its own ORM object graph, so peak memory and
+    connection demand scale with that ceiling rather than the worker count.
+    Lowering it gives the server backpressure under bursts of expensive
+    requests. Setting ``THREADPOOL_MAX_WORKERS`` to 0 leaves anyio's default
+    untouched. Must be called from within the running event loop, since the
+    limiter is stored in a loop-scoped anyio ``RunVar``.
+    """
+    if settings.THREADPOOL_MAX_WORKERS <= 0:
+        return
+    import anyio.to_thread
+
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    limiter.total_tokens = settings.THREADPOOL_MAX_WORKERS
+    logger.info("Sync-route threadpool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
+
+
 def create_app(testing: Optional[bool] = False) -> FastAPI:
     _configure_logging()
 
@@ -194,17 +216,23 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # the route registration below can grab the session manager, then
     # enter its lifespan in the FastAPI lifespan so the session
     # manager's task group is running while requests are served.
+    mcp_lifespan: Optional[Any] = None
     if settings.ENABLE_MCP:
-        from api.mcp.server import create_mcp_server, mcp_lifespan
+        from api.mcp.server import create_mcp_server
+        from api.mcp.server import mcp_lifespan as mcp_lifespan
 
         create_mcp_server()
 
-        @asynccontextmanager
-        async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
+    @asynccontextmanager
+    async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
+        # Bound the sync-route threadpool inside the running event loop (the
+        # anyio limiter is loop-scoped, so this can't run at import time).
+        _configure_threadpool_limit()
+        if mcp_lifespan is not None:
             async with mcp_lifespan():
                 yield
-    else:
-        lifespan = None  # type: ignore[assignment]
+        else:
+            yield
 
     app = FastAPI(
         title=settings.APP_NAME,
