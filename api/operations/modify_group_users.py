@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 import logging
 
@@ -208,6 +208,9 @@ class ModifyGroupUsers:
 
         # Create a list of okta asyncio tasks to wait to completion on at the end of this function
         async_tasks = []
+        # Access requests approved by this operation; their notifications are
+        # prepared after the final commit and dispatched alongside async_tasks.
+        approved_access_requests: list[AccessRequest] = []
 
         # First remove all users from the group including those that we wish to add.
         # That way we can easily extend time-bounded group memberships and audit when
@@ -679,7 +682,7 @@ class ModifyGroupUsers:
                 .where(AccessRequest.request_ownership.is_(False))
             ).all()
             for access_request in pending_member_requests:
-                async_tasks.append(
+                approved_access_requests.append(
                     self._approve_access_request(
                         access_request,
                         group_memberships_added[access_request.requested_group_id][access_request.requester_user_id],
@@ -693,7 +696,7 @@ class ModifyGroupUsers:
                 .where(AccessRequest.request_ownership.is_(True))
             ).all()
             for access_request in pending_owner_requests:
-                async_tasks.append(
+                approved_access_requests.append(
                     self._approve_access_request(
                         access_request,
                         group_ownerships_added[access_request.requested_group_id][access_request.requester_user_id],
@@ -709,7 +712,7 @@ class ModifyGroupUsers:
                 .where(AccessRequest.request_ownership.is_(True))
             ).all()
             for access_request in pending_role_associated_owner_requests:
-                async_tasks.append(
+                approved_access_requests.append(
                     self._approve_access_request(
                         access_request,
                         group_ownerships_added[access_request.requested_group_id][access_request.requester_user_id],
@@ -718,6 +721,22 @@ class ModifyGroupUsers:
 
             db.session.commit()
 
+        # Resolve everything the notification hooks need on the main coroutine
+        # before spawning tasks: spawned tasks must only perform network I/O,
+        # never db.session access (a session cannot be used concurrently, and
+        # under async SQLAlchemy that raises rather than interleaving).
+        if self.notify:
+            for access_request in approved_access_requests:
+                group = access_request.requested_group
+                # `resolved_at` was assigned func.now() and expired at flush;
+                # reload it explicitly so the hook sees a concrete value.
+                db.session.refresh(access_request, attribute_names=["resolved_at"])
+                requester = db.session.get(OktaUser, access_request.requester_user_id)
+                approvers = get_all_possible_request_approvers(access_request)
+                async_tasks.append(
+                    asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
+                )
+
         if len(async_tasks) > 0:
             await asyncio.wait(async_tasks)
 
@@ -725,7 +744,7 @@ class ModifyGroupUsers:
 
     def _approve_access_request(
         self, access_request: AccessRequest, added_okta_user_group_member: OktaUserGroupMember
-    ) -> asyncio.Task[None]:
+    ) -> AccessRequest:
         access_request.status = AccessRequestStatus.APPROVED
         access_request.resolved_at = func.now()
         access_request.resolver_user_id = self.current_user_id
@@ -733,19 +752,18 @@ class ModifyGroupUsers:
         access_request.approval_ending_at = added_okta_user_group_member.ended_at
         access_request.approved_membership_id = added_okta_user_group_member.id
 
-        return asyncio.create_task(self._notify_access_request(access_request))
+        return access_request
 
-    async def _notify_access_request(self, access_request: AccessRequest) -> None:
-        if not self.notify:
-            return
-
-        requester = db.session.get(OktaUser, access_request.requester_user_id)
-
-        approvers = get_all_possible_request_approvers(access_request)
-
+    async def _notify_access_request(
+        self,
+        access_request: AccessRequest,
+        group: OktaGroup,
+        requester: Optional[OktaUser],
+        approvers: Set[OktaUser],
+    ) -> None:
         self.notification_hook.access_request_completed(
             access_request=access_request,
-            group=access_request.requested_group,
+            group=group,
             requester=requester,
             approvers=approvers,
             notify_requester=True,

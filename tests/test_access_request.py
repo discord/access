@@ -1100,3 +1100,72 @@ def test_get_access_request_detail_requested_group_for_app_group(
     assert "active_group_tags" in rg
     tag_ids = [entry["active_tag"]["id"] for entry in rg["active_group_tags"] if entry.get("active_tag") is not None]
     assert tag.id in tag_ids
+
+
+def test_modify_group_users_notify_false_suppresses_access_request_completion(
+    db: Db, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the auto-approved access request's completion DM
+    while the request still resolves to APPROVED (notify gates the DM, not the action)."""
+    db.session.add_all([okta_group, user])
+    db.session.commit()
+
+    access_request = CreateAccessRequest(
+        requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
+    ).execute()
+    assert access_request is not None
+
+    mocker.patch.object(okta, "async_add_user_to_group")
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_request_completed")
+
+    # Adding `user` as a member auto-approves their pending membership request.
+    ModifyGroupUsers(group=okta_group.id, members_to_add=[user.id], sync_to_okta=False, notify=False).execute()
+
+    assert db.session.get(AccessRequest, access_request.id).status == AccessRequestStatus.APPROVED
+    assert completed_spy.call_count == 0
+
+
+def test_approve_access_request_notify_false_suppresses_completion(
+    db: Db, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the completion DM; the request is still APPROVED."""
+    db.session.add_all([okta_group, user])
+    db.session.commit()
+
+    access_request = CreateAccessRequest(
+        requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
+    ).execute()
+    assert access_request is not None
+
+    mocker.patch.object(okta, "async_add_user_to_group")
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_request_completed")
+
+    ApproveAccessRequest(access_request=access_request, approver_user=access_owner, notify=False).execute()
+
+    assert db.session.get(AccessRequest, access_request.id).status == AccessRequestStatus.APPROVED
+    assert completed_spy.call_count == 0
+
+
+def test_reject_access_request_notify_false_suppresses_completion(
+    db: Db, okta_group: OktaGroup, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the completion DM; the request is still REJECTED."""
+    db.session.add_all([okta_group, user])
+    db.session.commit()
+
+    access_request = CreateAccessRequest(
+        requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
+    ).execute()
+    assert access_request is not None
+
+    access_owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_request_completed")
+
+    RejectAccessRequest(access_request=access_request, current_user_id=access_owner, notify=False).execute()
+
+    assert db.session.get(AccessRequest, access_request.id).status == AccessRequestStatus.REJECTED
+    assert completed_spy.call_count == 0

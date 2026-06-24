@@ -42,7 +42,16 @@ class RejectRoleRequest:
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
         role_request = db.session.scalars(
-            select(RoleRequest).where(RoleRequest.id == self.role_request_id).with_for_update()
+            # `requester_role` is read by the audit-log serializer below and is
+            # `lazy="raise_on_sql"`, so eager-load it here — a cold session (e.g.
+            # the `access sync` cronjob deleting a user with pending role
+            # requests) has no resident role group to satisfy it otherwise.
+            # `of=RoleRequest` keeps FOR UPDATE off the joinedload's nullable
+            # outer-join side (Postgres rejects that); no-op on SQLite.
+            select(RoleRequest)
+            .options(joinedload(RoleRequest.requester_role))
+            .where(RoleRequest.id == self.role_request_id)
+            .with_for_update(of=RoleRequest)
         ).first()
 
         if self.current_user_id is None:

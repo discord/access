@@ -23,6 +23,7 @@ from api.models import (
     Tag,
 )
 from api.operations import CreateGroupRequest, ApproveGroupRequest, RejectGroupRequest
+from api.plugins import get_notification_hook
 from api.services import okta
 from tests.factories import (
     OktaUserFactory,
@@ -2562,3 +2563,55 @@ def test_approve_app_group_request_with_non_conforming_resolved_name_is_rejected
     assert approved_request.status == AccessRequestStatus.APPROVED
     created_group = db.session.get(OktaGroup, approved_request.approved_group_id)
     assert created_group.name == f"App-{app_name}-RenamedGroup"
+
+
+def test_approve_group_request_notify_false_suppresses_completion(
+    db: Db, user: OktaUser, mocker: MockerFixture
+) -> None:
+    """`notify=False` suppresses the group-request completion DM; still APPROVED."""
+    db.session.add(user)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Notify Gate Group",
+        requested_group_description="d",
+        requested_group_type="okta_group",
+        request_reason="please",
+    ).execute()
+    assert group_request is not None
+
+    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group({"id": "00gNOTIFYGATEGRP001"}))
+    mocker.patch.object(okta, "async_add_owner_to_group")
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_group_request_completed")
+
+    ApproveGroupRequest(group_request=group_request, approver_user=admin, notify=False).execute()
+
+    assert db.session.get(GroupRequest, group_request.id).status == AccessRequestStatus.APPROVED
+    assert completed_spy.call_count == 0
+
+
+def test_reject_group_request_notify_false_suppresses_completion(db: Db, user: OktaUser, mocker: MockerFixture) -> None:
+    """`notify=False` suppresses the group-request completion DM; still REJECTED."""
+    db.session.add(user)
+    db.session.commit()
+
+    group_request = CreateGroupRequest(
+        requester_user=user,
+        requested_group_name="Notify Gate Group",
+        requested_group_description="d",
+        requested_group_type="okta_group",
+        request_reason="please",
+    ).execute()
+    assert group_request is not None
+
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    hook = get_notification_hook()
+    completed_spy = mocker.patch.object(hook, "access_group_request_completed")
+
+    RejectGroupRequest(group_request=group_request, current_user_id=admin, notify=False).execute()
+
+    assert db.session.get(GroupRequest, group_request.id).status == AccessRequestStatus.REJECTED
+    assert completed_spy.call_count == 0
