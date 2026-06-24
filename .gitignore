@@ -85,6 +85,9 @@ db.sqlite3-journal
 # Sphinx documentation
 docs/_build/
 
+# Superpowers brainstorming specs and plans
+docs/superpowers/
+
 # PyBuilder
 .pybuilder/
 target/
