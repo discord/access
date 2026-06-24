@@ -84,32 +84,28 @@ class Settings(BaseSettings):
 
     # Concurrency & connection pool
     #
-    # FastAPI runs every *sync* (`def`) route handler in an anyio worker
-    # thread. The anyio default thread limiter allows 40 such threads per
-    # event loop, so a single server worker can run up to 40 route handlers
-    # concurrently — each holding a DB connection and materializing its own
-    # ORM object graph. Peak memory and DB-connection demand therefore scale
-    # with that ceiling, not with the number of server worker processes,
-    # which makes a burst of expensive read requests able to drive a single
-    # worker's memory far higher than the process count would suggest.
-    #
-    # THREADPOOL_MAX_WORKERS caps that limiter so concurrency provides
-    # backpressure instead of unbounded fan-out. Set it to 0 to leave anyio's
-    # default (40) in place.
-    THREADPOOL_MAX_WORKERS: int = 16
-
-    # SQLAlchemy QueuePool sizing (ignored for SQLite, which uses a different
-    # pool). pool_size + max_overflow is the hard ceiling on concurrent
-    # checked-out connections per worker process; keep it at or above
-    # THREADPOOL_MAX_WORKERS so concurrent handlers aren't starved for a
-    # connection. pool_pre_ping discards connections a server-side timeout
-    # has already closed; pool_recycle proactively retires long-lived ones.
+    # Under the async stack, route handlers run on the event loop rather than
+    # FastAPI's sync-route threadpool, so the DB connection pool — not the
+    # threadpool — is the primary backpressure lever. pool_size + max_overflow
+    # is the hard ceiling on concurrent checked-out connections per worker
+    # process; a handler that needs a connection while the pool is exhausted
+    # waits up to pool_timeout before erroring, so a burst of expensive queries
+    # provides backpressure instead of unbounded fan-out. pool_pre_ping discards
+    # connections a server-side timeout has already closed; pool_recycle
+    # proactively retires long-lived ones. Ignored for SQLite, which uses a
+    # single-connection pool.
     DB_POOL_SIZE: int = 10
     DB_MAX_OVERFLOW: int = 10
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
     DB_POOL_PRE_PING: bool = True
 
+    # THREADPOOL_MAX_WORKERS caps anyio's default worker-thread limiter (40 per
+    # event loop). With async route handlers this no longer bounds request
+    # concurrency, but anyio's threadpool still backs the paths that offload to
+    # threads (`anyio.to_thread.run_sync`, sync dependencies); bounding it keeps
+    # those from fanning out without limit. Set to 0 to leave anyio's default.
+    THREADPOOL_MAX_WORKERS: int = 16
     # User attributes
     USER_DISPLAY_CUSTOM_ATTRIBUTES: str = "Title,Manager"
     USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None

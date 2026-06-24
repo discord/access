@@ -53,6 +53,18 @@ def build_async_engine() -> AsyncEngine:
     else:
         url = to_async_url(settings.SQLALCHEMY_DATABASE_URI or "sqlite:///instance/access.db")
 
+    if not url.drivername.startswith("sqlite"):
+        # Bound and harden the async pool. SQLAlchemy's async engine uses an
+        # AsyncAdaptedQueuePool whose defaults (size 5 / overflow 10) cap the
+        # connections a worker can check out concurrently; under async this
+        # pool is the main limit on in-flight queries, so size it from settings.
+        # SQLite (aiosqlite) uses a single-connection pool and rejects these.
+        kwargs.setdefault("pool_size", settings.DB_POOL_SIZE)
+        kwargs.setdefault("max_overflow", settings.DB_MAX_OVERFLOW)
+        kwargs.setdefault("pool_timeout", settings.DB_POOL_TIMEOUT)
+        kwargs.setdefault("pool_recycle", settings.DB_POOL_RECYCLE)
+        kwargs.setdefault("pool_pre_ping", settings.DB_POOL_PRE_PING)
+
     return create_async_engine(url, **kwargs)
 
 
