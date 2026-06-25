@@ -16,7 +16,7 @@ from typing import Any, TypeVar
 
 from fastapi import Query
 from fastapi_pagination import Page as _BasePage
-from fastapi_pagination.customization import CustomizedPage, UseParams
+from fastapi_pagination.customization import CustomizedPage, UseParams, UseParamsFields
 from fastapi_pagination.default import Params as _DefaultParams
 from pydantic import TypeAdapter
 
@@ -36,15 +36,6 @@ class PageParams(_DefaultParams):
     size: int = Query(DEFAULT_SIZE, ge=1, le=MAX_SIZE, description="Items per page")
 
 
-class AppGroupsPageParams(_DefaultParams):
-    """Params for `GET /api/apps/{id}/groups`: `size` defaults to and is capped
-    at APP_GROUPS_SIZE so a single response can't load an unbounded number of
-    groups' memberships."""
-
-    page: int = Query(1, ge=1, description="Page number")
-    size: int = Query(APP_GROUPS_SIZE, ge=1, le=APP_GROUPS_SIZE, description="Items per page")
-
-
 # `Page[T]` re-export with our `PageParams` defaults pre-applied so router
 # signatures stay short: `-> Page[OktaUserSummary]`.
 T = TypeVar("T")
@@ -52,9 +43,12 @@ Page = CustomizedPage[
     _BasePage[T],
     UseParams(PageParams),
 ]
+# `GET /api/apps/{id}/groups` caps `size` at APP_GROUPS_SIZE so one page can't
+# load an unbounded number of groups' memberships. Override just the `size`
+# field on `Page` rather than defining a whole Params subclass.
 AppGroupsPage = CustomizedPage[
-    _BasePage[T],
-    UseParams(AppGroupsPageParams),
+    Page[T],
+    UseParamsFields(size=Query(APP_GROUPS_SIZE, ge=1, le=APP_GROUPS_SIZE, description="Items per page")),
 ]
 
 
@@ -81,7 +75,6 @@ def validated(model: type) -> Callable[[Sequence[Any]], list[Any]]:
 __all__ = [
     "APP_GROUPS_SIZE",
     "AppGroupsPage",
-    "AppGroupsPageParams",
     "DEFAULT_SIZE",
     "MAX_SIZE",
     "Page",
