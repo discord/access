@@ -1730,8 +1730,11 @@ def test_get_group_member_details_paginated(client: TestClient, db: Db, url_for:
     db.session.add(group)
     db.session.commit()
 
-    members = OktaUserFactory.create_batch(60)
-    owner = OktaUserFactory.create()
+    # Explicit, unique emails: the factory derives email from random Faker
+    # names, so 60+ users can collide and trip the okta_user.email UNIQUE
+    # constraint (flaky). Index-based emails make this deterministic.
+    members = [OktaUserFactory.create(email=f"member-{i:03d}@example.com") for i in range(60)]
+    owner = OktaUserFactory.create(email="owner@example.com")
     for u in members + [owner]:
         db.session.add(u)
     db.session.commit()
