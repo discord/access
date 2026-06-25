@@ -12,7 +12,7 @@ GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -54,6 +54,7 @@ from api.schemas import (
     DeleteMessage,
     GroupDetail,
     GroupMembersSummary,
+    OktaUserGroupMemberDetail,
     SearchGroupQuery,
     UpdateGroupBody,
 )
@@ -72,8 +73,6 @@ ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup])
 
 DEFAULT_LOAD_OPTIONS = (
     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-    selectinload(OktaGroup.active_user_memberships).options(*user_group_member_options()),
-    selectinload(OktaGroup.active_user_ownerships).options(*user_group_member_options()),
     selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options()),
     selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options()),
     selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
@@ -463,6 +462,66 @@ def get_group_members(group_id: str, db: DbSession, current_user_id: CurrentUser
         members=[r.user_id for r in rows if not r.is_owner],
         owners=[r.user_id for r in rows if r.is_owner],
     )
+
+
+@router.get("/{group_id}/member-details", name="group_member_details_by_id")
+def get_group_member_details(
+    group_id: str,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    owner: Annotated[Optional[bool], Query()] = None,
+) -> Page[OktaUserGroupMemberDetail]:
+    """Paginated, fully-hydrated active membership rows for a group. `owner=true`
+    returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+    group page page through members instead of inlining every row in the group
+    detail response.
+
+    Pagination is by distinct *user*, not by membership row: a user can hold
+    several active rows for one group (a direct grant plus role-granted ones),
+    and the UI renders one row per user. Paging by user keeps `total` aligned
+    with the de-duplicated list the UI shows and keeps all of a user's rows on
+    the same page. Note `total` and `size` count users, so a page can contain
+    more than `size` items (rows) when users hold multiple rows; consumers must
+    not assume ``len(items) == size``."""
+    resolved_group_id = db.scalars(
+        select(OktaGroup.id)
+        .where(OktaGroup.deleted_at.is_(None))
+        .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
+    ).first()
+    if resolved_group_id is None:
+        raise HTTPException(404, "Not Found")
+
+    active = or_(
+        OktaUserGroupMember.ended_at.is_(None),
+        OktaUserGroupMember.ended_at > func.now(),
+    )
+
+    # Page over distinct user ids (stable order by user id); total is then the
+    # distinct user count.
+    user_stmt = (
+        select(OktaUserGroupMember.user_id).where(OktaUserGroupMember.group_id == resolved_group_id).where(active)
+    )
+    if owner is not None:
+        user_stmt = user_stmt.where(OktaUserGroupMember.is_owner.is_(owner))
+    user_stmt = user_stmt.distinct().order_by(OktaUserGroupMember.user_id)
+
+    def _load_rows(user_rows: Any) -> list[Any]:
+        user_ids = [r if isinstance(r, str) else r[0] for r in user_rows]
+        if not user_ids:
+            return []
+        detail_stmt = (
+            select(OktaUserGroupMember)
+            .options(*user_group_member_options())
+            .where(OktaUserGroupMember.group_id == resolved_group_id)
+            .where(active)
+            .where(OktaUserGroupMember.user_id.in_(user_ids))
+        )
+        if owner is not None:
+            detail_stmt = detail_stmt.where(OktaUserGroupMember.is_owner.is_(owner))
+        detail_stmt = detail_stmt.order_by(OktaUserGroupMember.user_id, OktaUserGroupMember.id)
+        return validated(OktaUserGroupMemberDetail)(db.scalars(detail_stmt).all())
+
+    return paginate(db, user_stmt, transformer=_load_rows)
 
 
 @router.put("/{group_id}/members", name="group_members_by_id_put")

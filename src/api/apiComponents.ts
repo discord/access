@@ -113,7 +113,7 @@ export type AccessRequestsVariables = {
 
 export const fetchAccessRequests = (variables: AccessRequestsVariables, signal?: AbortSignal) =>
   apiFetch<
-    Schemas.PageTypeVarCustomizedAccessRequestSummary,
+    Schemas.PageTCustomizedAccessRequestSummary,
     AccessRequestsError,
     undefined,
     {},
@@ -123,14 +123,12 @@ export const fetchAccessRequests = (variables: AccessRequestsVariables, signal?:
 
 export function accessRequestsQuery(variables: AccessRequestsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAccessRequestSummary>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAccessRequestSummary>;
 };
 
 export function accessRequestsQuery(variables: AccessRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAccessRequestSummary>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAccessRequestSummary>) | reactQuery.SkipToken;
 };
 
 export function accessRequestsQuery(variables: AccessRequestsVariables | reactQuery.SkipToken) {
@@ -147,30 +145,30 @@ export function accessRequestsQuery(variables: AccessRequestsVariables | reactQu
   };
 }
 
-export const useSuspenseAccessRequests = <TData = Schemas.PageTypeVarCustomizedAccessRequestSummary>(
+export const useSuspenseAccessRequests = <TData = Schemas.PageTCustomizedAccessRequestSummary>(
   variables: AccessRequestsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAccessRequestSummary, AccessRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAccessRequestSummary, AccessRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAccessRequestSummary, AccessRequestsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedAccessRequestSummary, AccessRequestsError, TData>({
     ...accessRequestsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useAccessRequests = <TData = Schemas.PageTypeVarCustomizedAccessRequestSummary>(
+export const useAccessRequests = <TData = Schemas.PageTCustomizedAccessRequestSummary>(
   variables: AccessRequestsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAccessRequestSummary, AccessRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAccessRequestSummary, AccessRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAccessRequestSummary, AccessRequestsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedAccessRequestSummary, AccessRequestsError, TData>({
     ...accessRequestsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -367,7 +365,7 @@ export type AppsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchApps = (variables: AppsVariables, signal?: AbortSignal) =>
-  apiFetch<Schemas.PageTypeVarCustomizedAppSummary, AppsError, undefined, {}, AppsQueryParams, {}>({
+  apiFetch<Schemas.PageTCustomizedAppSummary, AppsError, undefined, {}, AppsQueryParams, {}>({
     url: '/api/apps',
     method: 'get',
     ...variables,
@@ -376,12 +374,12 @@ export const fetchApps = (variables: AppsVariables, signal?: AbortSignal) =>
 
 export function appsQuery(variables: AppsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppSummary>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAppSummary>;
 };
 
 export function appsQuery(variables: AppsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppSummary>) | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAppSummary>) | reactQuery.SkipToken;
 };
 
 export function appsQuery(variables: AppsVariables | reactQuery.SkipToken) {
@@ -398,30 +396,30 @@ export function appsQuery(variables: AppsVariables | reactQuery.SkipToken) {
   };
 }
 
-export const useSuspenseApps = <TData = Schemas.PageTypeVarCustomizedAppSummary>(
+export const useSuspenseApps = <TData = Schemas.PageTCustomizedAppSummary>(
   variables: AppsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppSummary, AppsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAppSummary, AppsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAppSummary, AppsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedAppSummary, AppsError, TData>({
     ...appsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useApps = <TData = Schemas.PageTypeVarCustomizedAppSummary>(
+export const useApps = <TData = Schemas.PageTCustomizedAppSummary>(
   variables: AppsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppSummary, AppsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAppSummary, AppsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAppSummary, AppsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedAppSummary, AppsError, TData>({
     ...appsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -596,6 +594,144 @@ export const useAppByIdDelete = (
   });
 };
 
+export type AppGroupsByIdPathParams = {
+  appId: string;
+};
+
+export type AppGroupsByIdQueryParams = {
+  owner?: boolean | null;
+  q?: string | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 10
+   * @minimum 1
+   * @default 10
+   */
+  size?: number;
+};
+
+export type AppGroupsByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppGroupsByIdVariables = {
+  pathParams: AppGroupsByIdPathParams;
+  queryParams?: AppGroupsByIdQueryParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Each item
+ * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
+ * single response materializes at most that many groups' memberships, rather
+ * than every group of an app at once.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const fetchAppGroupsById = (variables: AppGroupsByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTCustomizedAppGroupForAppDetail,
+    AppGroupsByIdError,
+    undefined,
+    {},
+    AppGroupsByIdQueryParams,
+    AppGroupsByIdPathParams
+  >({url: '/api/apps/{appId}/groups', method: 'get', ...variables, signal});
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Each item
+ * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
+ * single response materializes at most that many groups' memberships, rather
+ * than every group of an app at once.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAppGroupForAppDetail>;
+};
+
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAppGroupForAppDetail>) | reactQuery.SkipToken;
+};
+
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/apps/{appId}/groups',
+      operationId: 'appGroupsById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAppGroupsById(variables, signal),
+  };
+}
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Each item
+ * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
+ * single response materializes at most that many groups' memberships, rather
+ * than every group of an app at once.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const useSuspenseAppGroupsById = <TData = Schemas.PageTCustomizedAppGroupForAppDetail>(
+  variables: AppGroupsByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>({
+    ...appGroupsByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Each item
+ * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
+ * single response materializes at most that many groups' memberships, rather
+ * than every group of an app at once.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const useAppGroupsById = <TData = Schemas.PageTCustomizedAppGroupForAppDetail>(
+  variables: AppGroupsByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>({
+    ...appGroupsByIdQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type UsersAndGroupsQueryParams = {
   q?: string | null;
   owner?: boolean | null;
@@ -642,25 +778,18 @@ export type UsersAndGroupsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchUsersAndGroups = (variables: UsersAndGroupsVariables, signal?: AbortSignal) =>
-  apiFetch<
-    Schemas.PageTypeVarCustomizedAuditUserGroupRow,
-    UsersAndGroupsError,
-    undefined,
-    {},
-    UsersAndGroupsQueryParams,
-    {}
-  >({url: '/api/audit/users', method: 'get', ...variables, signal});
+  apiFetch<Schemas.PageTCustomizedAuditUserGroupRow, UsersAndGroupsError, undefined, {}, UsersAndGroupsQueryParams, {}>(
+    {url: '/api/audit/users', method: 'get', ...variables, signal},
+  );
 
 export function usersAndGroupsQuery(variables: UsersAndGroupsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditUserGroupRow>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAuditUserGroupRow>;
 };
 
 export function usersAndGroupsQuery(variables: UsersAndGroupsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditUserGroupRow>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAuditUserGroupRow>) | reactQuery.SkipToken;
 };
 
 export function usersAndGroupsQuery(variables: UsersAndGroupsVariables | reactQuery.SkipToken) {
@@ -677,30 +806,30 @@ export function usersAndGroupsQuery(variables: UsersAndGroupsVariables | reactQu
   };
 }
 
-export const useSuspenseUsersAndGroups = <TData = Schemas.PageTypeVarCustomizedAuditUserGroupRow>(
+export const useSuspenseUsersAndGroups = <TData = Schemas.PageTCustomizedAuditUserGroupRow>(
   variables: UsersAndGroupsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>({
     ...usersAndGroupsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useUsersAndGroups = <TData = Schemas.PageTypeVarCustomizedAuditUserGroupRow>(
+export const useUsersAndGroups = <TData = Schemas.PageTCustomizedAuditUserGroupRow>(
   variables: UsersAndGroupsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedAuditUserGroupRow, UsersAndGroupsError, TData>({
     ...usersAndGroupsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -755,25 +884,18 @@ export type GroupsAndRolesVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchGroupsAndRoles = (variables: GroupsAndRolesVariables, signal?: AbortSignal) =>
-  apiFetch<
-    Schemas.PageTypeVarCustomizedAuditGroupRoleRow,
-    GroupsAndRolesError,
-    undefined,
-    {},
-    GroupsAndRolesQueryParams,
-    {}
-  >({url: '/api/audit/groups', method: 'get', ...variables, signal});
+  apiFetch<Schemas.PageTCustomizedAuditGroupRoleRow, GroupsAndRolesError, undefined, {}, GroupsAndRolesQueryParams, {}>(
+    {url: '/api/audit/groups', method: 'get', ...variables, signal},
+  );
 
 export function groupsAndRolesQuery(variables: GroupsAndRolesVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditGroupRoleRow>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAuditGroupRoleRow>;
 };
 
 export function groupsAndRolesQuery(variables: GroupsAndRolesVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAuditGroupRoleRow>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedAuditGroupRoleRow>) | reactQuery.SkipToken;
 };
 
 export function groupsAndRolesQuery(variables: GroupsAndRolesVariables | reactQuery.SkipToken) {
@@ -790,30 +912,30 @@ export function groupsAndRolesQuery(variables: GroupsAndRolesVariables | reactQu
   };
 }
 
-export const useSuspenseGroupsAndRoles = <TData = Schemas.PageTypeVarCustomizedAuditGroupRoleRow>(
+export const useSuspenseGroupsAndRoles = <TData = Schemas.PageTCustomizedAuditGroupRoleRow>(
   variables: GroupsAndRolesVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>({
     ...groupsAndRolesQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useGroupsAndRoles = <TData = Schemas.PageTypeVarCustomizedAuditGroupRoleRow>(
+export const useGroupsAndRoles = <TData = Schemas.PageTCustomizedAuditGroupRoleRow>(
   variables: GroupsAndRolesVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedAuditGroupRoleRow, GroupsAndRolesError, TData>({
     ...groupsAndRolesQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -891,25 +1013,21 @@ export type GroupRequestsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchGroupRequests = (variables: GroupRequestsVariables, signal?: AbortSignal) =>
-  apiFetch<
-    Schemas.PageTypeVarCustomizedGroupRequestDetail,
-    GroupRequestsError,
-    undefined,
-    {},
-    GroupRequestsQueryParams,
-    {}
-  >({url: '/api/group-requests', method: 'get', ...variables, signal});
+  apiFetch<Schemas.PageTCustomizedGroupRequestDetail, GroupRequestsError, undefined, {}, GroupRequestsQueryParams, {}>({
+    url: '/api/group-requests',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function groupRequestsQuery(variables: GroupRequestsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupRequestDetail>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedGroupRequestDetail>;
 };
 
 export function groupRequestsQuery(variables: GroupRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupRequestDetail>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedGroupRequestDetail>) | reactQuery.SkipToken;
 };
 
 export function groupRequestsQuery(variables: GroupRequestsVariables | reactQuery.SkipToken) {
@@ -926,30 +1044,30 @@ export function groupRequestsQuery(variables: GroupRequestsVariables | reactQuer
   };
 }
 
-export const useSuspenseGroupRequests = <TData = Schemas.PageTypeVarCustomizedGroupRequestDetail>(
+export const useSuspenseGroupRequests = <TData = Schemas.PageTCustomizedGroupRequestDetail>(
   variables: GroupRequestsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedGroupRequestDetail, GroupRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedGroupRequestDetail, GroupRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedGroupRequestDetail, GroupRequestsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedGroupRequestDetail, GroupRequestsError, TData>({
     ...groupRequestsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useGroupRequests = <TData = Schemas.PageTypeVarCustomizedGroupRequestDetail>(
+export const useGroupRequests = <TData = Schemas.PageTCustomizedGroupRequestDetail>(
   variables: GroupRequestsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedGroupRequestDetail, GroupRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedGroupRequestDetail, GroupRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedGroupRequestDetail, GroupRequestsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedGroupRequestDetail, GroupRequestsError, TData>({
     ...groupRequestsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -1146,7 +1264,7 @@ export type GroupsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchGroups = (variables: GroupsVariables, signal?: AbortSignal) =>
-  apiFetch<Schemas.PageTypeVarCustomizedGroupSummary, GroupsError, undefined, {}, GroupsQueryParams, {}>({
+  apiFetch<Schemas.PageTCustomizedGroupSummary, GroupsError, undefined, {}, GroupsQueryParams, {}>({
     url: '/api/groups',
     method: 'get',
     ...variables,
@@ -1155,12 +1273,12 @@ export const fetchGroups = (variables: GroupsVariables, signal?: AbortSignal) =>
 
 export function groupsQuery(variables: GroupsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupSummary>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedGroupSummary>;
 };
 
 export function groupsQuery(variables: GroupsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedGroupSummary>) | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedGroupSummary>) | reactQuery.SkipToken;
 };
 
 export function groupsQuery(variables: GroupsVariables | reactQuery.SkipToken) {
@@ -1177,30 +1295,30 @@ export function groupsQuery(variables: GroupsVariables | reactQuery.SkipToken) {
   };
 }
 
-export const useSuspenseGroups = <TData = Schemas.PageTypeVarCustomizedGroupSummary>(
+export const useSuspenseGroups = <TData = Schemas.PageTCustomizedGroupSummary>(
   variables: GroupsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedGroupSummary, GroupsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedGroupSummary, GroupsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedGroupSummary, GroupsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedGroupSummary, GroupsError, TData>({
     ...groupsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useGroups = <TData = Schemas.PageTypeVarCustomizedGroupSummary>(
+export const useGroups = <TData = Schemas.PageTCustomizedGroupSummary>(
   variables: GroupsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedGroupSummary, GroupsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedGroupSummary, GroupsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedGroupSummary, GroupsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedGroupSummary, GroupsError, TData>({
     ...groupsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -1595,6 +1713,140 @@ export const useGroupMembersByIdPut = (
     mutationFn: (variables: GroupMembersByIdPutVariables) =>
       fetchGroupMembersByIdPut(deepMerge(fetcherOptions, variables)),
     ...options,
+  });
+};
+
+export type GroupMemberDetailsByIdPathParams = {
+  groupId: string;
+};
+
+export type GroupMemberDetailsByIdQueryParams = {
+  owner?: boolean | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 1000
+   * @minimum 1
+   * @default 50
+   */
+  size?: number;
+};
+
+export type GroupMemberDetailsByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type GroupMemberDetailsByIdVariables = {
+  pathParams: GroupMemberDetailsByIdPathParams;
+  queryParams?: GroupMemberDetailsByIdQueryParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ */
+export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTCustomizedOktaUserGroupMemberDetail,
+    GroupMemberDetailsByIdError,
+    undefined,
+    {},
+    GroupMemberDetailsByIdQueryParams,
+    GroupMemberDetailsByIdPathParams
+  >({
+    url: '/api/groups/{groupId}/member-details',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ */
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedOktaUserGroupMemberDetail>;
+};
+
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn:
+    | ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedOktaUserGroupMemberDetail>)
+    | reactQuery.SkipToken;
+};
+
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/groups/{groupId}/member-details',
+      operationId: 'groupMemberDetailsById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchGroupMemberDetailsById(variables, signal),
+  };
+}
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ */
+export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTCustomizedOktaUserGroupMemberDetail>(
+  variables: GroupMemberDetailsByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedOktaUserGroupMemberDetail, GroupMemberDetailsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<
+    Schemas.PageTCustomizedOktaUserGroupMemberDetail,
+    GroupMemberDetailsByIdError,
+    TData
+  >({
+    ...groupMemberDetailsByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ */
+export const useGroupMemberDetailsById = <TData = Schemas.PageTCustomizedOktaUserGroupMemberDetail>(
+  variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedOktaUserGroupMemberDetail, GroupMemberDetailsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTCustomizedOktaUserGroupMemberDetail, GroupMemberDetailsByIdError, TData>({
+    ...groupMemberDetailsByIdQuery(
+      variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables),
+    ),
+    ...options,
+    ...queryOptions,
   });
 };
 
@@ -2136,25 +2388,21 @@ export type RoleRequestsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchRoleRequests = (variables: RoleRequestsVariables, signal?: AbortSignal) =>
-  apiFetch<
-    Schemas.PageTypeVarCustomizedRoleRequestSummary,
-    RoleRequestsError,
-    undefined,
-    {},
-    RoleRequestsQueryParams,
-    {}
-  >({url: '/api/role-requests', method: 'get', ...variables, signal});
+  apiFetch<Schemas.PageTCustomizedRoleRequestSummary, RoleRequestsError, undefined, {}, RoleRequestsQueryParams, {}>({
+    url: '/api/role-requests',
+    method: 'get',
+    ...variables,
+    signal,
+  });
 
 export function roleRequestsQuery(variables: RoleRequestsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleRequestSummary>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedRoleRequestSummary>;
 };
 
 export function roleRequestsQuery(variables: RoleRequestsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleRequestSummary>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedRoleRequestSummary>) | reactQuery.SkipToken;
 };
 
 export function roleRequestsQuery(variables: RoleRequestsVariables | reactQuery.SkipToken) {
@@ -2171,30 +2419,30 @@ export function roleRequestsQuery(variables: RoleRequestsVariables | reactQuery.
   };
 }
 
-export const useSuspenseRoleRequests = <TData = Schemas.PageTypeVarCustomizedRoleRequestSummary>(
+export const useSuspenseRoleRequests = <TData = Schemas.PageTCustomizedRoleRequestSummary>(
   variables: RoleRequestsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedRoleRequestSummary, RoleRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedRoleRequestSummary, RoleRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedRoleRequestSummary, RoleRequestsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedRoleRequestSummary, RoleRequestsError, TData>({
     ...roleRequestsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useRoleRequests = <TData = Schemas.PageTypeVarCustomizedRoleRequestSummary>(
+export const useRoleRequests = <TData = Schemas.PageTCustomizedRoleRequestSummary>(
   variables: RoleRequestsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedRoleRequestSummary, RoleRequestsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedRoleRequestSummary, RoleRequestsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedRoleRequestSummary, RoleRequestsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedRoleRequestSummary, RoleRequestsError, TData>({
     ...roleRequestsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -2380,7 +2628,7 @@ export type RolesVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchRoles = (variables: RolesVariables, signal?: AbortSignal) =>
-  apiFetch<Schemas.PageTypeVarCustomizedRoleGroupListItem, RolesError, undefined, {}, RolesQueryParams, {}>({
+  apiFetch<Schemas.PageTCustomizedRoleGroupListItem, RolesError, undefined, {}, RolesQueryParams, {}>({
     url: '/api/roles',
     method: 'get',
     ...variables,
@@ -2389,14 +2637,12 @@ export const fetchRoles = (variables: RolesVariables, signal?: AbortSignal) =>
 
 export function rolesQuery(variables: RolesVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleGroupListItem>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedRoleGroupListItem>;
 };
 
 export function rolesQuery(variables: RolesVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn:
-    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedRoleGroupListItem>)
-    | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedRoleGroupListItem>) | reactQuery.SkipToken;
 };
 
 export function rolesQuery(variables: RolesVariables | reactQuery.SkipToken) {
@@ -2413,30 +2659,30 @@ export function rolesQuery(variables: RolesVariables | reactQuery.SkipToken) {
   };
 }
 
-export const useSuspenseRoles = <TData = Schemas.PageTypeVarCustomizedRoleGroupListItem>(
+export const useSuspenseRoles = <TData = Schemas.PageTCustomizedRoleGroupListItem>(
   variables: RolesVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedRoleGroupListItem, RolesError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedRoleGroupListItem, RolesError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedRoleGroupListItem, RolesError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedRoleGroupListItem, RolesError, TData>({
     ...rolesQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useRoles = <TData = Schemas.PageTypeVarCustomizedRoleGroupListItem>(
+export const useRoles = <TData = Schemas.PageTCustomizedRoleGroupListItem>(
   variables: RolesVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedRoleGroupListItem, RolesError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedRoleGroupListItem, RolesError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedRoleGroupListItem, RolesError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedRoleGroupListItem, RolesError, TData>({
     ...rolesQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -2736,7 +2982,7 @@ export type TagsVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchTags = (variables: TagsVariables, signal?: AbortSignal) =>
-  apiFetch<Schemas.PageTypeVarCustomizedTagListItem, TagsError, undefined, {}, TagsQueryParams, {}>({
+  apiFetch<Schemas.PageTCustomizedTagListItem, TagsError, undefined, {}, TagsQueryParams, {}>({
     url: '/api/tags',
     method: 'get',
     ...variables,
@@ -2745,12 +2991,12 @@ export const fetchTags = (variables: TagsVariables, signal?: AbortSignal) =>
 
 export function tagsQuery(variables: TagsVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedTagListItem>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedTagListItem>;
 };
 
 export function tagsQuery(variables: TagsVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedTagListItem>) | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedTagListItem>) | reactQuery.SkipToken;
 };
 
 export function tagsQuery(variables: TagsVariables | reactQuery.SkipToken) {
@@ -2767,30 +3013,30 @@ export function tagsQuery(variables: TagsVariables | reactQuery.SkipToken) {
   };
 }
 
-export const useSuspenseTags = <TData = Schemas.PageTypeVarCustomizedTagListItem>(
+export const useSuspenseTags = <TData = Schemas.PageTCustomizedTagListItem>(
   variables: TagsVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedTagListItem, TagsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedTagListItem, TagsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedTagListItem, TagsError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedTagListItem, TagsError, TData>({
     ...tagsQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useTags = <TData = Schemas.PageTypeVarCustomizedTagListItem>(
+export const useTags = <TData = Schemas.PageTCustomizedTagListItem>(
   variables: TagsVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedTagListItem, TagsError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedTagListItem, TagsError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedTagListItem, TagsError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedTagListItem, TagsError, TData>({
     ...tagsQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -2994,7 +3240,7 @@ export type UsersVariables = {
 } & ApiContext['fetcherOptions'];
 
 export const fetchUsers = (variables: UsersVariables, signal?: AbortSignal) =>
-  apiFetch<Schemas.PageTypeVarCustomizedOktaUserSummary, UsersError, undefined, {}, UsersQueryParams, {}>({
+  apiFetch<Schemas.PageTCustomizedOktaUserSummary, UsersError, undefined, {}, UsersQueryParams, {}>({
     url: '/api/users',
     method: 'get',
     ...variables,
@@ -3003,12 +3249,12 @@ export const fetchUsers = (variables: UsersVariables, signal?: AbortSignal) =>
 
 export function usersQuery(variables: UsersVariables): {
   queryKey: reactQuery.QueryKey;
-  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedOktaUserSummary>;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTCustomizedOktaUserSummary>;
 };
 
 export function usersQuery(variables: UsersVariables | reactQuery.SkipToken): {
   queryKey: reactQuery.QueryKey;
-  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedOktaUserSummary>) | reactQuery.SkipToken;
+  queryFn: ((options: QueryFnOptions) => Promise<Schemas.PageTCustomizedOktaUserSummary>) | reactQuery.SkipToken;
 };
 
 export function usersQuery(variables: UsersVariables | reactQuery.SkipToken) {
@@ -3025,30 +3271,30 @@ export function usersQuery(variables: UsersVariables | reactQuery.SkipToken) {
   };
 }
 
-export const useSuspenseUsers = <TData = Schemas.PageTypeVarCustomizedOktaUserSummary>(
+export const useSuspenseUsers = <TData = Schemas.PageTCustomizedOktaUserSummary>(
   variables: UsersVariables,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedOktaUserSummary, UsersError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedOktaUserSummary, UsersError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedOktaUserSummary, UsersError, TData>({
+  return reactQuery.useSuspenseQuery<Schemas.PageTCustomizedOktaUserSummary, UsersError, TData>({
     ...usersQuery(deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
   });
 };
 
-export const useUsers = <TData = Schemas.PageTypeVarCustomizedOktaUserSummary>(
+export const useUsers = <TData = Schemas.PageTCustomizedOktaUserSummary>(
   variables: UsersVariables | reactQuery.SkipToken,
   options?: Omit<
-    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedOktaUserSummary, UsersError, TData>,
+    reactQuery.UseQueryOptions<Schemas.PageTCustomizedOktaUserSummary, UsersError, TData>,
     'queryKey' | 'queryFn' | 'initialData'
   >,
 ) => {
   const {queryOptions, fetcherOptions} = useApiContext(options);
-  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedOktaUserSummary, UsersError, TData>({
+  return reactQuery.useQuery<Schemas.PageTCustomizedOktaUserSummary, UsersError, TData>({
     ...usersQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
     ...options,
     ...queryOptions,
@@ -3226,6 +3472,11 @@ export type QueryOperation =
       variables: AppByIdVariables | reactQuery.SkipToken;
     }
   | {
+      path: '/api/apps/{appId}/groups';
+      operationId: 'appGroupsById';
+      variables: AppGroupsByIdVariables | reactQuery.SkipToken;
+    }
+  | {
       path: '/api/audit/users';
       operationId: 'usersAndGroups';
       variables: UsersAndGroupsVariables | reactQuery.SkipToken;
@@ -3264,6 +3515,11 @@ export type QueryOperation =
       path: '/api/groups/{groupId}/members';
       operationId: 'groupMembersById';
       variables: GroupMembersByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/groups/{groupId}/member-details';
+      operationId: 'groupMemberDetailsById';
+      variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/plugins/app-group-lifecycle';

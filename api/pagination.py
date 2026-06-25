@@ -23,6 +23,11 @@ from pydantic import TypeAdapter
 DEFAULT_SIZE = 50
 MAX_SIZE = 1000
 
+# App-groups embed every group's full membership per item, so this page is
+# bound tighter than the default: one page can materialize at most this many
+# groups' worth of members regardless of how many groups an app owns.
+APP_GROUPS_SIZE = 10
+
 
 class PageParams(_DefaultParams):
     """Default `Params` subclass: 1-indexed `page`, `size` capped at MAX_SIZE."""
@@ -31,12 +36,25 @@ class PageParams(_DefaultParams):
     size: int = Query(DEFAULT_SIZE, ge=1, le=MAX_SIZE, description="Items per page")
 
 
+class AppGroupsPageParams(_DefaultParams):
+    """Params for `GET /api/apps/{id}/groups`: `size` defaults to and is capped
+    at APP_GROUPS_SIZE so a single response can't load an unbounded number of
+    groups' memberships."""
+
+    page: int = Query(1, ge=1, description="Page number")
+    size: int = Query(APP_GROUPS_SIZE, ge=1, le=APP_GROUPS_SIZE, description="Items per page")
+
+
 # `Page[T]` re-export with our `PageParams` defaults pre-applied so router
 # signatures stay short: `-> Page[OktaUserSummary]`.
 T = TypeVar("T")
 Page = CustomizedPage[
     _BasePage[T],
     UseParams(PageParams),
+]
+AppGroupsPage = CustomizedPage[
+    _BasePage[T],
+    UseParams(AppGroupsPageParams),
 ]
 
 
@@ -61,6 +79,9 @@ def validated(model: type) -> Callable[[Sequence[Any]], list[Any]]:
 
 
 __all__ = [
+    "APP_GROUPS_SIZE",
+    "AppGroupsPage",
+    "AppGroupsPageParams",
     "DEFAULT_SIZE",
     "MAX_SIZE",
     "Page",

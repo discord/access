@@ -17,7 +17,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import {AppDetail, AppGroupDetail, OktaUserGroupMemberDetail} from '../../../api/apiSchemas';
+import {AppGroupForAppDetail, OktaUserGroupMemberDetail} from '../../../api/apiSchemas';
 import React from 'react';
 import {displayUserName, groupBy, groupMemberships, sortGroupMembers} from '../../../helpers';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
@@ -29,10 +29,18 @@ import {Link as RouterLink, useParams} from 'react-router-dom';
 interface GroupDetailListProps {
   member_list: any[];
   title?: string;
+  groupName?: string;
 }
 
+// Cap how many members render inline in the app-detail accordion. A few groups
+// have thousands of members; rendering them all here janks the page. The full,
+// paginated list lives on the group page, linked from the overflow row.
+const MAX_INLINE_MEMBERS = 100;
+
 const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
-  ({member_list, title}) => {
+  ({member_list, title, groupName}) => {
+    const shown = member_list.slice(0, MAX_INLINE_MEMBERS);
+    const overflow = member_list.length - shown.length;
     return (
       <Stack direction="column" spacing={1}>
         {title && (
@@ -52,7 +60,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
             </TableHead>
             <TableBody>
               {member_list.length > 0 ? (
-                member_list.map((member: OktaUserGroupMemberDetail) => (
+                shown.map((member: OktaUserGroupMemberDetail) => (
                   <TableRow key={member.active_user?.id}>
                     <TableCell>
                       <Link
@@ -84,6 +92,15 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
               ) : (
                 <EmptyListEntry cellProps={{colSpan: 3}} />
               )}
+              {overflow > 0 && (
+                <TableRow>
+                  <TableCell colSpan={3}>
+                    <Link to={groupName ? `/groups/${groupName}` : '#'} component={RouterLink}>
+                      + {overflow} more — view all {member_list.length} on the group page
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
 
             <TableFooter>
@@ -97,6 +114,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
   (prevProps, nextProps) => {
     return (
       prevProps.title === nextProps.title &&
+      prevProps.groupName === nextProps.groupName &&
       prevProps.member_list.length === nextProps.member_list.length &&
       prevProps.member_list.every(
         (member, index) => member.active_user?.id === nextProps.member_list[index]?.active_user?.id,
@@ -106,7 +124,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
 );
 
 const AccordionItem: React.FC<{
-  appGroup: AppGroupDetail;
+  appGroup: AppGroupForAppDetail;
   expanded: boolean;
   onToggle: (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => void;
 }> = React.memo(
@@ -127,7 +145,9 @@ const AccordionItem: React.FC<{
 
     return (
       <TableContainer key={appGroup.id} component={Paper}>
-        <Accordion expanded={expanded} onChange={handleToggle}>
+        {/* unmountOnExit so collapsed groups don't render their (potentially
+            huge) member tables — keeps the page fast when an app has large groups. */}
+        <Accordion expanded={expanded} onChange={handleToggle} TransitionProps={{unmountOnExit: true}}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
             <Box
               sx={{
@@ -174,8 +194,8 @@ const AccordionItem: React.FC<{
                 <TableRow>
                   <TableCell colSpan={2}>
                     <Stack direction="row" useFlexGap flexWrap={'wrap'} justifyContent={'space-between'} gap={'2rem'}>
-                      <GroupDetailList member_list={owners} title={'Group Owners'} />
-                      <GroupDetailList member_list={members} title={'Members'} />
+                      <GroupDetailList member_list={owners} title={'Group Owners'} groupName={appGroup.name} />
+                      <GroupDetailList member_list={members} title={'Members'} groupName={appGroup.name} />
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -199,7 +219,7 @@ const AccordionItem: React.FC<{
 );
 
 interface AppAccordionListGroupProps {
-  app_group: AppGroupDetail[];
+  app_group: AppGroupForAppDetail[];
   list_group_title?: string;
   list_group_description?: string;
   isExpanded?: boolean;

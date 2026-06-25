@@ -1720,3 +1720,103 @@ def test_role_list_excludes_role_association_mappings(
     assert "active_role_associated_group_member_mappings" not in matched
     assert "active_role_associated_group_owner_mappings" not in matched
     assert "active_group_tags" not in matched
+
+
+def test_get_group_member_details_paginated(client: TestClient, db: Db, url_for: Any) -> None:
+    """`GET /api/groups/{id}/member-details` returns full member rows paginated,
+    so the group page can page members instead of inlining all of them. `owner`
+    filters members vs owners."""
+    group = OktaGroupFactory.create()
+    db.session.add(group)
+    db.session.commit()
+
+    members = OktaUserFactory.create_batch(60)
+    owner = OktaUserFactory.create()
+    for u in members + [owner]:
+        db.session.add(u)
+    db.session.commit()
+
+    ModifyGroupUsers(
+        group=group,
+        members_to_add=[u.id for u in members],
+        owners_to_add=[owner.id],
+        sync_to_okta=False,
+    ).execute()
+
+    group_id = group.id
+    owner_id = owner.id
+    db.session.expunge_all()
+
+    url = url_for("api-groups.group_member_details_by_id", group_id=group_id)
+
+    rep = client.get(url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert {"items", "total", "page", "size", "pages"} <= set(data.keys())
+    assert data["total"] == 61
+    assert len(data["items"]) == 50  # default page size
+    assert "user" in data["items"][0]
+
+    rep = client.get(url, params={"owner": "true"})
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["total"] == 1
+    assert data["items"][0]["is_owner"] is True
+    assert data["items"][0]["user"]["id"] == owner_id
+
+
+def test_get_group_omits_inline_members(client: TestClient, db: Db, url_for: Any) -> None:
+    """`GET /api/groups/{id}` no longer inlines its members; the group page
+    pages them via the member-details endpoint instead, so the detail response
+    can't materialize an unbounded member list."""
+    group = OktaGroupFactory.create()
+    db.session.add(group)
+    db.session.commit()
+    member = OktaUserFactory.create()
+    db.session.add(member)
+    db.session.commit()
+    ModifyGroupUsers(group=group, members_to_add=[member.id], sync_to_okta=False).execute()
+
+    group_id = group.id
+    db.session.expunge_all()
+
+    rep = client.get(url_for("api-groups.group_by_id", group_id=group_id))
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert "active_user_memberships" not in data
+    assert "active_user_ownerships" not in data
+
+    rep2 = client.get(url_for("api-groups.group_member_details_by_id", group_id=group_id))
+    assert rep2.status_code == 200, rep2.text
+    assert rep2.json()["total"] == 1
+
+
+def test_group_member_details_counts_users_not_rows(client: TestClient, db: Db, url_for: Any) -> None:
+    """A user holding both a direct and a role-granted membership in a group is a
+    single member: member-details pages by distinct user, so total counts the
+    user once and both of their rows land on the same page."""
+    group = OktaGroupFactory.create()
+    role = RoleGroupFactory.create()
+    user = OktaUserFactory.create()
+    db.session.add_all([group, role, user])
+    db.session.commit()
+
+    # Direct membership in the group.
+    ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
+    # Role-granted membership: user is in the role, role is a member of the group.
+    ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
+    ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    group_id = group.id
+    user_id = user.id
+    db.session.expunge_all()
+
+    url = url_for("api-groups.group_member_details_by_id", group_id=group_id)
+    rep = client.get(url, params={"owner": "false"})
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    # One distinct member user, even though they hold two active membership rows.
+    assert data["total"] == 1
+    # Both rows are returned so the UI can render direct + via-role chips.
+    rows = [r for r in data["items"] if r.get("active_user") and r["active_user"]["id"] == user_id]
+    assert len(rows) == 2

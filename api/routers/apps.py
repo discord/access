@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -21,16 +21,19 @@ from api.models import (
     AppGroup,
     AppTagMap,
     OktaGroup,
+    OktaUser,
+    OktaUserGroupMember,
 )
 from fastapi_pagination.ext.sqlalchemy import paginate
 
-from api.pagination import Page, validated
+from api.pagination import AppGroupsPage, Page, validated
 from api.routers._eager import (
     user_group_member_options,
 )
 from api.schemas import (
     AppSummary,
     AppDetail,
+    AppGroupForAppDetail,
     CreateAppBody,
     DeleteMessage,
     SearchAppQuery,
@@ -52,8 +55,6 @@ APP_LOAD_OPTIONS = (
         joinedload(AppTagMap.active_tag),
         joinedload(AppTagMap.active_app),
     ),
-    selectinload(App.active_owner_app_groups).options(*_APP_GROUP_LOAD),
-    selectinload(App.active_non_owner_app_groups).options(*_APP_GROUP_LOAD),
 )
 
 
@@ -85,6 +86,60 @@ def get_app(app_id: str, db: DbSession, current_user_id: CurrentUserId) -> AppDe
     if app is None:
         raise HTTPException(404, "Not Found")
     return AppDetail.model_validate(app, from_attributes=True)
+
+
+@router.get("/{app_id}/groups", name="app_groups_by_id")
+def get_app_groups(
+    app_id: str,
+    db: DbSession,
+    current_user_id: CurrentUserId,
+    owner: Annotated[Optional[bool], Query()] = None,
+    q: Annotated[Optional[str], Query()] = None,
+) -> AppGroupsPage[AppGroupForAppDetail]:
+    """Paginated app-groups for an app, owners first then by name. Each item
+    carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
+    single response materializes at most that many groups' memberships, rather
+    than every group of an app at once.
+
+    `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+    have an active member matching the query by name or email — the app page's
+    user search, computed in SQL so it doesn't need every member client-side."""
+    resolved_app_id = db.scalars(
+        select(App.id).where(App.deleted_at.is_(None)).where(or_(App.id == app_id, App.name == app_id))
+    ).first()
+    if resolved_app_id is None:
+        raise HTTPException(404, "Not Found")
+    stmt = (
+        select(AppGroup)
+        .options(joinedload(AppGroup.app), *_APP_GROUP_LOAD)
+        .where(AppGroup.app_id == resolved_app_id)
+        .where(AppGroup.deleted_at.is_(None))
+    )
+    if owner is not None:
+        stmt = stmt.where(AppGroup.is_owner.is_(owner))
+    if q:
+        like = f"%{q}%"
+        member_match = (
+            select(OktaUserGroupMember.id)
+            .join(OktaUser, OktaUser.id == OktaUserGroupMember.user_id)
+            .where(OktaUserGroupMember.group_id == AppGroup.id)
+            .where(OktaUser.deleted_at.is_(None))
+            .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
+            .where(
+                or_(
+                    OktaUser.email.ilike(like),
+                    OktaUser.display_name.ilike(like),
+                    OktaUser.first_name.ilike(like),
+                    OktaUser.last_name.ilike(like),
+                )
+            )
+            .exists()
+        )
+        stmt = stmt.where(member_match)
+    # AppGroup.id is a unique final tiebreaker so rows that tie on
+    # (is_owner, lower(name)) have a stable order across LIMIT/OFFSET pages.
+    stmt = stmt.order_by(AppGroup.is_owner.desc(), func.lower(AppGroup.name), AppGroup.id)
+    return paginate(db, stmt, transformer=validated(AppGroupForAppDetail))
 
 
 @router.post("", name="apps_create", status_code=201)

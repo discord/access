@@ -96,6 +96,12 @@ export type AccessRequestSummary = {
 
 /**
  * Full App detail.
+ *
+ * The app's groups are intentionally NOT inlined here. An app can own
+ * hundreds of groups, and inlining each group's full membership made a
+ * single detail response materialize thousands of member rows. Groups (with
+ * their members) are served by the paginated `GET /api/apps/{id}/groups`
+ * endpoint (`AppGroupForAppDetail`) so the cost is bounded per page.
  */
 export type AppDetail = {
   id: string;
@@ -109,8 +115,6 @@ export type AppDetail = {
     [key: string]: any;
   } | null;
   active_app_tags?: AppTagMapDetail[];
-  active_owner_app_groups?: AppGroupForAppDetail[];
-  active_non_owner_app_groups?: AppGroupForAppDetail[];
 };
 
 export type AppGroupDetail = {
@@ -130,8 +134,6 @@ export type AppGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default app_group
@@ -542,8 +544,6 @@ export type OktaGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default okta_group
@@ -669,7 +669,7 @@ export type OktaUserSummary = {
   deleted_at?: string | null;
 };
 
-export type PageTypeVarCustomizedAccessRequestSummary = {
+export type PageTCustomizedAccessRequestSummary = {
   items: AccessRequestSummary[];
   /**
    * @minimum 0
@@ -689,7 +689,27 @@ export type PageTypeVarCustomizedAccessRequestSummary = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedAppSummary = {
+export type PageTCustomizedAppGroupForAppDetail = {
+  items: AppGroupForAppDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
+export type PageTCustomizedAppSummary = {
   items: AppSummary[];
   /**
    * @minimum 0
@@ -709,7 +729,7 @@ export type PageTypeVarCustomizedAppSummary = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedAuditGroupRoleRow = {
+export type PageTCustomizedAuditGroupRoleRow = {
   items: AuditGroupRoleRow[];
   /**
    * @minimum 0
@@ -729,7 +749,7 @@ export type PageTypeVarCustomizedAuditGroupRoleRow = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedAuditUserGroupRow = {
+export type PageTCustomizedAuditUserGroupRow = {
   items: AuditUserGroupRow[];
   /**
    * @minimum 0
@@ -749,7 +769,7 @@ export type PageTypeVarCustomizedAuditUserGroupRow = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedGroupRequestDetail = {
+export type PageTCustomizedGroupRequestDetail = {
   items: GroupRequestDetail[];
   /**
    * @minimum 0
@@ -769,7 +789,7 @@ export type PageTypeVarCustomizedGroupRequestDetail = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedGroupSummary = {
+export type PageTCustomizedGroupSummary = {
   items: GroupSummary[];
   /**
    * @minimum 0
@@ -789,7 +809,27 @@ export type PageTypeVarCustomizedGroupSummary = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedOktaUserSummary = {
+export type PageTCustomizedOktaUserGroupMemberDetail = {
+  items: OktaUserGroupMemberDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
+export type PageTCustomizedOktaUserSummary = {
   items: OktaUserSummary[];
   /**
    * @minimum 0
@@ -809,7 +849,7 @@ export type PageTypeVarCustomizedOktaUserSummary = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedRoleGroupListItem = {
+export type PageTCustomizedRoleGroupListItem = {
   items: RoleGroupListItem[];
   /**
    * @minimum 0
@@ -829,7 +869,7 @@ export type PageTypeVarCustomizedRoleGroupListItem = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedRoleRequestSummary = {
+export type PageTCustomizedRoleRequestSummary = {
   items: RoleRequestSummary[];
   /**
    * @minimum 0
@@ -849,7 +889,7 @@ export type PageTypeVarCustomizedRoleRequestSummary = {
   pages: number;
 };
 
-export type PageTypeVarCustomizedTagListItem = {
+export type PageTCustomizedTagListItem = {
   items: TagListItem[];
   /**
    * @minimum 0
@@ -993,8 +1033,6 @@ export type RoleGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default role_group
