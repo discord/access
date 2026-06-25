@@ -8,6 +8,7 @@ import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 import Link from '@mui/material/Link';
+import Pagination from '@mui/material/Pagination';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -44,7 +45,13 @@ import Loading from '../../components/Loading';
 import Ending from '../../components/Ending';
 import MarkdownDescription from '../../components/MarkdownDescription';
 import {groupBy, displayGroupType, displayUserName} from '../../helpers';
-import {useAppById, useGroupById, useGroupMembersByIdPut} from '../../api/apiComponents';
+import {
+  useAppById,
+  useAppGroupsById,
+  useGroupById,
+  useGroupMemberDetailsById,
+  useGroupMembersByIdPut,
+} from '../../api/apiComponents';
 import {
   AppDetail,
   AppGroupForAppDetail,
@@ -124,6 +131,52 @@ export default function ReadGroup() {
 
   const app = appData ?? ({} as AppDetail);
 
+  // Owners and members are no longer inlined on the group payload. Owners (and
+  // the app's owner groups, for app groups) are small and fetched whole;
+  // members are paginated so a large group can't materialize every row at once.
+  const {data: appOwnerGroupsData} = useAppGroupsById(
+    {
+      pathParams: {appId: ((group ?? {}) as AppGroupDetail).app?.id ?? ''},
+      queryParams: {owner: true},
+    },
+    {
+      enabled: group.type == 'app_group',
+    },
+  );
+
+  // Owners are few and rendered un-paginated, so fetch them whole (a large
+  // `size`) rather than letting the default page size silently cap them.
+  const {data: groupOwnerData} = useGroupMemberDetailsById(
+    {
+      pathParams: {groupId: id ?? ''},
+      queryParams: {owner: true, size: 100},
+    },
+    {
+      enabled: id != null,
+    },
+  );
+
+  // App owners = the owners of the app's owner group. The app-groups payload
+  // only carries counts now, so fetch that group's owners explicitly (apps have
+  // a single App-<name>-Owners group).
+  const appOwnerGroupId = appOwnerGroupsData?.items?.[0]?.id ?? '';
+  const {data: appOwnerMemberData} = useGroupMemberDetailsById(
+    {pathParams: {groupId: appOwnerGroupId}, queryParams: {owner: true, size: 100}},
+    {enabled: appOwnerGroupId !== ''},
+  );
+
+  // Members page MEMBER_PAGE_SIZE at a time via the page-number control below.
+  const [memberPage, setMemberPage] = React.useState(1);
+  // Reset to page 1 when the group changes (component is reused across
+  // /groups/:id and /roles/:id).
+  React.useEffect(() => {
+    setMemberPage(1);
+  }, [id]);
+  const {data: groupMemberData} = useGroupMemberDetailsById(
+    {pathParams: {groupId: id ?? ''}, queryParams: {owner: false, page: memberPage, size: 100}},
+    {enabled: id != null},
+  );
+
   const putGroupUsers = useGroupMembersByIdPut({
     onSuccess: () => navigate(0),
   });
@@ -136,9 +189,7 @@ export default function ReadGroup() {
     return <Loading />;
   }
 
-  const appOwnershipsArray = (app.active_owner_app_groups ?? [])
-    .map((appGroup: AppGroupForAppDetail) => appGroup.active_user_ownerships ?? [])
-    .flat();
+  const appOwnershipsArray = appOwnerMemberData?.items ?? [];
   // set of app owner ids
   const appOwnershipSet: Set<string> = appOwnershipsArray.reduce(
     (out: Set<string>, user: OktaUserGroupMemberDetail) => {
@@ -148,7 +199,8 @@ export default function ReadGroup() {
     new Set<string>(),
   );
 
-  const directRoleOwnerships: Set<string> = (group.active_user_ownerships ?? []).reduce(
+  const groupOwnershipRows = groupOwnerData?.items ?? [];
+  const directRoleOwnerships: Set<string> = groupOwnershipRows.reduce(
     (out: Set<string>, user: OktaUserGroupMemberDetail) => {
       out.add(user.active_user!.id);
       return out;
@@ -156,14 +208,16 @@ export default function ReadGroup() {
     new Set<string>(),
   );
 
-  let allOwnerships: Set<OktaUserGroupMemberDetail> = new Set(group.active_user_ownerships ?? []);
+  let allOwnerships: Set<OktaUserGroupMemberDetail> = new Set(groupOwnershipRows);
   appOwnershipsArray.forEach((user: OktaUserGroupMemberDetail) => {
     directRoleOwnerships.has(user.active_user!.id) ? null : allOwnerships.add(user);
   });
 
   let ownerships = groupBy(Array.from(allOwnerships), (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
-  const memberships = groupBy(group.active_user_memberships, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
+  const memberships = groupBy(groupMemberData?.items ?? [], (m: OktaUserGroupMemberDetail) => m.active_user?.id);
+  const totalMemberRows = groupMemberData?.total ?? 0;
+  const memberPageCount = groupMemberData?.pages ?? 0;
 
   let role_associated_group_owners: Record<string, RoleGroupMapDetail[]> = {};
   let role_associated_group_members: Record<string, RoleGroupMapDetail[]> = {};
@@ -717,7 +771,7 @@ export default function ReadGroup() {
                                 alignItems: 'right',
                               }}>
                               <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                              Total Members: {Object.keys(memberships).length}
+                              Total Members: {totalMemberRows}
                             </Box>
                           </Grid>
                         </Grid>
@@ -731,7 +785,7 @@ export default function ReadGroup() {
                             alignItems: 'right',
                           }}>
                           <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                          Total Members: {Object.keys(memberships).length}
+                          Total Members: {totalMemberRows}
                         </Box>
                       </TableCell>
                     )}
@@ -831,7 +885,22 @@ export default function ReadGroup() {
                   )}
                 </TableBody>
                 <TableFooter>
-                  <TableRow />
+                  {memberPageCount > 1 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        <Box sx={{display: 'flex', justifyContent: 'center'}}>
+                          <Pagination
+                            count={memberPageCount}
+                            page={memberPage}
+                            onChange={(_, value) => setMemberPage(value)}
+                            color="primary"
+                          />
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    <TableRow />
+                  )}
                 </TableFooter>
               </Table>
             </TableContainer>

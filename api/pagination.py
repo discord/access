@@ -16,12 +16,17 @@ from typing import Any, TypeVar
 
 from fastapi import Query
 from fastapi_pagination import Page as _BasePage
-from fastapi_pagination.customization import CustomizedPage, UseParams
+from fastapi_pagination.customization import CustomizedPage, UseParams, UseParamsFields
 from fastapi_pagination.default import Params as _DefaultParams
 from pydantic import TypeAdapter
 
 DEFAULT_SIZE = 50
 MAX_SIZE = 1000
+
+# App-groups embed every group's full membership per item, so this page is
+# bound tighter than the default: one page can materialize at most this many
+# groups' worth of members regardless of how many groups an app owns.
+APP_GROUPS_SIZE = 10
 
 
 class PageParams(_DefaultParams):
@@ -37,6 +42,13 @@ T = TypeVar("T")
 Page = CustomizedPage[
     _BasePage[T],
     UseParams(PageParams),
+]
+# `GET /api/apps/{id}/groups` caps `size` at APP_GROUPS_SIZE so one page can't
+# load an unbounded number of groups' memberships. Override just the `size`
+# field on `Page` rather than defining a whole Params subclass.
+AppGroupsPage = CustomizedPage[
+    Page[T],
+    UseParamsFields(size=Query(APP_GROUPS_SIZE, ge=1, le=APP_GROUPS_SIZE, description="Items per page")),
 ]
 
 
@@ -61,6 +73,8 @@ def validated(model: type) -> Callable[[Sequence[Any]], list[Any]]:
 
 
 __all__ = [
+    "APP_GROUPS_SIZE",
+    "AppGroupsPage",
     "DEFAULT_SIZE",
     "MAX_SIZE",
     "Page",

@@ -2,79 +2,45 @@ import {Autocomplete, Button, Grid, Paper, TextField, Box} from '@mui/material';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import CreateUpdateGroup from '../../groups/CreateUpdate';
-import {OktaUserDetail, AppDetail, AppGroupDetail} from '../../../api/apiSchemas';
-import {renderUserOption} from '../../../components/TableTopBar';
-import {displayUserName, sortGroupMemberRecords} from '../../../helpers';
+import {OktaUserDetail, AppDetail} from '../../../api/apiSchemas';
 import React from 'react';
 
 interface AppsAdminActionGroupProps {
   currentUser: OktaUserDetail;
   app: AppDetail;
-  onSearchSubmit?: (appGroup: AppGroupDetail[], isActive: boolean) => void;
+  // Emits the raw user search query. Group filtering by member is computed
+  // server-side (GET /api/apps/{id}/groups?q=…) so the page no longer needs
+  // every member loaded client-side.
+  onSearchChange?: (q: string) => void;
   onToggleExpand?: (expanded: boolean) => void;
   isExpanded?: boolean;
 }
 
 export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.memo(
-  ({currentUser, app, onSearchSubmit, onToggleExpand, isExpanded = false}) => {
-    const {allMembers, memberGroups, sortedUserOptions} = React.useMemo(() => {
-      const allMembers: Record<string, OktaUserDetail> = {};
-      const memberGroups: Record<string, AppGroupDetail[]> = {};
+  ({currentUser, app, onSearchChange, onToggleExpand, isExpanded = false}) => {
+    const onSearchChangeRef = React.useRef(onSearchChange);
+    onSearchChangeRef.current = onSearchChange;
 
-      (app.active_non_owner_app_groups ?? []).forEach((appGroup) => {
-        [appGroup.active_user_ownerships, appGroup.active_user_memberships].forEach((memberList) => {
-          (memberList ?? []).forEach((member) => {
-            const activeUser = member.active_user;
-            if (activeUser) {
-              allMembers[activeUser.id] = activeUser;
-              const groups = (memberGroups[activeUser.email.toLowerCase()] ||= []);
-              if (
-                !groups.find((g) => {
-                  return g.id === appGroup.id;
-                })
-              ) {
-                groups.push(appGroup);
-              }
-            }
-          });
-        });
-      });
-
-      const sortedUserOptions = sortGroupMemberRecords(allMembers).map(
-        (row) => `${displayUserName(row)} (${row.email.toLowerCase()})`,
-      );
-
-      return {allMembers, memberGroups, sortedUserOptions};
-    }, [app.active_non_owner_app_groups]);
-
-    const allMembersRef = React.useRef(allMembers);
-    const memberGroupsRef = React.useRef(memberGroups);
-    const appGroupsRef = React.useRef(app.active_non_owner_app_groups);
-    const onSearchSubmitRef = React.useRef(onSearchSubmit);
-
-    allMembersRef.current = allMembers;
-    memberGroupsRef.current = memberGroups;
-    appGroupsRef.current = app.active_non_owner_app_groups;
-    onSearchSubmitRef.current = onSearchSubmit;
-
-    const handleSearchSubmit = React.useCallback((_: unknown, newValue: string | null) => {
-      const q = newValue?.trim().toLowerCase() ?? '';
-      const fallback = appGroupsRef.current ?? [];
-      if (!q) {
-        onSearchSubmitRef.current?.(fallback, false);
-        return;
+    // Search as you type, debounced: fire the query ~2s after the user stops
+    // typing rather than per keystroke (or only on Enter), so it stays responsive
+    // without a request per character.
+    const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
+    const handleSearchChange = React.useCallback((_: unknown, newValue: string | null) => {
+      const q = newValue?.trim() ?? '';
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
-      const matchedById: Record<string, AppGroupDetail> = {};
-      Object.values(allMembersRef.current).forEach((user) => {
-        const name = displayUserName(user).toLowerCase();
-        const email = user.email.toLowerCase();
-        if (!name.includes(q) && !email.includes(q)) return;
-        (memberGroupsRef.current[email] ?? []).forEach((g) => {
-          if (g.id) matchedById[g.id] = g;
-        });
-      });
-      onSearchSubmitRef.current?.(Object.values(matchedById), true);
+      debounceRef.current = setTimeout(() => onSearchChangeRef.current?.(q), 2000);
     }, []);
+
+    React.useEffect(
+      () => () => {
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+        }
+      },
+      [],
+    );
 
     const onToggleExpandRef = React.useRef(onToggleExpand);
     const isExpandedRef = React.useRef(isExpanded);
@@ -116,9 +82,8 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
                 size="small"
                 sx={{flex: '1 1 220px', minWidth: 0, maxWidth: 320}}
                 renderInput={(params) => <TextField {...params} label="Search Users" />}
-                options={sortedUserOptions}
-                onChange={handleSearchSubmit}
-                renderOption={renderUserOption}
+                options={[]}
+                onInputChange={handleSearchChange}
                 clearOnEscape
                 freeSolo
                 autoFocus

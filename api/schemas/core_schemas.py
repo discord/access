@@ -121,21 +121,18 @@ class AppSummary(BaseModel):
 
 
 class AppDetail(AppSummary):
-    """Full App detail."""
+    """Full App detail.
+
+    The app's groups are intentionally NOT inlined here. An app can own
+    hundreds of groups, and inlining each group's full membership made a
+    single detail response materialize thousands of member rows. Groups (with
+    their members) are served by the paginated `GET /api/apps/{id}/groups`
+    endpoint (`AppGroupForAppDetail`) so the cost is bounded per page.
+    """
 
     app_group_lifecycle_plugin: Optional[str] = None
     plugin_data: Optional[dict[str, Any]] = None
     active_app_tags: list[AppTagMapDetail] = Field(default_factory=list)
-    # Flask `AppResource.get()` `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS` strips
-    # `active_role_member_mappings`, `active_role_owner_mappings`, and
-    # `active_group_tags` on the *nested* app groups (those land via
-    # `active_owner_app_groups.<dotted-path>` exclude entries). Use a
-    # dedicated slimmer shape — `AppGroupForAppDetail` — instead of
-    # `AppGroupDetail` so the App-detail response doesn't pull every
-    # role-association mapping per nested group. Forward refs resolved
-    # via `model_rebuild()` at the bottom of this file.
-    active_owner_app_groups: list["AppGroupForAppDetail"] = Field(default_factory=list)
-    active_non_owner_app_groups: list["AppGroupForAppDetail"] = Field(default_factory=list)
 
 
 # --- Users ------------------------------------------------------------------
@@ -301,8 +298,10 @@ class _GroupBase(BaseModel):
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
     deleted_at: Optional[FlexibleDatetime] = None
-    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
-    active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    # Members are intentionally NOT inlined: a group can have thousands, and
+    # inlining them made the detail response (and, via the app endpoint, every
+    # group of an app) materialize unbounded member rows. They are served by
+    # the paginated `GET /api/groups/{id}/member-details` endpoint instead.
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
 
 
@@ -329,12 +328,13 @@ class AppGroupDetail(_GroupBase):
 
 
 class AppGroupForAppDetail(BaseModel):
-    """Slimmer shape used inside `AppDetail.active_*_app_groups`.
+    """Slimmer shape used by the paginated `GET /api/apps/{id}/groups` endpoint.
 
-    Drops `active_role_member_mappings`, `active_role_owner_mappings`, and
-    `active_group_tags` on the nested app-groups. The outer `AppGroupDetail`
-    retains them for direct `GET /api/groups/{id}` calls; this variant omits
-    them when the same rows are embedded inside an `AppDetail` payload."""
+    Members are NOT inlined: a single group can have thousands, and inlining
+    them made even a 10-group page able to ship megabytes. Instead each item
+    carries `member_count` / `owner_count` (cheap SQL aggregates); the UI fetches
+    a group's members on demand from the paginated
+    `GET /api/groups/{id}/member-details` endpoint."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -350,8 +350,8 @@ class AppGroupForAppDetail(BaseModel):
     is_owner: bool = False
     plugin_data: Optional[dict[str, Any]] = None
     app: Optional[AppIdRef] = None
-    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
-    active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    member_count: int = 0
+    owner_count: int = 0
 
 
 # Named via `TypeAliasType` so FastAPI emits a single `GroupDetail` schema

@@ -96,6 +96,12 @@ export type AccessRequestSummary = {
 
 /**
  * Full App detail.
+ *
+ * The app's groups are intentionally NOT inlined here. An app can own
+ * hundreds of groups, and inlining each group's full membership made a
+ * single detail response materialize thousands of member rows. Groups (with
+ * their members) are served by the paginated `GET /api/apps/{id}/groups`
+ * endpoint (`AppGroupForAppDetail`) so the cost is bounded per page.
  */
 export type AppDetail = {
   id: string;
@@ -109,8 +115,6 @@ export type AppDetail = {
     [key: string]: any;
   } | null;
   active_app_tags?: AppTagMapDetail[];
-  active_owner_app_groups?: AppGroupForAppDetail[];
-  active_non_owner_app_groups?: AppGroupForAppDetail[];
 };
 
 export type AppGroupDetail = {
@@ -130,8 +134,6 @@ export type AppGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default app_group
@@ -151,12 +153,13 @@ export type AppGroupDetail = {
 };
 
 /**
- * Slimmer shape used inside `AppDetail.active_*_app_groups`.
+ * Slimmer shape used by the paginated `GET /api/apps/{id}/groups` endpoint.
  *
- * Drops `active_role_member_mappings`, `active_role_owner_mappings`, and
- * `active_group_tags` on the nested app-groups. The outer `AppGroupDetail`
- * retains them for direct `GET /api/groups/{id}` calls; this variant omits
- * them when the same rows are embedded inside an `AppDetail` payload.
+ * Members are NOT inlined: a single group can have thousands, and inlining
+ * them made even a 10-group page able to ship megabytes. Instead each item
+ * carries `member_count` / `owner_count` (cheap SQL aggregates); the UI fetches
+ * a group's members on demand from the paginated
+ * `GET /api/groups/{id}/member-details` endpoint.
  */
 export type AppGroupForAppDetail = {
   id: string;
@@ -188,8 +191,14 @@ export type AppGroupForAppDetail = {
     [key: string]: any;
   } | null;
   app?: AppIdRef | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
+  /**
+   * @default 0
+   */
+  member_count?: number;
+  /**
+   * @default 0
+   */
+  owner_count?: number;
 };
 
 /**
@@ -542,8 +551,6 @@ export type OktaGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default okta_group
@@ -689,6 +696,26 @@ export type PageTypeVarCustomizedAccessRequestSummary = {
   pages: number;
 };
 
+export type PageTypeVarCustomizedAppGroupForAppDetail = {
+  items: AppGroupForAppDetail[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
 export type PageTypeVarCustomizedAppSummary = {
   items: AppSummary[];
   /**
@@ -771,6 +798,26 @@ export type PageTypeVarCustomizedGroupRequestDetail = {
 
 export type PageTypeVarCustomizedGroupSummary = {
   items: GroupSummary[];
+  /**
+   * @minimum 0
+   */
+  total: number;
+  /**
+   * @minimum 1
+   */
+  page: number;
+  /**
+   * @minimum 1
+   */
+  size: number;
+  /**
+   * @minimum 0
+   */
+  pages: number;
+};
+
+export type PageTypeVarCustomizedOktaUserGroupMemberDetail = {
+  items: OktaUserGroupMemberDetail[];
   /**
    * @minimum 0
    */
@@ -993,8 +1040,6 @@ export type RoleGroupDetail = {
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
-  active_user_memberships?: OktaUserGroupMemberDetail[];
-  active_user_ownerships?: OktaUserGroupMemberDetail[];
   active_group_tags?: OktaGroupTagMapDetail[];
   /**
    * @default role_group

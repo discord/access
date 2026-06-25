@@ -3,9 +3,11 @@ import {
   AccordionDetails,
   AccordionSummary,
   Box,
+  CircularProgress,
   Divider,
   Grid,
   Link,
+  Pagination,
   Paper,
   Stack,
   Table,
@@ -17,22 +19,29 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
-import {AppDetail, AppGroupDetail, OktaUserGroupMemberDetail} from '../../../api/apiSchemas';
+import {AppGroupForAppDetail, OktaUserGroupMemberDetail} from '../../../api/apiSchemas';
+import {useGroupMemberDetailsById} from '../../../api/apiComponents';
 import React from 'react';
-import {displayUserName, groupBy, groupMemberships, sortGroupMembers} from '../../../helpers';
+import {displayUserName, groupMemberships, sortGroupMembers} from '../../../helpers';
 import {EmptyListEntry} from '../../../components/EmptyListEntry';
 import Ending from '../../../components/Ending';
 import MarkdownDescription from '../../../components/MarkdownDescription';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import {Link as RouterLink, useParams} from 'react-router-dom';
+import {Link as RouterLink} from 'react-router-dom';
+
+// Owners are few and rendered inline (un-paginated); fetch up to this many.
+const OWNER_FETCH_SIZE = 100;
+// Members page this many distinct users at a time via the page-number control.
+const MEMBER_PAGE_SIZE = 100;
 
 interface GroupDetailListProps {
   member_list: any[];
   title?: string;
+  loading?: boolean;
 }
 
 const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
-  ({member_list, title}) => {
+  ({member_list, title, loading}) => {
     return (
       <Stack direction="column" spacing={1}>
         {title && (
@@ -42,7 +51,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
         )}
 
         <TableContainer component={Paper}>
-          <Table sx={{minWidth: 325}} size="small" aria-label="app owners">
+          <Table sx={{minWidth: 325}} size="small" aria-label="app group members">
             <TableHead>
               <TableRow>
                 <TableCell>Name</TableCell>
@@ -51,16 +60,19 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
               </TableRow>
             </TableHead>
             <TableBody>
-              {member_list.length > 0 ? (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={3} align="center">
+                    <CircularProgress size={20} />
+                  </TableCell>
+                </TableRow>
+              ) : member_list.length > 0 ? (
                 member_list.map((member: OktaUserGroupMemberDetail) => (
                   <TableRow key={member.active_user?.id}>
                     <TableCell>
                       <Link
                         to={`/users/${member.active_user?.email.toLowerCase()}`}
-                        sx={{
-                          textDecoration: 'none',
-                          color: 'inherit',
-                        }}
+                        sx={{textDecoration: 'none', color: 'inherit'}}
                         component={RouterLink}>
                         {displayUserName(member.active_user)}
                       </Link>
@@ -68,10 +80,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
                     <TableCell>
                       <Link
                         to={`/users/${member.active_user?.email.toLowerCase()}`}
-                        sx={{
-                          textDecoration: 'none',
-                          color: 'inherit',
-                        }}
+                        sx={{textDecoration: 'none', color: 'inherit'}}
                         component={RouterLink}>
                         {member.active_user?.email.toLowerCase()}
                       </Link>
@@ -97,6 +106,7 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
   (prevProps, nextProps) => {
     return (
       prevProps.title === nextProps.title &&
+      prevProps.loading === nextProps.loading &&
       prevProps.member_list.length === nextProps.member_list.length &&
       prevProps.member_list.every(
         (member, index) => member.active_user?.id === nextProps.member_list[index]?.active_user?.id,
@@ -105,48 +115,50 @@ const GroupDetailList: React.FC<GroupDetailListProps> = React.memo(
   },
 );
 
+const dedupeByUser = (rows: OktaUserGroupMemberDetail[] | undefined) =>
+  Object.entries(groupMemberships(rows ?? []))
+    .sort(sortGroupMembers)
+    .map((entry) => entry[1][0]);
+
 const AccordionItem: React.FC<{
-  appGroup: AppGroupDetail;
+  appGroup: AppGroupForAppDetail;
   expanded: boolean;
   onToggle: (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => void;
 }> = React.memo(
   ({appGroup, expanded, onToggle}) => {
-    const {owners, members} = React.useMemo(() => {
-      const owners = Object.entries(groupMemberships(appGroup.active_user_ownerships))
-        .sort(sortGroupMembers)
-        .map((memberList) => memberList[1][0]);
+    const [memberPage, setMemberPage] = React.useState(1);
 
-      const members = Object.entries(groupMemberships(appGroup.active_user_memberships))
-        .sort(sortGroupMembers)
-        .map((memberList) => memberList[1][0]);
+    // Members/owners are no longer inlined on the app payload; fetch them from
+    // the member-details endpoint only when this group is expanded. Owners are
+    // few (fetched whole); members page MEMBER_PAGE_SIZE at a time via the
+    // page-number control below.
+    const ownersQuery = useGroupMemberDetailsById(
+      {pathParams: {groupId: appGroup.id}, queryParams: {owner: true, size: OWNER_FETCH_SIZE}},
+      {enabled: expanded},
+    );
+    const membersQuery = useGroupMemberDetailsById(
+      {pathParams: {groupId: appGroup.id}, queryParams: {owner: false, page: memberPage, size: MEMBER_PAGE_SIZE}},
+      {enabled: expanded},
+    );
 
-      return {owners, members};
-    }, [appGroup.active_user_ownerships, appGroup.active_user_memberships]);
+    const owners = React.useMemo(() => dedupeByUser(ownersQuery.data?.items), [ownersQuery.data]);
+    const members = React.useMemo(() => dedupeByUser(membersQuery.data?.items), [membersQuery.data]);
+    const memberPages = membersQuery.data?.pages ?? 0;
 
     const handleToggle = React.useMemo(() => onToggle(appGroup.name), [onToggle, appGroup.name]);
 
     return (
       <TableContainer key={appGroup.id} component={Paper}>
-        <Accordion expanded={expanded} onChange={handleToggle}>
+        {/* unmountOnExit so collapsed groups don't fetch/render members — only
+            the expanded group hits the member-details endpoint. */}
+        <Accordion expanded={expanded} onChange={handleToggle} TransitionProps={{unmountOnExit: true}}>
           <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                flexGrow: 1,
-              }}>
-              <Stack
-                direction="column"
-                spacing={1}
-                sx={{
-                  flexGrow: 0.95,
-                }}>
+            <Box sx={{display: 'inline-flex', flexGrow: 1}}>
+              <Stack direction="column" spacing={1} sx={{flexGrow: 0.95}}>
                 <Typography variant="h6" color="text.accent">
                   <Link
                     to={`/groups/${appGroup.name}`}
-                    sx={{
-                      textDecoration: 'none',
-                      color: 'inherit',
-                    }}
+                    sx={{textDecoration: 'none', color: 'inherit'}}
                     component={RouterLink}>
                     {appGroup.name}
                   </Link>
@@ -156,26 +168,34 @@ const AccordionItem: React.FC<{
                   sx={{mx: 0, width: 'auto', px: 0, color: 'grey'}}
                 />
               </Stack>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'right',
-                }}>
+              <Box sx={{display: 'flex', justifyContent: 'flex-end', alignItems: 'right'}}>
                 <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                Owners: {owners.length || 0} <br />
-                Members: {members.length || 0}
+                Owners: {appGroup.owner_count ?? 0} <br />
+                Members: {appGroup.member_count ?? 0}
               </Box>
             </Box>
           </AccordionSummary>
           <AccordionDetails>
-            <Table aria-label="app group owners">
+            <Table aria-label="app group members">
               <TableBody className="accordion-body">
                 <TableRow>
                   <TableCell colSpan={2}>
                     <Stack direction="row" useFlexGap flexWrap={'wrap'} justifyContent={'space-between'} gap={'2rem'}>
-                      <GroupDetailList member_list={owners} title={'Group Owners'} />
-                      <GroupDetailList member_list={members} title={'Members'} />
+                      <GroupDetailList member_list={owners} title={'Group Owners'} loading={ownersQuery.isLoading} />
+                      <Stack direction="column" spacing={1}>
+                        <GroupDetailList member_list={members} title={'Members'} loading={membersQuery.isLoading} />
+                        {memberPages > 1 && (
+                          <Box sx={{display: 'flex', justifyContent: 'center'}}>
+                            <Pagination
+                              size="small"
+                              count={memberPages}
+                              page={memberPage}
+                              onChange={(_, value) => setMemberPage(value)}
+                              color="primary"
+                            />
+                          </Box>
+                        )}
+                      </Stack>
                     </Stack>
                   </TableCell>
                 </TableRow>
@@ -192,14 +212,14 @@ const AccordionItem: React.FC<{
       prevProps.appGroup.id === nextProps.appGroup.id &&
       prevProps.appGroup.name === nextProps.appGroup.name &&
       prevProps.appGroup.description === nextProps.appGroup.description &&
-      prevProps.appGroup.active_user_ownerships === nextProps.appGroup.active_user_ownerships &&
-      prevProps.appGroup.active_user_memberships === nextProps.appGroup.active_user_memberships
+      prevProps.appGroup.member_count === nextProps.appGroup.member_count &&
+      prevProps.appGroup.owner_count === nextProps.appGroup.owner_count
     );
   },
 );
 
 interface AppAccordionListGroupProps {
-  app_group: AppGroupDetail[];
+  app_group: AppGroupForAppDetail[];
   list_group_title?: string;
   list_group_description?: string;
   isExpanded?: boolean;
@@ -221,8 +241,11 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
     const appGroupRef = React.useRef(app_group);
     appGroupRef.current = app_group;
 
-    const groupNamesKey = React.useMemo(() => (app_group ?? []).map((g) => g.name).join('|'), [app_group]);
-
+    // Apply expand/collapse-all ONLY when the toggle flips — not when the group
+    // list changes. Infinite scroll grows the list as you scroll (and a member
+    // page-change can trigger a fetch), and re-running this on every list change
+    // used to reset (collapse) accordions the user had opened. New groups follow
+    // the current `isExpanded` via the render default below.
     React.useEffect(() => {
       const currentAppGroup = appGroupRef.current;
       if (currentAppGroup) {
@@ -240,7 +263,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
           return hasChanges ? newExpanded : prevExpanded;
         });
       }
-    }, [isExpanded, groupNamesKey]);
+    }, [isExpanded]);
 
     const handleChange = React.useCallback(
       (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
@@ -280,7 +303,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
             <AccordionItem
               key={appGroup.id}
               appGroup={appGroup}
-              expanded={expanded[appGroup.name] || false}
+              expanded={expanded[appGroup.name] ?? isExpanded}
               onToggle={handleChange}
             />
           ))}
@@ -299,8 +322,8 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
           group.id === nextProps.app_group[index]?.id &&
           group.name === nextProps.app_group[index]?.name &&
           group.description === nextProps.app_group[index]?.description &&
-          group.active_user_ownerships === nextProps.app_group[index]?.active_user_ownerships &&
-          group.active_user_memberships === nextProps.app_group[index]?.active_user_memberships,
+          group.member_count === nextProps.app_group[index]?.member_count &&
+          group.owner_count === nextProps.app_group[index]?.owner_count,
       )
     );
   },

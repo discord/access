@@ -97,9 +97,9 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const navigate = useNavigate();
   const currentUser = useCurrentUser();
 
-  const currUserRoleGroupMember =
-    props.group.active_user_memberships?.map((membership) => membership.active_user!.id).includes(currentUser.id) ??
-    false;
+  const currUserRoleGroupMember = (currentUser.active_group_memberships ?? []).some(
+    (membership: OktaUserGroupMemberDetail) => membership.active_group?.id === props.group.id,
+  );
 
   const userOwnedNonRoleGroupIds = !isAccessAdmin(currentUser)
     ? (currentUser.active_group_ownerships ?? [])
@@ -420,8 +420,8 @@ export default function AddGroups(props: AddGroupsProps) {
 
   const isAdmin = isAccessAdmin(props.currentUser);
   const isRoleOwner = isGroupOwner(props.currentUser, props.group.id ?? '');
-  const isRoleMember = (props.group.active_user_memberships ?? []).some(
-    (membership) => membership.active_user?.id === props.currentUser.id,
+  const isRoleMember = (props.currentUser.active_group_memberships ?? []).some(
+    (membership) => membership.active_group?.id === props.group.id,
   );
 
   // The managed, non-role groups this user owns — the only groups a non-admin can add the role to.

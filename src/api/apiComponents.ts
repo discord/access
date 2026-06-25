@@ -596,6 +596,150 @@ export const useAppByIdDelete = (
   });
 };
 
+export type AppGroupsByIdPathParams = {
+  appId: string;
+};
+
+export type AppGroupsByIdQueryParams = {
+  owner?: boolean | null;
+  q?: string | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 10
+   * @minimum 1
+   * @default 10
+   */
+  size?: number;
+};
+
+export type AppGroupsByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type AppGroupsByIdVariables = {
+  pathParams: AppGroupsByIdPathParams;
+  queryParams?: AppGroupsByIdQueryParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const fetchAppGroupsById = (variables: AppGroupsByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTypeVarCustomizedAppGroupForAppDetail,
+    AppGroupsByIdError,
+    undefined,
+    {},
+    AppGroupsByIdQueryParams,
+    AppGroupsByIdPathParams
+  >({url: '/api/apps/{appId}/groups', method: 'get', ...variables, signal});
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppGroupForAppDetail>;
+};
+
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn:
+    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedAppGroupForAppDetail>)
+    | reactQuery.SkipToken;
+};
+
+export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/apps/{appId}/groups',
+      operationId: 'appGroupsById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchAppGroupsById(variables, signal),
+  };
+}
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const useSuspenseAppGroupsById = <TData = Schemas.PageTypeVarCustomizedAppGroupForAppDetail>(
+  variables: AppGroupsByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<Schemas.PageTypeVarCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>({
+    ...appGroupsByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
+ *
+ * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
+ * have an active member matching the query by name or email — the app page's
+ * user search, computed in SQL so it doesn't need every member client-side.
+ */
+export const useAppGroupsById = <TData = Schemas.PageTypeVarCustomizedAppGroupForAppDetail>(
+  variables: AppGroupsByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<Schemas.PageTypeVarCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<Schemas.PageTypeVarCustomizedAppGroupForAppDetail, AppGroupsByIdError, TData>({
+    ...appGroupsByIdQuery(variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
 export type UsersAndGroupsQueryParams = {
   q?: string | null;
   owner?: boolean | null;
@@ -1595,6 +1739,184 @@ export const useGroupMembersByIdPut = (
     mutationFn: (variables: GroupMembersByIdPutVariables) =>
       fetchGroupMembersByIdPut(deepMerge(fetcherOptions, variables)),
     ...options,
+  });
+};
+
+export type GroupMemberDetailsByIdPathParams = {
+  groupId: string;
+};
+
+export type GroupMemberDetailsByIdQueryParams = {
+  owner?: boolean | null;
+  /**
+   * Page number
+   *
+   * @minimum 1
+   * @default 1
+   */
+  page?: number;
+  /**
+   * Items per page
+   *
+   * @maximum 1000
+   * @minimum 1
+   * @default 50
+   */
+  size?: number;
+};
+
+export type GroupMemberDetailsByIdError = Fetcher.ErrorWrapper<{
+  status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
+  payload: Schemas.ProblemDetail;
+}>;
+
+export type GroupMemberDetailsByIdVariables = {
+  pathParams: GroupMemberDetailsByIdPathParams;
+  queryParams?: GroupMemberDetailsByIdQueryParams;
+} & ApiContext['fetcherOptions'];
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
+ */
+export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVariables, signal?: AbortSignal) =>
+  apiFetch<
+    Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail,
+    GroupMemberDetailsByIdError,
+    undefined,
+    {},
+    GroupMemberDetailsByIdQueryParams,
+    GroupMemberDetailsByIdPathParams
+  >({
+    url: '/api/groups/{groupId}/member-details',
+    method: 'get',
+    ...variables,
+    signal,
+  });
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
+ */
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables): {
+  queryKey: reactQuery.QueryKey;
+  queryFn: (options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>;
+};
+
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken): {
+  queryKey: reactQuery.QueryKey;
+  queryFn:
+    | ((options: QueryFnOptions) => Promise<Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>)
+    | reactQuery.SkipToken;
+};
+
+export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken) {
+  return {
+    queryKey: queryKeyFn({
+      path: '/api/groups/{groupId}/member-details',
+      operationId: 'groupMemberDetailsById',
+      variables,
+    }),
+    queryFn:
+      variables === reactQuery.skipToken
+        ? reactQuery.skipToken
+        : ({signal}: QueryFnOptions) => fetchGroupMemberDetailsById(variables, signal),
+  };
+}
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
+ */
+export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>(
+  variables: GroupMemberDetailsByIdVariables,
+  options?: Omit<
+    reactQuery.UseQueryOptions<
+      Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail,
+      GroupMemberDetailsByIdError,
+      TData
+    >,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useSuspenseQuery<
+    Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail,
+    GroupMemberDetailsByIdError,
+    TData
+  >({
+    ...groupMemberDetailsByIdQuery(deepMerge(fetcherOptions, variables)),
+    ...options,
+    ...queryOptions,
+  });
+};
+
+/**
+ * Paginated, fully-hydrated active membership rows for a group. `owner=true`
+ * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
+ * group page page through members instead of inlining every row in the group
+ * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
+ */
+export const useGroupMemberDetailsById = <TData = Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>(
+  variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken,
+  options?: Omit<
+    reactQuery.UseQueryOptions<
+      Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail,
+      GroupMemberDetailsByIdError,
+      TData
+    >,
+    'queryKey' | 'queryFn' | 'initialData'
+  >,
+) => {
+  const {queryOptions, fetcherOptions} = useApiContext(options);
+  return reactQuery.useQuery<
+    Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail,
+    GroupMemberDetailsByIdError,
+    TData
+  >({
+    ...groupMemberDetailsByIdQuery(
+      variables === reactQuery.skipToken ? variables : deepMerge(fetcherOptions, variables),
+    ),
+    ...options,
+    ...queryOptions,
   });
 };
 
@@ -3226,6 +3548,11 @@ export type QueryOperation =
       variables: AppByIdVariables | reactQuery.SkipToken;
     }
   | {
+      path: '/api/apps/{appId}/groups';
+      operationId: 'appGroupsById';
+      variables: AppGroupsByIdVariables | reactQuery.SkipToken;
+    }
+  | {
       path: '/api/audit/users';
       operationId: 'usersAndGroups';
       variables: UsersAndGroupsVariables | reactQuery.SkipToken;
@@ -3264,6 +3591,11 @@ export type QueryOperation =
       path: '/api/groups/{groupId}/members';
       operationId: 'groupMembersById';
       variables: GroupMembersByIdVariables | reactQuery.SkipToken;
+    }
+  | {
+      path: '/api/groups/{groupId}/member-details';
+      operationId: 'groupMemberDetailsById';
+      variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken;
     }
   | {
       path: '/api/plugins/app-group-lifecycle';

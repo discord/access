@@ -22,28 +22,36 @@ from api.models import (
 )
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 
 
-def test_get_access_app_includes_owner_group(client: TestClient, db: Db, url_for: Any) -> None:
-    """The conftest seeds the built-in Access app + App-Access-Owners group.
-    Hitting /api/apps/Access must return the owner group under
-    active_owner_app_groups so the React /apps/Access page can render it."""
+def test_get_app_omits_inline_groups(client: TestClient, db: Db, url_for: Any) -> None:
+    """App detail no longer inlines its groups (and their memberships): those
+    fields are gone so the response can't materialize every group's members.
+    The React /apps page reads groups from the paginated /groups endpoint."""
     access_app_url = url_for("api-apps.app_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
     rep = client.get(access_app_url)
     assert rep.status_code == 200, rep.text
     data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
-    assert "active_owner_app_groups" in data
-    assert "active_non_owner_app_groups" in data
+    assert "active_owner_app_groups" not in data
+    assert "active_non_owner_app_groups" not in data
+
+
+def test_app_groups_endpoint_returns_owner_group(client: TestClient, db: Db, url_for: Any) -> None:
+    """The conftest seeds the built-in Access app + App-Access-Owners group;
+    it must surface under the paginated /groups endpoint as an owner group."""
     expected_owner_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    owner_group_names = [g["name"] for g in data["active_owner_app_groups"]]
-    assert expected_owner_name in owner_group_names
-    # Each owner group should be type=app_group and is_owner=True
-    for g in data["active_owner_app_groups"]:
+    groups_url = url_for("api-apps.app_groups_by_id", app_id=App.ACCESS_APP_RESERVED_NAME)
+    rep = client.get(groups_url)
+    assert rep.status_code == 200, rep.text
+    items = rep.json()["items"]
+    owner_groups = [g for g in items if g["is_owner"]]
+    assert expected_owner_name in [g["name"] for g in owner_groups]
+    for g in owner_groups:
         assert g["type"] == "app_group"
         assert g["is_owner"] is True
 
@@ -100,6 +108,98 @@ def test_get_app(
     app_url = url_for("api-apps.app_by_id", app_id=role_group_id)
     rep = client.get(app_url)
     assert rep.status_code == 404
+
+
+def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
+    """`GET /api/apps/{app_id}/groups` returns the app's groups as a page bounded
+    to 10 per page. Members are NOT inlined — each item carries member_count /
+    owner_count, and the UI fetches members per-group from the paginated
+    member-details endpoint — so a single huge group can't bloat the response."""
+    app = AppFactory.create()
+    db.session.add(app)
+    db.session.add(user)
+    db.session.commit()
+
+    groups = []
+    for _ in range(25):
+        ag = AppGroupFactory.create(app_id=app.id)
+        db.session.add(ag)
+        groups.append(ag)
+    db.session.commit()
+
+    ModifyGroupUsers(group=groups[0], members_to_add=[user.id], sync_to_okta=False).execute()
+
+    app_id = app.id
+    member_group_id = groups[0].id
+    db.session.expunge_all()
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = client.get(url)
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+
+    # fastapi-pagination wire shape
+    assert {"items", "total", "page", "size", "pages"} <= set(data.keys())
+    # bounded to 10 per page even though the app has 25 groups
+    assert data["size"] == 10
+    assert len(data["items"]) == 10
+    assert data["total"] == 25
+    assert data["pages"] == 3
+
+    # counts replace inline member arrays
+    assert "active_user_memberships" not in data["items"][0]
+    assert "active_user_ownerships" not in data["items"][0]
+    assert "member_count" in data["items"][0]
+    assert "owner_count" in data["items"][0]
+
+    by_id = {g["id"]: g for g in data["items"]}
+    if member_group_id in by_id:
+        assert by_id[member_group_id]["member_count"] == 1
+        assert by_id[member_group_id]["owner_count"] == 0
+
+
+def test_get_app_groups_search_by_user(client: TestClient, db: Db, url_for: Any) -> None:
+    """`?q=` returns only the app's groups containing a member matching the
+    query by name/email, computed server-side (the app page's user search)."""
+    app = AppFactory.create()
+    db.session.add(app)
+    db.session.commit()
+    group_a = AppGroupFactory.create(app_id=app.id)
+    group_b = AppGroupFactory.create(app_id=app.id)
+    db.session.add_all([group_a, group_b])
+    alice = OktaUserFactory.create(first_name="Alice", last_name="Xeno", email="alice.xeno@example.com")
+    bob = OktaUserFactory.create(first_name="Bob", last_name="Yon", email="bob.yon@example.com")
+    db.session.add_all([alice, bob])
+    db.session.commit()
+    ModifyGroupUsers(group=group_a, members_to_add=[alice.id], sync_to_okta=False).execute()
+    ModifyGroupUsers(group=group_b, members_to_add=[bob.id], sync_to_okta=False).execute()
+
+    app_id = app.id
+    group_a_id = group_a.id
+    db.session.expunge_all()
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = client.get(url, params={"q": "alice"})
+    assert rep.status_code == 200, rep.text
+    ids = [g["id"] for g in rep.json()["items"]]
+    assert ids == [group_a_id]
+
+    rep = client.get(url, params={"q": "bob.yon@example.com"})
+    assert [g["id"] for g in rep.json()["items"]] == [group_b.id]
+
+
+def test_get_app_groups_size_capped_at_10(client: TestClient, db: Db, url_for: Any) -> None:
+    """Requesting more than 10 per page is rejected so the bound can't be opted out of."""
+    app = AppFactory.create()
+    db.session.add(app)
+    db.session.commit()
+    app_id = app.id
+    db.session.expunge_all()
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = client.get(url, params={"size": 20})
+    assert rep.status_code == 400, rep.text
+    assert "size" in rep.text
 
 
 def test_put_app(

@@ -63,7 +63,7 @@ import {
   TagListItem,
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
-import {isAccessAdmin} from '../../authorization';
+import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName, minTagTime} from '../../helpers';
 
 import Loading from '../../components/Loading';
@@ -231,27 +231,20 @@ export default function ReadGroupRequest() {
   }, [requestedAppData, appSeeded]);
 
   const isAppOwner = React.useMemo<boolean>(() => {
-    if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppData) {
+    if (admin || ownRequest || requestedGroupType !== 'app_group' || !requestedAppId) {
       return false;
     }
-    return (requestedAppData.active_owner_app_groups ?? []).some((appGroup: AppGroupForAppDetail) =>
-      (appGroup.active_user_ownerships ?? []).some(
-        (membership: OktaUserGroupMemberDetail) => membership.active_user?.id === currentUser.id,
-      ),
-    );
-  }, [admin, ownRequest, requestedGroupType, requestedAppData, currentUser.id]);
+    // Ownership is computed from the current user's own ownership grants, not
+    // the app payload (which no longer inlines its owner groups' members).
+    return isAppOwnerGroupOwner(currentUser, requestedAppId);
+  }, [admin, ownRequest, requestedGroupType, requestedAppId, currentUser]);
 
   const {data: ownedAppsData} = useApps({queryParams: {page: 1, size: 100, q: ''}}, {enabled: isAppOwner});
 
   const ownedAppIds = React.useMemo<Set<string>>(() => {
     const ids = new Set<string>();
     for (const app of ownedAppsData?.items ?? []) {
-      const owns = ((app as AppDetail).active_owner_app_groups ?? []).some((appGroup: AppGroupForAppDetail) =>
-        (appGroup.active_user_ownerships ?? []).some(
-          (membership: OktaUserGroupMemberDetail) => membership.active_user?.id === currentUser.id,
-        ),
-      );
-      if (owns && app.id) {
+      if (app.id && isAppOwnerGroupOwner(currentUser, app.id)) {
         ids.add(app.id);
       }
     }
@@ -259,7 +252,7 @@ export default function ReadGroupRequest() {
       ids.add(requestedAppId);
     }
     return ids;
-  }, [ownedAppsData, currentUser.id, isAppOwner, requestedAppId]);
+  }, [ownedAppsData, currentUser, isAppOwner, requestedAppId]);
 
   const canApprove = (admin || isAppOwner) && !ownRequest;
   const canResolve = canApprove || ownRequest;
