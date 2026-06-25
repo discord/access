@@ -320,9 +320,14 @@ export default function ReadRoleRequest() {
     },
   );
 
-  const appOwnershipsArray = (appOwnerGroupsData?.items ?? [])
-    .map((appGroup) => appGroup.active_user_ownerships ?? [])
-    .flat();
+  // App owners = owners of the app's owner group; the app-groups payload only
+  // carries counts, so fetch that group's owners explicitly.
+  const appOwnerGroupId = appOwnerGroupsData?.items?.[0]?.id ?? '';
+  const {data: appOwnerMemberData} = useGroupMemberDetailsById(
+    {pathParams: {groupId: appOwnerGroupId}, queryParams: {owner: true, size: 100}},
+    {enabled: appOwnerGroupId !== ''},
+  );
+  const appOwnershipsArray = appOwnerMemberData?.items ?? [];
   const appOwnerships = groupBy(appOwnershipsArray, (m: OktaUserGroupMemberDetail) => m.active_user?.id);
 
   const {data: accessAppOwnerGroupsData} = useAppGroupsById(
@@ -339,8 +344,14 @@ export default function ReadRoleRequest() {
     },
   );
 
+  // Final fallback approvers = members of the Access app's owner group.
+  const accessAppOwnerGroupId = accessAppOwnerGroupsData?.items?.[0]?.id ?? '';
+  const {data: accessAppOwnerMemberData} = useGroupMemberDetailsById(
+    {pathParams: {groupId: accessAppOwnerGroupId}, queryParams: {owner: false, size: 100}},
+    {enabled: accessAppOwnerGroupId !== ''},
+  );
   const accessAppOwnerships = groupBy(
-    (accessAppOwnerGroupsData?.items ?? []).map((appGroup) => appGroup.active_user_memberships ?? []).flat(),
+    accessAppOwnerMemberData?.items ?? [],
     (m: OktaUserGroupMemberDetail) => m.active_user?.id,
   );
 

@@ -98,7 +98,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const currentUser = useCurrentUser();
 
   const currUserRoleGroupMember = (currentUser.active_group_memberships ?? []).some(
-    (membership) => membership.active_group?.id === props.group.id,
+    (membership: OktaUserGroupMemberDetail) => membership.active_group?.id === props.group.id,
   );
 
   const userOwnedNonRoleGroupIds = !isAccessAdmin(currentUser)
