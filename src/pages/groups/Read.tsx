@@ -112,16 +112,6 @@ export default function ReadGroup() {
   const [removeOwnDirectAccessDialogParameters, setRemoveOwnDirectAccessDialogParameters] =
     React.useState<RemoveOwnDirectAccessDialogParameters>({} as RemoveOwnDirectAccessDialogParameters);
 
-  const [memberPage, setMemberPage] = React.useState(1);
-
-  // This component is reused across /groups/:id and /roles/:id, so React Router
-  // keeps the same instance when only :id changes; reset the member page so a
-  // stale page number doesn't request an out-of-range (empty) page on the new
-  // group.
-  React.useEffect(() => {
-    setMemberPage(1);
-  }, [id]);
-
   const {data, isError, isLoading} = useGroupById({
     pathParams: {groupId: id ?? ''},
   });
@@ -166,14 +156,25 @@ export default function ReadGroup() {
     },
   );
 
+  // App owners = the owners of the app's owner group. The app-groups payload
+  // only carries counts now, so fetch that group's owners explicitly (apps have
+  // a single App-<name>-Owners group).
+  const appOwnerGroupId = appOwnerGroupsData?.items?.[0]?.id ?? '';
+  const {data: appOwnerMemberData} = useGroupMemberDetailsById(
+    {pathParams: {groupId: appOwnerGroupId}, queryParams: {owner: true, size: 100}},
+    {enabled: appOwnerGroupId !== ''},
+  );
+
+  // Members page MEMBER_PAGE_SIZE at a time via the page-number control below.
+  const [memberPage, setMemberPage] = React.useState(1);
+  // Reset to page 1 when the group changes (component is reused across
+  // /groups/:id and /roles/:id).
+  React.useEffect(() => {
+    setMemberPage(1);
+  }, [id]);
   const {data: groupMemberData} = useGroupMemberDetailsById(
-    {
-      pathParams: {groupId: id ?? ''},
-      queryParams: {owner: false, page: memberPage},
-    },
-    {
-      enabled: id != null,
-    },
+    {pathParams: {groupId: id ?? ''}, queryParams: {owner: false, page: memberPage, size: 100}},
+    {enabled: id != null},
   );
 
   const putGroupUsers = useGroupMembersByIdPut({
@@ -188,9 +189,7 @@ export default function ReadGroup() {
     return <Loading />;
   }
 
-  const appOwnershipsArray = (appOwnerGroupsData?.items ?? [])
-    .map((appGroup) => appGroup.active_user_ownerships ?? [])
-    .flat();
+  const appOwnershipsArray = appOwnerMemberData?.items ?? [];
   // set of app owner ids
   const appOwnershipSet: Set<string> = appOwnershipsArray.reduce(
     (out: Set<string>, user: OktaUserGroupMemberDetail) => {

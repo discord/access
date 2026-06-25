@@ -21,12 +21,26 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     const onSearchChangeRef = React.useRef(onSearchChange);
     onSearchChangeRef.current = onSearchChange;
 
-    // Search runs on submit, not per keystroke: `onChange` fires when the user
-    // presses Enter (freeSolo) or clears the field, so each search is one
-    // GET /api/apps/{id}/groups?q=… request rather than one per character.
+    // Search as you type, debounced: fire the query ~2s after the user stops
+    // typing rather than per keystroke (or only on Enter), so it stays responsive
+    // without a request per character.
+    const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
     const handleSearchChange = React.useCallback((_: unknown, newValue: string | null) => {
-      onSearchChangeRef.current?.(newValue?.trim() ?? '');
+      const q = newValue?.trim() ?? '';
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = setTimeout(() => onSearchChangeRef.current?.(q), 2000);
     }, []);
+
+    React.useEffect(
+      () => () => {
+        if (debounceRef.current) {
+          clearTimeout(debounceRef.current);
+        }
+      },
+      [],
+    );
 
     const onToggleExpandRef = React.useRef(onToggleExpand);
     const isExpandedRef = React.useRef(isExpanded);
@@ -69,7 +83,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
                 sx={{flex: '1 1 220px', minWidth: 0, maxWidth: 320}}
                 renderInput={(params) => <TextField {...params} label="Search Users" />}
                 options={[]}
-                onChange={handleSearchChange}
+                onInputChange={handleSearchChange}
                 clearOnEscape
                 freeSolo
                 autoFocus

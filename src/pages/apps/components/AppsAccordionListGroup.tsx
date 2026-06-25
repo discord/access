@@ -30,8 +30,9 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import {Link as RouterLink} from 'react-router-dom';
 
 // Owners are few and rendered inline (un-paginated); fetch up to this many.
-// Members page 50 distinct users at a time via the paginated control.
 const OWNER_FETCH_SIZE = 100;
+// Members page this many distinct users at a time via the page-number control.
+const MEMBER_PAGE_SIZE = 100;
 
 interface GroupDetailListProps {
   member_list: any[];
@@ -128,13 +129,15 @@ const AccordionItem: React.FC<{
     const [memberPage, setMemberPage] = React.useState(1);
 
     // Members/owners are no longer inlined on the app payload; fetch them from
-    // the paginated member-details endpoint only when this group is expanded.
+    // the member-details endpoint only when this group is expanded. Owners are
+    // few (fetched whole); members page MEMBER_PAGE_SIZE at a time via the
+    // page-number control below.
     const ownersQuery = useGroupMemberDetailsById(
       {pathParams: {groupId: appGroup.id}, queryParams: {owner: true, size: OWNER_FETCH_SIZE}},
       {enabled: expanded},
     );
     const membersQuery = useGroupMemberDetailsById(
-      {pathParams: {groupId: appGroup.id}, queryParams: {owner: false, page: memberPage}},
+      {pathParams: {groupId: appGroup.id}, queryParams: {owner: false, page: memberPage, size: MEMBER_PAGE_SIZE}},
       {enabled: expanded},
     );
 

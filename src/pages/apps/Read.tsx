@@ -2,16 +2,18 @@ import React from 'react';
 import {useParams} from 'react-router-dom';
 
 import Box from '@mui/material/Box';
+import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
 import Grid from '@mui/material/Grid';
-import Pagination from '@mui/material/Pagination';
 
 import {useAppById, useAppGroupsById} from '../../api/apiComponents';
+import {useInfiniteAppGroups} from '../../api/infiniteAppGroups';
 import {AppDetail} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
+import {InfiniteScrollSentinel} from '../../components/InfiniteScrollSentinel';
 import {AppsAccordionListGroup, AppsAdminActionGroup, AppsHeader} from './components/';
 import ChangeTitle from '../../tab-title';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
@@ -26,19 +28,16 @@ export default function ReadApp() {
     pathParams: {appId},
   });
 
-  // App groups are no longer inlined on the app payload; they're paginated
-  // (owners and non-owners fetched separately) so one response can't
-  // materialize every group's membership. Member-based filtering is computed
-  // server-side via the `q` query param.
-  const [page, setPage] = React.useState(1);
+  // App groups are no longer inlined on the app payload. Owners (few) are
+  // fetched whole; non-owner groups load page-by-page on scroll. Member-based
+  // filtering is computed server-side via the `q` query param.
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isExpanded, setIsExpanded] = React.useState(false);
 
-  // React Router reuses this component instance when only :id changes, so the
-  // pagination/search state would otherwise leak across apps (e.g. show app B
-  // filtered by app A's query at page 2). Reset it whenever the app changes.
+  // React Router reuses this component instance when only :id changes; reset
+  // the search so it doesn't leak across apps (the infinite query is keyed by
+  // app id + query, so it refetches on its own).
   React.useEffect(() => {
-    setPage(1);
     setSearchQuery('');
   }, [id]);
 
@@ -47,13 +46,7 @@ export default function ReadApp() {
     queryParams: {owner: true},
   });
 
-  const {data: nonOwnerGroupsData} = useAppGroupsById({
-    pathParams: {appId},
-    // Omit `q` entirely when there's no search — the generated fetcher runs
-    // queryParams through URLSearchParams, which serializes `undefined` to the
-    // literal string "undefined" (`q=undefined`) rather than dropping it.
-    queryParams: Object.assign({owner: false, page}, searchQuery ? {q: searchQuery} : null),
-  });
+  const nonOwnerGroupsQuery = useInfiniteAppGroups(appId, false, searchQuery);
 
   const handleToggleExpand = React.useCallback((expanded: boolean) => {
     setIsExpanded((prev) => (prev === expanded ? prev : expanded));
@@ -61,7 +54,6 @@ export default function ReadApp() {
 
   const handleSearchChange = React.useCallback((q: string) => {
     setSearchQuery((prev) => (prev === q ? prev : q));
-    setPage(1);
   }, []);
 
   if (isError) {
@@ -74,8 +66,7 @@ export default function ReadApp() {
 
   const app = data ?? ({} as AppDetail);
   const ownerGroups = ownerGroupsData?.items ?? [];
-  const nonOwnerGroups = nonOwnerGroupsData?.items ?? [];
-  const totalPages = nonOwnerGroupsData?.pages ?? 0;
+  const nonOwnerGroups = nonOwnerGroupsQuery.data?.pages.flatMap((p) => p.items) ?? [];
   const isSearchActive = searchQuery.length > 0;
 
   return (
@@ -122,13 +113,20 @@ export default function ReadApp() {
             list_group_title={nonOwnerGroups.length > 1 ? 'App Groups' : 'App Group'}
             isExpanded={isExpanded || isSearchActive}
           />
-          {totalPages > 1 && (
+          {nonOwnerGroupsQuery.isFetchingNextPage && (
             <Grid item xs={12}>
               <Box sx={{display: 'flex', justifyContent: 'center'}}>
-                <Pagination count={totalPages} page={page} onChange={(_, value) => setPage(value)} color="primary" />
+                <CircularProgress size={24} />
               </Box>
             </Grid>
           )}
+          {/* Load the next page of app groups when this scrolls into view. */}
+          <Grid item xs={12} sx={{py: 0}}>
+            <InfiniteScrollSentinel
+              onVisible={() => nonOwnerGroupsQuery.fetchNextPage()}
+              disabled={!nonOwnerGroupsQuery.hasNextPage || nonOwnerGroupsQuery.isFetchingNextPage}
+            />
+          </Grid>
         </Grid>
       </Container>
     </React.Fragment>
