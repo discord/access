@@ -23,12 +23,7 @@ export type HealthCheckError = Fetcher.ErrorWrapper<{
 export type HealthCheckVariables = ApiContext['fetcherOptions'];
 
 export const fetchHealthCheck = (variables: HealthCheckVariables, signal?: AbortSignal) =>
-  apiFetch<void, HealthCheckError, undefined, {}, {}, {}>({
-    url: '/api/healthz',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  apiFetch<void, HealthCheckError, undefined, {}, {}, {}>({url: '/api/healthz', method: 'get', ...variables, signal});
 
 export function healthCheckQuery(variables: HealthCheckVariables): {
   queryKey: reactQuery.QueryKey;
@@ -309,12 +304,7 @@ export const fetchAccessRequestByIdPut = (variables: AccessRequestByIdPutVariabl
     {},
     {},
     AccessRequestByIdPutPathParams
-  >({
-    url: '/api/requests/{accessRequestId}',
-    method: 'put',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/requests/{accessRequestId}', method: 'put', ...variables, signal});
 
 export const useAccessRequestByIdPut = (
   options?: Omit<
@@ -629,10 +619,11 @@ export type AppGroupsByIdVariables = {
 } & ApiContext['fetcherOptions'];
 
 /**
- * Paginated app-groups for an app, owners first then by name. Each item
- * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
- * single response materializes at most that many groups' memberships, rather
- * than every group of an app at once.
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
  *
  * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
  * have an active member matching the query by name or email — the app page's
@@ -649,10 +640,11 @@ export const fetchAppGroupsById = (variables: AppGroupsByIdVariables, signal?: A
   >({url: '/api/apps/{appId}/groups', method: 'get', ...variables, signal});
 
 /**
- * Paginated app-groups for an app, owners first then by name. Each item
- * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
- * single response materializes at most that many groups' memberships, rather
- * than every group of an app at once.
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
  *
  * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
  * have an active member matching the query by name or email — the app page's
@@ -683,10 +675,11 @@ export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuer
 }
 
 /**
- * Paginated app-groups for an app, owners first then by name. Each item
- * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
- * single response materializes at most that many groups' memberships, rather
- * than every group of an app at once.
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
  *
  * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
  * have an active member matching the query by name or email — the app page's
@@ -708,10 +701,11 @@ export const useSuspenseAppGroupsById = <TData = Schemas.PageTCustomizedAppGroup
 };
 
 /**
- * Paginated app-groups for an app, owners first then by name. Each item
- * carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
- * single response materializes at most that many groups' memberships, rather
- * than every group of an app at once.
+ * Paginated app-groups for an app, owners first then by name. Members are
+ * NOT inlined — each item carries `member_count` / `owner_count` only, so the
+ * response is bounded by the number of groups on the page regardless of how
+ * many members any single group has. The UI fetches a group's members on
+ * demand from `GET /api/groups/{id}/member-details`.
  *
  * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
  * have an active member matching the query by name or email — the app page's
@@ -1213,12 +1207,7 @@ export const fetchGroupRequestByIdPut = (variables: GroupRequestByIdPutVariables
     {},
     {},
     GroupRequestByIdPutPathParams
-  >({
-    url: '/api/group-requests/{groupRequestId}',
-    method: 'put',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/group-requests/{groupRequestId}', method: 'put', ...variables, signal});
 
 export const useGroupRequestByIdPut = (
   options?: Omit<
@@ -1695,12 +1684,7 @@ export const fetchGroupMembersByIdPut = (variables: GroupMembersByIdPutVariables
     {},
     {},
     GroupMembersByIdPutPathParams
-  >({
-    url: '/api/groups/{groupId}/members',
-    method: 'put',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/groups/{groupId}/members', method: 'put', ...variables, signal});
 
 export const useGroupMembersByIdPut = (
   options?: Omit<
@@ -1754,6 +1738,14 @@ export type GroupMemberDetailsByIdVariables = {
  * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
  * group page page through members instead of inlining every row in the group
  * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
  */
 export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVariables, signal?: AbortSignal) =>
   apiFetch<
@@ -1763,18 +1755,21 @@ export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVar
     {},
     GroupMemberDetailsByIdQueryParams,
     GroupMemberDetailsByIdPathParams
-  >({
-    url: '/api/groups/{groupId}/member-details',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/groups/{groupId}/member-details', method: 'get', ...variables, signal});
 
 /**
  * Paginated, fully-hydrated active membership rows for a group. `owner=true`
  * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
  * group page page through members instead of inlining every row in the group
  * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
  */
 export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables): {
   queryKey: reactQuery.QueryKey;
@@ -1807,6 +1802,14 @@ export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVar
  * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
  * group page page through members instead of inlining every row in the group
  * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
  */
 export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTCustomizedOktaUserGroupMemberDetail>(
   variables: GroupMemberDetailsByIdVariables,
@@ -1832,6 +1835,14 @@ export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTCustomize
  * returns ownerships, `owner=false` memberships, omitted returns both. Lets the
  * group page page through members instead of inlining every row in the group
  * detail response.
+ *
+ * Pagination is by distinct *user*, not by membership row: a user can hold
+ * several active rows for one group (a direct grant plus role-granted ones),
+ * and the UI renders one row per user. Paging by user keeps `total` aligned
+ * with the de-duplicated list the UI shows and keeps all of a user's rows on
+ * the same page. Note `total` and `size` count users, so a page can contain
+ * more than `size` items (rows) when users hold multiple rows; consumers must
+ * not assume ``len(items) == size``.
  */
 export const useGroupMemberDetailsById = <TData = Schemas.PageTCustomizedOktaUserGroupMemberDetail>(
   variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken,
@@ -1945,12 +1956,7 @@ export const fetchAppGroupLifecyclePluginAppConfigProps = (
     {},
     {},
     AppGroupLifecyclePluginAppConfigPropsPathParams
-  >({
-    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/app-config-props', method: 'get', ...variables, signal});
 
 export function appGroupLifecyclePluginAppConfigPropsQuery(variables: AppGroupLifecyclePluginAppConfigPropsVariables): {
   queryKey: reactQuery.QueryKey;
@@ -2052,12 +2058,7 @@ export const fetchAppGroupLifecyclePluginGroupConfigProps = (
     {},
     {},
     AppGroupLifecyclePluginGroupConfigPropsPathParams
-  >({
-    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props', method: 'get', ...variables, signal});
 
 export function appGroupLifecyclePluginGroupConfigPropsQuery(
   variables: AppGroupLifecyclePluginGroupConfigPropsVariables,
@@ -2161,12 +2162,7 @@ export const fetchAppGroupLifecyclePluginAppStatusProps = (
     {},
     {},
     AppGroupLifecyclePluginAppStatusPropsPathParams
-  >({
-    url: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/app-status-props', method: 'get', ...variables, signal});
 
 export function appGroupLifecyclePluginAppStatusPropsQuery(variables: AppGroupLifecyclePluginAppStatusPropsVariables): {
   queryKey: reactQuery.QueryKey;
@@ -2268,12 +2264,7 @@ export const fetchAppGroupLifecyclePluginGroupStatusProps = (
     {},
     {},
     AppGroupLifecyclePluginGroupStatusPropsPathParams
-  >({
-    url: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props',
-    method: 'get',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/plugins/app-group-lifecycle/{pluginId}/group-status-props', method: 'get', ...variables, signal});
 
 export function appGroupLifecyclePluginGroupStatusPropsQuery(
   variables: AppGroupLifecyclePluginGroupStatusPropsVariables,
@@ -2577,12 +2568,7 @@ export const fetchRoleRequestByIdPut = (variables: RoleRequestByIdPutVariables, 
     {},
     {},
     RoleRequestByIdPutPathParams
-  >({
-    url: '/api/role-requests/{roleRequestId}',
-    method: 'put',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/role-requests/{roleRequestId}', method: 'put', ...variables, signal});
 
 export const useRoleRequestByIdPut = (
   options?: Omit<
@@ -2932,12 +2918,7 @@ export const fetchRoleMembersByIdPut = (variables: RoleMembersByIdPutVariables, 
     {},
     {},
     RoleMembersByIdPutPathParams
-  >({
-    url: '/api/roles/{roleId}/members',
-    method: 'put',
-    ...variables,
-    signal,
-  });
+  >({url: '/api/roles/{roleId}/members', method: 'put', ...variables, signal});
 
 export const useRoleMembersByIdPut = (
   options?: Omit<
