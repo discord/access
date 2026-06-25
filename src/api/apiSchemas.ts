@@ -676,7 +676,7 @@ export type OktaUserSummary = {
   deleted_at?: string | null;
 };
 
-export type PageTCustomizedAccessRequestSummary = {
+export type PageTypeVarCustomizedAccessRequestSummary = {
   items: AccessRequestSummary[];
   /**
    * @minimum 0
@@ -696,7 +696,7 @@ export type PageTCustomizedAccessRequestSummary = {
   pages: number;
 };
 
-export type PageTCustomizedAppGroupForAppDetail = {
+export type PageTypeVarCustomizedAppGroupForAppDetail = {
   items: AppGroupForAppDetail[];
   /**
    * @minimum 0
@@ -716,7 +716,7 @@ export type PageTCustomizedAppGroupForAppDetail = {
   pages: number;
 };
 
-export type PageTCustomizedAppSummary = {
+export type PageTypeVarCustomizedAppSummary = {
   items: AppSummary[];
   /**
    * @minimum 0
@@ -736,7 +736,7 @@ export type PageTCustomizedAppSummary = {
   pages: number;
 };
 
-export type PageTCustomizedAuditGroupRoleRow = {
+export type PageTypeVarCustomizedAuditGroupRoleRow = {
   items: AuditGroupRoleRow[];
   /**
    * @minimum 0
@@ -756,7 +756,7 @@ export type PageTCustomizedAuditGroupRoleRow = {
   pages: number;
 };
 
-export type PageTCustomizedAuditUserGroupRow = {
+export type PageTypeVarCustomizedAuditUserGroupRow = {
   items: AuditUserGroupRow[];
   /**
    * @minimum 0
@@ -776,7 +776,7 @@ export type PageTCustomizedAuditUserGroupRow = {
   pages: number;
 };
 
-export type PageTCustomizedGroupRequestDetail = {
+export type PageTypeVarCustomizedGroupRequestDetail = {
   items: GroupRequestDetail[];
   /**
    * @minimum 0
@@ -796,7 +796,7 @@ export type PageTCustomizedGroupRequestDetail = {
   pages: number;
 };
 
-export type PageTCustomizedGroupSummary = {
+export type PageTypeVarCustomizedGroupSummary = {
   items: GroupSummary[];
   /**
    * @minimum 0
@@ -816,7 +816,7 @@ export type PageTCustomizedGroupSummary = {
   pages: number;
 };
 
-export type PageTCustomizedOktaUserGroupMemberDetail = {
+export type PageTypeVarCustomizedOktaUserGroupMemberDetail = {
   items: OktaUserGroupMemberDetail[];
   /**
    * @minimum 0
@@ -836,7 +836,7 @@ export type PageTCustomizedOktaUserGroupMemberDetail = {
   pages: number;
 };
 
-export type PageTCustomizedOktaUserSummary = {
+export type PageTypeVarCustomizedOktaUserSummary = {
   items: OktaUserSummary[];
   /**
    * @minimum 0
@@ -856,7 +856,7 @@ export type PageTCustomizedOktaUserSummary = {
   pages: number;
 };
 
-export type PageTCustomizedRoleGroupListItem = {
+export type PageTypeVarCustomizedRoleGroupListItem = {
   items: RoleGroupListItem[];
   /**
    * @minimum 0
@@ -876,7 +876,7 @@ export type PageTCustomizedRoleGroupListItem = {
   pages: number;
 };
 
-export type PageTCustomizedRoleRequestSummary = {
+export type PageTypeVarCustomizedRoleRequestSummary = {
   items: RoleRequestSummary[];
   /**
    * @minimum 0
@@ -896,7 +896,7 @@ export type PageTCustomizedRoleRequestSummary = {
   pages: number;
 };
 
-export type PageTCustomizedTagListItem = {
+export type PageTypeVarCustomizedTagListItem = {
   items: TagListItem[];
   /**
    * @minimum 0
