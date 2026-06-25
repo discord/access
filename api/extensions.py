@@ -15,6 +15,7 @@ sets and clears this var per request.
 from __future__ import annotations
 
 import contextvars
+import threading
 from typing import Any, Callable, Optional
 
 from google.cloud.sql.connector import Connector, IPTypes
@@ -134,23 +135,53 @@ db = _DB()
 Db = _DB
 
 
+# Process-wide singleton Connector, shared by every engine/creator for the
+# life of the worker. The Connector owns a background event loop + aiohttp
+# session and a RefreshAheadCache that renews the ephemeral client cert ahead
+# of expiry, and it caches connection info per (instance, enable_iam_auth)
+# internally — so a single instance serves every Cloud SQL target.
+#
+# The previous `with Connector()` built and closed one *per connection*, which
+# (a) tore the loop/session down while the background cert refresh to
+# sqladmin.googleapis.com was still in flight — racing it and surfacing
+# ServerDisconnectedError / "Task pending" errors — and (b) gave every
+# connection a fresh empty cache, defeating the refresh-ahead design.
+_connector: Optional[Connector] = None
+_connector_lock = threading.Lock()
+
+
+def _get_connector() -> Connector:
+    """Return the process-wide Connector, building it on first use.
+
+    Built lazily (double-checked lock; the SQLAlchemy pool may call the creator
+    from multiple threads) so the Connector's background thread is spawned
+    inside the worker process, after any gunicorn fork — a thread created in a
+    preloaded master would not survive fork() and the loop would be dead in the
+    workers.
+    """
+    global _connector
+    if _connector is None:
+        with _connector_lock:
+            if _connector is None:
+                _connector = Connector()
+    return _connector
+
+
 def get_cloudsql_conn(
     cloudsql_connection_name: str,
     db_user: Optional[str] = "root",
     db_name: Optional[str] = "access",
     uses_public_ip: Optional[bool] = False,
-) -> Callable[[], Connector]:
-    def _get_conn() -> Connector:
-        with Connector() as connector:
-            conn = connector.connect(
-                cloudsql_connection_name,
-                "pg8000",
-                user=db_user,
-                db=db_name,
-                ip_type=IPTypes.PUBLIC if uses_public_ip else IPTypes.PRIVATE,
-                enable_iam_auth=True,
-            )
-            return conn
+) -> Callable[[], Any]:
+    def _get_conn() -> Any:
+        return _get_connector().connect(
+            cloudsql_connection_name,
+            "pg8000",
+            user=db_user,
+            db=db_name,
+            ip_type=IPTypes.PUBLIC if uses_public_ip else IPTypes.PRIVATE,
+            enable_iam_auth=True,
+        )
 
     return _get_conn
 
