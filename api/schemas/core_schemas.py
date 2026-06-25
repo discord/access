@@ -328,12 +328,13 @@ class AppGroupDetail(_GroupBase):
 
 
 class AppGroupForAppDetail(BaseModel):
-    """Slimmer shape used inside `AppDetail.active_*_app_groups`.
+    """Slimmer shape used by the paginated `GET /api/apps/{id}/groups` endpoint.
 
-    Drops `active_role_member_mappings`, `active_role_owner_mappings`, and
-    `active_group_tags` on the nested app-groups. The outer `AppGroupDetail`
-    retains them for direct `GET /api/groups/{id}` calls; this variant omits
-    them when the same rows are embedded inside an `AppDetail` payload."""
+    Members are NOT inlined: a single group can have thousands, and inlining
+    them made even a 10-group page able to ship megabytes. Instead each item
+    carries `member_count` / `owner_count` (cheap SQL aggregates); the UI fetches
+    a group's members on demand from the paginated
+    `GET /api/groups/{id}/member-details` endpoint."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -349,8 +350,8 @@ class AppGroupForAppDetail(BaseModel):
     is_owner: bool = False
     plugin_data: Optional[dict[str, Any]] = None
     app: Optional[AppIdRef] = None
-    active_user_memberships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
-    active_user_ownerships: list[OktaUserGroupMemberDetail] = Field(default_factory=list)
+    member_count: int = 0
+    owner_count: int = 0
 
 
 # Named via `TypeAliasType` so FastAPI emits a single `GroupDetail` schema

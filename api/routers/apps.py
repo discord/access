@@ -27,9 +27,6 @@ from api.models import (
 from fastapi_pagination.ext.sqlalchemy import paginate
 
 from api.pagination import AppGroupsPage, Page, validated
-from api.routers._eager import (
-    user_group_member_options,
-)
 from api.schemas import (
     AppSummary,
     AppDetail,
@@ -41,15 +38,6 @@ from api.schemas import (
 )
 
 
-# Eager-load options for an `App` response. `AppGroupForAppDetail` only
-# exposes user memberships/ownerships on the nested app groups — Flask's
-# `DEFAULT_SCHEMA_DISPLAY_EXCLUSIONS` strips role-mapping and group-tag
-# arrays via dotted-path entries — so we deliberately don't pull those
-# loaders here.
-_APP_GROUP_LOAD = (
-    selectinload(AppGroup.active_user_memberships).options(*user_group_member_options()),
-    selectinload(AppGroup.active_user_ownerships).options(*user_group_member_options()),
-)
 APP_LOAD_OPTIONS = (
     selectinload(App.active_app_tags).options(
         joinedload(AppTagMap.active_tag),
@@ -96,10 +84,11 @@ def get_app_groups(
     owner: Annotated[Optional[bool], Query()] = None,
     q: Annotated[Optional[str], Query()] = None,
 ) -> AppGroupsPage[AppGroupForAppDetail]:
-    """Paginated app-groups for an app, owners first then by name. Each item
-    carries its members inline; the page is bounded (`AppGroupsPageParams`) so a
-    single response materializes at most that many groups' memberships, rather
-    than every group of an app at once.
+    """Paginated app-groups for an app, owners first then by name. Members are
+    NOT inlined — each item carries `member_count` / `owner_count` only, so the
+    response is bounded by the number of groups on the page regardless of how
+    many members any single group has. The UI fetches a group's members on
+    demand from `GET /api/groups/{id}/member-details`.
 
     `owner` filters to owner / non-owner app-groups. `q` filters to groups that
     have an active member matching the query by name or email — the app page's
@@ -111,7 +100,7 @@ def get_app_groups(
         raise HTTPException(404, "Not Found")
     stmt = (
         select(AppGroup)
-        .options(joinedload(AppGroup.app), *_APP_GROUP_LOAD)
+        .options(joinedload(AppGroup.app))
         .where(AppGroup.app_id == resolved_app_id)
         .where(AppGroup.deleted_at.is_(None))
     )
@@ -139,7 +128,27 @@ def get_app_groups(
     # AppGroup.id is a unique final tiebreaker so rows that tie on
     # (is_owner, lower(name)) have a stable order across LIMIT/OFFSET pages.
     stmt = stmt.order_by(AppGroup.is_owner.desc(), func.lower(AppGroup.name), AppGroup.id)
-    return paginate(db, stmt, transformer=validated(AppGroupForAppDetail))
+
+    def _with_counts(groups: Any) -> list[Any]:
+        ids = [g.id for g in groups]
+        counts: dict[tuple[str, bool], int] = {}
+        if ids:
+            rows = db.execute(
+                select(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner, func.count())
+                .where(OktaUserGroupMember.group_id.in_(ids))
+                .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
+                .group_by(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner)
+            ).all()
+            for gid, is_owner, count in rows:
+                counts[(gid, is_owner)] = count
+        # Stash the aggregates on the ORM instances so `from_attributes` picks
+        # them up (these are plain, non-mapped attributes).
+        for g in groups:
+            g.member_count = counts.get((g.id, False), 0)
+            g.owner_count = counts.get((g.id, True), 0)
+        return validated(AppGroupForAppDetail)(groups)
+
+    return paginate(db, stmt, transformer=_with_counts)
 
 
 @router.post("", name="apps_create", status_code=201)

@@ -112,8 +112,9 @@ def test_get_app(
 
 def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, url_for: Any) -> None:
     """`GET /api/apps/{app_id}/groups` returns the app's groups as a page bounded
-    to 10 per page (so an app with hundreds of groups can't materialize every
-    group's membership in one response), with each group's members still inline."""
+    to 10 per page. Members are NOT inlined — each item carries member_count /
+    owner_count, and the UI fetches members per-group from the paginated
+    member-details endpoint — so a single huge group can't bloat the response."""
     app = AppFactory.create()
     db.session.add(app)
     db.session.add(user)
@@ -145,11 +146,16 @@ def test_get_app_groups_paginated(client: TestClient, db: Db, user: OktaUser, ur
     assert data["total"] == 25
     assert data["pages"] == 3
 
-    # members stay inline on each group
+    # counts replace inline member arrays
+    assert "active_user_memberships" not in data["items"][0]
+    assert "active_user_ownerships" not in data["items"][0]
+    assert "member_count" in data["items"][0]
+    assert "owner_count" in data["items"][0]
+
     by_id = {g["id"]: g for g in data["items"]}
-    assert "active_user_memberships" in data["items"][0]
     if member_group_id in by_id:
-        assert any(m["user"]["id"] == user.id for m in by_id[member_group_id]["active_user_memberships"])
+        assert by_id[member_group_id]["member_count"] == 1
+        assert by_id[member_group_id]["owner_count"] == 0
 
 
 def test_get_app_groups_search_by_user(client: TestClient, db: Db, url_for: Any) -> None:
