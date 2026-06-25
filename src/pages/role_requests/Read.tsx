@@ -298,7 +298,7 @@ export default function ReadRoleRequest() {
   const {data: groupOwnerData} = useGroupMemberDetailsById(
     {
       pathParams: {groupId: roleRequest.requested_group?.id ?? ''},
-      queryParams: {owner: true, size: 1000},
+      queryParams: {owner: true, size: 100},
     },
     {
       enabled: roleRequest.requested_group != null && (!requestedGroupManager || ownRequest),

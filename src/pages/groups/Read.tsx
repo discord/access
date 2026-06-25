@@ -159,7 +159,7 @@ export default function ReadGroup() {
   const {data: groupOwnerData} = useGroupMemberDetailsById(
     {
       pathParams: {groupId: id ?? ''},
-      queryParams: {owner: true, size: 1000},
+      queryParams: {owner: true, size: 100},
     },
     {
       enabled: id != null,

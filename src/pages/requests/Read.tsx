@@ -257,7 +257,7 @@ export default function ReadRequest() {
   const {data: groupOwnerData} = useGroupMemberDetailsById(
     {
       pathParams: {groupId: accessRequest.requested_group?.id ?? ''},
-      queryParams: {owner: true, size: 1000},
+      queryParams: {owner: true, size: 100},
     },
     {
       enabled: accessRequest.requested_group != null && (!requestedGroupManager || ownRequest),
