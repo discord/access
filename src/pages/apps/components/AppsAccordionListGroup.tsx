@@ -241,8 +241,11 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
     const appGroupRef = React.useRef(app_group);
     appGroupRef.current = app_group;
 
-    const groupNamesKey = React.useMemo(() => (app_group ?? []).map((g) => g.name).join('|'), [app_group]);
-
+    // Apply expand/collapse-all ONLY when the toggle flips — not when the group
+    // list changes. Infinite scroll grows the list as you scroll (and a member
+    // page-change can trigger a fetch), and re-running this on every list change
+    // used to reset (collapse) accordions the user had opened. New groups follow
+    // the current `isExpanded` via the render default below.
     React.useEffect(() => {
       const currentAppGroup = appGroupRef.current;
       if (currentAppGroup) {
@@ -260,7 +263,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
           return hasChanges ? newExpanded : prevExpanded;
         });
       }
-    }, [isExpanded, groupNamesKey]);
+    }, [isExpanded]);
 
     const handleChange = React.useCallback(
       (id: string) => (event: React.SyntheticEvent, newExpanded: boolean) => {
@@ -300,7 +303,7 @@ export const AppsAccordionListGroup: React.FC<AppAccordionListGroupProps> = Reac
             <AccordionItem
               key={appGroup.id}
               appGroup={appGroup}
-              expanded={expanded[appGroup.name] || false}
+              expanded={expanded[appGroup.name] ?? isExpanded}
               onToggle={handleChange}
             />
           ))}
