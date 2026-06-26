@@ -12,6 +12,7 @@ from typing import Any
 
 from google.auth import default
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
@@ -57,6 +58,16 @@ OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
 GOOGLE_LOCAL_PART_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
 logger = logging.getLogger(__name__)
+
+
+def _is_group_absent_error(error: HttpError) -> bool:
+    """Whether a Cloud Identity error means the group is not visible to us.
+
+    The Groups API returns 403 (PERMISSION_DENIED, "...or it may not exist") rather than
+    404 for a group the caller can't see -- including one that simply doesn't exist yet.
+    Treating both as "absent" lets reconcile create the group instead of erroring; a
+    genuine permission problem then surfaces on the subsequent create call."""
+    return getattr(getattr(error, "resp", None), "status", None) in (403, 404)
 
 
 class GoogleGroupManagerPlugin:
@@ -289,3 +300,59 @@ class GoogleGroupManagerPlugin:
                 errors[CONFIG_EMAIL] = pattern_error
 
         return errors
+
+    # ---- Google API wrappers (Cloud Identity Groups API) ----
+
+    def _resource_name(self, google_group_id: str) -> str:
+        return f"groups/{google_group_id}"
+
+    def _create_google_group(self, prefix: str, display_name: str, description: str) -> str:
+        body = {
+            "parent": f"customers/{self._customer_id}",
+            "groupKey": {"id": self._full_email(prefix)},
+            "displayName": display_name,
+            "description": description or "",
+            "labels": {GROUP_DISCUSSION_FORUM_LABEL: ""},
+        }
+        # initialGroupConfig=EMPTY: the admin-role service account creates the group without
+        # being added as an owner; Okta group push owns membership and ownership.
+        operation = self._groups_api.create(body=body, initialGroupConfig="EMPTY").execute()
+        created = operation.get("response") or {}
+        name = created.get("name")
+        if not name:
+            raise ValueError(f"Google group creation returned no resource name: {operation}")
+        return name.split("/", 1)[1]
+
+    def _get_google_group(self, google_group_id: str) -> dict[str, Any]:
+        return self._groups_api.get(name=self._resource_name(google_group_id)).execute()
+
+    def _patch_google_group(
+        self, google_group_id: str, *, display_name: str | None = None, description: str | None = None
+    ) -> None:
+        """Patch a Google group's mutable properties. groupKey (email) is immutable, so only
+        displayName/description are patchable; pass only the fields to change. No-op if none."""
+        body: dict[str, Any] = {}
+        if display_name is not None:
+            body["displayName"] = display_name
+        if description is not None:
+            body["description"] = description
+        if not body:
+            return
+        update_mask = ",".join(sorted(body))
+        self._groups_api.patch(
+            name=self._resource_name(google_group_id), body=body, updateMask=update_mask
+        ).execute()
+
+    def _delete_google_group(self, google_group_id: str) -> None:
+        self._groups_api.delete(name=self._resource_name(google_group_id)).execute()
+
+    def _lookup_google_group_id(self, email: str) -> str | None:
+        """Resolve an email to its bare Cloud Identity group id, or None if no such group."""
+        try:
+            result = self._groups_api.lookup(groupKey_id=email).execute()
+        except HttpError as e:
+            if _is_group_absent_error(e):
+                return None
+            raise
+        name = result.get("name")
+        return name.split("/", 1)[1] if name else None

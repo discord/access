@@ -43,11 +43,13 @@ plugin_dir = Path(__file__).parent
 if str(plugin_dir) not in sys.path:
     sys.path.insert(0, str(plugin_dir))
 
-from api.models import App, AppGroup  # noqa: E402
 from plugin import (  # noqa: E402
+    GROUP_DISCUSSION_FORUM_LABEL,
     PLUGIN_ID,
     GoogleGroupManagerPlugin,
 )
+
+from api.models import App, AppGroup  # noqa: E402
 
 
 @pytest.fixture
@@ -212,7 +214,71 @@ def test_group_config_returns_pair_or_none(plugin_instance, mocker):
     assert plugin_instance._group_config(_group(mocker)) is None
 
 
-def test_email_config_property_is_immutable(plugin_instance):
+def test_create_google_group_calls_create(plugin_instance, mock_groups_api):
+    mock_groups_api.create().execute.return_value = {
+        "done": True,
+        "response": {"name": "groups/ggid-1", "groupKey": {"id": "platform-security@test-company.com"}},
+    }
+    group_id = plugin_instance._create_google_group("platform-security", "Platform Security", "desc")
+    assert group_id == "ggid-1"
+    kwargs = mock_groups_api.create.call_args.kwargs
+    assert kwargs["initialGroupConfig"] == "EMPTY"
+    assert kwargs["body"] == {
+        "parent": "customers/C0test",
+        "groupKey": {"id": "platform-security@test-company.com"},
+        "displayName": "Platform Security",
+        "description": "desc",
+        "labels": {GROUP_DISCUSSION_FORUM_LABEL: ""},
+    }
+
+
+def test_get_google_group_calls_get_by_resource_name(plugin_instance, mock_groups_api):
+    mock_groups_api.get().execute.return_value = {"name": "groups/ggid-1"}
+    assert plugin_instance._get_google_group("ggid-1")["name"] == "groups/ggid-1"
+    assert mock_groups_api.get.call_args.kwargs == {"name": "groups/ggid-1"}
+
+
+def test_patch_google_group_sets_update_mask(plugin_instance, mock_groups_api):
+    plugin_instance._patch_google_group("ggid-1", display_name="New", description="d")
+    kwargs = mock_groups_api.patch.call_args.kwargs
+    assert kwargs["name"] == "groups/ggid-1"
+    assert kwargs["body"] == {"displayName": "New", "description": "d"}
+    assert kwargs["updateMask"] == "description,displayName"
+
+
+def test_patch_google_group_noop_when_no_fields(plugin_instance, mock_groups_api):
+    plugin_instance._patch_google_group("ggid-1")
+    mock_groups_api.patch.assert_not_called()
+
+
+def test_delete_google_group_calls_delete_by_resource_name(plugin_instance, mock_groups_api):
+    plugin_instance._delete_google_group("ggid-1")
+    assert mock_groups_api.delete.call_args.kwargs == {"name": "groups/ggid-1"}
+
+
+def test_lookup_returns_bare_id(plugin_instance, mock_groups_api):
+    mock_groups_api.lookup().execute.return_value = {"name": "groups/ggid-9"}
+    assert plugin_instance._lookup_google_group_id("x@test-company.com") == "ggid-9"
+    assert mock_groups_api.lookup.call_args.kwargs == {"groupKey_id": "x@test-company.com"}
+
+
+def test_lookup_returns_none_on_404(plugin_instance, mock_groups_api):
+    from googleapiclient.errors import HttpError
+
+    mock_groups_api.lookup().execute.side_effect = HttpError(404)
+    assert plugin_instance._lookup_google_group_id("missing@test-company.com") is None
+
+
+def test_lookup_returns_none_on_403(plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock) -> None:
+    # Cloud Identity returns 403 (permission-denied "or it may not exist") for a group
+    # that doesn't exist, not 404; the lookup must treat it as absent, not raise.
+    from googleapiclient.errors import HttpError
+
+    mock_groups_api.lookup().execute.side_effect = HttpError(403)
+    assert plugin_instance._lookup_google_group_id("missing@test-company.com") is None
+
+
+def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
     assert props["email"].immutable is True
     assert props["display_name"].immutable is False
