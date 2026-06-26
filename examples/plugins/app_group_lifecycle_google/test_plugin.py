@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -62,7 +63,7 @@ from api.models import App, AppGroup  # noqa: E402
 
 
 @pytest.fixture
-def mock_groups_api(mocker: MockerFixture):
+def mock_groups_api(mocker: MockerFixture) -> MagicMock:
     mocker.patch("plugin.default", return_value=(Mock(), None))
     discovery_client = MagicMock()
     mocker.patch("plugin.build", return_value=discovery_client)
@@ -72,7 +73,7 @@ def mock_groups_api(mocker: MockerFixture):
 
 
 @pytest.fixture
-def plugin_instance(mocker: MockerFixture, mock_groups_api):
+def plugin_instance(mocker: MockerFixture, mock_groups_api: MagicMock) -> GoogleGroupManagerPlugin:
     mocker.patch.dict(
         os.environ,
         {
@@ -84,26 +85,26 @@ def plugin_instance(mocker: MockerFixture, mock_groups_api):
     return GoogleGroupManagerPlugin()
 
 
-def test_metadata(plugin_instance):
+def test_metadata(plugin_instance: GoogleGroupManagerPlugin) -> None:
     meta = plugin_instance.get_plugin_metadata()
     assert meta.id == PLUGIN_ID
     assert meta.display_name
 
 
-def test_app_config_properties_shape(plugin_instance):
+def test_app_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_app_config_properties(PLUGIN_ID)
     assert set(props) == {"enabled", "email_pattern"}
     assert props["enabled"].required is True
 
 
-def test_group_config_properties_shape(plugin_instance):
+def test_group_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
     assert set(props) == {"email", "display_name"}
     assert props["email"].required is True
     assert props["display_name"].required is True
 
 
-def test_group_config_properties_surface_validation_patterns(plugin_instance):
+def test_group_config_properties_surface_validation_patterns(plugin_instance: GoogleGroupManagerPlugin) -> None:
     from plugin import GOOGLE_LOCAL_PART_RE
 
     # With no app pattern, the email property carries just the Google-safe charset rule.
@@ -117,7 +118,7 @@ def test_group_config_properties_surface_validation_patterns(plugin_instance):
     assert [p["regex"] for p in patterns] == [GOOGLE_LOCAL_PART_RE.pattern, r"^sec-"]
 
 
-def test_group_status_properties_shape(plugin_instance):
+def test_group_status_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_status_properties(PLUGIN_ID)
     assert set(props) == {
         "push_mapping_id",
@@ -129,20 +130,22 @@ def test_group_status_properties_shape(plugin_instance):
 
 
 @pytest.mark.parametrize("pattern,ok", [(None, True), (r"^[a-z-]+$", True), (r"([", False)])
-def test_validate_app_config_email_pattern(plugin_instance, pattern, ok):
-    config = {"enabled": True}
+def test_validate_app_config_email_pattern(
+    plugin_instance: GoogleGroupManagerPlugin, pattern: str | None, ok: bool
+) -> None:
+    config: dict[str, Any] = {"enabled": True}
     if pattern is not None:
         config["email_pattern"] = pattern
     errors = plugin_instance.validate_plugin_app_config(config, PLUGIN_ID)
     assert (errors == {}) is ok
 
 
-def test_validate_app_config_requires_enabled(plugin_instance):
+def test_validate_app_config_requires_enabled(plugin_instance: GoogleGroupManagerPlugin) -> None:
     errors = plugin_instance.validate_plugin_app_config({}, PLUGIN_ID)
     assert "enabled" in errors
 
 
-def test_validate_group_config_valid(plugin_instance):
+def test_validate_group_config_valid(plugin_instance: GoogleGroupManagerPlugin) -> None:
     errors = plugin_instance.validate_plugin_group_config(
         {"email": "platform-security", "display_name": "Platform Security"}, {}, PLUGIN_ID
     )
@@ -158,16 +161,18 @@ def test_validate_group_config_valid(plugin_instance):
         ({"email": "-bad", "display_name": "X"}, "email"),  # leading hyphen fails charset
     ],
 )
-def test_validate_group_config_errors(plugin_instance, config, bad_key):
+def test_validate_group_config_errors(
+    plugin_instance: GoogleGroupManagerPlugin, config: dict[str, Any], bad_key: str
+) -> None:
     errors = plugin_instance.validate_plugin_group_config(config, {}, PLUGIN_ID)
     assert bad_key in errors
 
 
-def test_validate_group_config_ignores_other_plugin(plugin_instance):
+def test_validate_group_config_ignores_other_plugin(plugin_instance: GoogleGroupManagerPlugin) -> None:
     assert plugin_instance.validate_plugin_group_config({}, {}, "some_other_plugin") is None
 
 
-def test_validate_group_config_enforces_app_email_pattern(plugin_instance):
+def test_validate_group_config_enforces_app_email_pattern(plugin_instance: GoogleGroupManagerPlugin) -> None:
     # A prefix that is charset-valid but violates the app's email_pattern is rejected.
     app_config = {"email_pattern": r"^sec-"}
     errors = plugin_instance.validate_plugin_group_config(
@@ -182,7 +187,14 @@ def test_validate_group_config_enforces_app_email_pattern(plugin_instance):
     assert errors == {}
 
 
-def _group(mocker, *, app_config=None, group_config=None, status=None, description=""):
+def _group(
+    mocker: MockerFixture,
+    *,
+    app_config: dict[str, Any] | None = None,
+    group_config: dict[str, Any] | None = None,
+    status: dict[str, Any] | None = None,
+    description: str = "",
+) -> Mock:
     app = Mock(spec=App)
     app.plugin_data = {PLUGIN_ID: {"configuration": app_config or {"enabled": True}, "status": {}}}
     group = Mock(spec=AppGroup)
@@ -194,31 +206,31 @@ def _group(mocker, *, app_config=None, group_config=None, status=None, descripti
     return group
 
 
-def test_full_email_appends_domain(plugin_instance):
+def test_full_email_appends_domain(plugin_instance: GoogleGroupManagerPlugin) -> None:
     assert plugin_instance._full_email("platform-security") == "platform-security@test-company.com"
 
 
-def test_prefix_from_email_strips_domain(plugin_instance):
+def test_prefix_from_email_strips_domain(plugin_instance: GoogleGroupManagerPlugin) -> None:
     assert plugin_instance._prefix_from_email("platform-security@test-company.com") == "platform-security"
 
 
-def test_prefix_from_email_returns_none_on_domain_mismatch(plugin_instance):
+def test_prefix_from_email_returns_none_on_domain_mismatch(plugin_instance: GoogleGroupManagerPlugin) -> None:
     assert plugin_instance._prefix_from_email("x@other.com") is None
 
 
-def test_is_enabled_reads_app_config(plugin_instance, mocker):
+def test_is_enabled_reads_app_config(plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture) -> None:
     group = _group(mocker)
     mocker.patch("plugin.get_config_value", return_value=True)
     assert plugin_instance._is_enabled(group) is True
 
 
-def test_validate_email_against_pattern(plugin_instance):
+def test_validate_email_against_pattern(plugin_instance: GoogleGroupManagerPlugin) -> None:
     assert plugin_instance._validate_email_against_pattern("platform", r"^sec-") is not None
     assert plugin_instance._validate_email_against_pattern("sec-platform", r"^sec-") is None
     assert plugin_instance._validate_email_against_pattern("anything", None) is None
 
 
-def test_group_config_returns_pair_or_none(plugin_instance, mocker):
+def test_group_config_returns_pair_or_none(plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture) -> None:
     # both present -> tuple; missing one -> None
     mocker.patch(
         "plugin.get_config_value",
@@ -238,7 +250,9 @@ def test_group_config_returns_pair_or_none(plugin_instance, mocker):
     assert plugin_instance._group_config(_group(mocker)) is None
 
 
-def test_create_google_group_calls_create(plugin_instance, mock_groups_api):
+def test_create_google_group_calls_create(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
     mock_groups_api.create().execute.return_value = {
         "done": True,
         "response": {"name": "groups/ggid-1", "groupKey": {"id": "platform-security@test-company.com"}},
@@ -256,13 +270,17 @@ def test_create_google_group_calls_create(plugin_instance, mock_groups_api):
     }
 
 
-def test_get_google_group_calls_get_by_resource_name(plugin_instance, mock_groups_api):
+def test_get_google_group_calls_get_by_resource_name(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
     mock_groups_api.get().execute.return_value = {"name": "groups/ggid-1"}
     assert plugin_instance._get_google_group("ggid-1")["name"] == "groups/ggid-1"
     assert mock_groups_api.get.call_args.kwargs == {"name": "groups/ggid-1"}
 
 
-def test_patch_google_group_sets_update_mask(plugin_instance, mock_groups_api):
+def test_patch_google_group_sets_update_mask(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
     plugin_instance._patch_google_group("ggid-1", display_name="New", description="d")
     kwargs = mock_groups_api.patch.call_args.kwargs
     assert kwargs["name"] == "groups/ggid-1"
@@ -270,23 +288,27 @@ def test_patch_google_group_sets_update_mask(plugin_instance, mock_groups_api):
     assert kwargs["updateMask"] == "description,displayName"
 
 
-def test_patch_google_group_noop_when_no_fields(plugin_instance, mock_groups_api):
+def test_patch_google_group_noop_when_no_fields(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
     plugin_instance._patch_google_group("ggid-1")
     mock_groups_api.patch.assert_not_called()
 
 
-def test_delete_google_group_calls_delete_by_resource_name(plugin_instance, mock_groups_api):
+def test_delete_google_group_calls_delete_by_resource_name(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
     plugin_instance._delete_google_group("ggid-1")
     assert mock_groups_api.delete.call_args.kwargs == {"name": "groups/ggid-1"}
 
 
-def test_lookup_returns_bare_id(plugin_instance, mock_groups_api):
+def test_lookup_returns_bare_id(plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock) -> None:
     mock_groups_api.lookup().execute.return_value = {"name": "groups/ggid-9"}
     assert plugin_instance._lookup_google_group_id("x@test-company.com") == "ggid-9"
     assert mock_groups_api.lookup.call_args.kwargs == {"groupKey_id": "x@test-company.com"}
 
 
-def test_lookup_returns_none_on_404(plugin_instance, mock_groups_api):
+def test_lookup_returns_none_on_404(plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock) -> None:
     from googleapiclient.errors import HttpError
 
     mock_groups_api.lookup().execute.side_effect = HttpError(404)
@@ -342,7 +364,7 @@ def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerP
     assert props["display_name"].immutable is False
 
 
-def test_create_push_mapping_sets_status(plugin_instance, mocker):
+def test_create_push_mapping_sets_status(plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture) -> None:
     group = _group(mocker)
     mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-1"))])
     mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
@@ -354,7 +376,9 @@ def test_create_push_mapping_sets_status(plugin_instance, mocker):
     set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
 
 
-def test_create_push_mapping_defers_when_target_not_imported(plugin_instance, mocker):
+def test_create_push_mapping_defers_when_target_not_imported(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     group = _group(mocker)
     mocker.patch("plugin.okta.list_groups", return_value=[])  # Okta hasn't imported it yet
     create = mocker.patch("plugin.okta.create_group_push_mapping")
@@ -365,7 +389,7 @@ def test_create_push_mapping_defers_when_target_not_imported(plugin_instance, mo
     create.assert_not_called()
 
 
-def test_discover_existing_link_finds_mapping(plugin_instance, mocker):
+def test_discover_existing_link_finds_mapping(plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture) -> None:
     group = _group(mocker)
     mocker.patch(
         "plugin.okta.list_group_push_mappings",
@@ -384,18 +408,22 @@ def test_discover_existing_link_finds_mapping(plugin_instance, mocker):
     }
 
 
-def test_discover_existing_link_returns_none_when_no_mapping(plugin_instance, mocker):
+def test_discover_existing_link_returns_none_when_no_mapping(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     group = _group(mocker)
     mocker.patch("plugin.okta.list_group_push_mappings", return_value=[])
     assert plugin_instance._discover_existing_link(group) is None
 
 
 @pytest.fixture
-def session_mock():
+def session_mock() -> MagicMock:
     return MagicMock()
 
 
-def test_reconcile_creates_when_no_link_and_config_present(plugin_instance, mocker, session_mock):
+def test_reconcile_creates_when_no_link_and_config_present(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(
         mocker, group_config={"email": "platform-security", "display_name": "Platform Security"}, description="Sec team"
     )
@@ -422,7 +450,9 @@ def test_reconcile_creates_when_no_link_and_config_present(plugin_instance, mock
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SYNCED, PLUGIN_ID)
 
 
-def test_reconcile_enforces_config_onto_existing_group(plugin_instance, mocker, session_mock):
+def test_reconcile_enforces_config_onto_existing_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(
         mocker,
         group_config={"email": "new-prefix", "display_name": "New Name"},
@@ -465,7 +495,9 @@ def test_reconcile_enforces_config_onto_existing_group(plugin_instance, mocker, 
     assert patch.call_args.kwargs == {"display_name": "New Name", "description": "New desc"}
 
 
-def test_reconcile_adopts_missing_config_from_live_group(plugin_instance, mocker, session_mock):
+def test_reconcile_adopts_missing_config_from_live_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, group_config={}, description="")  # no config, no description
     mocker.patch(
         "plugin.get_config_value",
@@ -511,7 +543,9 @@ def test_reconcile_adopts_missing_config_from_live_group(plugin_instance, mocker
     patch.assert_not_called()
 
 
-def test_reconcile_flags_error_on_domain_mismatch_adoption(plugin_instance, mocker, session_mock):
+def test_reconcile_flags_error_on_domain_mismatch_adoption(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, group_config={})
     mocker.patch(
         "plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {"enabled": True}.get(key, default)
@@ -545,7 +579,9 @@ def test_reconcile_flags_error_on_domain_mismatch_adoption(plugin_instance, mock
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, PLUGIN_ID)
 
 
-def test_reconcile_grandfathers_unchanged_legacy_email(plugin_instance, mocker, session_mock):
+def test_reconcile_grandfathers_unchanged_legacy_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     # An existing group whose prefix violates a later-added pattern is left alone:
     # the email (groupKey) is immutable and never patched, so the pattern is never
     # re-enforced on an existing group and reconcile marks it synced, not error.
@@ -590,7 +626,9 @@ def test_reconcile_grandfathers_unchanged_legacy_email(plugin_instance, mocker, 
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SYNCED, PLUGIN_ID)
 
 
-def test_reconcile_skips_when_disabled(plugin_instance, mocker, session_mock):
+def test_reconcile_skips_when_disabled(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker)
     mocker.patch("plugin.get_config_value", return_value=False)  # enabled = False
     discover = mocker.patch.object(plugin_instance, "_discover_existing_link")
@@ -598,7 +636,9 @@ def test_reconcile_skips_when_disabled(plugin_instance, mocker, session_mock):
     discover.assert_not_called()
 
 
-def test_reconcile_marks_pending_when_push_mapping_defers(plugin_instance, mocker, session_mock):
+def test_reconcile_marks_pending_when_push_mapping_defers(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, group_config={"email": "sec", "display_name": "Sec"}, description="d")
     mocker.patch(
         "plugin.get_config_value",
@@ -623,7 +663,9 @@ def test_reconcile_marks_pending_when_push_mapping_defers(plugin_instance, mocke
     assert synced == []  # never reached SYNC_SYNCED
 
 
-def test_reconcile_create_path_rejects_pattern_violation(plugin_instance, mocker, session_mock):
+def test_reconcile_create_path_rejects_pattern_violation(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, group_config={"email": "platform", "display_name": "P"}, description="d")
     mocker.patch(
         "plugin.get_config_value",
@@ -646,7 +688,9 @@ def test_reconcile_create_path_rejects_pattern_violation(plugin_instance, mocker
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, PLUGIN_ID)
 
 
-def test_reconcile_creates_when_no_group_exists(plugin_instance, mocker):
+def test_reconcile_creates_when_no_group_exists(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
     mocker.patch(
         "plugin.get_config_value",
@@ -905,7 +949,9 @@ def test_claim_skips_advisory_lock_off_postgres(
     session.execute.assert_not_called()
 
 
-def test_reconcile_relooks_up_when_cached_id_404s(plugin_instance, mocker):
+def test_reconcile_relooks_up_when_cached_id_404s(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     from googleapiclient.errors import HttpError
 
     group = _group(
@@ -935,7 +981,9 @@ def test_reconcile_relooks_up_when_cached_id_404s(plugin_instance, mocker):
     assert group.plugin_data[PLUGIN_ID]["status"][STATUS_GOOGLE_GROUP_ID] == "ggid-fresh"
 
 
-def test_enforce_patches_display_name_not_email(plugin_instance, mocker):
+def test_enforce_patches_display_name_not_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     group = _group(
         mocker,
         group_config={"email": "sec", "display_name": "New Name"},
@@ -969,14 +1017,18 @@ def test_enforce_patches_display_name_not_email(plugin_instance, mocker):
     assert patch.call_args.kwargs == {"display_name": "New Name", "description": None}
 
 
-def test_group_created_calls_reconcile(plugin_instance, mocker, session_mock):
+def test_group_created_calls_reconcile(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker)
     reconcile = mocker.patch.object(plugin_instance, "_reconcile")
     plugin_instance.group_created(session=session_mock, group=group, plugin_id=PLUGIN_ID)
     reconcile.assert_called_once_with(session_mock, group)
 
 
-def test_group_updated_calls_reconcile(plugin_instance, mocker, session_mock):
+def test_group_updated_calls_reconcile(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker)
     reconcile = mocker.patch.object(plugin_instance, "_reconcile")
     plugin_instance.group_updated(
@@ -985,14 +1037,18 @@ def test_group_updated_calls_reconcile(plugin_instance, mocker, session_mock):
     reconcile.assert_called_once_with(session_mock, group)
 
 
-def test_hooks_ignore_other_plugin(plugin_instance, mocker, session_mock):
+def test_hooks_ignore_other_plugin(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker)
     reconcile = mocker.patch.object(plugin_instance, "_reconcile")
     plugin_instance.group_created(session=session_mock, group=group, plugin_id="some_other_plugin")
     reconcile.assert_not_called()
 
 
-def test_group_deleted_unlinks_then_deletes(plugin_instance, mocker, session_mock):
+def test_group_deleted_unlinks_then_deletes(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, status={"push_mapping_id": "map-1", "google_group_id": "ggid-1"})
     mocker.patch("plugin.get_config_value", return_value=True)  # enabled
     mocker.patch(
@@ -1018,7 +1074,9 @@ def test_group_deleted_unlinks_then_deletes(plugin_instance, mocker, session_moc
     assert [c[0] for c in mgr.mock_calls] == ["delete_mapping", "delete_group"]
 
 
-def test_group_deleted_skips_when_unmanaged(plugin_instance, mocker, session_mock):
+def test_group_deleted_skips_when_unmanaged(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     group = _group(mocker, status={})
     # enabled=True, but no email/display_name config -> genuinely unmanaged.
     mocker.patch(
@@ -1081,7 +1139,9 @@ def test_group_deleted_does_not_fall_back_to_email_lookup(
     delete_group.assert_not_called()  # nothing we provably own -> nothing to delete
 
 
-def test_sync_all_reconciles_each_group(plugin_instance, mocker, session_mock):
+def test_sync_all_reconciles_each_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     app = Mock(spec=App)
     g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
     session_mock.scalars.return_value.all.return_value = [g1, g2]
@@ -1090,7 +1150,9 @@ def test_sync_all_reconciles_each_group(plugin_instance, mocker, session_mock):
     assert reconcile.call_count == 2
 
 
-def test_okta_target_group_id_searches_by_email(plugin_instance, mocker):
+def test_okta_target_group_id_searches_by_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     list_groups = mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-7"))])
     assert plugin_instance._okta_target_group_id("sec@test-company.com") == "okta-tgt-7"
     search = list_groups.call_args.kwargs["query_params"]["search"]
@@ -1165,7 +1227,9 @@ def test_create_push_mapping_resolves_target_by_email(
     set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
 
 
-def test_discover_existing_link_recovers_email(plugin_instance, mocker):
+def test_discover_existing_link_recovers_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     group = _group(mocker)
     profile = Mock(googleGroupEmail="sec@test-company.com")
     mocker.patch(
@@ -1180,7 +1244,9 @@ def test_discover_existing_link_recovers_email(plugin_instance, mocker):
     assert link == {"email": "sec@test-company.com", "push_mapping_id": "map-1"}
 
 
-def test_reconcile_ignores_stale_push_mapping_when_group_gone(plugin_instance, mocker):
+def test_reconcile_ignores_stale_push_mapping_when_group_gone(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
     # Out-of-band Okta link exists, but its Google group was deleted (lookup -> None).
     # The stale push_mapping_id must NOT be adopted; reconcile re-creates and re-links.
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
@@ -1213,7 +1279,9 @@ def test_reconcile_ignores_stale_push_mapping_when_group_gone(plugin_instance, m
     create_mapping.assert_called_once()
 
 
-def test_sync_all_continues_after_group_failure(plugin_instance, mocker, session_mock):
+def test_sync_all_continues_after_group_failure(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
     app = Mock(spec=App)
     g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
     g1.name = "Group1"
