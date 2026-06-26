@@ -2341,3 +2341,49 @@ class TestModifyGroupPluginData:
         assert response.status_code == 200
         assert any(call[0] == group.id for call in test_plugin.group_updated_calls)
         assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
+
+
+class TestPostGroupPluginValidation:
+    def test_post_group_rejects_invalid_group_config(self, client, db, app, test_plugin, mocker, url_for):
+        from okta.models.group import Group as OktaGroup
+        mocker.patch.object(okta, "create_group", return_value=OktaGroup({"id": "test-okta-id-123"}))
+        a = AppFactory.create()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        db.session.add(a)
+        db.session.commit()
+
+        url = url_for("api-groups.groups_create")
+        response = client.post(
+            url,
+            json={
+                "type": "app_group",
+                "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+                "app_id": a.id,
+                # DummyPlugin.validate_plugin_group_config requires "group_id"
+                "plugin_data": {DummyPlugin.ID: {"configuration": {}, "status": {}}},
+            },
+        )
+        assert response.status_code == 400
+        assert "group_id" in response.text
+
+    def test_post_group_accepts_valid_group_config(self, client, db, app, test_plugin, mocker, url_for):
+        from okta.models.group import Group as OktaGroup
+        mocker.patch.object(okta, "create_group", return_value=OktaGroup({"id": "test-okta-id-456"}))
+        a = AppFactory.create()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        db.session.add(a)
+        db.session.commit()
+
+        url = url_for("api-groups.groups_create")
+        response = client.post(
+            url,
+            json={
+                "type": "app_group",
+                "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+                "app_id": a.id,
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "ext-123"}, "status": {}}},
+            },
+        )
+        assert response.status_code == 201
