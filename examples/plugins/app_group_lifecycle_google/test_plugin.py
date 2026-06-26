@@ -148,8 +148,6 @@ def test_validate_group_config_valid(plugin_instance):
     ({"email": "Bad-Upper", "display_name": "X"}, "email"), # uppercase fails charset
     ({"email": "-bad", "display_name": "X"}, "email"),      # leading hyphen fails charset
 ])
-
-
 def test_validate_group_config_errors(plugin_instance, config, bad_key):
     errors = plugin_instance.validate_plugin_group_config(config, {}, PLUGIN_ID)
     assert bad_key in errors
@@ -851,6 +849,115 @@ def test_enforce_patches_display_name_not_email(plugin_instance, mocker):
     assert patch.call_args.kwargs == {"display_name": "New Name", "description": None}
 
 
+def test_group_created_calls_reconcile(plugin_instance, mocker, session_mock):
+    group = _group(mocker)
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+    plugin_instance.group_created(session=session_mock, group=group, plugin_id=PLUGIN_ID)
+    reconcile.assert_called_once_with(session_mock, group)
+
+
+def test_group_updated_calls_reconcile(plugin_instance, mocker, session_mock):
+    group = _group(mocker)
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+    plugin_instance.group_updated(
+        session=session_mock, group=group, old_name="old", old_description="d", plugin_id=PLUGIN_ID
+    )
+    reconcile.assert_called_once_with(session_mock, group)
+
+
+def test_hooks_ignore_other_plugin(plugin_instance, mocker, session_mock):
+    group = _group(mocker)
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+    plugin_instance.group_created(session=session_mock, group=group, plugin_id="some_other_plugin")
+    reconcile.assert_not_called()
+
+
+def test_group_deleted_unlinks_then_deletes(plugin_instance, mocker, session_mock):
+    group = _group(mocker, status={"push_mapping_id": "map-1", "google_group_id": "ggid-1"})
+    mocker.patch("plugin.get_config_value", return_value=True)  # enabled
+    mocker.patch("plugin.get_status_value", side_effect=lambda obj, key, pid, default=None: {
+        "push_mapping_id": "map-1", "google_group_id": "ggid-1",
+    }.get(key, default))
+    delete_mapping = mocker.patch("plugin.okta.delete_group_push_mapping")
+    delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
+    mgr = mocker.MagicMock()
+    mgr.attach_mock(delete_mapping, "delete_mapping")
+    mgr.attach_mock(delete_group, "delete_group")
+
+    plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
+
+    delete_mapping.assert_called_once_with(
+        appId=plugin_instance._okta_app_id, mappingId="map-1", deleteTargetGroup=False
+    )
+    delete_group.assert_called_once_with("ggid-1")
+    # unlink must precede the Google group delete
+    assert [c[0] for c in mgr.mock_calls] == ["delete_mapping", "delete_group"]
+
+
+def test_group_deleted_skips_when_unmanaged(plugin_instance, mocker, session_mock):
+    group = _group(mocker, status={})
+    # enabled=True, but no email/display_name config -> genuinely unmanaged.
+    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
+        "enabled": True,
+    }.get(key, default))
+    mocker.patch("plugin.get_status_value", return_value=None)  # no google_group_id
+    delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
+    plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
+    delete_group.assert_not_called()
+
+
+def test_group_deleted_deletes_google_group_even_if_unlink_fails(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
+    # The Google group is the authoritative resource; a failure to unlink the Okta push mapping
+    # must not prevent deleting it when the Access group is deleted.
+    group = _group(mocker, status={"push_mapping_id": "map-1", "google_group_id": "ggid-1"})
+    mocker.patch("plugin.get_config_value", return_value=True)  # enabled
+    mocker.patch(
+        "plugin.get_status_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "push_mapping_id": "map-1",
+            "google_group_id": "ggid-1",
+        }.get(key, default),
+    )
+    mocker.patch("plugin.okta.delete_group_push_mapping", side_effect=Exception("okta boom"))
+    delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
+
+    plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
+
+    delete_group.assert_called_once_with("ggid-1")
+
+
+def test_group_deleted_does_not_fall_back_to_email_lookup(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
+    # With no recorded google_group_id, group_deleted must NOT resolve a Google group by the
+    # (shared) email and delete it: that email could resolve to a group owned by a different
+    # Access group -- e.g. one that collided on prefix and was refused adoption. Deletion is
+    # gated on the ownership-recording status id, which a refused group never carries.
+    group = _group(mocker, group_config={"email": "sec", "display_name": "Security"}, status={})
+    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
+        "enabled": True, "email": "sec", "display_name": "Security",
+    }.get(key, default))
+    mocker.patch("plugin.get_status_value", return_value=None)  # no google_group_id, no push_mapping_id
+    lookup = mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-del")
+    delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
+
+    plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
+
+    lookup.assert_not_called()  # never resolves by the shared email
+    delete_group.assert_not_called()  # nothing we provably own -> nothing to delete
+
+
+def test_sync_all_reconciles_each_group(plugin_instance, mocker, session_mock):
+    app = Mock(spec=App)
+    g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
+    session_mock.scalars.return_value.all.return_value = [g1, g2]
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+    plugin_instance.sync_all_groups(session=session_mock, app=app, plugin_id=PLUGIN_ID)
+    assert reconcile.call_count == 2
+
+
 def test_okta_target_group_id_searches_by_email(plugin_instance, mocker):
     list_groups = mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-7"))])
     assert plugin_instance._okta_target_group_id("sec@test-company.com") == "okta-tgt-7"
@@ -959,3 +1066,13 @@ def test_reconcile_ignores_stale_push_mapping_when_group_gone(plugin_instance, m
     assert group.plugin_data[PLUGIN_ID]["status"].get(STATUS_PUSH_MAPPING_ID) != "stale-map"
     create.assert_called_once()
     create_mapping.assert_called_once()
+
+
+def test_sync_all_continues_after_group_failure(plugin_instance, mocker, session_mock):
+    app = Mock(spec=App)
+    g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
+    g1.name = "Group1"
+    session_mock.scalars.return_value.all.return_value = [g1, g2]
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile", side_effect=[RuntimeError("boom"), None])
+    plugin_instance.sync_all_groups(session=session_mock, app=app, plugin_id=PLUGIN_ID)
+    assert reconcile.call_count == 2  # g2 still reconciled despite g1 raising

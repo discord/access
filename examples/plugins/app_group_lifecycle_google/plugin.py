@@ -671,3 +671,70 @@ class GoogleGroupManagerPlugin:
             session.add(group)
             okta.update_group(group.id, group.name, google_desc)
         return None
+
+    # ---- Lifecycle hooks ----
+
+    @hookimpl
+    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != PLUGIN_ID:
+            return
+        self._reconcile(session, group)
+
+    @hookimpl
+    def group_updated(
+        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    ) -> None:
+        if plugin_id is not None and plugin_id != PLUGIN_ID:
+            return
+        self._reconcile(session, group)
+
+    @hookimpl
+    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != PLUGIN_ID:
+            return
+        if not self._is_enabled(group):
+            return
+
+        # Delete only a Google group this Access group provably owns: the recorded
+        # google_group_id, written only after the reconcile ownership check passes. We
+        # deliberately do NOT fall back to resolving the id by the (shared) email -- that could
+        # resolve to, and destroy, a Google group owned by a different Access group that merely
+        # collided on the prefix (e.g. one refused adoption, which therefore carries no id here).
+        # The cost of being conservative is that a group we created but crashed before recording
+        # is orphaned rather than cleaned up; the next reconcile re-resolves and records it.
+        google_group_id = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+        if not google_group_id:
+            logger.info(f"Group {group.name} owns no linked Google group; nothing to delete")
+            return
+
+        mapping_id = get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID)
+        if mapping_id:
+            # Best-effort unlink: a failure here must not block deleting the Google group, which is
+            # the authoritative cleanup when the Access group is deleted. A leftover mapping points
+            # at a now-deleted group, which is harmless and separately cleanable.
+            try:
+                okta.delete_group_push_mapping(appId=self._okta_app_id, mappingId=mapping_id, deleteTargetGroup=False)
+                logger.info(f"Unlinked Okta push mapping {mapping_id} for Access group {group.name}")
+            except Exception:
+                logger.exception(
+                    f"Failed to unlink Okta push mapping {mapping_id} for {group.name}; "
+                    "deleting the Google group anyway"
+                )
+        self._delete_google_group(google_group_id)
+        logger.info(f"Deleted Google group {google_group_id} for Access group {group.name}")
+
+    @hookimpl
+    def sync_all_groups(self, session: Session, app: App, plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != PLUGIN_ID:
+            return
+        groups = session.scalars(
+            select(AppGroup).where(AppGroup.app_id == app.id).where(AppGroup.deleted_at.is_(None))
+        ).all()
+        for group in groups:
+            try:
+                self._reconcile(session, group)
+            except Exception:
+                logger.exception(f"Sync reconcile failed for group {group.name}")
+
+
+google_group_manager_plugin = GoogleGroupManagerPlugin()
