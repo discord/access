@@ -244,16 +244,36 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
+    def sync_all_groups(self, session: Session, app: App, plugin_id: str | None) -> None:
         """
-        Bulk sync all group memberships for an app. This is invoked periodically by a CLI command `flask sync-app-group-memberships`.
+        Bulk reconcile all of an app's groups (membership and any external group state).
+        Invoked periodically by the `access sync-app-groups` CLI command.
 
         Args:
             session: The Access database session.
-            app: The app for which to sync all group membership.
+            app: The app for which to sync all groups.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
+
+    @hookspec
+    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
+        """
+        Deprecated alias for ``sync_all_groups``, retained so plugins implementing the
+        older, narrower hook name keep being invoked. New plugins should implement
+        ``sync_all_groups`` instead; a plugin should implement only one of the two.
+        """
+
+
+def invoke_sync_all_groups(session: Session, app: App, plugin_id: str | None) -> None:
+    """
+    Invoke the bulk-sync hook for an app, honoring both the current ``sync_all_groups``
+    name and the deprecated ``sync_all_group_membership`` alias. A plugin should implement
+    only one of the two, so this dispatches to each exactly once.
+    """
+    hook = get_app_group_lifecycle_hook()
+    hook.sync_all_groups(session=session, app=app, plugin_id=plugin_id)
+    hook.sync_all_group_membership(session=session, app=app, plugin_id=plugin_id)
 
 
 def get_app_group_lifecycle_hook() -> pluggy.HookRelay:

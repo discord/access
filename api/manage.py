@@ -48,7 +48,7 @@ def _with_app_context(func: F) -> F:
             db.init_app(engine=build_engine())
         # Trigger plugin discovery once per CLI run. Notification, conditional
         # access, and app-group-lifecycle hooks are all consumed by the
-        # `sync` / `notify` / `sync-app-group-memberships` commands; the
+        # `sync` / `notify` / `sync-app-groups` commands; the
         # `init` family doesn't need them but the call is cheap (memoized).
         load_plugins()
         token = _session_scope.set(f"cli-{uuid.uuid4().hex}")
@@ -308,13 +308,10 @@ def notify(owner: bool, role_owner: bool) -> None:
         expiring_access_notifications_user()
 
 
-@cli.command("sync-app-group-memberships")
-@_with_app_context
-def sync_app_group_memberships() -> None:
-    """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
+def _sync_all_app_groups() -> None:
     from api.extensions import db
     from api.models import App
-    from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
+    from api.plugins.app_group_lifecycle import invoke_sync_all_groups
 
     click.echo("Starting app group lifecycle plugin sync")
 
@@ -330,12 +327,10 @@ def sync_app_group_memberships() -> None:
 
     click.echo(f"Found {len(apps)} app(s) with plugins configured")
 
-    hook = get_app_group_lifecycle_hook()
-
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
         try:
-            hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
+            invoke_sync_all_groups(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
             db.session.commit()
             click.echo(f"  ✓ Synced app '{app.name}'")
         except Exception as e:
@@ -343,6 +338,20 @@ def sync_app_group_memberships() -> None:
             click.echo(f"  ✗ Failed to sync app '{app.name}': {e}", err=True)
 
     click.echo("Completed app group lifecycle plugin sync")
+
+
+@cli.command("sync-app-groups")
+@_with_app_context
+def sync_app_groups() -> None:
+    """Invoke the periodic group-sync hook for all apps with app group lifecycle plugins configured."""
+    _sync_all_app_groups()
+
+
+@cli.command("sync-app-group-memberships", hidden=True)
+@_with_app_context
+def sync_app_group_memberships() -> None:
+    """Deprecated alias for `sync-app-groups`; kept so existing automation keeps working."""
+    _sync_all_app_groups()
 
 
 if __name__ == "__main__":

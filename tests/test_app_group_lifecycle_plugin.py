@@ -32,6 +32,7 @@ from api.plugins.app_group_lifecycle import (
     get_config_value,
     get_status_value,
     hookimpl,
+    invoke_sync_all_groups,
     is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
     set_config_value,
@@ -645,6 +646,21 @@ class TestPluginHelperFunctions:
 
         # Missing plugin entries are treated as empty configuration.
         assert is_plugin_config_changed({}, {}, DummyPlugin.ID) is False
+
+    def test_invoke_sync_all_groups_dispatches_current_and_deprecated_names(self, mocker: MockerFixture) -> None:
+        """The wrapper invokes both the current `sync_all_groups` hook and the deprecated
+        `sync_all_group_membership` alias once each, so plugins on either name still run."""
+        hook = mocker.Mock()
+        mocker.patch("api.plugins.app_group_lifecycle.get_app_group_lifecycle_hook", return_value=hook)
+
+        invoke_sync_all_groups(session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1")
+
+        hook.sync_all_groups.assert_called_once_with(
+            session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1"
+        )
+        hook.sync_all_group_membership.assert_called_once_with(
+            session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1"
+        )
 
 
 class TestPluginValidation:
