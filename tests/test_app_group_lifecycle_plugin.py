@@ -2189,3 +2189,155 @@ class TestPluginAuditLogging:
         audit_logs = [record for record in caplog.records if record.levelname == "INFO"]
         plugin_logs = [log for log in audit_logs if EventType.group_modify_plugin.value in log.message]
         assert len(plugin_logs) == 0
+
+
+class TestModifyGroupPluginData:
+    """ModifyGroupPluginData fires group_updated only on configuration changes."""
+
+    def _make_app_group(self, db, mocker):
+        from api.models import AppGroup
+        mocker.patch.object(okta, "update_group")
+        mocker.patch.object(okta, "create_group")
+        app = AppFactory.create()
+        app.app_group_lifecycle_plugin = DummyPlugin.ID
+        app.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        db.session.add(app)
+        group = AppGroupFactory.create(
+            app_id=app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app.name}-Eng",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {}}},
+        )
+        db.session.add(group)
+        db.session.commit()
+        return app, group
+
+    def test_fires_group_updated_on_config_change(self, db, app, test_plugin, mocker):
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+        _, group = self._make_app_group(db, mocker)
+
+        new_plugin_data = {DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}}
+        ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+
+        assert len(test_plugin.group_updated_calls) == 1
+        group_id, _old_name, _old_desc = test_plugin.group_updated_calls[0]
+        assert group_id == group.id
+        assert group.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
+
+    def test_does_not_fire_on_status_only_change(self, db, app, test_plugin, mocker):
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+        _, group = self._make_app_group(db, mocker)
+
+        new_plugin_data = {
+            DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {"member_count": 5}}
+        }
+        ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+
+        assert test_plugin.group_updated_calls == []
+        assert group.plugin_data[DummyPlugin.ID]["status"]["member_count"] == 5
+
+    def test_does_not_fire_without_lifecycle_plugin(self, db, app, test_plugin, mocker):
+        from api.models import AppGroup
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+        mocker.patch.object(okta, "update_group")
+        mocker.patch.object(okta, "create_group")
+        a = AppFactory.create()
+        # no app_group_lifecycle_plugin set on the app
+        group = AppGroupFactory.create(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {}}},
+        )
+        db.session.add(a)
+        db.session.add(group)
+        db.session.commit()
+
+        new_plugin_data = {DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}}
+        ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+
+        assert test_plugin.group_updated_calls == []
+
+    def test_preserves_other_plugins_top_level_entry(self, db, app, test_plugin, mocker):
+        """A patch mentioning only one plugin must not drop other plugins' entries."""
+        from api.models import AppGroup
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
+        mocker.patch.object(okta, "update_group")
+        a = AppFactory.create()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        group = AppGroupFactory.create(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            plugin_data={
+                DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {}},
+                "other_plugin": {"configuration": {"keep": "me"}, "status": {}},
+            },
+        )
+        db.session.add(a)
+        db.session.add(group)
+        db.session.commit()
+
+        ModifyGroupPluginData(
+            group=group,
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}},
+        ).execute()
+
+        assert group.plugin_data["other_plugin"] == {"configuration": {"keep": "me"}, "status": {}}
+        assert group.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
+
+    def test_preserves_status_omitted_from_config_patch(self, db, app, test_plugin, mocker):
+        """A config-only patch must preserve plugin-managed status it didn't mention."""
+        from api.models import AppGroup
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
+        mocker.patch.object(okta, "update_group")
+        a = AppFactory.create()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        group = AppGroupFactory.create(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {"member_count": 7}}},
+        )
+        db.session.add(a)
+        db.session.add(group)
+        db.session.commit()
+
+        ModifyGroupPluginData(
+            group=group,
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-new"}}},
+        ).execute()
+
+        assert group.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
+        assert group.plugin_data[DummyPlugin.ID]["status"] == {"member_count": 7}
+
+    def test_put_group_config_change_fires_group_updated(
+        self, client, db, app, test_plugin, mocker, url_for
+    ):
+        from api.models import AppGroup
+        mocker.patch.object(okta, "update_group")
+        mocker.patch.object(okta, "create_group")
+        a = AppFactory.create()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        group = AppGroupFactory.create(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {}}},
+        )
+        db.session.add(a)
+        db.session.add(group)
+        db.session.commit()
+
+        url = url_for("api-groups.group_by_id_put", group_id=group.id)
+        response = client.put(
+            url,
+            json={
+                "type": "app_group",
+                "name": group.name,
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}},
+            },
+        )
+        assert response.status_code == 200
+        assert any(call[0] == group.id for call in test_plugin.group_updated_calls)
+        assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["group_id"] == "g-new"

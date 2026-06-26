@@ -34,6 +34,7 @@ from api.operations import (
     CreateGroup,
     DeleteGroup,
     ModifyGroupDetails,
+    ModifyGroupPluginData,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
@@ -42,7 +43,6 @@ from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from fastapi_pagination.ext.sqlalchemy import paginate
 
 from api.pagination import Page, validated
-from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
     group_tag_map_options,
     role_group_map_options,
@@ -366,16 +366,10 @@ def put_group(
             raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
-    old_plugin_data = group.plugin_data
     if new_plugin_data is not None:
-        group.plugin_data = new_plugin_data
-        if old_plugin_data and group.plugin_data != old_plugin_data:
-            for key in old_plugin_data:
-                if key not in group.plugin_data:
-                    group.plugin_data[key] = old_plugin_data[key]
-            if type(group) is AppGroup:
-                merge_app_lifecycle_plugin_data(group, old_plugin_data)
-    db.commit()
+        ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+    else:
+        db.commit()
 
     ModifyGroupTags(
         group=group,
