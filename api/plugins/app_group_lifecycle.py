@@ -51,6 +51,10 @@ class AppGroupLifecyclePluginConfigProperty:
     default_value: Any = None
     required: bool = False
     validation: dict[str, Any] | None = None
+    # When True, the host rejects edits to this field on update (group config only);
+    # the value may be set freely at create time. Enforced in
+    # validate_app_group_lifecycle_plugin_group_config.
+    immutable: bool = False
 
 
 @dataclass
@@ -587,6 +591,7 @@ def validate_app_group_lifecycle_plugin_group_config(
     plugin_data: dict[str, Any],
     plugin_id: str,
     app_plugin_data: dict[str, Any] | None = None,
+    old_plugin_data: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """
     Validate the group-level configuration data for a particular app group lifecycle plugin.
@@ -596,6 +601,8 @@ def validate_app_group_lifecycle_plugin_group_config(
         plugin_id: The ID of the plugin which should respond.
         app_plugin_data: The owning app's plugin data, so the plugin can validate the group
                          config against app-level settings. Defaults to empty (no app context).
+        old_plugin_data: The group's existing plugin data, supplied on update so the host can
+                         reject edits to immutable config properties. Omitted on create.
 
     Returns:
         A dictionary mapping any invalid fields to error messages.
@@ -603,9 +610,31 @@ def validate_app_group_lifecycle_plugin_group_config(
     configuration = _get_data_for_plugin(plugin_data, plugin_id).configuration
     app_configuration = _get_data_for_plugin(app_plugin_data or {}, plugin_id).configuration
     hook = get_app_group_lifecycle_hook()
-    return _get_hook_call_response(
-        hook.validate_plugin_group_config, plugin_id, config=configuration, app_config=app_configuration
+    errors = dict(
+        _get_hook_call_response(
+            hook.validate_plugin_group_config, plugin_id, config=configuration, app_config=app_configuration
+        )
     )
+
+    # On update, apply immutable-field semantics generically (plugins only declare
+    # `immutable=True`): a changed immutable field is rejected, while a plugin error for an
+    # *unchanged* immutable field is suppressed -- the user can't action it on this update
+    # (the field is locked), and it was acceptable at creation or was adopted/grandfathered
+    # from external state, so it must not block the rest of the update.
+    if old_plugin_data is not None:
+        old_configuration = _get_data_for_plugin(old_plugin_data, plugin_id).configuration
+        properties = _get_hook_call_response(
+            hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration
+        )
+        for name, prop in properties.items():
+            if not getattr(prop, "immutable", False):
+                continue
+            if old_configuration.get(name) != configuration.get(name):
+                errors.setdefault(name, f"The '{name}' field cannot be changed after creation")
+            else:
+                errors.pop(name, None)
+
+    return errors
 
 
 def get_app_group_lifecycle_plugin_app_status_properties(

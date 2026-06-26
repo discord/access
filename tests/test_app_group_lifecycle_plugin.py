@@ -9,6 +9,7 @@ This includes tests for:
 - Plugin lifecycle hooks
 """
 
+from dataclasses import asdict
 from typing import Any, Generator
 
 import pytest
@@ -117,6 +118,13 @@ class DummyPlugin:
                 type="text",
                 required=True,
             ),
+            "region": AppGroupLifecyclePluginConfigProperty(
+                display_name="Region",
+                help_text="Immutable region; set once at creation",
+                type="text",
+                required=False,
+                immutable=True,
+            ),
         }
 
     @hookimpl
@@ -129,6 +137,10 @@ class DummyPlugin:
             errors["group_id"] = "The 'group_id' field is required"
         elif not isinstance(config["group_id"], str):
             errors["group_id"] = "The 'group_id' field must be a string"
+        # `region` is immutable; a value outside the allowed set models a constraint added
+        # after some groups were created (i.e. a grandfathered/adopted value).
+        if config.get("region") not in (None, "us", "eu"):
+            errors["region"] = "The 'region' field must be 'us' or 'eu'"
 
         return errors
 
@@ -224,6 +236,15 @@ def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, N
     # Reset caches
     plugin_module._cached_app_group_lifecycle_hook = None
     plugin_module._cached_plugin_registry = None
+
+
+def test_config_property_immutable_defaults_false_and_serializes() -> None:
+    prop = AppGroupLifecyclePluginConfigProperty(display_name="X")
+    assert prop.immutable is False
+    assert asdict(prop)["immutable"] is False
+
+    prop2 = AppGroupLifecyclePluginConfigProperty(display_name="Y", immutable=True)
+    assert asdict(prop2)["immutable"] is True
 
 
 class TestPluginRegistration:
@@ -743,6 +764,60 @@ class TestPluginValidation:
 
         response = client.put(url, json=data)
         assert response.status_code == 200
+
+    def test_put_group_rejects_immutable_field_change(
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """Test that changing an immutable group configuration field is rejected."""
+        test_app = AppFactory.build(name="TestAppImm1", app_group_lifecycle_plugin=DummyPlugin.ID)
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Immg",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}, "status": {}}},
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": test_group.name,
+            "description": "",
+            "app_id": test_group.app_id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "eu"}}},
+        }
+        response = client.put(url, json=data)
+        assert response.status_code == 400
+        assert "region" in response.json()["detail"]
+
+    def test_put_group_allows_mutable_field_change(
+        self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """Test that changing a mutable group configuration field is accepted and persisted."""
+        test_app = AppFactory.build(name="TestAppImm2", app_group_lifecycle_plugin=DummyPlugin.ID)
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Mutg",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}, "status": {}}},
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        db.session.commit()
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": test_group.name,
+            "description": "",
+            "app_id": test_group.app_id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g2", "region": "us"}}},
+        }
+        response = client.put(url, json=data)
+        assert response.status_code == 200
+        assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["group_id"] == "g2"
 
     def test_invalid_group_config(
         self, client: TestClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
@@ -2387,3 +2462,55 @@ class TestPostGroupPluginValidation:
             },
         )
         assert response.status_code == 201
+
+
+def test_validate_group_config_rejects_immutable_change_on_update(test_plugin: DummyPlugin) -> None:
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "eu"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" in errors
+
+
+def test_validate_group_config_allows_immutable_on_create(test_plugin: DummyPlugin) -> None:
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    # No old_plugin_data -> create path -> immutable field freely set.
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID)
+    assert "region" not in errors
+
+
+def test_validate_group_config_allows_mutable_change_on_update(test_plugin: DummyPlugin) -> None:
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g2", "region": "us"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert errors == {}
+
+
+def test_validate_group_config_enforces_immutable_field_on_create(test_plugin: DummyPlugin) -> None:
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    # On create (no old_plugin_data) an immutable field is validated like any other.
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "legacy"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID)
+    assert "region" in errors
+
+
+def test_validate_group_config_suppresses_unchanged_immutable_field_error_on_update(test_plugin: DummyPlugin) -> None:
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    # A grandfathered/adopted immutable value that now fails plugin validation must not block
+    # an update that leaves it unchanged (it's locked and can't be fixed via this update).
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "legacy"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g2", "region": "legacy"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" not in errors
+
+    # But changing the immutable field is still rejected.
+    changed = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(changed, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" in errors

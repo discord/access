@@ -105,20 +105,24 @@ def _validate_group_plugin_config(
     plugin_data: dict[str, Any],
     app_plugin_data: dict[str, Any],
     plugin_id: str | None,
+    old_plugin_data: dict[str, Any] | None = None,
 ) -> None:
     """Validate group-level plugin_data against the configured plugin's schema, raising
     HTTP 400 on invalid config. No-op when the app has no app group lifecycle plugin.
 
     Callers resolve the plugin id and the owning app's plugin_data themselves, since
     group-create and group-update obtain them differently (a freshly-built group can't
-    lazy-load its app)."""
+    lazy-load its app). On update, callers also pass the existing group's plugin_data as
+    `old_plugin_data` so the host can reject changes to immutable config fields."""
     if plugin_id is None:
         return
 
     from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
 
     try:
-        errors = validate_app_group_lifecycle_plugin_group_config(plugin_data, plugin_id, app_plugin_data)
+        errors = validate_app_group_lifecycle_plugin_group_config(
+            plugin_data, plugin_id, app_plugin_data, old_plugin_data=old_plugin_data
+        )
     except ValueError as e:
         raise HTTPException(400, f"plugin_data: {e}") from e
     if errors:
@@ -258,6 +262,7 @@ def put_group(
             body.plugin_data,
             app_plugin_data,
             get_app_group_lifecycle_plugin_to_invoke(group),
+            old_plugin_data=group.plugin_data or {},
         )
 
     if not _perms.can_manage_group(db, current_user_id, group):
