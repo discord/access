@@ -241,18 +241,12 @@ class GoogleGroupManagerPlugin:
             STATUS_PUSH_MAPPING_ID: AppGroupLifecyclePluginStatusProperty(
                 display_name="Okta Push Mapping ID", type="text"
             ),
-            STATUS_GOOGLE_GROUP_ID: AppGroupLifecyclePluginStatusProperty(
-                display_name="Google Group ID", type="text"
-            ),
+            STATUS_GOOGLE_GROUP_ID: AppGroupLifecyclePluginStatusProperty(display_name="Google Group ID", type="text"),
             STATUS_SYNC_STATUS: AppGroupLifecyclePluginStatusProperty(
                 display_name="Sync Status", help_text="synced, pending, or error", type="text"
             ),
-            STATUS_SYNC_ERROR: AppGroupLifecyclePluginStatusProperty(
-                display_name="Sync Error", type="text"
-            ),
-            STATUS_LAST_SYNCED_AT: AppGroupLifecyclePluginStatusProperty(
-                display_name="Last Synced", type="date"
-            ),
+            STATUS_SYNC_ERROR: AppGroupLifecyclePluginStatusProperty(display_name="Sync Error", type="text"),
+            STATUS_LAST_SYNCED_AT: AppGroupLifecyclePluginStatusProperty(display_name="Last Synced", type="date"),
         }
 
     # ---- Validation ----
@@ -353,9 +347,7 @@ class GoogleGroupManagerPlugin:
         if not body:
             return
         update_mask = ",".join(sorted(body))
-        self._groups_api.patch(
-            name=self._resource_name(google_group_id), body=body, updateMask=update_mask
-        ).execute()
+        self._groups_api.patch(name=self._resource_name(google_group_id), body=body, updateMask=update_mask).execute()
 
     def _delete_google_group(self, google_group_id: str) -> None:
         self._groups_api.delete(name=self._resource_name(google_group_id)).execute()
@@ -655,12 +647,8 @@ class GoogleGroupManagerPlugin:
             # Description is handled below for both directions; only push it here when Access
             # has a (differing) non-empty description.
             access_desc = group.description or ""
-            patch_description = (
-                access_desc if access_desc and (live.get("description") or "") != access_desc else None
-            )
-            self._patch_google_group(
-                google_group_id, display_name=patch_display_name, description=patch_description
-            )
+            patch_description = access_desc if access_desc and (live.get("description") or "") != access_desc else None
+            self._patch_google_group(google_group_id, display_name=patch_display_name, description=patch_description)
 
         # Description sync (both directions): clobber if Access has one, else backfill.
         access_desc = group.description or ""

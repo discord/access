@@ -2271,6 +2271,7 @@ class TestModifyGroupPluginData:
 
     def _make_app_group(self, db, mocker):
         from api.models import AppGroup
+
         mocker.patch.object(okta, "update_group")
         mocker.patch.object(okta, "create_group")
         app = AppFactory.create()
@@ -2288,6 +2289,7 @@ class TestModifyGroupPluginData:
 
     def test_fires_group_updated_on_config_change(self, db, app, test_plugin, mocker):
         from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
         _, group = self._make_app_group(db, mocker)
 
         new_plugin_data = {DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}}
@@ -2300,11 +2302,10 @@ class TestModifyGroupPluginData:
 
     def test_does_not_fire_on_status_only_change(self, db, app, test_plugin, mocker):
         from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
         _, group = self._make_app_group(db, mocker)
 
-        new_plugin_data = {
-            DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {"member_count": 5}}
-        }
+        new_plugin_data = {DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {"member_count": 5}}}
         ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
 
         assert test_plugin.group_updated_calls == []
@@ -2313,6 +2314,7 @@ class TestModifyGroupPluginData:
     def test_does_not_fire_without_lifecycle_plugin(self, db, app, test_plugin, mocker):
         from api.models import AppGroup
         from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
         mocker.patch.object(okta, "update_group")
         mocker.patch.object(okta, "create_group")
         a = AppFactory.create()
@@ -2386,10 +2388,9 @@ class TestModifyGroupPluginData:
         assert group.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
         assert group.plugin_data[DummyPlugin.ID]["status"] == {"member_count": 7}
 
-    def test_put_group_config_change_fires_group_updated(
-        self, client, db, app, test_plugin, mocker, url_for
-    ):
+    def test_put_group_config_change_fires_group_updated(self, client, db, app, test_plugin, mocker, url_for):
         from api.models import AppGroup
+
         mocker.patch.object(okta, "update_group")
         mocker.patch.object(okta, "create_group")
         a = AppFactory.create()
@@ -2421,6 +2422,7 @@ class TestModifyGroupPluginData:
 class TestPostGroupPluginValidation:
     def test_post_group_rejects_invalid_group_config(self, client, db, app, test_plugin, mocker, url_for):
         from okta.models.group import Group as OktaGroup
+
         mocker.patch.object(okta, "create_group", return_value=OktaGroup({"id": "test-okta-id-123"}))
         a = AppFactory.create()
         a.app_group_lifecycle_plugin = DummyPlugin.ID
@@ -2444,6 +2446,7 @@ class TestPostGroupPluginValidation:
 
     def test_post_group_accepts_valid_group_config(self, client, db, app, test_plugin, mocker, url_for):
         from okta.models.group import Group as OktaGroup
+
         mocker.patch.object(okta, "create_group", return_value=OktaGroup({"id": "test-okta-id-456"}))
         a = AppFactory.create()
         a.app_group_lifecycle_plugin = DummyPlugin.ID

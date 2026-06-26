@@ -467,9 +467,7 @@ def set_config_value(app_or_group: App | AppGroup, config_property_name: str, va
     app_or_group.plugin_data[plugin_id] = asdict(data)
 
 
-def is_plugin_config_changed(
-    old_plugin_data: dict[str, Any], new_plugin_data: dict[str, Any], plugin_id: str
-) -> bool:
+def is_plugin_config_changed(old_plugin_data: dict[str, Any], new_plugin_data: dict[str, Any], plugin_id: str) -> bool:
     """
     Determine whether a particular app group lifecycle plugin's configuration differs
     between two plugin_data payloads. Only the plugin's configuration is compared; status
@@ -566,9 +564,7 @@ def get_app_group_lifecycle_plugin_group_config_properties(
     """
     app_configuration = _get_data_for_plugin(app_plugin_data or {}, plugin_id).configuration
     hook = get_app_group_lifecycle_hook()
-    return _get_hook_call_response(
-        hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration
-    )
+    return _get_hook_call_response(hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration)
 
 
 def validate_app_group_lifecycle_plugin_app_config(plugin_data: dict[str, Any], plugin_id: str) -> dict[str, str]:

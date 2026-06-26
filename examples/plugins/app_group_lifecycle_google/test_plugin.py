@@ -73,11 +73,14 @@ def mock_groups_api(mocker: MockerFixture):
 
 @pytest.fixture
 def plugin_instance(mocker: MockerFixture, mock_groups_api):
-    mocker.patch.dict(os.environ, {
-        "GOOGLE_WORKSPACE_OKTA_APP_ID": "test-okta-app-123",
-        "GOOGLE_WORKSPACE_DOMAIN": "test-company.com",
-        "GOOGLE_WORKSPACE_CUSTOMER_ID": "C0test",
-    })
+    mocker.patch.dict(
+        os.environ,
+        {
+            "GOOGLE_WORKSPACE_OKTA_APP_ID": "test-okta-app-123",
+            "GOOGLE_WORKSPACE_DOMAIN": "test-company.com",
+            "GOOGLE_WORKSPACE_CUSTOMER_ID": "C0test",
+        },
+    )
     return GoogleGroupManagerPlugin()
 
 
@@ -108,16 +111,20 @@ def test_group_config_properties_surface_validation_patterns(plugin_instance):
     assert [p["regex"] for p in patterns] == [GOOGLE_LOCAL_PART_RE.pattern]
 
     # With an app email_pattern, it is appended as a second rule.
-    patterns = plugin_instance.get_plugin_group_config_properties(
-        PLUGIN_ID, {"email_pattern": r"^sec-"}
-    )["email"].validation["patterns"]
+    patterns = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {"email_pattern": r"^sec-"})[
+        "email"
+    ].validation["patterns"]
     assert [p["regex"] for p in patterns] == [GOOGLE_LOCAL_PART_RE.pattern, r"^sec-"]
 
 
 def test_group_status_properties_shape(plugin_instance):
     props = plugin_instance.get_plugin_group_status_properties(PLUGIN_ID)
     assert set(props) == {
-        "push_mapping_id", "google_group_id", "sync_status", "sync_error", "last_synced_at",
+        "push_mapping_id",
+        "google_group_id",
+        "sync_status",
+        "sync_error",
+        "last_synced_at",
     }
 
 
@@ -142,12 +149,15 @@ def test_validate_group_config_valid(plugin_instance):
     assert errors == {}
 
 
-@pytest.mark.parametrize("config,bad_key", [
-    ({"display_name": "X"}, "email"),                       # missing email
-    ({"email": "ok"}, "display_name"),                      # missing display_name
-    ({"email": "Bad-Upper", "display_name": "X"}, "email"), # uppercase fails charset
-    ({"email": "-bad", "display_name": "X"}, "email"),      # leading hyphen fails charset
-])
+@pytest.mark.parametrize(
+    "config,bad_key",
+    [
+        ({"display_name": "X"}, "email"),  # missing email
+        ({"email": "ok"}, "display_name"),  # missing display_name
+        ({"email": "Bad-Upper", "display_name": "X"}, "email"),  # uppercase fails charset
+        ({"email": "-bad", "display_name": "X"}, "email"),  # leading hyphen fails charset
+    ],
+)
 def test_validate_group_config_errors(plugin_instance, config, bad_key):
     errors = plugin_instance.validate_plugin_group_config(config, {}, PLUGIN_ID)
     assert bad_key in errors
@@ -210,14 +220,21 @@ def test_validate_email_against_pattern(plugin_instance):
 
 def test_group_config_returns_pair_or_none(plugin_instance, mocker):
     # both present -> tuple; missing one -> None
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     assert plugin_instance._group_config(_group(mocker)) == ("sec", "Security")
 
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "email": "sec",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "email": "sec",
+        }.get(key, default),
+    )
     assert plugin_instance._group_config(_group(mocker)) is None
 
 
@@ -379,12 +396,18 @@ def session_mock():
 
 
 def test_reconcile_creates_when_no_link_and_config_present(plugin_instance, mocker, session_mock):
-    group = _group(mocker, group_config={"email": "platform-security", "display_name": "Platform Security"},
-                    description="Sec team")
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "platform-security", "display_name": "Platform Security",
-        "email_pattern": None,
-    }.get(key, default))
+    group = _group(
+        mocker, group_config={"email": "platform-security", "display_name": "Platform Security"}, description="Sec team"
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "platform-security",
+            "display_name": "Platform Security",
+            "email_pattern": None,
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
     mocker.patch.object(plugin_instance, "_discover_existing_link", return_value=None)
@@ -400,19 +423,38 @@ def test_reconcile_creates_when_no_link_and_config_present(plugin_instance, mock
 
 
 def test_reconcile_enforces_config_onto_existing_group(plugin_instance, mocker, session_mock):
-    group = _group(mocker, group_config={"email": "new-prefix", "display_name": "New Name"},
-                    status={"google_group_id": "ggid-1", "push_mapping_id": "map-1"},
-                    description="New desc")
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "new-prefix", "display_name": "New Name", "email_pattern": None,
-    }.get(key, default))
-    mocker.patch("plugin.get_status_value", side_effect=lambda obj, key, pid, default=None: {
-        "google_group_id": "ggid-1", "push_mapping_id": "map-1",
-    }.get(key, default))
-    mocker.patch.object(plugin_instance, "_get_google_group", return_value={
-        "name": "groups/ggid-1", "groupKey": {"id": "old-prefix@test-company.com"},
-        "displayName": "Old Name", "description": "Old desc",
-    })
+    group = _group(
+        mocker,
+        group_config={"email": "new-prefix", "display_name": "New Name"},
+        status={"google_group_id": "ggid-1", "push_mapping_id": "map-1"},
+        description="New desc",
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "new-prefix",
+            "display_name": "New Name",
+            "email_pattern": None,
+        }.get(key, default),
+    )
+    mocker.patch(
+        "plugin.get_status_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "google_group_id": "ggid-1",
+            "push_mapping_id": "map-1",
+        }.get(key, default),
+    )
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "old-prefix@test-company.com"},
+            "displayName": "Old Name",
+            "description": "Old desc",
+        },
+    )
     patch = mocker.patch.object(plugin_instance, "_patch_google_group")
     mocker.patch("plugin.set_status_value")
 
@@ -425,18 +467,33 @@ def test_reconcile_enforces_config_onto_existing_group(plugin_instance, mocker, 
 
 def test_reconcile_adopts_missing_config_from_live_group(plugin_instance, mocker, session_mock):
     group = _group(mocker, group_config={}, description="")  # no config, no description
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True,
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)
-    mocker.patch.object(plugin_instance, "_discover_existing_link", return_value={
-        "google_group_id": "ggid-1", "push_mapping_id": "map-1", "email": "adopted@test-company.com",
-    })
+    mocker.patch.object(
+        plugin_instance,
+        "_discover_existing_link",
+        return_value={
+            "google_group_id": "ggid-1",
+            "push_mapping_id": "map-1",
+            "email": "adopted@test-company.com",
+        },
+    )
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")
-    mocker.patch.object(plugin_instance, "_get_google_group", return_value={
-        "name": "groups/ggid-1", "groupKey": {"id": "adopted@test-company.com"},
-        "displayName": "Adopted Name", "description": "Adopted desc",
-    })
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "adopted@test-company.com"},
+            "displayName": "Adopted Name",
+            "description": "Adopted desc",
+        },
+    )
     mocker.patch("plugin.set_status_value")
     mocker.patch.object(plugin_instance, "_create_push_mapping", return_value=True)
     mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)  # not owned elsewhere
@@ -456,11 +513,19 @@ def test_reconcile_adopts_missing_config_from_live_group(plugin_instance, mocker
 
 def test_reconcile_flags_error_on_domain_mismatch_adoption(plugin_instance, mocker, session_mock):
     group = _group(mocker, group_config={})
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {"enabled": True}.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {"enabled": True}.get(key, default)
+    )
     mocker.patch("plugin.get_status_value", return_value=None)
-    mocker.patch.object(plugin_instance, "_discover_existing_link", return_value={
-        "google_group_id": "ggid-1", "push_mapping_id": "map-1", "email": "x@other-domain.com",
-    })
+    mocker.patch.object(
+        plugin_instance,
+        "_discover_existing_link",
+        return_value={
+            "google_group_id": "ggid-1",
+            "push_mapping_id": "map-1",
+            "email": "x@other-domain.com",
+        },
+    )
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")
     mocker.patch.object(
         plugin_instance,
@@ -484,19 +549,38 @@ def test_reconcile_grandfathers_unchanged_legacy_email(plugin_instance, mocker, 
     # An existing group whose prefix violates a later-added pattern is left alone:
     # the email (groupKey) is immutable and never patched, so the pattern is never
     # re-enforced on an existing group and reconcile marks it synced, not error.
-    group = _group(mocker, group_config={"email": "legacy", "display_name": "Legacy"},
-                    status={"google_group_id": "ggid-1", "push_mapping_id": "map-1"},
-                    description="d")
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "legacy", "display_name": "Legacy", "email_pattern": r"^sec-",
-    }.get(key, default))
-    mocker.patch("plugin.get_status_value", side_effect=lambda obj, key, pid, default=None: {
-        "google_group_id": "ggid-1", "push_mapping_id": "map-1",
-    }.get(key, default))
-    mocker.patch.object(plugin_instance, "_get_google_group", return_value={
-        "name": "groups/ggid-1", "groupKey": {"id": "legacy@test-company.com"},
-        "displayName": "Legacy", "description": "d",
-    })
+    group = _group(
+        mocker,
+        group_config={"email": "legacy", "display_name": "Legacy"},
+        status={"google_group_id": "ggid-1", "push_mapping_id": "map-1"},
+        description="d",
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "legacy",
+            "display_name": "Legacy",
+            "email_pattern": r"^sec-",
+        }.get(key, default),
+    )
+    mocker.patch(
+        "plugin.get_status_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "google_group_id": "ggid-1",
+            "push_mapping_id": "map-1",
+        }.get(key, default),
+    )
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "legacy@test-company.com"},
+            "displayName": "Legacy",
+            "description": "d",
+        },
+    )
     mocker.patch.object(plugin_instance, "_patch_google_group")
     set_status = mocker.patch("plugin.set_status_value")
 
@@ -516,9 +600,15 @@ def test_reconcile_skips_when_disabled(plugin_instance, mocker, session_mock):
 
 def test_reconcile_marks_pending_when_push_mapping_defers(plugin_instance, mocker, session_mock):
     group = _group(mocker, group_config={"email": "sec", "display_name": "Sec"}, description="d")
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Sec", "email_pattern": None,
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Sec",
+            "email_pattern": None,
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
     mocker.patch.object(plugin_instance, "_discover_existing_link", return_value=None)
@@ -535,9 +625,15 @@ def test_reconcile_marks_pending_when_push_mapping_defers(plugin_instance, mocke
 
 def test_reconcile_create_path_rejects_pattern_violation(plugin_instance, mocker, session_mock):
     group = _group(mocker, group_config={"email": "platform", "display_name": "P"}, description="d")
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "platform", "display_name": "P", "email_pattern": r"^sec-",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "platform",
+            "display_name": "P",
+            "email_pattern": r"^sec-",
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
     mocker.patch.object(plugin_instance, "_discover_existing_link", return_value=None)
@@ -552,9 +648,14 @@ def test_reconcile_create_path_rejects_pattern_violation(plugin_instance, mocker
 
 def test_reconcile_creates_when_no_group_exists(plugin_instance, mocker):
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
     mocker.patch.object(plugin_instance, "_discover_existing_link", return_value=None)
     create = mocker.patch.object(plugin_instance, "_create_google_group", return_value="ggid-new")
@@ -601,16 +702,25 @@ def test_reconcile_adopts_existing_group_by_email_lookup(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
 ) -> None:
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-existing")
-    mocker.patch.object(plugin_instance, "_get_google_group", return_value={
-        "name": "groups/ggid-existing",
-        "groupKey": {"id": "sec@test-company.com"},
-        "displayName": "Security",
-        "description": "",
-    })
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-existing",
+            "groupKey": {"id": "sec@test-company.com"},
+            "displayName": "Security",
+            "description": "",
+        },
+    )
     create = mocker.patch.object(plugin_instance, "_create_google_group")
     mocker.patch.object(plugin_instance, "_create_push_mapping", return_value=True)
     mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
@@ -803,9 +913,14 @@ def test_reconcile_relooks_up_when_cached_id_404s(plugin_instance, mocker):
         group_config={"email": "sec", "display_name": "Security"},
         status={STATUS_GOOGLE_GROUP_ID: "stale-id"},
     )
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=HttpError(404))
     relookup = mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
     mocker.patch.object(plugin_instance, "_discover_existing_link", return_value=None)
@@ -827,9 +942,14 @@ def test_enforce_patches_display_name_not_email(plugin_instance, mocker):
         status={STATUS_GOOGLE_GROUP_ID: "ggid-1"},
         description="d",
     )
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "New Name",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "New Name",
+        }.get(key, default),
+    )
     live = {
         "name": "groups/ggid-1",
         "groupKey": {"id": "sec@test-company.com"},
@@ -875,9 +995,13 @@ def test_hooks_ignore_other_plugin(plugin_instance, mocker, session_mock):
 def test_group_deleted_unlinks_then_deletes(plugin_instance, mocker, session_mock):
     group = _group(mocker, status={"push_mapping_id": "map-1", "google_group_id": "ggid-1"})
     mocker.patch("plugin.get_config_value", return_value=True)  # enabled
-    mocker.patch("plugin.get_status_value", side_effect=lambda obj, key, pid, default=None: {
-        "push_mapping_id": "map-1", "google_group_id": "ggid-1",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_status_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "push_mapping_id": "map-1",
+            "google_group_id": "ggid-1",
+        }.get(key, default),
+    )
     delete_mapping = mocker.patch("plugin.okta.delete_group_push_mapping")
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
     mgr = mocker.MagicMock()
@@ -897,9 +1021,12 @@ def test_group_deleted_unlinks_then_deletes(plugin_instance, mocker, session_moc
 def test_group_deleted_skips_when_unmanaged(plugin_instance, mocker, session_mock):
     group = _group(mocker, status={})
     # enabled=True, but no email/display_name config -> genuinely unmanaged.
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True,
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)  # no google_group_id
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
     plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
@@ -936,9 +1063,14 @@ def test_group_deleted_does_not_fall_back_to_email_lookup(
     # Access group -- e.g. one that collided on prefix and was refused adoption. Deletion is
     # gated on the ownership-recording status id, which a refused group never carries.
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"}, status={})
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     mocker.patch("plugin.get_status_value", return_value=None)  # no google_group_id, no push_mapping_id
     lookup = mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-del")
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
@@ -1036,9 +1168,12 @@ def test_create_push_mapping_resolves_target_by_email(
 def test_discover_existing_link_recovers_email(plugin_instance, mocker):
     group = _group(mocker)
     profile = Mock(googleGroupEmail="sec@test-company.com")
-    mocker.patch("plugin.okta.list_group_push_mappings", return_value=[
-        {"id": "map-1", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-1"},
-    ])
+    mocker.patch(
+        "plugin.okta.list_group_push_mappings",
+        return_value=[
+            {"id": "map-1", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-1"},
+        ],
+    )
     mocker.patch("plugin.okta.get_group", return_value=Mock(group=Mock(profile=profile)))
 
     link = plugin_instance._discover_existing_link(group)
@@ -1049,13 +1184,23 @@ def test_reconcile_ignores_stale_push_mapping_when_group_gone(plugin_instance, m
     # Out-of-band Okta link exists, but its Google group was deleted (lookup -> None).
     # The stale push_mapping_id must NOT be adopted; reconcile re-creates and re-links.
     group = _group(mocker, group_config={"email": "sec", "display_name": "Security"})
-    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {
-        "enabled": True, "email": "sec", "display_name": "Security",
-    }.get(key, default))
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Security",
+        }.get(key, default),
+    )
     mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
-    mocker.patch.object(plugin_instance, "_discover_existing_link", return_value={
-        "email": "sec@test-company.com", "push_mapping_id": "stale-map",
-    })
+    mocker.patch.object(
+        plugin_instance,
+        "_discover_existing_link",
+        return_value={
+            "email": "sec@test-company.com",
+            "push_mapping_id": "stale-map",
+        },
+    )
     create = mocker.patch.object(plugin_instance, "_create_google_group", return_value="ggid-new")
     create_mapping = mocker.patch.object(plugin_instance, "_create_push_mapping", return_value=True)
     session = MagicMock()
