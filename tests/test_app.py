@@ -291,9 +291,15 @@ async def test_put_app(
     await db.session.refresh(tag)
     await db.session.refresh(builtin_access_app)
     await db.session.refresh(builtin_access_owners_group)
+    # Capture ids before the PUTs below: each request commits/expires the
+    # shared session, so re-reading these ORM attributes afterward would emit
+    # SQL synchronously (MissingGreenlet under the async session).
+    tag_id = tag.id
+    builtin_access_app_id = builtin_access_app.id
+    builtin_access_owners_group_id = builtin_access_owners_group.id
 
     # Updating tags is allowed, but nothing else
-    data = {"name": "UpdatedAccess", "description": "new description", "tags_to_add": [tag.id]}
+    data = {"name": "UpdatedAccess", "description": "new description", "tags_to_add": [tag_id]}
     update_group_spy.reset_mock()
     rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
@@ -302,16 +308,16 @@ async def test_put_app(
     data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
     assert data["description"] != "new description"
-    assert data["id"] == builtin_access_app.id
+    assert data["id"] == builtin_access_app_id
     assert (
-        (await db.session.get(AppGroup, builtin_access_owners_group.id)).name
+        (await db.session.get(AppGroup, builtin_access_owners_group_id)).name
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
     assert await db_count(db.session, select(AppTagMap).where(AppTagMap.ended_at.is_(None))) == 1
 
-    data = {"name": "UpdatedAccess", "description": "new description", "tags_to_remove": [tag.id]}
+    data = {"name": "UpdatedAccess", "description": "new description", "tags_to_remove": [tag_id]}
     update_group_spy.reset_mock()
     rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
@@ -320,9 +326,9 @@ async def test_put_app(
     data = rep.json()
     assert data["name"] == App.ACCESS_APP_RESERVED_NAME
     assert data["description"] != "new description"
-    assert data["id"] == builtin_access_app.id
+    assert data["id"] == builtin_access_app_id
     assert (
-        (await db.session.get(AppGroup, builtin_access_owners_group.id)).name
+        (await db.session.get(AppGroup, builtin_access_owners_group_id)).name
         == f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )

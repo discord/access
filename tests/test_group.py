@@ -430,7 +430,10 @@ async def test_put_app_group_rebind_authorization(
     access_owner = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
-    await ModifyGroupUsers(group=app_group, owners_to_add=[access_owner.id], sync_to_okta=False).execute()
+    # Captured because the rebind PUTs below commit/expire the shared session;
+    # re-reading access_owner.id afterward would emit SQL synchronously.
+    access_owner_id = access_owner.id
+    await ModifyGroupUsers(group=app_group, owners_to_add=[access_owner_id], sync_to_okta=False).execute()
 
     mocker.patch.object(okta, "update_group")
     group_url = url_for("api-groups.group_by_id", group_id=app_group_id)
@@ -461,7 +464,7 @@ async def test_put_app_group_rebind_authorization(
     mocker.patch.object(AuthorizationHelpers, "is_access_admin", return_value=False)
     target_app_owner_group_obj = await db.session.get(AppGroup, target_app_owner_group_id)
     await ModifyGroupUsers(
-        group=target_app_owner_group_obj, owners_to_add=[access_owner.id], sync_to_okta=False
+        group=target_app_owner_group_obj, owners_to_add=[access_owner_id], sync_to_okta=False
     ).execute()
     rep = await client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
