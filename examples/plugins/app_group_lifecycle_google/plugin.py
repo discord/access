@@ -8,19 +8,24 @@ Okta group push. All create/update/sync paths run one idempotent reconcile.
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Any
 
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 
-from api.models import AppGroup
+from api.models import App, AppGroup
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
     get_config_value,
+    get_status_value,
     hookimpl,
+    set_config_value,
     set_status_value,
 )
 from api.services import okta  # used by the push-mapping/discovery helpers
@@ -423,3 +428,246 @@ class GoogleGroupManagerPlugin:
             return None
 
         return {"email": str(email), "push_mapping_id": mapping.get("id")}
+
+    # ---- Status setters ----
+
+    def _mark(self, session: Session, group: AppGroup, status: str, error: str | None = None) -> None:
+        set_status_value(group, STATUS_SYNC_STATUS, status, PLUGIN_ID)
+        set_status_value(group, STATUS_SYNC_ERROR, error, PLUGIN_ID)
+        if status == SYNC_SYNCED:
+            set_status_value(group, STATUS_LAST_SYNCED_AT, datetime.utcnow().isoformat(), PLUGIN_ID)
+        session.add(group)
+        session.commit()
+
+    # ---- Reconcile ----
+
+    def _owned_group_id(self, group: AppGroup) -> str | None:
+        """The Google group id this Access group already owns (claimed on a prior reconcile),
+        if it still exists. The recorded id is an ownership token -- it is written only after
+        the ownership check passes (see _claim_group_id) -- so a live cached id needs no
+        re-check. Clears the cached id and returns None if the group was deleted out of band,
+        so the caller re-resolves/recreates. Returns None when nothing is cached."""
+        cached = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+        if not cached:
+            return None
+        try:
+            self._get_google_group(cached)
+            return cached
+        except HttpError as e:
+            if not _is_group_absent_error(e):
+                raise
+            logger.info(f"Cached Google group id {cached} for {group.name} is gone; clearing and re-resolving.")
+            set_status_value(group, STATUS_GOOGLE_GROUP_ID, None, PLUGIN_ID)
+            return None
+
+    def _lock_claim(self, session: Session, candidate_id: str) -> None:
+        """Serialize concurrent claims of the same Google group, closing the check-then-claim race
+        in _claim_group_id. Takes a Postgres transaction-level advisory lock keyed on the candidate
+        id (auto-released at commit/rollback), so a second reconcile claiming the same id blocks
+        until the first commits and can then observe it as owned. A no-op on non-Postgres backends
+        (e.g. the SQLite test DB), where the relevant sync paths are single-writer."""
+        bind = session.get_bind()
+        if bind is None or bind.dialect.name != "postgresql":
+            return
+        # hashtextextended maps the id to the bigint the advisory-lock functions take; key
+        # collisions only cause extra (harmless) serialization.
+        session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": candidate_id})
+
+    def _claim_group_id(
+        self, session: Session, group: AppGroup, candidate_id: str, display_email: str | None = None
+    ) -> str | None:
+        """Record candidate_id as this group's owned Google group, but ONLY after confirming no
+        other Access group already owns it -- refusing (and marking SYNC_ERROR) rather than
+        clobbering / double-linking a group owned elsewhere. Returns the id on success, or None
+        when refused. A no-op confirmation when we already hold this id.
+
+        Persisting the id is gated on the ownership check (not the reverse) so a refused group
+        never carries another group's id into its status, where group_deleted would later act on
+        it. The check and the claim are serialized by an advisory lock on the candidate id (see
+        _lock_claim) so two concurrent reconciles can't both pass the check for the same group."""
+        if get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID) == candidate_id:
+            return candidate_id
+        self._lock_claim(session, candidate_id)
+        owner = self._google_group_owner(session, group, candidate_id)
+        if owner is not None:
+            self._mark(
+                session,
+                group,
+                SYNC_ERROR,
+                f"Google group {display_email or candidate_id} is already managed by Access group "
+                f"'{owner.name}'; refusing to adopt it.",
+            )
+            return None
+        set_status_value(group, STATUS_GOOGLE_GROUP_ID, candidate_id, PLUGIN_ID)
+        return candidate_id
+
+    def _email_from_status(self, group: AppGroup) -> str | None:
+        """Recover the group email from a cached id when the Access-side config is absent
+        (adoption path). Returns the full email, or None when there is no cached id or the cached
+        group was deleted out of band (mirrors _owned_group_id's absent-error handling, so a
+        vanished group defers rather than hard-erroring reconcile)."""
+        google_group_id = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+        if not google_group_id:
+            return None
+        try:
+            live = self._get_google_group(google_group_id)
+        except HttpError as e:
+            if not _is_group_absent_error(e):
+                raise
+            logger.info(f"Cached Google group id {google_group_id} for {group.name} is gone; cannot recover email.")
+            return None
+        return (live.get("groupKey") or {}).get("id")
+
+    def _google_group_owner(self, session: Session, group: AppGroup, google_group_id: str) -> AppGroup | None:
+        """Another active Access group that already owns this Google group -- i.e. records its id
+        in status. Used to refuse adopting (and clobbering / double-linking) a Google group already
+        owned elsewhere.
+
+        Ownership keys on the recorded google_group_id ALONE, not on whether a push mapping exists
+        yet: the id is recorded only after this same ownership check passes (see _claim_group_id),
+        while the push mapping is created later and may defer until Okta imports the group. Were we
+        to also require a push mapping, a second group reconciling during that window would not see
+        the real owner and would double-claim the group.
+
+        Access state is the source of truth here (not Okta's imported target groups, which lag
+        behind and may not be queryable yet). The search spans every app configured with this
+        plugin, not just this group's app: one Google Workspace can back several Access apps, and
+        those apps all set this same plugin id, so a Google group can be owned by a group in any
+        of them.
+
+        The id predicate is pushed into SQL (a JSON path lookup on the stored status), so this
+        stays a point lookup -- not a scan of every plugin-managed group on each reconcile. It also
+        only runs for a group that isn't yet linked."""
+        google_group_id_path = (PLUGIN_ID, "status", STATUS_GOOGLE_GROUP_ID)
+        return session.scalars(
+            select(AppGroup)
+            .join(App, AppGroup.app_id == App.id)
+            .where(App.app_group_lifecycle_plugin == PLUGIN_ID)
+            .where(App.deleted_at.is_(None))
+            .where(AppGroup.id != group.id)
+            .where(AppGroup.deleted_at.is_(None))
+            .where(AppGroup.plugin_data[google_group_id_path].as_string() == google_group_id)
+            .limit(1)
+        ).first()
+
+    def _reconcile(self, session: Session, group: AppGroup) -> None:
+        """Idempotent: resolve/adopt/create the Google group, enforce its properties,
+        link via Okta push, and record sync status. Commits sync_status inside the hook
+        so it survives the host's post-hook rollback on error."""
+        if not self._is_enabled(group):
+            return
+
+        try:
+            config = self._group_config(group)
+            email = self._full_email(config[0]) if config is not None else None
+
+            # A Google group id we already own (claimed on a prior reconcile), if still live.
+            google_group_id = self._owned_group_id(group)
+
+            if google_group_id is None:
+                # Not yet owned. Find a candidate -- an existing Google group at our email, or one
+                # behind an out-of-band Okta link -- then CLAIM it: record it only after confirming
+                # no other Access group owns it. Refuse rather than adopt a group owned elsewhere.
+                candidate = self._lookup_google_group_id(email) if email is not None else None
+                link = None
+                if candidate is None:
+                    link = self._discover_existing_link(group)
+                    if link is not None and link.get("email"):
+                        logger.info(f"Backfilling group link for {group.name} that was added out-of-band...")
+                        candidate = self._lookup_google_group_id(link["email"])
+                if candidate is not None:
+                    display_email = email or (link.get("email") if link else None)
+                    google_group_id = self._claim_group_id(session, group, candidate, display_email)
+                    if google_group_id is None:
+                        return  # owned by another Access group; _claim_group_id marked the error
+                    if link is not None and link.get("push_mapping_id"):
+                        set_status_value(group, STATUS_PUSH_MAPPING_ID, link["push_mapping_id"], PLUGIN_ID)
+
+            if google_group_id is None:
+                # Nothing to adopt -> create from config (or skip when config is absent). Create is
+                # self-guarding against duplicate prefixes: Cloud Identity rejects a second group at
+                # the same email, so no ownership check is needed before recording the new id.
+                if config is None:
+                    logger.info(f"Skipping {group.name} due to missing required config.")
+                    return
+                logger.info(f"Adding and linking a new Google group for {group.name}...")
+                prefix, display_name = config
+                pattern = get_config_value(group.app, CONFIG_EMAIL_PATTERN, PLUGIN_ID)
+                pattern_error = self._validate_email_against_pattern(prefix, pattern)
+                if pattern_error:
+                    self._mark(session, group, SYNC_ERROR, pattern_error)
+                    return
+                google_group_id = self._create_google_group(prefix, display_name, group.description or "")
+                set_status_value(group, STATUS_GOOGLE_GROUP_ID, google_group_id, PLUGIN_ID)
+            else:
+                # We own this live Google group (cached or just claimed) -> enforce/adopt its props.
+                logger.debug(f"Reconciling group properties for {group.name}...")
+                live = self._get_google_group(google_group_id)
+                reconcile_error = self._adopt_or_enforce(session, group, google_group_id, live)
+                if reconcile_error is not None:
+                    self._mark(session, group, SYNC_ERROR, reconcile_error)
+                    return
+
+            # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
+            # target (duplicate imports sharing the email) won't self-heal, so it errors rather
+            # than deferring forever.
+            if not get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID):
+                resolved_email = email or self._email_from_status(group)
+                try:
+                    linked = resolved_email is not None and self._create_push_mapping(group, resolved_email)
+                except AmbiguousOktaTargetError as e:
+                    self._mark(session, group, SYNC_ERROR, str(e))
+                    return
+                if not linked:
+                    self._mark(session, group, SYNC_PENDING, "Awaiting Okta import of the Google group")
+                    return
+
+            self._mark(session, group, SYNC_SYNCED)
+        except Exception as e:
+            logger.exception(f"Reconcile failed for group {group.name}")
+            try:
+                self._mark(session, group, SYNC_ERROR, str(e))
+            except Exception:
+                logger.exception("Failed to persist error status")
+            raise
+
+    def _adopt_or_enforce(
+        self, session: Session, group: AppGroup, google_group_id: str, live: dict[str, Any]
+    ) -> str | None:
+        """For an existing live Google group: adopt missing Access-side values from it,
+        or enforce present values onto it. The email (groupKey) is immutable in the Cloud
+        Identity API and host-blocked from changing, so it is never patched here. Returns
+        an error string or None."""
+        config = self._group_config(group)
+        live_email = (live.get("groupKey") or {}).get("id", "") or ""
+
+        if config is None:
+            logger.info(f"Backfilling group properties from Google to Access for {group.name}...")
+            inferred_prefix = self._prefix_from_email(live_email)
+            if inferred_prefix is None:
+                return f"Live Google group email '{live_email}' is not in domain {self._domain}"
+            set_config_value(group, CONFIG_EMAIL, inferred_prefix, PLUGIN_ID)
+            set_config_value(group, CONFIG_DISPLAY_NAME, live.get("displayName", "") or "", PLUGIN_ID)
+        else:
+            logger.debug(f"Pushing Access group config to Google for {group.name}...")
+            _, display_name = config
+            patch_display_name = display_name if (live.get("displayName") or "") != display_name else None
+            # Description is handled below for both directions; only push it here when Access
+            # has a (differing) non-empty description.
+            access_desc = group.description or ""
+            patch_description = (
+                access_desc if access_desc and (live.get("description") or "") != access_desc else None
+            )
+            self._patch_google_group(
+                google_group_id, display_name=patch_display_name, description=patch_description
+            )
+
+        # Description sync (both directions): clobber if Access has one, else backfill.
+        access_desc = group.description or ""
+        google_desc = live.get("description", "") or ""
+        if not access_desc and google_desc:
+            logger.info(f"Backfilling group description from Google to Access for {group.name}...")
+            group.description = google_desc
+            session.add(group)
+            okta.update_group(group.id, group.name, google_desc)
+        return None
