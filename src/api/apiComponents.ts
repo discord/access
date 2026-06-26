@@ -2102,6 +2102,10 @@ export type AppGroupLifecyclePluginGroupConfigPropsPathParams = {
   pluginId: string;
 };
 
+export type AppGroupLifecyclePluginGroupConfigPropsQueryParams = {
+  app_id?: string | null;
+};
+
 export type AppGroupLifecyclePluginGroupConfigPropsError = Fetcher.ErrorWrapper<{
   status: Exclude<ClientErrorStatus | ServerErrorStatus, 200>;
   payload: Schemas.ProblemDetail;
@@ -2109,6 +2113,7 @@ export type AppGroupLifecyclePluginGroupConfigPropsError = Fetcher.ErrorWrapper<
 
 export type AppGroupLifecyclePluginGroupConfigPropsVariables = {
   pathParams: AppGroupLifecyclePluginGroupConfigPropsPathParams;
+  queryParams?: AppGroupLifecyclePluginGroupConfigPropsQueryParams;
 } & ApiContext['fetcherOptions'];
 
 export const fetchAppGroupLifecyclePluginGroupConfigProps = (
@@ -2120,7 +2125,7 @@ export const fetchAppGroupLifecyclePluginGroupConfigProps = (
     AppGroupLifecyclePluginGroupConfigPropsError,
     undefined,
     {},
-    {},
+    AppGroupLifecyclePluginGroupConfigPropsQueryParams,
     AppGroupLifecyclePluginGroupConfigPropsPathParams
   >({
     url: '/api/plugins/app-group-lifecycle/{pluginId}/group-config-props',
