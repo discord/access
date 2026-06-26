@@ -21,7 +21,9 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginStatusProperty,
     get_config_value,
     hookimpl,
+    set_status_value,
 )
+from api.services import okta  # used by the push-mapping/discovery helpers
 
 PLUGIN_ID = "google_group_manager"
 
@@ -68,6 +70,13 @@ def _is_group_absent_error(error: HttpError) -> bool:
     Treating both as "absent" lets reconcile create the group instead of erroring; a
     genuine permission problem then surfaces on the subsequent create call."""
     return getattr(getattr(error, "resp", None), "status", None) in (403, 404)
+
+
+class AmbiguousOktaTargetError(Exception):
+    """More than one Okta target group matches a Google group email, so a push mapping cannot be
+    created unambiguously. This is a misconfiguration (e.g. a stale + re-imported target sharing
+    the same googleGroupEmail) that will not self-heal, so it is surfaced as a sync error rather
+    than conflated with the not-yet-imported case (which simply defers)."""
 
 
 class GoogleGroupManagerPlugin:
@@ -356,3 +365,61 @@ class GoogleGroupManagerPlugin:
             raise
         name = result.get("name")
         return name.split("/", 1)[1] if name else None
+
+    # ---- Okta push-mapping + discovery ----
+
+    def _okta_target_group_id(self, email: str) -> str | None:
+        """Find the Okta-imported target group for a Google group email, if present.
+        The email is the stable join key (the Directory numeric id Cloud Identity does
+        not reproduce, but Okta's googleGroupEmail attribute is immutable)."""
+        query = f'type eq "APP_GROUP" and profile.{OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL} eq "{email}"'
+        matches = okta.list_groups(query_params={"search": query})
+        if len(matches) > 1:
+            raise AmbiguousOktaTargetError(
+                f"{len(matches)} Okta target groups carry googleGroupEmail '{email}'; "
+                "cannot create a push mapping unambiguously"
+            )
+        if not matches:
+            return None
+        return str(matches[0].group.id)
+
+    def _create_push_mapping(self, group: AppGroup, email: str) -> bool:
+        """Create the Okta push mapping. Returns False (defer) if Okta has not
+        imported the target group yet."""
+        target_group_id = self._okta_target_group_id(email)
+        if target_group_id is None:
+            return False
+        result = okta.create_group_push_mapping(
+            appId=self._okta_app_id, sourceGroupId=group.id, targetGroupId=target_group_id
+        )
+        mapping_id = result.get("id")
+        if not mapping_id:
+            raise ValueError(f"Okta push mapping creation returned no id: {result}")
+        set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
+        return True
+
+    def _discover_existing_link(self, group: AppGroup) -> dict[str, Any] | None:
+        """Find an existing push mapping for this Access group and recover the linked
+        Google group email from the Okta target group profile. Returns None if no link
+        exists. The caller resolves the email to a Cloud Identity id via lookup."""
+        mappings = okta.list_group_push_mappings(self._okta_app_id)
+        mapping = next((m for m in mappings if m.get("sourceGroupId") == group.id), None)
+        if mapping is None:
+            logger.debug(f"No mapping found for group {group.name}.")
+            return None
+
+        target_group_id = mapping.get("targetGroupId")
+        if not target_group_id:
+            logger.debug(f"Failed to get target group ID mapped to {group.name}. Mapping:\n{mapping}")
+            return None
+
+        profile = okta.get_group(target_group_id).group.profile
+        email = getattr(profile, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL, None)
+        if not email:
+            logger.debug(
+                f"Google group email could not be resolved for target group mapped to {group.name}.\n"
+                f"Target group {target_group_id} has profile:\n{profile}"
+            )
+            return None
+
+        return {"email": str(email), "push_mapping_id": mapping.get("id")}

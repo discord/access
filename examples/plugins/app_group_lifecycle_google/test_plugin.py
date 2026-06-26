@@ -46,6 +46,7 @@ if str(plugin_dir) not in sys.path:
 from plugin import (  # noqa: E402
     GROUP_DISCUSSION_FORUM_LABEL,
     PLUGIN_ID,
+    STATUS_PUSH_MAPPING_ID,
     GoogleGroupManagerPlugin,
 )
 
@@ -282,3 +283,106 @@ def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerP
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
     assert props["email"].immutable is True
     assert props["display_name"].immutable is False
+
+
+def test_create_push_mapping_sets_status(plugin_instance, mocker):
+    group = _group(mocker)
+    mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-1"))])
+    mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
+    set_status = mocker.patch("plugin.set_status_value")
+
+    created = plugin_instance._create_push_mapping(group, "sec@test-company.com")
+
+    assert created is True
+    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
+
+
+def test_create_push_mapping_defers_when_target_not_imported(plugin_instance, mocker):
+    group = _group(mocker)
+    mocker.patch("plugin.okta.list_groups", return_value=[])  # Okta hasn't imported it yet
+    create = mocker.patch("plugin.okta.create_group_push_mapping")
+
+    created = plugin_instance._create_push_mapping(group, "sec@test-company.com")
+
+    assert created is False
+    create.assert_not_called()
+
+
+def test_discover_existing_link_finds_mapping(plugin_instance, mocker):
+    group = _group(mocker)
+    mocker.patch(
+        "plugin.okta.list_group_push_mappings",
+        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-9"}],
+    )
+    tgt = Mock()
+    tgt.group = Mock(id="okta-tgt-9")
+    tgt.group.profile = Mock(googleGroupEmail="found@test-company.com")
+    mocker.patch("plugin.okta.get_group", return_value=tgt)
+
+    link = plugin_instance._discover_existing_link(group)
+
+    assert link == {
+        "email": "found@test-company.com",
+        "push_mapping_id": "map-9",
+    }
+
+
+def test_discover_existing_link_returns_none_when_no_mapping(plugin_instance, mocker):
+    group = _group(mocker)
+    mocker.patch("plugin.okta.list_group_push_mappings", return_value=[])
+    assert plugin_instance._discover_existing_link(group) is None
+
+
+def test_okta_target_group_id_searches_by_email(plugin_instance, mocker):
+    list_groups = mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-7"))])
+    assert plugin_instance._okta_target_group_id("sec@test-company.com") == "okta-tgt-7"
+    search = list_groups.call_args.kwargs["query_params"]["search"]
+    assert "googleGroupEmail" in search
+    assert "sec@test-company.com" in search
+
+
+def test_okta_target_group_id_none_when_not_imported(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
+    # Zero matches means Okta hasn't imported the group yet -> defer (None), not an error.
+    mocker.patch("plugin.okta.list_groups", return_value=[])
+    assert plugin_instance._okta_target_group_id("sec@test-company.com") is None
+
+
+def test_okta_target_group_id_raises_on_ambiguous_match(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
+    # More than one Okta target group carrying the same googleGroupEmail is a misconfiguration
+    # that will never self-heal; it must surface as an error, not be conflated with "not imported".
+    from plugin import AmbiguousOktaTargetError
+
+    mocker.patch(
+        "plugin.okta.list_groups",
+        return_value=[Mock(group=Mock(id="okta-tgt-1")), Mock(group=Mock(id="okta-tgt-2"))],
+    )
+    with pytest.raises(AmbiguousOktaTargetError):
+        plugin_instance._okta_target_group_id("sec@test-company.com")
+
+
+def test_create_push_mapping_resolves_target_by_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
+    group = _group(mocker)
+    mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-1"))])
+    mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
+    set_status = mocker.patch("plugin.set_status_value")
+
+    assert plugin_instance._create_push_mapping(group, "sec@test-company.com") is True
+    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
+
+
+def test_discover_existing_link_recovers_email(plugin_instance, mocker):
+    group = _group(mocker)
+    profile = Mock(googleGroupEmail="sec@test-company.com")
+    mocker.patch("plugin.okta.list_group_push_mappings", return_value=[
+        {"id": "map-1", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-1"},
+    ])
+    mocker.patch("plugin.okta.get_group", return_value=Mock(group=Mock(profile=profile)))
+
+    link = plugin_instance._discover_existing_link(group)
+    assert link == {"email": "sec@test-company.com", "push_mapping_id": "map-1"}
