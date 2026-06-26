@@ -32,7 +32,9 @@ from api.plugins.app_group_lifecycle import (
     get_config_value,
     get_status_value,
     hookimpl,
+    is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
+    set_config_value,
     set_status_value,
     validate_app_group_lifecycle_plugin_app_config,
     validate_app_group_lifecycle_plugin_group_config,
@@ -616,6 +618,33 @@ class TestPluginHelperFunctions:
 
         last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
         assert last_sync == "2025-01-15T11:00:00Z"
+
+    def test_set_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Test setting configuration values in plugin data."""
+        test_app = AppFactory.build(name="TestApp9b", plugin_data={})
+        db.session.add(test_app)
+        db.session.commit()
+
+        set_config_value(test_app, "category", "inferred_id", DummyPlugin.ID)
+        db.session.commit()
+        db.session.expire(test_app)
+
+        assert get_config_value(test_app, "category", DummyPlugin.ID) == "inferred_id"
+
+    def test_is_plugin_config_changed(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Only configuration differences count as a change; status differences do not."""
+        base = {DummyPlugin.ID: {"configuration": {"group_id": "g1"}, "status": {"member_count": 1}}}
+
+        # Identical configuration -> not changed, even when status differs.
+        status_only = {DummyPlugin.ID: {"configuration": {"group_id": "g1"}, "status": {"member_count": 9}}}
+        assert is_plugin_config_changed(base, status_only, DummyPlugin.ID) is False
+
+        # Different configuration -> changed.
+        config_changed = {DummyPlugin.ID: {"configuration": {"group_id": "g2"}, "status": {"member_count": 1}}}
+        assert is_plugin_config_changed(base, config_changed, DummyPlugin.ID) is True
+
+        # Missing plugin entries are treated as empty configuration.
+        assert is_plugin_config_changed({}, {}, DummyPlugin.ID) is False
 
 
 class TestPluginValidation:
