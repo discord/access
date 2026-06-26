@@ -234,6 +234,7 @@ function AppDialog(props: AppDialogProps) {
                   : {}
               }
               onPluginChange={setSelectedAppGroupLifecyclePluginId}
+              isExistingEntity={props.app != null}
             />
           )}
         </DialogContent>
