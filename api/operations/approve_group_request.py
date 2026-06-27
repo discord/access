@@ -10,6 +10,7 @@ from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
+    App,
     AppGroup,
     GroupRequest,
     OktaGroup,
@@ -115,6 +116,11 @@ class ApproveGroupRequest:
             if group_request.resolved_group_tags
             else group_request.requested_group_tags
         )
+        resolved_plugin_data = (
+            group_request.resolved_plugin_data
+            if group_request.resolved_plugin_data
+            else group_request.requested_plugin_data
+        )
 
         # authorization
         access_owner_ids = {u.id for u in get_access_owners()}
@@ -199,6 +205,24 @@ class ApproveGroupRequest:
                 description=resolved_description,
                 app_id=resolved_app_id,
             )
+            # Carry the request's plugin config onto the group so the
+            # group_created hook (fired inside CreateGroup) sees it. Re-validate
+            # defensively: the app or its config may have changed since filing.
+            if resolved_plugin_data:
+                resolved_app = db.session.get(App, resolved_app_id)
+                plugin_id = resolved_app.app_group_lifecycle_plugin if resolved_app is not None else None
+                if plugin_id is not None:
+                    from api.plugins.app_group_lifecycle import (
+                        validate_app_group_lifecycle_plugin_group_config,
+                    )
+
+                    plugin_errors = validate_app_group_lifecycle_plugin_group_config(
+                        resolved_plugin_data,
+                        plugin_id,
+                    )
+                    if plugin_errors:
+                        raise ValueError(f"plugin_data: {plugin_errors}")
+                    new_group.plugin_data = resolved_plugin_data
         else:
             new_group = OktaGroup(
                 name=resolved_name,
