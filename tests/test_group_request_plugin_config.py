@@ -6,13 +6,17 @@ from fastapi.testclient import TestClient
 from pydantic import TypeAdapter
 from pytest_mock import MockerFixture
 
+from okta.models import Group as OktaSdkGroup
+
+from api.config import settings
 from api.extensions import Db
-from api.models import AccessRequestStatus, GroupRequest, OktaUser
-from api.operations import CreateGroupRequest
+from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser
+from api.operations import ApproveGroupRequest, CreateGroupRequest
 from api.schemas.requests_schemas import (
     CreateGroupRequestBody,
     ResolveGroupRequestBody,
 )
+from api.services import okta
 from tests.factories import AppFactory, OktaUserFactory
 from tests.test_app_group_lifecycle_plugin import DummyPlugin
 
@@ -195,3 +199,77 @@ def test_post_app_group_request_accepts_valid_plugin_config(
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["requested_plugin_data"] == payload
+
+
+def test_approve_applies_resolved_plugin_data_over_requested(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    test_plugin: DummyPlugin,
+    mocker: MockerFixture,
+) -> None:
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup({"id": "createdgrp0000000001"})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    requester: OktaUser = OktaUserFactory.create()
+    db.session.add(requester)
+    db.session.commit()
+    app_obj = _make_app_with_plugin(db)
+
+    gr = CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-Admins",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        requested_plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "from-request"}}},
+    ).execute()
+    assert gr is not None
+
+    gr.resolved_plugin_data = {DummyPlugin.ID: {"configuration": {"group_id": "from-resolver"}}}
+    db.session.commit()
+
+    ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
+
+    created = db.session.get(AppGroup, "createdgrp0000000001")
+    assert created is not None
+    assert created.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "from-resolver"
+    assert "createdgrp0000000001" in test_plugin.group_created_calls
+
+
+def test_approve_falls_back_to_requested_plugin_data(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    test_plugin: DummyPlugin,
+    mocker: MockerFixture,
+) -> None:
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup({"id": "createdgrp0000000002"})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    requester: OktaUser = OktaUserFactory.create()
+    db.session.add(requester)
+    db.session.commit()
+    app_obj = _make_app_with_plugin(db)
+
+    gr = CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-Admins",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        requested_plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "only-requested"}}},
+    ).execute()
+    assert gr is not None
+
+    ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
+
+    created = db.session.get(AppGroup, "createdgrp0000000002")
+    assert created is not None
+    assert created.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "only-requested"
