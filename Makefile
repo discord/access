@@ -28,6 +28,7 @@ help:
 	@echo "Management commands:"
 	@echo "  make sync               access sync"
 	@echo "  make notify             access notify"
+	@echo "  make sync-app-groups    access sync-app-groups (loads .env)"
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build              docker build"
@@ -80,7 +81,7 @@ run: .env dev db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app & \
+	uvicorn --env-file .env --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app & \
 	npm install && npx vite --host 0.0.0.0 --port $(FRONTEND_PORT)
 
 .PHONY: run-frontend
@@ -92,7 +93,7 @@ run-backend: .env dev db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app
+	uvicorn --env-file .env --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app
 
 # ----------------------------------------------------------------------
 # Database / migrations
@@ -135,6 +136,18 @@ sync: dev
 .PHONY: notify
 notify: dev
 	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) access notify
+
+# Unlike `sync`/`notify`, this loads the full .env so the app-group lifecycle
+# plugins get the credentials they need (e.g. Google/Okta). `access` has no
+# --env-file flag, so we source .env into the environment ourselves: `set -a`
+# auto-exports every var defined while sourcing. We then force
+# DATABASE_URI=$(LOCAL_DB_URI) -- exactly like `sync`/`notify`/`run-backend` --
+# so this points at the same migrated instance/access.db the dev server uses,
+# rather than whatever DATABASE_URI .env happens to set.
+.PHONY: sync-app-groups
+sync-app-groups: .env dev
+	$(ACTIVATE) set -a && . ./.env && set +a && \
+	DATABASE_URI=$(LOCAL_DB_URI) access sync-app-groups
 
 # ----------------------------------------------------------------------
 # Docker

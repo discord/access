@@ -49,6 +49,12 @@ COPY requirements.txt api/ ./api/
 COPY migrations/ ./migrations/
 COPY alembic.ini setup.py ./
 COPY ./config ./config
+
+# Ship prod-ready plugin source into the image WITHOUT installing it here.
+# Downstream images opt in by pip installing the plugins,
+# which keeps the source single-homed in this repo while leaving activation to the consumer.
+COPY ./examples/plugins/app_group_lifecycle_google ./plugins/app_group_lifecycle_google
+
 RUN pip install -r ./api/requirements.txt
 # Install the project itself so the `access` console script declared in
 # setup.py (entry_points -> api.manage:cli) is available on PATH for
