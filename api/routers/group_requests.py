@@ -177,6 +177,22 @@ def post_group_request(
         if app is None:
             raise HTTPException(404, "App not found")
 
+        # Validate any supplied plugin group config against the app's lifecycle
+        # plugin. old_plugin_data is None: a request always describes a not-yet-
+        # created group, so immutable fields stay freely settable.
+        if app.app_group_lifecycle_plugin is not None:
+            from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+            try:
+                plugin_errors = validate_app_group_lifecycle_plugin_group_config(
+                    body.requested_plugin_data,
+                    app.app_group_lifecycle_plugin,
+                )
+            except ValueError as e:
+                raise HTTPException(400, f"plugin_data: {e}") from e
+            if plugin_errors:
+                raise HTTPException(400, f"plugin_data: {plugin_errors}")
+
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
         tags = db.scalars(
@@ -214,6 +230,7 @@ def post_group_request(
         requested_group_tags=body.requested_group_tags,
         requested_ownership_ending_at=body.requested_ownership_ending_at,
         request_reason=body.request_reason or "",
+        requested_plugin_data=body.requested_plugin_data if isinstance(body, _AppGroupRequestBody) else {},
     ).execute()
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
