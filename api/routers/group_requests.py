@@ -293,6 +293,8 @@ def put_group_request(
         gr.resolved_group_tags = body.resolved_group_tags
     if body.resolved_ownership_ending_at is not None:
         gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
+    if body.resolved_plugin_data is not None:
+        gr.resolved_plugin_data = body.resolved_plugin_data
 
     db.commit()
 

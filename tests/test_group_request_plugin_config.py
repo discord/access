@@ -273,3 +273,48 @@ def test_approve_falls_back_to_requested_plugin_data(
     created = db.session.get(AppGroup, "createdgrp0000000002")
     assert created is not None
     assert created.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "only-requested"
+
+
+def test_put_group_request_persists_resolved_plugin_data(
+    app: FastAPI,
+    client: TestClient,
+    db: Db,
+    mock_user: Callable[[Any], None],
+    url_for: Callable[..., str],
+    test_plugin: DummyPlugin,
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup({"id": "createdgrp0000000003"}))
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    # The seeded admin (email == CURRENT_OKTA_USER_EMAIL) is in access owners, so it
+    # passes both the router's is_access_admin check and the operation's own
+    # get_access_owners authorization without further mocking.
+    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    requester: OktaUser = OktaUserFactory.create()
+    db.session.add(requester)
+    db.session.commit()
+    app_obj = _make_app_with_plugin(db)
+
+    gr = CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-Admins",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        requested_plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "req"}}},
+    ).execute()
+    assert gr is not None
+
+    mock_user(admin)
+    resp = client.put(
+        url_for("api-group-requests.group_request_by_id_put", group_request_id=gr.id),
+        json={
+            "approved": True,
+            "resolved_plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "resolved"}}},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    created = db.session.get(AppGroup, "createdgrp0000000003")
+    assert created is not None
+    assert created.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "resolved"
