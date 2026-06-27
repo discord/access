@@ -82,7 +82,7 @@ def test_group_request_plugin_data_round_trips(app: FastAPI, db: Db) -> None:
 
 
 def test_app_group_body_accepts_requested_plugin_data() -> None:
-    adapter = TypeAdapter(CreateGroupRequestBody)
+    adapter: TypeAdapter[Any] = TypeAdapter(CreateGroupRequestBody)
     body = adapter.validate_python(
         {
             "requested_group_type": "app_group",
@@ -96,7 +96,7 @@ def test_app_group_body_accepts_requested_plugin_data() -> None:
 
 
 def test_app_group_body_defaults_plugin_data_to_empty() -> None:
-    adapter = TypeAdapter(CreateGroupRequestBody)
+    adapter: TypeAdapter[Any] = TypeAdapter(CreateGroupRequestBody)
     body = adapter.validate_python(
         {
             "requested_group_type": "app_group",
@@ -284,7 +284,9 @@ def test_put_group_request_persists_resolved_plugin_data(
     test_plugin: DummyPlugin,
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup({"id": "createdgrp0000000003"}))
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup({"id": "createdgrp0000000003"})
+    )
     mocker.patch.object(okta, "async_add_user_to_group")
     mocker.patch.object(okta, "async_add_owner_to_group")
 
