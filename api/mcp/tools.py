@@ -86,9 +86,11 @@ from api.models import (
     Tag,
 )
 from api.routers._eager import (
+    bind_role_group_map_own_group,
     group_tag_map_options,
     polymorphic_group_options,
     role_group_map_options,
+    role_group_map_options_for_own_group,
     user_group_member_options,
 )
 from api.schemas import (
@@ -223,8 +225,8 @@ def _group_load_options() -> tuple:
         selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
         selectinload(OktaGroup.active_user_memberships).options(*user_group_member_options()),
         selectinload(OktaGroup.active_user_ownerships).options(*user_group_member_options()),
-        selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options()),
-        selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options()),
+        selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options_for_own_group()),
+        selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options_for_own_group()),
         selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
         selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
         joinedload(AppGroup.app),
@@ -456,6 +458,8 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         ).first()
         if group is None:
             return _error("Group not found")
+        bind_role_group_map_own_group(group, group.active_role_member_mappings)
+        bind_role_group_map_own_group(group, group.active_role_owner_mappings)
         validated = _group_adapter.validate_python(group, from_attributes=True)
         return _group_adapter.dump_json(validated).decode()
 
@@ -581,6 +585,8 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         ).first()
         if role is None:
             return _error("Role not found")
+        bind_role_group_map_own_group(role, role.active_role_member_mappings)
+        bind_role_group_map_own_group(role, role.active_role_owner_mappings)
         return _group_adapter.dump_json(_group_adapter.validate_python(role, from_attributes=True)).decode()
 
 
