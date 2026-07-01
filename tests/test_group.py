@@ -9,7 +9,7 @@ from okta.models.group import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
 
-from sqlalchemy import func, or_
+from sqlalchemy import event, func, or_
 from api.auth import permissions as AuthorizationHelpers
 from api.extensions import Db, db
 from api.config import settings
@@ -91,6 +91,58 @@ def test_get_group(
 
     data = rep.json()
     assert data["name"] == app_group.name
+
+
+def test_get_group_role_grants_do_not_reload_own_group(
+    client: TestClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    # Regression test: a group granted by several different roles was
+    # re-fetching its own app_group/app row once per role's membership/
+    # ownership mapping instead
+    # of reusing the copy already loaded for the group itself.
+    db.session.add(access_app)
+    db.session.commit()
+    app_group.app_id = access_app.id
+    db.session.add(app_group)
+    db.session.commit()
+
+    for _ in range(5):
+        granting_role = RoleGroupFactory.create()
+        db.session.add(granting_role)
+        db.session.commit()
+        ModifyRoleGroups(
+            role_group=granting_role,
+            groups_to_add=[app_group.id],
+            owner_groups_to_add=[],
+            sync_to_okta=False,
+        ).execute()
+
+    queries: list[str] = []
+
+    def _record(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, executemany: bool) -> None:
+        queries.append(statement)
+
+    event.listen(db.engine, "before_cursor_execute", _record)
+    try:
+        group_url = url_for("api-groups.group_by_id", group_id=app_group.id)
+        rep = client.get(group_url)
+    finally:
+        event.remove(db.engine, "before_cursor_execute", _record)
+
+    assert rep.status_code == 200
+    # Exactly one such query is expected: loading the group's own polymorphic
+    # (AppGroup + App) identity. Each additional occurrence is a re-fetch of
+    # that same row triggered by one of the five role mappings above.
+    own_group_reloads = [q for q in queries if "FROM okta_group JOIN app_group" in q]
+    assert len(own_group_reloads) == 1, (
+        f"expected exactly one app_group/app load, got {len(own_group_reloads)} -- "
+        "a group granted by multiple roles is re-fetching its own row once per "
+        "role mapping instead of reusing the already-loaded group"
+    )
 
 
 def test_get_group_members(client: TestClient, db: Db, okta_group: OktaGroup, user: OktaUser, url_for: Any) -> None:
