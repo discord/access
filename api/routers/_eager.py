@@ -11,7 +11,8 @@ relationships.
 
 from __future__ import annotations
 
-from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
+from sqlalchemy.orm import joinedload, noload, selectin_polymorphic, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from api.models import (
     AppGroup,
@@ -63,6 +64,38 @@ def role_group_map_options() -> tuple:
         selectinload(RoleGroupMap.group).options(*polymorphic_group_options()),
         selectinload(RoleGroupMap.active_group).options(*polymorphic_group_options()),
     )
+
+
+def role_group_map_options_for_own_group() -> tuple:
+    """Eager-load every relationship `RoleGroupMapDetail` reads, for mappings
+    reached via `OktaGroup.active_role_member_mappings` /
+    `active_role_owner_mappings`.
+
+    On those two relationships `RoleGroupMap.group_id` is always the id of
+    the group being loaded -- the mapping is *about* that group. Eagerly
+    re-selecting `.group`/`.active_group` there re-fetches the exact
+    `app_group`/`app` row the caller already has, once per mapping. Skip
+    the query here and use `bind_role_group_map_own_group` after load to
+    stamp both attributes from the already-loaded group instead.
+    """
+    return (
+        joinedload(RoleGroupMap.role_group),
+        joinedload(RoleGroupMap.active_role_group),
+        joinedload(RoleGroupMap.created_actor),
+        joinedload(RoleGroupMap.ended_actor),
+        noload(RoleGroupMap.group),
+        noload(RoleGroupMap.active_group),
+    )
+
+
+def bind_role_group_map_own_group(group: OktaGroup, mappings: list[RoleGroupMap]) -> None:
+    """Stamp `.group`/`.active_group` on mappings loaded via
+    `role_group_map_options_for_own_group` without hitting the database --
+    see that function's docstring."""
+    active_group = group if group.deleted_at is None else None
+    for mapping in mappings:
+        set_committed_value(mapping, "group", group)
+        set_committed_value(mapping, "active_group", active_group)
 
 
 def group_tag_map_options() -> tuple:
