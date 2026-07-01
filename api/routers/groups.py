@@ -44,7 +44,7 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
-    bind_role_group_map_own_group,
+    bind_role_group_map_own_groups,
     group_tag_map_options,
     role_group_map_options,
     role_group_map_options_for_own_group,
@@ -102,8 +102,7 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
     ).first()
     if group is not None:
-        bind_role_group_map_own_group(group, group.active_role_member_mappings)
-        bind_role_group_map_own_group(group, group.active_role_owner_mappings)
+        bind_role_group_map_own_groups(group)
     return group
 
 

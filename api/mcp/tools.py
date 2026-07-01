@@ -86,7 +86,7 @@ from api.models import (
     Tag,
 )
 from api.routers._eager import (
-    bind_role_group_map_own_group,
+    bind_role_group_map_own_groups,
     group_tag_map_options,
     polymorphic_group_options,
     role_group_map_options,
@@ -458,8 +458,7 @@ def _register_group_tools(mcp: "FastMCP") -> None:
         ).first()
         if group is None:
             return _error("Group not found")
-        bind_role_group_map_own_group(group, group.active_role_member_mappings)
-        bind_role_group_map_own_group(group, group.active_role_owner_mappings)
+        bind_role_group_map_own_groups(group)
         validated = _group_adapter.validate_python(group, from_attributes=True)
         return _group_adapter.dump_json(validated).decode()
 
@@ -585,8 +584,6 @@ def _register_role_tools(mcp: "FastMCP") -> None:
         ).first()
         if role is None:
             return _error("Role not found")
-        bind_role_group_map_own_group(role, role.active_role_member_mappings)
-        bind_role_group_map_own_group(role, role.active_role_owner_mappings)
         return _group_adapter.dump_json(_group_adapter.validate_python(role, from_attributes=True)).decode()
 
 

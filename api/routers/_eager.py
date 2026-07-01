@@ -54,13 +54,22 @@ def user_group_member_options() -> tuple:
     )
 
 
-def role_group_map_options() -> tuple:
-    """Eager-load every relationship `RoleGroupMapDetail` reads."""
+def _role_group_map_actor_and_role_options() -> tuple:
+    """The subset of `role_group_map_options()`/`role_group_map_options_for_own_group()`
+    that's identical between them: the role side and the actor columns.
+    They only disagree on how to load `.group`/`.active_group`."""
     return (
         joinedload(RoleGroupMap.role_group),
         joinedload(RoleGroupMap.active_role_group),
         joinedload(RoleGroupMap.created_actor),
         joinedload(RoleGroupMap.ended_actor),
+    )
+
+
+def role_group_map_options() -> tuple:
+    """Eager-load every relationship `RoleGroupMapDetail` reads."""
+    return (
+        *_role_group_map_actor_and_role_options(),
         selectinload(RoleGroupMap.group).options(*polymorphic_group_options()),
         selectinload(RoleGroupMap.active_group).options(*polymorphic_group_options()),
     )
@@ -75,25 +84,23 @@ def role_group_map_options_for_own_group() -> tuple:
     the group being loaded -- the mapping is *about* that group. Eagerly
     re-selecting `.group`/`.active_group` there re-fetches the exact
     `app_group`/`app` row the caller already has, once per mapping. Skip
-    the query here and use `bind_role_group_map_own_group` after load to
+    the query here and use `bind_role_group_map_own_groups` after load to
     stamp both attributes from the already-loaded group instead.
     """
     return (
-        joinedload(RoleGroupMap.role_group),
-        joinedload(RoleGroupMap.active_role_group),
-        joinedload(RoleGroupMap.created_actor),
-        joinedload(RoleGroupMap.ended_actor),
+        *_role_group_map_actor_and_role_options(),
         noload(RoleGroupMap.group),
         noload(RoleGroupMap.active_group),
     )
 
 
-def bind_role_group_map_own_group(group: OktaGroup, mappings: list[RoleGroupMap]) -> None:
-    """Stamp `.group`/`.active_group` on mappings loaded via
-    `role_group_map_options_for_own_group` without hitting the database --
-    see that function's docstring."""
+def bind_role_group_map_own_groups(group: OktaGroup) -> None:
+    """Stamp `.group`/`.active_group` on `group.active_role_member_mappings`
+    and `.active_role_owner_mappings` -- the two `RoleGroupMap` collections
+    loaded via `role_group_map_options_for_own_group` -- without hitting the
+    database. See that function's docstring for why this is correct."""
     active_group = group if group.deleted_at is None else None
-    for mapping in mappings:
+    for mapping in (*group.active_role_member_mappings, *group.active_role_owner_mappings):
         set_committed_value(mapping, "group", group)
         set_committed_value(mapping, "active_group", active_group)
 
