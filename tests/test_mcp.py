@@ -26,6 +26,7 @@ from typing import Any, Generator, Optional
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 from api.config import settings
 from api.context import RequestContext, set_request_context
@@ -38,7 +39,7 @@ from api.mcp.auth import (
     set_mcp_identity,
 )
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
-from api.operations import ModifyGroupUsers
+from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from tests.factories import RoleGroupFactory
 
 
@@ -243,6 +244,62 @@ def test_read_tool_requires_read_all_scope(
     payload = json.loads(result)
     assert "results" in payload
     assert isinstance(payload["results"], list)
+
+
+def test_get_group_tool_role_grants_do_not_reload_own_group(
+    with_mcp_enabled: None,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    user: OktaUser,
+) -> None:
+    # Same bug as the REST regression test in tests/test_group.py: the
+    # `get_group` MCP tool shares `_group_load_options()` with the REST
+    # router's default loader.
+    db.session.add_all([user, access_app])
+    db.session.commit()
+    app_group.app_id = access_app.id
+    db.session.add(app_group)
+    db.session.commit()
+
+    for _ in range(5):
+        granting_role = RoleGroupFactory.create()
+        db.session.add(granting_role)
+        db.session.commit()
+        ModifyRoleGroups(
+            role_group=granting_role,
+            groups_to_add=[app_group.id],
+            owner_groups_to_add=[],
+            sync_to_okta=False,
+        ).execute()
+
+    from api.mcp.server import create_mcp_server
+
+    mcp = create_mcp_server()
+
+    queries: list[str] = []
+
+    def _record(conn: Any, cursor: Any, statement: str, parameters: Any, context: Any, executemany: bool) -> None:
+        queries.append(statement)
+
+    token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
+    event.listen(db.engine, "before_cursor_execute", _record)
+    try:
+        result = _call_tool(mcp, "get_group", group_id_or_name=app_group.id)
+    finally:
+        event.remove(db.engine, "before_cursor_execute", _record)
+        from api.mcp.auth import reset_mcp_identity
+
+        reset_mcp_identity(token)
+
+    payload = json.loads(result)
+    assert payload["id"] == app_group.id
+    own_group_reloads = [q for q in queries if "FROM okta_group JOIN app_group" in q]
+    assert len(own_group_reloads) == 1, (
+        f"expected exactly one app_group/app load, got {len(own_group_reloads)} -- "
+        "a group granted by multiple roles is re-fetching its own row once per "
+        "role mapping instead of reusing the already-loaded group"
+    )
 
 
 def test_write_tool_requires_create_requests_scope(

@@ -44,8 +44,10 @@ from fastapi_pagination.ext.sqlalchemy import paginate
 from api.pagination import Page, validated
 from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
+    bind_role_group_map_own_groups,
     group_tag_map_options,
     role_group_map_options,
+    role_group_map_options_for_own_group,
     user_group_member_options,
 )
 from api.schemas import (
@@ -73,8 +75,8 @@ ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup])
 
 DEFAULT_LOAD_OPTIONS = (
     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-    selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options()),
-    selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options()),
+    selectinload(OktaGroup.active_role_member_mappings).options(*role_group_map_options_for_own_group()),
+    selectinload(OktaGroup.active_role_owner_mappings).options(*role_group_map_options_for_own_group()),
     selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
     selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
     joinedload(AppGroup.app),
@@ -93,12 +95,15 @@ def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | None:
     # expire_on_commit=False the identity map would otherwise serve
     # pre-operation relationship state, so drop cached ORM state first.
     db.expire_all()
-    return db.scalars(
+    group = db.scalars(
         select(OktaGroup)
         .options(*DEFAULT_LOAD_OPTIONS)
         .where(or_(OktaGroup.id == group_id, OktaGroup.name == group_id))
         .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
     ).first()
+    if group is not None:
+        bind_role_group_map_own_groups(group)
+    return group
 
 
 @router.get("", name="groups")
