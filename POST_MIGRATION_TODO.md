@@ -127,12 +127,29 @@ clean `--snapshot-update` ergonomics.
 
 The four plugin types (`notifications`, `conditional_access`,
 `app_group_lifecycle`, `metrics_reporter`) currently expose synchronous
-hooks via `pluggy`. The application is now async; the sync hooks are
-bridged at every call site — `app_group_lifecycle` hooks (which receive
-`session=`) run through `AsyncSession.run_sync` on the greenlet bridge,
-and `notifications`/`conditional_access` hooks run on a worker thread
-via `anyio.to_thread.run_sync` so plugin network I/O can't block the
-event loop. Plugins should eventually follow the app.
+hooks via `pluggy`. The application is now async, so every call site
+bridges the sync hook — and the bridge differs by call site, which is
+exactly the smell that motivates going natively async:
+
+- `app_group_lifecycle` hooks (which receive `session=`) run through
+  `AsyncSession.run_sync`, which hands them a working sync `Session` on
+  the greenlet bridge (`create_group`, `delete_group`, `modify_group_*`).
+- The syncer's `access_expiring_*` `notifications` hooks also run through
+  `db.session.run_sync` — the syncer is a batch CLI job holding
+  AsyncSession-bound ORM rows, so run_sync keeps those rows on the
+  session's own thread instead of handing them to an `anyio` worker
+  thread (which was the original cross-thread hazard). Every ORM
+  relationship is `lazy="raise_on_sql"`, so a hook can only read what the
+  syncer eager-loaded regardless — extend the `joinedload`s there if a
+  notification plugin needs a wider graph.
+- `notifications` / `conditional_access` hooks fired from request-path
+  operations still run **inline on the event loop**, so a plugin doing
+  slow network I/O blocks the request. Moving that slow tail off the hot
+  path is item 10 (`BackgroundTasks`); `conditional_access` is harder
+  because its return value gates the request.
+
+Making the hooks natively async collapses all three bridges into one
+`await`. Plugins should eventually follow the app.
 
 Strategy mirrors the existing `DeprecationWarning` pattern in
 `api/plugins/notifications.py:48-74`:
