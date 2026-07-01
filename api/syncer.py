@@ -1,10 +1,8 @@
-import functools
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from typing import List
 
-import anyio.to_thread
 from sqlalchemy import and_, func, or_, select
 from api.config import settings
 from sqlalchemy.orm import (
@@ -532,11 +530,13 @@ async def expiring_access_notifications_user() -> None:
     for user in grouped_tomorrow:
         # If the user has access expiring both tomorrow and in a week, only send one message
         if user in grouped_next_week:
-            # Notification hooks are sync plugin code that may perform blocking
-            # network I/O, so run them on a worker thread.
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_user,
+            # Notification hooks are sync plugin code holding ORM objects bound to
+            # this AsyncSession. Run them via run_sync (on the session's own greenlet)
+            # rather than a worker thread, so those objects are never touched across a
+            # thread boundary. The syncer is a batch CLI job, so briefly blocking its
+            # loop while a hook does network I/O is fine (TODO 18: async plugin hooks).
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_user(
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=grouped_tomorrow_old[user] + grouped_next_week_old[user],
                     user=user,
@@ -545,9 +545,8 @@ async def expiring_access_notifications_user() -> None:
                 )
             )
         else:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_user,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_user(
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=grouped_tomorrow_old[user],
                     user=user,
@@ -558,9 +557,8 @@ async def expiring_access_notifications_user() -> None:
 
     for user in grouped_next_week:
         if user not in grouped_tomorrow:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_user,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_user(
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=grouped_next_week_old[user],
                     user=user,
@@ -708,11 +706,13 @@ async def expiring_access_notifications_owner() -> None:
     for owner in owner_expiring_groups_this:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_groups_next:
-            # Notification hooks are sync plugin code that may perform blocking
-            # network I/O, so run them on a worker thread.
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            # Notification hooks are sync plugin code holding ORM objects bound to
+            # this AsyncSession. Run them via run_sync (on the session's own greenlet)
+            # rather than a worker thread, so those objects are never touched across a
+            # thread boundary. The syncer is a batch CLI job, so briefly blocking its
+            # loop while a hook does network I/O is fine (TODO 18: async plugin hooks).
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_groups_this_old[owner].groups + owner_expiring_groups_next_old[owner].groups,
@@ -725,9 +725,8 @@ async def expiring_access_notifications_owner() -> None:
                 )
             )
         else:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_groups_this_old[owner].groups,
@@ -742,9 +741,8 @@ async def expiring_access_notifications_owner() -> None:
 
     for owner in owner_expiring_groups_next:
         if owner not in owner_expiring_groups_this:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_groups_next_old[owner].groups,
@@ -876,9 +874,8 @@ async def expiring_access_notifications_owner() -> None:
     for owner in owner_expiring_roles_this:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_roles_next:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_roles_this_old[owner].groups + owner_expiring_roles_next_old[owner].groups,
@@ -891,9 +888,8 @@ async def expiring_access_notifications_owner() -> None:
                 )
             )
         else:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_roles_this_old[owner].groups,
@@ -908,9 +904,8 @@ async def expiring_access_notifications_owner() -> None:
 
     for owner in owner_expiring_roles_next:
         if owner not in owner_expiring_roles_this:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_owner(
                     owner=owner,
                     # TODO eventually clean this up, leaving for now for backwards compatibility
                     groups=owner_expiring_roles_next_old[owner].groups,
@@ -1004,20 +999,21 @@ async def expiring_access_notifications_role_owner() -> None:
     for owner in role_owner_expiring_roles_tomorrow:
         # If the role owner has roles they own with access expiring both this week and next week, only send one message
         if owner in role_owner_expiring_roles_next:
-            # Notification hooks are sync plugin code that may perform blocking
-            # network I/O, so run them on a worker thread.
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_role_owner,
+            # Notification hooks are sync plugin code holding ORM objects bound to
+            # this AsyncSession. Run them via run_sync (on the session's own greenlet)
+            # rather than a worker thread, so those objects are never touched across a
+            # thread boundary. The syncer is a batch CLI job, so briefly blocking its
+            # loop while a hook does network I/O is fine (TODO 18: async plugin hooks).
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_role_owner(
                     owner=owner,
                     roles=role_owner_expiring_roles_tomorrow[owner] + role_owner_expiring_roles_next[owner],
                     expiration_datetime=None,
                 )
             )
         else:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_role_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_role_owner(
                     owner=owner,
                     roles=role_owner_expiring_roles_tomorrow[owner],
                     expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
@@ -1026,9 +1022,8 @@ async def expiring_access_notifications_role_owner() -> None:
 
     for owner in role_owner_expiring_roles_next:
         if owner not in role_owner_expiring_roles_tomorrow:
-            await anyio.to_thread.run_sync(
-                functools.partial(
-                    notification_hook.access_expiring_role_owner,
+            await db.session.run_sync(
+                lambda _s: notification_hook.access_expiring_role_owner(
                     owner=owner,
                     roles=role_owner_expiring_roles_next[owner],
                     expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),

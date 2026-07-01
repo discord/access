@@ -1,4 +1,6 @@
+import threading
 from datetime import datetime, timedelta
+from typing import Any
 
 from pytest_mock import MockerFixture
 from sqlalchemy import select
@@ -877,3 +879,125 @@ async def test_owner_expiring_access_notifications_managed_group_admin(
     assert len(kwargs["users"]) == 1
     assert user in kwargs["users"]
     assert kwargs["roles"] is None
+
+
+# The syncer offloads notification hooks (sync plugin code) while holding ORM objects
+# bound to the request's AsyncSession. It invokes them via db.session.run_sync so they
+# run on the event loop's own greenlet — never a worker thread — which is what keeps
+# passing those session-bound objects safe. This guards that contract: the hook must
+# run on the loop thread and must be handed usable, eager-loaded ORM objects.
+async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_orm_objects(
+    db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup
+) -> None:
+    db.session.add(okta_group)
+    db.session.add(user)
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=okta_group,
+        users_added_ended_at=datetime.now() + timedelta(days=1),
+        members_to_add=[user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    hook = get_notification_hook()
+    observed: dict[str, object] = {}
+
+    def _record(**kwargs: Any) -> None:
+        member = kwargs["okta_user_group_members"][0]
+        # The syncer eager-loads active_user/active_group, so a hook can read them
+        # (and their columns) without emitting SQL.
+        observed["email"] = member.active_user.email
+        observed["group_name"] = member.active_group.name
+        observed["passed_user_email"] = kwargs["user"].email
+        # A hook may also read the plain .group relationship (distinct from the
+        # eager-loaded .active_group). It is lazy="raise_on_sql", so this only works
+        # because active_group put the row in the identity map and the many-to-one
+        # resolves from it via use_get without emitting SQL. Guards that eager-load.
+        observed["nonactive_group_name"] = member.group.name
+        # run_sync executes the hook on the event loop's thread (a greenlet), not an
+        # anyio worker thread. If this were reverted to anyio.to_thread.run_sync the
+        # hook would run on a worker thread and this id would differ from the test's.
+        observed["thread_id"] = threading.get_ident()
+
+    mocker.patch.object(hook, "access_expiring_user", side_effect=_record)
+
+    await expiring_access_notifications_user()
+
+    assert observed["email"] == user.email
+    assert observed["group_name"] == okta_group.name
+    assert observed["nonactive_group_name"] == okta_group.name
+    assert observed["passed_user_email"] == user.email
+    assert observed["thread_id"] == threading.get_ident()
+
+
+# Companion to the user test above, for the owner and role-owner hooks: they receive
+# OktaUserGroupMember / RoleGroupMap association rows and a hook may read the plain
+# .user/.group/.role_group relationships off them. Those are lazy="raise_on_sql", so
+# they only resolve because the syncer's active_* joinedloads seed the identity map
+# and the many-to-ones resolve via use_get. These guard that the eager-loads stay
+# broad enough that a hook reading the non-active relationships never emits SQL.
+async def test_expiring_owner_notification_hook_can_read_association_relationships(
+    db: Db, mocker: MockerFixture
+) -> None:
+    group = OktaGroupFactory.create()
+    member = OktaUserFactory.create()
+    owner = OktaUserFactory.create()
+    db.session.add_all([group, member, owner])
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=group,
+        users_added_ended_at=datetime.now() + timedelta(days=2),
+        members_to_add=[member.id],
+        sync_to_okta=False,
+    ).execute()
+    await ModifyGroupUsers(group=group, owners_to_add=[owner.id], sync_to_okta=False).execute()
+
+    observed: dict[str, object] = {}
+
+    def _record(**kwargs: Any) -> None:
+        assoc = kwargs["group_user_associations"][0]
+        # Non-active .user / .group relationships (not the eager-loaded active_* ones).
+        observed["member_email"] = assoc.user.email
+        observed["group_name"] = assoc.group.name
+
+    mocker.patch.object(get_notification_hook(), "access_expiring_owner", side_effect=_record)
+
+    await expiring_access_notifications_owner()
+
+    assert observed["member_email"] == member.email
+    assert observed["group_name"] == group.name
+
+
+async def test_expiring_role_owner_notification_hook_can_read_association_relationships(
+    db: Db, mocker: MockerFixture
+) -> None:
+    role = RoleGroupFactory.create()
+    group = OktaGroupFactory.create()
+    owner = OktaUserFactory.create()
+    db.session.add_all([role, group, owner])
+    await db.session.commit()
+
+    await ModifyGroupUsers(group=role, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    await ModifyRoleGroups(
+        role_group=role,
+        groups_added_ended_at=datetime.now() + timedelta(days=1),
+        groups_to_add=[group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    observed: dict[str, object] = {}
+
+    def _record(**kwargs: Any) -> None:
+        rgm = kwargs["roles"][0]
+        # Non-active .role_group / .group relationships on the RoleGroupMap row.
+        observed["role_name"] = rgm.role_group.name
+        observed["group_name"] = rgm.group.name
+
+    mocker.patch.object(get_notification_hook(), "access_expiring_role_owner", side_effect=_record)
+
+    await expiring_access_notifications_role_owner()
+
+    assert observed["role_name"] == role.name
+    assert observed["group_name"] == group.name
