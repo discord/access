@@ -316,7 +316,9 @@ class DeleteGroup:
         if plugin_id is not None:
             try:
                 hook = get_app_group_lifecycle_hook()
-                hook.group_deleted(session=db.session, group=group, plugin_id=plugin_id)
+                # The hookspec takes a sync `Session`; bridge the AsyncSession
+                # through run_sync so plugins can use it synchronously (TODO 18).
+                await db.session.run_sync(lambda s: hook.group_deleted(session=s, group=group, plugin_id=plugin_id))
                 await db.session.commit()
             except Exception:
                 logging.getLogger("api").exception(

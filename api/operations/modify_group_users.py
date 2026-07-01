@@ -461,8 +461,12 @@ class ModifyGroupUsers:
                 if plugin_id is not None:
                     try:
                         hook = get_app_group_lifecycle_hook()
-                        hook.group_members_removed(
-                            session=db.session, group=affected_group, members=members, plugin_id=plugin_id
+                        # The hookspec takes a sync `Session`; bridge the AsyncSession
+                        # through run_sync so plugins can use it synchronously (TODO 18).
+                        await db.session.run_sync(
+                            lambda s: hook.group_members_removed(
+                                session=s, group=affected_group, members=members, plugin_id=plugin_id
+                            )
                         )
                         await db.session.commit()
                     except Exception:
@@ -686,8 +690,12 @@ class ModifyGroupUsers:
                 if plugin_id is not None:
                     try:
                         hook = get_app_group_lifecycle_hook()
-                        hook.group_members_added(
-                            session=db.session, group=affected_group, members=members, plugin_id=plugin_id
+                        # The hookspec takes a sync `Session`; bridge the AsyncSession
+                        # through run_sync so plugins can use it synchronously (TODO 18).
+                        await db.session.run_sync(
+                            lambda s: hook.group_members_added(
+                                session=s, group=affected_group, members=members, plugin_id=plugin_id
+                            )
                         )
                         await db.session.commit()
                     except Exception:

@@ -311,8 +311,12 @@ class ModifyRoleGroups:
                         ).all()
                         try:
                             hook = get_app_group_lifecycle_hook()
-                            hook.group_members_removed(
-                                session=db.session, group=group, members=members_losing_access, plugin_id=plugin_id
+                            # The hookspec takes a sync `Session`; bridge the AsyncSession
+                            # through run_sync so plugins can use it synchronously (TODO 18).
+                            await db.session.run_sync(
+                                lambda s: hook.group_members_removed(
+                                    session=s, group=group, members=members_losing_access, plugin_id=plugin_id
+                                )
                             )
                             await db.session.commit()
                         except Exception:
@@ -461,8 +465,12 @@ class ModifyRoleGroups:
                         ).all()
                         try:
                             hook = get_app_group_lifecycle_hook()
-                            hook.group_members_added(
-                                session=db.session, group=group, members=members_gaining_access, plugin_id=plugin_id
+                            # The hookspec takes a sync `Session`; bridge the AsyncSession
+                            # through run_sync so plugins can use it synchronously (TODO 18).
+                            await db.session.run_sync(
+                                lambda s: hook.group_members_added(
+                                    session=s, group=group, members=members_gaining_access, plugin_id=plugin_id
+                                )
                             )
                             await db.session.commit()
                         except Exception:
