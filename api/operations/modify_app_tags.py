@@ -25,20 +25,26 @@ class ModifyAppTags:
         self.tag_ids_to_remove = tags_to_remove
         self.current_user_id = current_user_id
 
-    def execute(self) -> App:
-        app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
+    async def execute(self) -> App:
+        app = (
+            await db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id))
+        ).first()
 
-        tags_to_add = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add))
+        tags_to_add = (
+            await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add)))
         ).all()
 
-        tags_to_remove = db.session.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
+        tags_to_remove = (
+            await db.session.scalars(
+                select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_remove))
+            )
         ).all()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -47,19 +53,21 @@ class ModifyAppTags:
         if len(tags_to_add) > 0:
             # Only add tags that are not already associated with this app
             tag_ids_to_add = [t.id for t in tags_to_add]
-            existing_tag_maps = db.session.scalars(
-                select(AppTagMap)
-                .where(
-                    or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > func.now(),
+            existing_tag_maps = (
+                await db.session.scalars(
+                    select(AppTagMap)
+                    .where(
+                        or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > func.now(),
+                        )
                     )
-                )
-                .where(
-                    AppTagMap.app_id == app.id,
-                )
-                .where(
-                    AppTagMap.tag_id.in_(tag_ids_to_add),
+                    .where(
+                        AppTagMap.app_id == app.id,
+                    )
+                    .where(
+                        AppTagMap.tag_id.in_(tag_ids_to_add),
+                    )
                 )
             ).all()
 
@@ -72,22 +80,26 @@ class ModifyAppTags:
                         app_id=app.id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
-            new_app_tag_maps = db.session.scalars(
-                select(AppTagMap)
-                .where(AppTagMap.tag_id.in_(new_tag_ids_to_add))
-                .where(AppTagMap.app_id == app.id)
-                .where(
-                    or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > func.now(),
+            new_app_tag_maps = (
+                await db.session.scalars(
+                    select(AppTagMap)
+                    .where(AppTagMap.tag_id.in_(new_tag_ids_to_add))
+                    .where(AppTagMap.app_id == app.id)
+                    .where(
+                        or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
 
-            all_app_groups = db.session.scalars(
-                select(AppGroup).where(AppGroup.app_id == app.id).where(AppGroup.deleted_at.is_(None))
+            all_app_groups = (
+                await db.session.scalars(
+                    select(AppGroup).where(AppGroup.app_id == app.id).where(AppGroup.deleted_at.is_(None))
+                )
             ).all()
             for app_tag_map in new_app_tag_maps:
                 for app_group in all_app_groups:
@@ -101,9 +113,9 @@ class ModifyAppTags:
 
             # Handle group time limit constraints when adding tags
             # with time limit contraints to an app
-            ModifyGroupsTimeLimit(groups=[g.id for g in all_app_groups], tags=new_tag_ids_to_add).execute()
+            await ModifyGroupsTimeLimit(groups=[g.id for g in all_app_groups], tags=new_tag_ids_to_add).execute()
 
-            db.session.commit()
+            await db.session.commit()
 
         if len(tags_to_remove) > 0:
             tag_ids_to_remove = [t.id for t in tags_to_remove]
@@ -119,8 +131,8 @@ class ModifyAppTags:
                 )
             )
 
-            existing_tag_maps = db.session.scalars(existing_tag_maps_query).all()
-            db.session.execute(
+            existing_tag_maps = (await db.session.scalars(existing_tag_maps_query)).all()
+            await db.session.execute(
                 update(OktaGroupTagMap)
                 .where(
                     or_(
@@ -135,7 +147,7 @@ class ModifyAppTags:
                 .execution_options(synchronize_session="fetch")
             )
 
-            db.session.execute(
+            await db.session.execute(
                 update(AppTagMap)
                 .where(AppTagMap.tag_id.in_(tag_ids_to_remove))
                 .where(AppTagMap.app_id == app.id)
@@ -148,13 +160,13 @@ class ModifyAppTags:
                 .values({AppTagMap.ended_at: func.now()})
                 .execution_options(synchronize_session="fetch")
             )
-            db.session.commit()
+            await db.session.commit()
 
         # Audit log if tags changed
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             email = None
             if current_user_id is not None:
-                email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+                email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
             _ctx = get_request_context()
             logging.getLogger("access.audit").info(

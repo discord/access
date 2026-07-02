@@ -109,7 +109,7 @@ def _parse_scopes(claim: object) -> frozenset[str]:
     return frozenset()
 
 
-def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     """Resolve an ``MCPIdentity`` from a Cloudflare Access JWT.
 
     Returns ``None`` (defers to the next provider) when:
@@ -157,10 +157,12 @@ def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     if "email" not in payload:
         logger.warning("CF Access JWT verified but carries no 'email' claim")
         return None
-    user = db.scalars(
-        select(OktaUser)
-        .where(func.lower(OktaUser.email) == func.lower(payload["email"]))
-        .where(OktaUser.deleted_at.is_(None))
+    user = (
+        await db.scalars(
+            select(OktaUser)
+            .where(func.lower(OktaUser.email) == func.lower(payload["email"]))
+            .where(OktaUser.deleted_at.is_(None))
+        )
     ).first()
     if user is None:
         logger.warning(f"CF Access JWT verified for email={payload['email']!r} but no matching active OktaUser exists")

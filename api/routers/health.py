@@ -22,9 +22,9 @@ router = APIRouter(prefix="/api/healthz", tags=["health"])
 # one here — adding it would be misleading. Refactoring to a single
 # `HealthResponse` would change the error-path wire shape.
 @router.get("", name="health_check")
-def health_check(db: DbSession) -> JSONResponse:
+async def health_check(db: DbSession) -> JSONResponse:
     try:
-        db.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
     except Exception:
         # Log server-side only — the exception text carries driver/connection
         # detail (host, db name, user) and this endpoint is unauthenticated.

@@ -21,7 +21,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api import exception_handlers, middleware
 from api.config import settings
-from api.database import build_engine
+from api.database import build_async_engine
 from api.extensions import db
 from api.log_filters import RedactingUvicornLogger, TokenSanitizingFilter
 from api.schemas.core_schemas import ProblemDetail
@@ -168,17 +168,15 @@ def _configure_okta() -> None:
 
 
 def _configure_threadpool_limit() -> None:
-    """Cap the anyio threadpool that runs sync (`def`) route handlers.
+    """Cap the anyio worker-thread pool.
 
-    FastAPI dispatches every sync route handler to anyio's default worker
-    thread pool, whose default limit is 40 threads per event loop. That lets
-    one server worker process run up to 40 handlers at once, each holding a
-    DB connection and building its own ORM object graph, so peak memory and
-    connection demand scale with that ceiling rather than the worker count.
-    Lowering it gives the server backpressure under bursts of expensive
-    requests. Setting ``THREADPOOL_MAX_WORKERS`` to 0 leaves anyio's default
-    untouched. Must be called from within the running event loop, since the
-    limiter is stored in a loop-scoped anyio ``RunVar``.
+    Under the async stack, route handlers run on the event loop, so this no
+    longer bounds request concurrency. But anyio's threadpool still backs the
+    paths that offload to threads (`anyio.to_thread.run_sync`, any sync
+    dependencies), and its default limit is 40 threads per event loop; bounding
+    it keeps those from fanning out without limit. ``THREADPOOL_MAX_WORKERS``
+    of 0 leaves anyio's default untouched. Must be called from within the
+    running event loop, since the limiter is a loop-scoped anyio ``RunVar``.
     """
     if settings.THREADPOOL_MAX_WORKERS <= 0:
         return
@@ -186,7 +184,7 @@ def _configure_threadpool_limit() -> None:
 
     limiter = anyio.to_thread.current_default_thread_limiter()
     limiter.total_tokens = settings.THREADPOOL_MAX_WORKERS
-    logger.info("Sync-route threadpool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
+    logger.info("Worker-thread pool limit set to %d", settings.THREADPOOL_MAX_WORKERS)
 
 
 def create_app(testing: Optional[bool] = False) -> FastAPI:
@@ -225,8 +223,8 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_fast_app: FastAPI) -> AsyncIterator[None]:
-        # Bound the sync-route threadpool inside the running event loop (the
-        # anyio limiter is loop-scoped, so this can't run at import time).
+        # Bound the worker-thread pool inside the running event loop (the anyio
+        # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()
         if mcp_lifespan is not None:
             async with mcp_lifespan():
@@ -257,7 +255,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # fixture rebuilds with a sqlite-in-memory engine, so we only bind here
     # when not testing.
     if not testing and (settings.SQLALCHEMY_DATABASE_URI or settings.CLOUDSQL_CONNECTION_NAME):
-        db.init_app(engine=build_engine())
+        db.init_app(engine=build_async_engine())
 
     # OIDC: Authlib + SessionMiddleware. Only mounted if configured.
     if settings.OIDC_CLIENT_SECRETS is not None and settings.SECRET_KEY:

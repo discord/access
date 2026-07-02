@@ -9,6 +9,7 @@ from okta.models.group_profile import GroupProfile
 from okta.models.user import User
 from okta.models.user_profile import UserProfile
 from okta.models.user_schema import UserSchema
+from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from api.extensions import db
@@ -57,10 +58,17 @@ class GroupFactory(factory.Factory[Group]):
         exclude = "is_deleted"
 
     @staticmethod
-    def create_access_owner_group() -> Group:
+    async def create_access_owner_group() -> Group:
         access_app = (
-            db.session.query(App).options(joinedload(App.active_owner_app_groups)).filter(App.name == "Access").first()
+            (
+                await db.session.scalars(
+                    select(App).options(joinedload(App.active_owner_app_groups)).where(App.name == "Access")
+                )
+            )
+            .unique()
+            .first()
         )
+        assert access_app is not None
         access_owner_group = access_app.active_owner_app_groups[0]
         okta_access_owner_group = GroupFactory.build()
         okta_access_owner_group.profile.name = access_owner_group.name

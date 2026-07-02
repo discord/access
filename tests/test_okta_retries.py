@@ -32,49 +32,71 @@ def mock_sleep(mocker: MockerFixture) -> Mock:
 
 
 @pytest.mark.parametrize("status_code", RETRIABLE_STATUS_CODES)
-def test_retry_logic_error_response_retriable(
+async def test_retry_logic_error_response_retriable(
     mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService, status_code: int
 ) -> None:
     mocked_request = mock_get_user(mocker, status_code)
 
     with pytest.raises(Exception):
-        okta_service.get_user("okta_id")
+        await okta_service.get_user("okta_id")
         assert mocked_request.call_count == 1 + REQUEST_MAX_RETRIES
         assert mock_sleep.call_count == REQUEST_MAX_RETRIES
 
 
-def test_retry_logic_error_response_non_retriable(
+async def test_retry_logic_error_response_non_retriable(
     mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService
 ) -> None:
     mocked_request = mock_get_user(mocker, 400)
 
     with pytest.raises(Exception):
-        okta_service.get_user("okta_id")
+        await okta_service.get_user("okta_id")
         assert mocked_request.call_count == 1
         assert mock_sleep.call_count == 0
 
 
-def test_retry_logic_no_error(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
+async def test_retry_logic_no_error(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
     mocked_request = mock_get_user(mocker, 200)
 
-    okta_service.get_user("okta_id")
+    await okta_service.get_user("okta_id")
     assert mocked_request.call_count == 1
     assert mock_sleep.call_count == 0
 
 
-def test_retry_logic_all_timeouts_raises(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
-    mocker.patch("asyncio.wait_for", side_effect=asyncio.TimeoutError())
+def _fake_wait_for(outcomes: list[Any]) -> Any:
+    """side_effect for a patched asyncio.wait_for that closes the wrapped
+    coroutine (the real wait_for would consume it; leaving it unawaited
+    trips the `coroutine ... was never awaited` warning-as-error filter)."""
+
+    def fake_wait_for(coro: Any, timeout: float) -> Any:
+        coro.close()
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    return fake_wait_for
+
+
+async def test_retry_logic_all_timeouts_raises(
+    mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService
+) -> None:
+    mocker.patch(
+        "asyncio.wait_for",
+        side_effect=_fake_wait_for([asyncio.TimeoutError() for _ in range(1 + REQUEST_MAX_RETRIES)]),
+    )
 
     with pytest.raises(OktaTimeout, match="timed out"):
-        okta_service.get_user("okta_id")
+        await okta_service.get_user("okta_id")
 
 
-def test_retry_logic_timeout_then_success(mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService) -> None:
+async def test_retry_logic_timeout_then_success(
+    mocker: MockerFixture, mock_sleep: Mock, okta_service: OktaService
+) -> None:
     success_response: Tuple[Any, Any, Optional[Exception]] = (UserFactory(), Mock(), None)
     mocker.patch(
         "asyncio.wait_for",
-        side_effect=[asyncio.TimeoutError(), success_response],
+        side_effect=_fake_wait_for([asyncio.TimeoutError(), success_response]),
     )
 
-    user = okta_service.get_user("okta_id")
+    user = await okta_service.get_user("okta_id")
     assert user is not None

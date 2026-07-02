@@ -9,20 +9,24 @@ from api.services import okta
 logger = logging.getLogger(__name__)
 
 
-def verify_and_fix_unmanaged_groups(dry_run: bool = False) -> None:
-    active_unmanaged_groups = db.session.scalars(
-        select(OktaGroup).where(OktaGroup.is_managed.is_(False)).where(OktaGroup.deleted_at.is_(None))
+async def verify_and_fix_unmanaged_groups(dry_run: bool = False) -> None:
+    active_unmanaged_groups = (
+        await db.session.scalars(
+            select(OktaGroup).where(OktaGroup.is_managed.is_(False)).where(OktaGroup.deleted_at.is_(None))
+        )
     ).all()
     for group in active_unmanaged_groups:
-        UnmanageGroup(group=group.id).execute(dry_run=dry_run)
+        await UnmanageGroup(group=group.id).execute(dry_run=dry_run)
 
 
-def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
-    active_role_group_maps = db.session.scalars(
-        select(RoleGroupMap).where(
-            or_(
-                RoleGroupMap.ended_at.is_(None),
-                RoleGroupMap.ended_at > func.now(),
+async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
+    active_role_group_maps = (
+        await db.session.scalars(
+            select(RoleGroupMap).where(
+                or_(
+                    RoleGroupMap.ended_at.is_(None),
+                    RoleGroupMap.ended_at > func.now(),
+                )
             )
         )
     ).all()
@@ -38,17 +42,21 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
             )
             .where(OktaUserGroupMember.is_owner.is_(False))
         )
-        active_role_group_members_ids = [m.user_id for m in db.session.scalars(active_role_group_members_query).all()]
+        active_role_group_members_ids = [
+            m.user_id for m in (await db.session.scalars(active_role_group_members_query)).all()
+        ]
 
-        active_group_users_for_role = db.session.scalars(
-            select(OktaUserGroupMember)
-            .where(
-                or_(
-                    OktaUserGroupMember.ended_at.is_(None),
-                    OktaUserGroupMember.ended_at > func.now(),
+        active_group_users_for_role = (
+            await db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
+                    )
                 )
+                .where(OktaUserGroupMember.role_group_map_id == active_role_group_map.id)
             )
-            .where(OktaUserGroupMember.role_group_map_id == active_role_group_map.id)
         ).all()
         active_group_users_for_role_ids = [m.user_id for m in active_group_users_for_role]
 
@@ -62,8 +70,10 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
             )
             if not dry_run:
                 for member in list(missing_group_users_for_role):
-                    role_group_membership = db.session.scalars(
-                        active_role_group_members_query.where(OktaUserGroupMember.user_id == member)
+                    role_group_membership = (
+                        await db.session.scalars(
+                            active_role_group_members_query.where(OktaUserGroupMember.user_id == member)
+                        )
                     ).first()
                     # `member` came out of `active_role_group_members_ids` which we
                     # just built from this same query, so the filter must return a
@@ -71,14 +81,14 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                     assert role_group_membership is not None
                     if not active_role_group_map.is_owner:
                         # Add user to okta group members
-                        okta.add_user_to_group(
+                        await okta.add_user_to_group(
                             active_role_group_map.group_id,
                             member,
                         )
                     else:
                         # Add user to okta group owners
                         # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
-                        okta.add_owner_to_group(
+                        await okta.add_owner_to_group(
                             active_role_group_map.group_id,
                             member,
                         )
@@ -99,7 +109,7 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                             ended_at=associated_users_ended_at,
                         )
                     )
-                db.session.commit()
+                await db.session.commit()
 
         # Fix extra group memberships/ownerships for the role by ending the membership and potentially
         # removing the user from the group
@@ -112,7 +122,7 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
             )
             if not dry_run:
                 # End all extra OktaUserGroupMembers the users not members of the role group
-                db.session.execute(
+                await db.session.execute(
                     update(OktaUserGroupMember)
                     .where(
                         or_(
@@ -125,30 +135,32 @@ def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                     .values({OktaUserGroupMember.ended_at: func.now()})
                     .execution_options(synchronize_session="fetch")
                 )
-                db.session.commit()
+                await db.session.commit()
 
                 # Check if there are other OktaUserGroupMembers for this user/group
                 # combination before removing membership, there can be multiple role groups
                 # which allow group access for this user
-                removed_users_with_other_access = db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .where(
-                        or_(
-                            OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > func.now(),
+                removed_users_with_other_access = (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .where(
+                            or_(
+                                OktaUserGroupMember.ended_at.is_(None),
+                                OktaUserGroupMember.ended_at > func.now(),
+                            )
                         )
+                        .where(OktaUserGroupMember.is_owner == active_role_group_map.is_owner)
+                        .where(OktaUserGroupMember.group_id == active_role_group_map.group_id)
+                        .where(OktaUserGroupMember.user_id.in_(extra_group_users_for_role))
                     )
-                    .where(OktaUserGroupMember.is_owner == active_role_group_map.is_owner)
-                    .where(OktaUserGroupMember.group_id == active_role_group_map.group_id)
-                    .where(OktaUserGroupMember.user_id.in_(extra_group_users_for_role))
                 ).all()
                 removed_users_with_other_access_ids = [m.user_id for m in removed_users_with_other_access]
                 okta_users_to_remove_ids = set(extra_group_users_for_role) - set(removed_users_with_other_access_ids)
                 for user_id in okta_users_to_remove_ids:
                     if not active_role_group_map.is_owner:
                         # Remove user from okta group membership
-                        okta.remove_user_from_group(active_role_group_map.group_id, user_id)
+                        await okta.remove_user_from_group(active_role_group_map.group_id, user_id)
                     else:
                         # Remove user from okta group owners
                         # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
-                        okta.remove_owner_from_group(active_role_group_map.group_id, user_id)
+                        await okta.remove_owner_from_group(active_role_group_map.group_id, user_id)

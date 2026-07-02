@@ -40,24 +40,26 @@ class ApproveAccessRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> AccessRequest:
+    async def execute(self) -> AccessRequest:
         # Lock the request row for the duration of the transaction so two
         # concurrent approvers can't both pass the pending-state guard below
         # and double-grant. `of=AccessRequest` keeps FOR UPDATE off the
         # joinedload's nullable outer-join side (Postgres rejects that); it's
         # a no-op on SQLite.
-        access_request = db.session.scalars(
-            select(AccessRequest)
-            .options(joinedload(AccessRequest.active_requested_group))
-            .where(AccessRequest.id == self.access_request_id)
-            .with_for_update(of=AccessRequest)
+        access_request = (
+            await db.session.scalars(
+                select(AccessRequest)
+                .options(joinedload(AccessRequest.active_requested_group))
+                .where(AccessRequest.id == self.access_request_id)
+                .with_for_update(of=AccessRequest)
+            )
         ).first()
 
         if self.approver_user_id is None:
             approver_id = None
             approver_email = None
         else:
-            approver = db.session.get(OktaUser, self.approver_user_id)
+            approver = await db.session.get(OktaUser, self.approver_user_id)
             approver_id = approver.id
             approver_email = approver.email
 
@@ -72,7 +74,7 @@ class ApproveAccessRequest:
             return access_request
 
         # Don't allow approving a request if the reason is invalid and required
-        valid, _ = CheckForReason(
+        valid, _ = await CheckForReason(
             group=access_request.requested_group,
             reason=self.approval_reason,
             members_to_add=[access_request.requester_user_id] if not access_request.request_ownership else [],
@@ -82,7 +84,7 @@ class ApproveAccessRequest:
             return access_request
 
         # Don't allow approving a request if the requester is deleted
-        requester = db.session.get(OktaUser, access_request.requester_user_id)
+        requester = await db.session.get(OktaUser, access_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             raise ResourceGoneError("The requester no longer exists")
 
@@ -100,11 +102,13 @@ class ApproveAccessRequest:
         # self.access_request.approval_ending_at = self.ending_at
 
         # Audit logging
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == access_request.requested_group_id)
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == access_request.requested_group_id)
+            )
         ).first()
 
         _ctx = get_request_context()
@@ -119,13 +123,13 @@ class ApproveAccessRequest:
                     "current_user_email": approver_email,
                     "group": group,
                     "request": access_request,
-                    "requester": db.session.get(OktaUser, access_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, access_request.requester_user_id),
                 }
             )
         )
 
         if access_request.request_ownership:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=access_request.requested_group_id,
                 current_user_id=approver_id,
                 users_added_ended_at=self.ending_at,
@@ -134,7 +138,7 @@ class ApproveAccessRequest:
                 notify=self.notify,
             ).execute()
         else:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=access_request.requested_group_id,
                 current_user_id=approver_id,
                 users_added_ended_at=self.ending_at,

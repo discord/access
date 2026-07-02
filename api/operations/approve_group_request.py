@@ -49,23 +49,25 @@ class ApproveGroupRequest:
         self.bypass_self_approval = bypass_self_approval
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> Optional[GroupRequest]:
+    async def execute(self) -> Optional[GroupRequest]:
         # Lock the request row for the transaction so concurrent approvers
         # can't both pass the pending-state guard and double-create the group.
         # `of=` keeps FOR UPDATE off the joinedload's nullable outer-join side
         # (Postgres rejects that); no-op on SQLite.
-        group_request = db.session.scalars(
-            select(GroupRequest)
-            .options(joinedload(GroupRequest.active_requester))
-            .where(GroupRequest.id == self.group_request_id)
-            .with_for_update(of=GroupRequest)
+        group_request = (
+            await db.session.scalars(
+                select(GroupRequest)
+                .options(joinedload(GroupRequest.active_requester))
+                .where(GroupRequest.id == self.group_request_id)
+                .with_for_update(of=GroupRequest)
+            )
         ).first()
 
         approver_id: str | None = None
         if self.approver_user_id is None:
             approver_email = None
         else:
-            approver = db.session.get(OktaUser, self.approver_user_id)
+            approver = await db.session.get(OktaUser, self.approver_user_id)
             approver_id = approver.id
             approver_email = approver.email
 
@@ -87,7 +89,7 @@ class ApproveGroupRequest:
         # a deleted requester usually can't even load above — active_requester
         # is an inner join filtering deleted_at — so this is a belt-and-braces
         # check that mirrors the historical no-op rather than a 4xx path.)
-        requester = db.session.get(OktaUser, group_request.requester_user_id)
+        requester = await db.session.get(OktaUser, group_request.requester_user_id)
         if requester is None or requester.deleted_at is not None:
             return group_request
 
@@ -117,7 +119,7 @@ class ApproveGroupRequest:
         )
 
         # authorization
-        access_owner_ids = {u.id for u in get_access_owners()}
+        access_owner_ids = {u.id for u in await get_access_owners()}
         is_admin = approver_id in access_owner_ids
 
         if not is_admin:
@@ -129,16 +131,18 @@ class ApproveGroupRequest:
         if resolved_app_id is not None:
             # App group request: admins OR owners of that specific app can approve
             if not is_admin:
-                is_app_owner = db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
-                    .where(
-                        AppGroup.app_id == resolved_app_id,
-                        AppGroup.is_owner.is_(True),
-                        AppGroup.deleted_at.is_(None),
-                        OktaUserGroupMember.user_id == approver_id,
-                        OktaUserGroupMember.is_owner.is_(True),
-                        OktaUserGroupMember.ended_at.is_(None),
+                is_app_owner = (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .join(AppGroup, OktaUserGroupMember.group_id == AppGroup.id)
+                        .where(
+                            AppGroup.app_id == resolved_app_id,
+                            AppGroup.is_owner.is_(True),
+                            AppGroup.deleted_at.is_(None),
+                            OktaUserGroupMember.user_id == approver_id,
+                            OktaUserGroupMember.is_owner.is_(True),
+                            OktaUserGroupMember.ended_at.is_(None),
+                        )
                     )
                 ).first()
 
@@ -160,15 +164,17 @@ class ApproveGroupRequest:
         ):
             return group_request
 
-        existing_group = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
-            .where(OktaGroup.deleted_at.is_(None))
+        existing_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(resolved_name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).first()
         if existing_group is not None:
             return group_request
 
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
         _ctx = get_request_context()
@@ -182,7 +188,7 @@ class ApproveGroupRequest:
                     "current_user_id": approver_id,
                     "current_user_email": approver_email,
                     "group_request": group_request,
-                    "requester": db.session.get(OktaUser, group_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, group_request.requester_user_id),
                 }
             )
         )
@@ -205,21 +211,23 @@ class ApproveGroupRequest:
                 description=resolved_description,
             )
 
-        created_group: AppGroup | OktaGroup | RoleGroup = CreateGroup(
+        created_group: AppGroup | OktaGroup | RoleGroup = await CreateGroup(
             group=new_group,
             tags=resolved_tags,
             current_user_id=approver_id,
         ).execute()
 
         # Check tags on created group for ownership length constraints including propagated app tags
-        created_group_with_tags = db.session.scalars(
-            select(OktaGroup)
-            .options(
-                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+        created_group_with_tags = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(
+                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                )
+                .where(OktaGroup.id == created_group.id)
+                .where(OktaGroup.deleted_at.is_(None))
             )
-            .where(OktaGroup.id == created_group.id)
-            .where(OktaGroup.deleted_at.is_(None))
         ).first()
 
         tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
@@ -245,12 +253,12 @@ class ApproveGroupRequest:
         # If app owner auto approval, skip if group has owner add constraint (will inherit ownership via app)
         can_add_owner = True
         if self.bypass_self_approval and approver_id is not None:
-            can_add_owner, _ = CheckForSelfAdd(
+            can_add_owner, _ = await CheckForSelfAdd(
                 group=created_group_with_tags, current_user=approver_id, owners_to_add=[approver_id]
             ).execute_for_group()
 
         if can_add_owner:
-            ModifyGroupUsers(
+            await ModifyGroupUsers(
                 group=created_group_with_tags,
                 owners_to_add=[group_request.requester_user_id],
                 users_added_ended_at=coalesced_ownership_ending_at,
@@ -265,11 +273,11 @@ class ApproveGroupRequest:
         group_request.resolution_reason = self.approval_reason
         group_request.approved_group_id = created_group.id
 
-        db.session.commit()
+        await db.session.commit()
 
         if self.notify:
-            requester = db.session.get(OktaUser, group_request.requester_user_id)
-            approvers = get_all_possible_request_approvers(group_request)
+            requester = await db.session.get(OktaUser, group_request.requester_user_id)
+            approvers = await get_all_possible_request_approvers(group_request)
             self.notification_hook.access_group_request_completed(
                 group_request=group_request,
                 group=created_group,

@@ -16,12 +16,16 @@ class DeleteApp:
         self.app_id = app if isinstance(app, str) else app.id
         self.current_user_id = current_user_id
 
-    def execute(self) -> None:
-        app = db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id)).first()
+    async def execute(self) -> None:
+        app = (
+            await db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id))
+        ).first()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -34,7 +38,7 @@ class DeleteApp:
         # Audit logging
         email = None
         if current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -52,18 +56,20 @@ class DeleteApp:
         )
 
         app.deleted_at = func.now()
-        db.session.commit()
+        await db.session.commit()
 
         # Delete all associated Okta App Groups and end their membership
-        app_groups = db.session.scalars(
-            select(AppGroup).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == app.id)
+        app_groups = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.deleted_at.is_(None)).where(AppGroup.app_id == app.id)
+            )
         ).all()
         app_group_ids = [ag.id for ag in app_groups]
         for app_group_id in app_group_ids:
-            DeleteGroup(group=app_group_id, current_user_id=current_user_id).execute()
+            await DeleteGroup(group=app_group_id, current_user_id=current_user_id).execute()
 
         # End all tag mappings for this app (OktaGroupTagMaps are ended by the DeleteGroup operation above)
-        db.session.execute(
+        await db.session.execute(
             update(AppTagMap)
             .where(AppTagMap.app_id == app.id)
             .where(
@@ -75,4 +81,4 @@ class DeleteApp:
             .values({AppTagMap.ended_at: func.now()})
             .execution_options(synchronize_session="fetch")
         )
-        db.session.commit()
+        await db.session.commit()

@@ -50,11 +50,13 @@ class OktaService:
     async def _okta_client(self) -> AsyncIterator[OktaClient]:
         """Yield a fresh Okta client whose pooled session is bound to the running loop.
 
-        Each public method runs its coroutine under its own ``asyncio.run`` event
-        loop. A new client per call keeps the aiohttp session, connector, and DNS
-        resolver from being shared across those loops, which otherwise races when
-        calls run concurrently (e.g. on the FastAPI/MCP threadpools) and raises
-        "Future attached to a different loop".
+        Callers run on different event loops: the FastAPI server loop, a
+        per-invocation loop in each CLI command (``asyncio.run`` in
+        ``manage.py``), and per-test loops under pytest. A new client per call
+        keeps the aiohttp session, connector, and DNS resolver from being
+        shared across loops, which otherwise raises "Future attached to a
+        different loop". A shared, lifespan-managed client (for connection
+        pooling on the server loop) is a possible follow-up.
         """
         client = OktaClient({"orgUrl": f"https://{self.okta_domain}", "token": self.okta_api_token})
         async with client:
@@ -103,123 +105,108 @@ class OktaService:
                 wait_time = RETRY_BACKOFF_FACTOR * (2**attempt)
             await asyncio.sleep(wait_time)
 
-    def get_user(self, userId: str) -> User:
-        async def _get_user(userId: str) -> User:
-            async with self._okta_client() as client:
-                user, _, error = await OktaService._retry(client.get_user, userId)
+    async def get_user(self, userId: str) -> User:
+        async with self._okta_client() as client:
+            user, _, error = await OktaService._retry(client.get_user, userId)
+
+        if error is not None:
+            raise Exception(error)
+
+        assert user is not None
+
+        return User(user)
+
+    async def get_user_schema(self, userTypeId: str) -> UserSchema:
+        async with self._okta_client() as client:
+            userType, _, error = await OktaService._retry(client.get_user_type, userTypeId)
 
             if error is not None:
                 raise Exception(error)
 
-            assert user is not None
+            assert userType is not None
 
-            return User(user)
+            schemaId = userType.links["schema"]["href"].rsplit("/", 1).pop()
 
-        return asyncio.run(_get_user(userId))
+            schema, _, error = await OktaService._retry(client.get_user_schema, schemaId)
 
-    def get_user_schema(self, userTypeId: str) -> UserSchema:
-        async def _get_user_schema(userTypeId: str) -> UserSchema:
-            async with self._okta_client() as client:
-                userType, _, error = await OktaService._retry(client.get_user_type, userTypeId)
+        if error is not None:
+            raise Exception(error)
 
-                if error is not None:
-                    raise Exception(error)
+        return UserSchema(schema)
 
-                assert userType is not None
-
-                schemaId = userType.links["schema"]["href"].rsplit("/", 1).pop()
-
-                schema, _, error = await OktaService._retry(client.get_user_schema, schemaId)
+    async def list_users(self) -> list[User]:
+        async with self._okta_client() as client:
+            users, resp, error = await OktaService._retry(client.list_users)
 
             if error is not None:
                 raise Exception(error)
 
-            return UserSchema(schema)
+            assert users is not None and resp is not None
 
-        return asyncio.run(_get_user_schema(userTypeId))
+            while resp.has_next():
+                more_users, _ = await OktaService._retry(resp.next)
+                users.extend(more_users)
 
-    def list_users(self) -> list[User]:
-        async def _list_users() -> list[User]:
-            async with self._okta_client() as client:
-                users, resp, error = await OktaService._retry(client.list_users)
+        return list(map(lambda user: User(user), users))
 
-                if error is not None:
-                    raise Exception(error)
+    async def create_group(self, name: str, description: str) -> Group:
+        async with self._okta_client() as client:
+            group, _, error = await OktaService._retry(
+                client.create_group,
+                OktaGroupType({"profile": {"name": name, "description": description}}),
+            )
 
-                assert users is not None and resp is not None
+        if error is not None:
+            raise Exception(error)
 
-                while resp.has_next():
-                    more_users, _ = await OktaService._retry(resp.next)
-                    users.extend(more_users)
+        assert group is not None
 
-            return list(map(lambda user: User(user), users))
+        return Group(group)
 
-        return asyncio.run(_list_users())
+    async def update_group(self, groupId: str, name: str, description: str) -> Group:
+        async with self._okta_client() as client:
+            # Fetch Existing Group Data
+            existing_group_data, _, get_error = await OktaService._retry(client.get_group, groupId)
+            if get_error is not None:
+                logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
+                raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
+            if existing_group_data is None:
+                logger.error(f"Group {groupId} not found in Okta before update.")
+                raise Exception(f"Group {groupId} not found in Okta before update.")
 
-    def create_group(self, name: str, description: str) -> Group:
-        async def _create_group(name: str, description: str) -> Group:
-            async with self._okta_client() as client:
-                group, _, error = await OktaService._retry(
-                    client.create_group,
-                    OktaGroupType({"profile": {"name": name, "description": description}}),
-                )
+            # Extract Existing Profile
+            existing_profile = {}
+            if existing_group_data.profile:
+                # Using __dict__ can be fragile if Okta changes internal representation.
+                # If specific profile attributes are known, accessing them directly might be safer.
+                # Filter out None values if needed by Okta API or desired.
+                existing_profile = {k: v for k, v in existing_group_data.profile.__dict__.items() if v is not None}
 
-            if error is not None:
-                raise Exception(error)
+            # Merge Updated Profile Data
+            new_profile = {**existing_profile}  # Start with a copy of the existing profile
+            new_profile["name"] = name  # Update/set the name
+            new_profile["description"] = (
+                description if description is not None else ""
+            )  # Update/set the description (handle None)
 
-            assert group is not None
+            # Construct the New Payload
+            group_payload = OktaGroupType({"profile": new_profile})
 
-            return Group(group)
+            # Modify the Update Call to use the new payload
+            group, _, error = await OktaService._retry(
+                client.update_group,
+                groupId,
+                group_payload,
+            )
 
-        return asyncio.run(_create_group(name, description))
+        if error is not None:
+            raise Exception(error)
 
-    def update_group(self, groupId: str, name: str, description: str) -> Group:
-        async def _update_group(groupId: str, name: str, description: str) -> Group:
-            async with self._okta_client() as client:
-                # Fetch Existing Group Data
-                existing_group_data, _, get_error = await OktaService._retry(client.get_group, groupId)
-                if get_error is not None:
-                    logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
-                    raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
-                if existing_group_data is None:
-                    logger.error(f"Group {groupId} not found in Okta before update.")
-                    raise Exception(f"Group {groupId} not found in Okta before update.")
+        assert group is not None
 
-                # Extract Existing Profile
-                existing_profile = {}
-                if existing_group_data.profile:
-                    # Using __dict__ can be fragile if Okta changes internal representation.
-                    # If specific profile attributes are known, accessing them directly might be safer.
-                    # Filter out None values if needed by Okta API or desired.
-                    existing_profile = {k: v for k, v in existing_group_data.profile.__dict__.items() if v is not None}
+        return Group(group)
 
-                # Merge Updated Profile Data
-                new_profile = {**existing_profile}  # Start with a copy of the existing profile
-                new_profile["name"] = name  # Update/set the name
-                new_profile["description"] = (
-                    description if description is not None else ""
-                )  # Update/set the description (handle None)
-
-                # Construct the New Payload
-                group_payload = OktaGroupType({"profile": new_profile})
-
-                # Modify the Update Call to use the new payload
-                group, _, error = await OktaService._retry(
-                    client.update_group,
-                    groupId,
-                    group_payload,
-                )
-
-            if error is not None:
-                raise Exception(error)
-
-            assert group is not None
-
-            return Group(group)
-
-        return asyncio.run(_update_group(groupId, name, description))
-
-    async def async_add_user_to_group(self, groupId: str, userId: str) -> None:
+    async def add_user_to_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot add user to groupId of {groupId}")
             return
@@ -237,10 +224,7 @@ class OktaService:
         except OktaTimeout:
             logger.warning(f"Timed out adding user {userId} to group {groupId}")
 
-    def add_user_to_group(self, groupId: str, userId: str) -> None:
-        asyncio.run(self.async_add_user_to_group(groupId, userId))
-
-    async def async_remove_user_from_group(self, groupId: str, userId: str) -> None:
+    async def remove_user_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot remove user from groupId of {groupId}")
             return
@@ -258,46 +242,37 @@ class OktaService:
         except OktaTimeout:
             logger.warning(f"Timed out removing user {userId} from group {groupId}")
 
-    def remove_user_from_group(self, groupId: str, userId: str) -> None:
-        asyncio.run(self.async_remove_user_from_group(groupId, userId))
-
     # TODO: Implement fetching group membership count for fast syncing
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
-    def get_group(self, groupId: str) -> Group:
-        async def _get_group(groupId: str) -> Group:
-            async with self._okta_client() as client:
-                group, _, error = await OktaService._retry(client.get_group, groupId)
+    async def get_group(self, groupId: str) -> Group:
+        async with self._okta_client() as client:
+            group, _, error = await OktaService._retry(client.get_group, groupId)
 
-            if error is not None:
-                raise Exception(error)
+        if error is not None:
+            raise Exception(error)
 
-            assert group is not None
+        assert group is not None
 
-            return Group(group)
-
-        return asyncio.run(_get_group(groupId))
+        return Group(group)
 
     DEFAULT_QUERY_PARAMS = {"filter": 'type eq "BUILT_IN" or type eq "OKTA_GROUP"'}
 
-    def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
-        async def _list_groups(query_params: dict[str, str]) -> list[Group]:
-            async with self._okta_client() as client:
-                groups, resp, error = await OktaService._retry(client.list_groups, query_params=query_params)
+    async def list_groups(self, *, query_params: dict[str, str] = DEFAULT_QUERY_PARAMS) -> list[Group]:
+        async with self._okta_client() as client:
+            groups, resp, error = await OktaService._retry(client.list_groups, query_params=query_params)
 
-                if error is not None:
-                    raise Exception(error)
-                assert groups is not None and resp is not None
+            if error is not None:
+                raise Exception(error)
+            assert groups is not None and resp is not None
 
-                while resp.has_next():
-                    more_groups, _ = await OktaService._retry(resp.next)
-                    groups.extend(more_groups)
+            while resp.has_next():
+                more_groups, _ = await OktaService._retry(resp.next)
+                groups.extend(more_groups)
 
-            return list(map(lambda group: Group(group), groups))
+        return list(map(lambda group: Group(group), groups))
 
-        return asyncio.run(_list_groups(query_params))
-
-    def list_groups_with_active_rules(self) -> dict[str, list[OktaGroupRuleType]]:
-        group_rules = self.list_group_rules()
+    async def list_groups_with_active_rules(self) -> dict[str, list[OktaGroupRuleType]]:
+        group_rules = await self.list_group_rules()
         group_ids_with_group_rules = {}  # type: dict[str, list[OktaGroupRuleType]]
         for group_rule in group_rules:
             if group_rule.status == "ACTIVE":
@@ -305,65 +280,53 @@ class OktaService:
                     group_ids_with_group_rules.setdefault(id, []).append(group_rule)
         return group_ids_with_group_rules
 
-    def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
-        async def _list_group_rules(query_params: dict[str, str]) -> list[OktaGroupRuleType]:
-            async with self._okta_client() as client:
-                group_rules, resp, error = await OktaService._retry(client.list_group_rules, query_params=query_params)
+    async def list_group_rules(self, *, query_params: dict[str, str] = {}) -> list[OktaGroupRuleType]:
+        async with self._okta_client() as client:
+            group_rules, resp, error = await OktaService._retry(client.list_group_rules, query_params=query_params)
 
-                if error is not None:
-                    raise Exception(error)
+            if error is not None:
+                raise Exception(error)
 
-                assert group_rules is not None and resp is not None
+            assert group_rules is not None and resp is not None
 
-                while resp.has_next():
-                    more_group_rules, _ = await OktaService._retry(resp.next)
-                    group_rules.extend(more_group_rules)
+            while resp.has_next():
+                more_group_rules, _ = await OktaService._retry(resp.next)
+                group_rules.extend(more_group_rules)
 
-            return group_rules
+        return group_rules
 
-        return asyncio.run(_list_group_rules(query_params))
+    async def list_users_for_group(self, groupId: str) -> list[User]:
+        async with self._okta_client() as client:
+            users, resp, error = await OktaService._retry(client.list_group_users, groupId)
 
-    def list_users_for_group(self, groupId: str) -> list[User]:
-        async def _list_users_for_group(groupId: str) -> list[User]:
-            async with self._okta_client() as client:
-                users, resp, error = await OktaService._retry(client.list_group_users, groupId)
+            if error is not None:
+                raise Exception(error)
+            assert users is not None and resp is not None
 
-                if error is not None:
-                    raise Exception(error)
-                assert users is not None and resp is not None
+            while resp.has_next():
+                more_users, _ = await OktaService._retry(resp.next)
+                users.extend(more_users)
 
-                while resp.has_next():
-                    more_users, _ = await OktaService._retry(resp.next)
-                    users.extend(more_users)
+        return list(map(lambda user: User(user), users))
 
-            return list(map(lambda user: User(user), users))
-
-        return asyncio.run(_list_users_for_group(groupId))
-
-    async def async_delete_group(self, groupId: str) -> None:
+    async def delete_group(self, groupId: str) -> None:
         async with self._okta_client() as client:
             _, error = await OktaService._retry(client.delete_group, groupId)
 
         if error is not None:
             raise Exception(error)
 
-    def delete_group(self, groupId: str) -> None:
-        asyncio.run(self.async_delete_group(groupId))
-
     # Below are custom API endpoints that are not supported by the Okta Python SDK
     # https://github.com/okta/okta-sdk-python#call-other-api-endpoints
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/assignGroupOwner
-    def add_owner_to_group(self, groupId: str, userId: str) -> None:
+    async def add_owner_to_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot add owner to groupId of {groupId}")
             return
         if userId is None or userId == "":
             logger.warning(f"cannot add owner to userId of {userId}")
             return
-        asyncio.run(self.async_add_owner_to_group(groupId, userId))
-
-    async def async_add_owner_to_group(self, groupId: str, userId: str) -> None:
         if not self.use_group_owners_api:
             return
 
@@ -392,16 +355,13 @@ class OktaService:
         return
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/deleteGroupOwner
-    def remove_owner_from_group(self, groupId: str, userId: str) -> None:
+    async def remove_owner_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
             logger.warning(f"cannot to remove owner from groupId of {groupId}")
             return
         if userId is None or userId == "":
             logger.warning(f"cannot remove owner from userId of {userId}")
             return
-        asyncio.run(self.async_remove_owner_from_group(groupId, userId))
-
-    async def async_remove_owner_from_group(self, groupId: str, userId: str) -> None:
         if not self.use_group_owners_api:
             return
 
@@ -429,39 +389,36 @@ class OktaService:
         return
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/Group/#tag/Group/operation/listGroupOwners
-    def list_owners_for_group(self, groupId: str) -> list[User]:
+    async def list_owners_for_group(self, groupId: str) -> list[User]:
         if groupId is None or groupId == "":
             logger.warning(f"cannot to list owners for groupId of {groupId}")
             return []
         if not self.use_group_owners_api:
             return []
 
-        async def _list_owners_for_group(groupId: str) -> list[User]:
-            async with self._okta_client() as client:
-                request_executor = client.get_request_executor()
-                request, error = await request_executor.create_request(
-                    method="GET",
-                    url="/api/v1/groups/{groupId}/owners".format(groupId=groupId),
-                    body={},
-                    headers={},
-                    oauth=False,
-                )
-
-                if error is not None:
-                    raise Exception(error)
-
-                response, error = await OktaService._retry(request_executor.execute, request, OktaUserType)
+        async with self._okta_client() as client:
+            request_executor = client.get_request_executor()
+            request, error = await request_executor.create_request(
+                method="GET",
+                url="/api/v1/groups/{groupId}/owners".format(groupId=groupId),
+                body={},
+                headers={},
+                oauth=False,
+            )
 
             if error is not None:
                 raise Exception(error)
-            assert response is not None
 
-            result = []
-            for user in response.get_body():
-                result.append(User(OktaUserType(user)))
-            return result
+            response, error = await OktaService._retry(request_executor.execute, request, OktaUserType)
 
-        return asyncio.run(_list_owners_for_group(groupId))
+        if error is not None:
+            raise Exception(error)
+        assert response is not None
+
+        result = []
+        for user in response.get_body():
+            result.append(User(OktaUserType(user)))
+        return result
 
 
 # Wrapper class for the Okta API user model

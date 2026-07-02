@@ -25,7 +25,7 @@ spec:
                 - name: OKTA_DOMAIN
                   value: mydomain.okta.com # Replace with your Okta domain
                 - name: DATABASE_URI
-                  value: postgresql+pg8000:// # Replace with your database URI
+                  value: postgresql:// # Replace with your database URI
                 - name: OKTA_API_TOKEN
                   valueFrom:
                     secretKeyRef:

@@ -15,11 +15,13 @@ class DeleteTag:
         self.tag_id = tag if isinstance(tag, str) else tag.id
         self.current_user_id = current_user_id
 
-    def execute(self) -> None:
-        tag = db.session.scalars(select(Tag).where(Tag.id == self.tag_id)).first()
+    async def execute(self) -> None:
+        tag = (await db.session.scalars(select(Tag).where(Tag.id == self.tag_id))).first()
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
@@ -28,7 +30,7 @@ class DeleteTag:
         # Audit logging
         email = None
         if current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
         _ctx = get_request_context()
 
@@ -50,7 +52,7 @@ class DeleteTag:
         tag.deleted_at = func.now()
 
         # End all active group tag mappings for tag
-        db.session.execute(
+        await db.session.execute(
             update(OktaGroupTagMap)
             .where(
                 or_(
@@ -64,7 +66,7 @@ class DeleteTag:
         )
 
         # End all active app tag mappings for tag
-        db.session.execute(
+        await db.session.execute(
             update(AppTagMap)
             .where(
                 or_(
@@ -77,4 +79,4 @@ class DeleteTag:
             .execution_options(synchronize_session="fetch")
         )
 
-        db.session.commit()
+        await db.session.commit()

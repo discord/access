@@ -13,6 +13,7 @@ group is a role) where it is the requester role.
 
 import pytest
 from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db
@@ -25,23 +26,27 @@ from api.services import okta
 def _mock_okta(mocker: MockerFixture) -> None:
     # Keep the operations off the network. patch.object auto-detects the async
     # functions and substitutes AsyncMocks.
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
-    mocker.patch.object(okta, "async_remove_user_from_group")
-    mocker.patch.object(okta, "async_remove_owner_from_group")
-    mocker.patch.object(okta, "async_delete_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    mocker.patch.object(okta, "remove_user_from_group")
+    mocker.patch.object(okta, "remove_owner_from_group")
+    mocker.patch.object(okta, "delete_group")
 
 
-def _access_owner(db: Db) -> OktaUser:
-    owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+async def _access_owner(db: Db) -> OktaUser:
+    owner = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     assert owner is not None
     return owner
 
 
-def _pending_role_request(db: Db, *, requester_role: RoleGroup, requested_group: OktaGroup, requester_user: OktaUser):
+async def _pending_role_request(
+    db: Db, *, requester_role: RoleGroup, requested_group: OktaGroup, requester_user: OktaUser
+):
     # Requester must own the role to file a role request for it.
-    ModifyGroupUsers(group=requester_role, owners_to_add=[requester_user.id], sync_to_okta=False).execute()
-    role_request = CreateRoleRequest(
+    await ModifyGroupUsers(group=requester_role, owners_to_add=[requester_user.id], sync_to_okta=False).execute()
+    role_request = await CreateRoleRequest(
         requester_user=requester_user,
         requester_role=requester_role,
         requested_group=requested_group,
@@ -57,34 +62,38 @@ def _pending_role_request(db: Db, *, requester_role: RoleGroup, requested_group:
 # ---------------------------------------------------------------------------
 
 
-def test_unmanage_group_rejects_pending_role_request_for_group(
+async def test_unmanage_group_rejects_pending_role_request_for_group(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
-    role_request = _pending_role_request(db, requester_role=role_group, requested_group=okta_group, requester_user=user)
+    await db.session.commit()
+    role_request = await _pending_role_request(
+        db, requester_role=role_group, requested_group=okta_group, requester_user=user
+    )
 
     # Group transitions to unmanaged (as the syncer does before UnmanageGroup).
     okta_group.is_managed = False
-    db.session.commit()
+    await db.session.commit()
 
-    UnmanageGroup(group=okta_group, current_user_id=_access_owner(db).id).execute()
+    await UnmanageGroup(group=okta_group, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(role_request)
+    await db.session.refresh(role_request)
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None
 
 
-def test_delete_group_rejects_pending_role_request_for_group(
+async def test_delete_group_rejects_pending_role_request_for_group(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
-    role_request = _pending_role_request(db, requester_role=role_group, requested_group=okta_group, requester_user=user)
+    await db.session.commit()
+    role_request = await _pending_role_request(
+        db, requester_role=role_group, requested_group=okta_group, requester_user=user
+    )
 
-    DeleteGroup(group=okta_group, sync_to_okta=False, current_user_id=_access_owner(db).id).execute()
+    await DeleteGroup(group=okta_group, sync_to_okta=False, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(role_request)
+    await db.session.refresh(role_request)
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None
 
@@ -94,33 +103,37 @@ def test_delete_group_rejects_pending_role_request_for_group(
 # ---------------------------------------------------------------------------
 
 
-def test_unmanage_group_rejects_pending_role_request_where_group_is_requester_role(
+async def test_unmanage_group_rejects_pending_role_request_where_group_is_requester_role(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
+    await db.session.commit()
     # role_group is the requester; okta_group is the requested target.
-    role_request = _pending_role_request(db, requester_role=role_group, requested_group=okta_group, requester_user=user)
+    role_request = await _pending_role_request(
+        db, requester_role=role_group, requested_group=okta_group, requester_user=user
+    )
 
     role_group.is_managed = False
-    db.session.commit()
+    await db.session.commit()
 
-    UnmanageGroup(group=role_group, current_user_id=_access_owner(db).id).execute()
+    await UnmanageGroup(group=role_group, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(role_request)
+    await db.session.refresh(role_request)
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None
 
 
-def test_delete_group_rejects_pending_role_request_where_group_is_requester_role(
+async def test_delete_group_rejects_pending_role_request_where_group_is_requester_role(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
-    role_request = _pending_role_request(db, requester_role=role_group, requested_group=okta_group, requester_user=user)
+    await db.session.commit()
+    role_request = await _pending_role_request(
+        db, requester_role=role_group, requested_group=okta_group, requester_user=user
+    )
 
-    DeleteGroup(group=role_group, sync_to_okta=False, current_user_id=_access_owner(db).id).execute()
+    await DeleteGroup(group=role_group, sync_to_okta=False, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(role_request)
+    await db.session.refresh(role_request)
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None

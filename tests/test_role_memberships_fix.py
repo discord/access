@@ -1,14 +1,16 @@
 from datetime import UTC, datetime, timedelta
 
 from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.integrity import verify_and_fix_role_memberships
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
 from api.services import okta
+from tests.helpers import db_count
 
 
-def test_missing_user_from_group_membership(
+async def test_missing_user_from_group_membership(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -19,33 +21,37 @@ def test_missing_user_from_group_membership(
     db.session.add(member_role_group_map)
     owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
     add_ownership_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert add_membership_spy.call_count == 1
     assert add_ownership_spy.call_count == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 1
     )
 
 
-def test_missing_user_from_group_membership_with_expiring_role_membership(
+async def test_missing_user_from_group_membership_with_expiring_role_membership(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -58,53 +64,61 @@ def test_missing_user_from_group_membership_with_expiring_role_membership(
     db.session.add(member_role_group_map)
     owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
     add_ownership_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert add_membership_spy.call_count == 1
     assert add_ownership_spy.call_count == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
 
 
-def test_missing_user_from_group_membership_with_expiring_role_assignment(
+async def test_missing_user_from_group_membership_with_expiring_role_assignment(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -127,7 +141,7 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
         ended_at=datetime.now(UTC) + timedelta(days=6),
     )
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
 
     # drop identity-map state staled by the ops above (expire_on_commit=False)
     db.session.expire_all()
@@ -135,48 +149,56 @@ def test_missing_user_from_group_membership_with_expiring_role_assignment(
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
     add_ownership_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert add_membership_spy.call_count == 1
     assert add_ownership_spy.call_count == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
 
 
-def test_missing_user_from_group_membership_with_both_expiring(
+async def test_missing_user_from_group_membership_with_both_expiring(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -197,53 +219,61 @@ def test_missing_user_from_group_membership_with_both_expiring(
         ended_at=datetime.now(UTC) + timedelta(days=4),
     )
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
     add_ownership_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert add_membership_spy.call_count == 1
     assert add_ownership_spy.call_count == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=1)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=3)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=3)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=5)),
+            ),
         )
-        .count()
         == 1
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
 
 
-def test_extra_user_from_role_membership(
+async def test_extra_user_from_role_membership(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -254,7 +284,7 @@ def test_extra_user_from_role_membership(
     db.session.add(member_role_group_map)
     owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(
         OktaUserGroupMember(
             user_id=user.id,
@@ -270,40 +300,46 @@ def test_extra_user_from_role_membership(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
     remove_ownership_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert remove_membership_spy.call_count == 1
     assert remove_ownership_spy.call_count == 1
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == okta_group.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == okta_group.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
 
 
-def test_extra_user_from_role_membership_with_direct(
+async def test_extra_user_from_role_membership_with_direct(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     db.session.add(user)
@@ -314,7 +350,7 @@ def test_extra_user_from_role_membership_with_direct(
     db.session.add(member_role_group_map)
     owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
     db.session.add(owner_role_group_map)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(
         OktaUserGroupMember(
             user_id=user.id,
@@ -343,34 +379,40 @@ def test_extra_user_from_role_membership_with_direct(
             is_owner=True,
         )
     )
-    db.session.commit()
+    await db.session.commit()
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
     remove_ownership_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
-    verify_and_fix_role_memberships()
+    await verify_and_fix_role_memberships()
 
     assert remove_membership_spy.call_count == 0
     assert remove_ownership_spy.call_count == 0
 
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == member_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.role_group_map_id == owner_role_group_map.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 0
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.group_id == okta_group.id)
-        .filter(OktaUserGroupMember.ended_at.is_(None))
-        .count()
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == okta_group.id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
         == 2
     )
