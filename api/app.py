@@ -416,9 +416,27 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
             except (ValueError, OSError):
                 raise HTTPException(status_code=404, detail="Not Found")
             if candidate.is_file():
-                return FileResponse(candidate)
+                if spa_path.startswith("assets/"):
+                    # Vite content-hashes this directory's filenames, so a
+                    # given URL can never resolve to different bytes later.
+                    # Safe to cache indefinitely.
+                    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+                else:
+                    headers = {}
+                return FileResponse(candidate, headers=headers)
+            if spa_path.startswith("assets/"):
+                # Everything under assets/ is a content-hashed build
+                # artifact. If it's not on disk it's genuinely missing (e.g.
+                # a request that landed on a pod running a different build
+                # during a rolling deploy), not a client-side route for
+                # React Router to handle, and it must not be cached as a
+                # false negative once the file is actually available again.
+                raise HTTPException(status_code=404, detail="Not Found", headers={"Cache-Control": "no-store"})
             # Anything else falls back to index.html so React Router can
-            # handle the path on the client.
-            return FileResponse(BUILD_DIR / "index.html")
+            # handle the path on the client. This response must never be
+            # cached: it's the only thing that says which asset hashes are
+            # currently valid, and a cached copy could keep pointing at
+            # hashes a future deploy has already removed.
+            return FileResponse(BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
 
     return app
