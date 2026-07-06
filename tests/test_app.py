@@ -614,6 +614,72 @@ def test_create_app_with_name_collision(
     assert len(app_groups) == 1
 
 
+def test_create_app_additional_group_collision_converts_correct_group(
+    client: TestClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
+) -> None:
+    # Regression for #505: the additional-app-groups collision branch must convert
+    # existing_group, not existing_owner_group. With the bug, no pre-existing owner
+    # group leaves existing_owner_group == None, so ModifyGroupType(group=None) raises
+    # AttributeError and the request 500s.
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+    )
+    mocker.patch.object(okta, "async_add_user_to_group")
+    mocker.patch.object(okta, "async_add_owner_to_group")
+
+    prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+    legacy_name = f"{prefix}Legacy"
+    shared_name = f"{prefix}Shared"
+
+    # A pre-existing plain OktaGroup whose name collides with a requested additional
+    # app group. No App-Payments-Owners group pre-exists, so with the bug
+    # existing_owner_group is None.
+    plain_group = OktaGroupFactory.create(name=legacy_name)
+    db.session.add(plain_group)
+    db.session.commit()
+    plain_group_id = plain_group.id
+
+    # A pre-existing AppGroup attached to a *different* app that also collides — it
+    # should be reattached to the new app.
+    other_app = AppFactory.create()
+    db.session.add(other_app)
+    db.session.commit()
+    other_app_group = AppGroupFactory.create(app_id=other_app.id, name=shared_name, is_owner=False)
+    db.session.add(other_app_group)
+    db.session.commit()
+    other_app_group_id = other_app_group.id
+
+    apps_url = url_for("api-apps.apps")
+    rep = client.post(
+        apps_url,
+        json={
+            "name": "Payments",
+            "initial_additional_app_groups": [
+                {"name": legacy_name},
+                {"name": shared_name},
+            ],
+        },
+    )
+    assert rep.status_code == 201
+    new_app_id = rep.json()["id"]
+
+    # The plain OktaGroup was converted to an AppGroup owned by the new app.
+    converted = db.session.get(AppGroup, plain_group_id)
+    assert converted is not None
+    assert converted.app_id == new_app_id
+    assert converted.is_owner is False
+
+    # The AppGroup previously attached to another app was reattached to the new app.
+    reattached = db.session.get(AppGroup, other_app_group_id)
+    assert reattached is not None
+    assert reattached.app_id == new_app_id
+    assert reattached.is_owner is False
+
+
 def test_get_all_app(client: TestClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
     apps = AppFactory.create_batch(10)

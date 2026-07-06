@@ -209,9 +209,9 @@ class CreateApp:
                     CreateGroup(group=app_group, current_user_id=current_user_id).execute()
                 else:
                     group_id = existing_group.id
-                    if type(existing_owner_group) is not AppGroup:
+                    if type(existing_group) is not AppGroup:
                         ModifyGroupType(
-                            group=existing_owner_group,
+                            group=existing_group,
                             group_changes=AppGroup(app_id=app_id, is_owner=False),
                             current_user_id=current_user_id,
                         ).execute()
