@@ -26,7 +26,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugin_to_invoke, invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -300,8 +300,7 @@ class ModifyRoleGroups:
                     # Use the eager-loaded group (with `app`) rather than a bare
                     # db.session.get, so the hook path can read `group.app`.
                     group = groups_to_remove_by_id[group_id]
-                    plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-                    if plugin_id is not None:
+                    if get_app_group_lifecycle_plugin_to_invoke(group) is not None:
                         members_losing_access = (
                             await db.session.scalars(
                                 select(OktaUser)
@@ -309,21 +308,9 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        try:
-                            hook = get_app_group_lifecycle_hook()
-                            # The hookspec takes a sync `Session`; bridge the AsyncSession
-                            # through run_sync so plugins can use it synchronously (TODO 18).
-                            await db.session.run_sync(
-                                lambda s: hook.group_members_removed(
-                                    session=s, group=group, members=members_losing_access, plugin_id=plugin_id
-                                )
-                            )
-                            await db.session.commit()
-                        except Exception:
-                            logging.getLogger("api").exception(
-                                f"Failed to invoke group_members_removed hook for group {group.id} with plugin '{plugin_id}'"
-                            )
-                            await db.session.rollback()
+                        await invoke_app_group_lifecycle_hook(
+                            "group_members_removed", group=group, members=members_losing_access
+                        )
 
                 if self.sync_to_okta:
                     for member_id in okta_members_to_remove_ids:
@@ -454,8 +441,7 @@ class ModifyRoleGroups:
                 # Invoke app group lifecycle plugin hooks for added members
                 if len(members_gaining_access_ids) > 0:
                     group = groups_added_by_id[role_associated_group_map.group_id]
-                    plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-                    if plugin_id is not None:
+                    if get_app_group_lifecycle_plugin_to_invoke(group) is not None:
                         members_gaining_access = (
                             await db.session.scalars(
                                 select(OktaUser)
@@ -463,21 +449,9 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        try:
-                            hook = get_app_group_lifecycle_hook()
-                            # The hookspec takes a sync `Session`; bridge the AsyncSession
-                            # through run_sync so plugins can use it synchronously (TODO 18).
-                            await db.session.run_sync(
-                                lambda s: hook.group_members_added(
-                                    session=s, group=group, members=members_gaining_access, plugin_id=plugin_id
-                                )
-                            )
-                            await db.session.commit()
-                        except Exception:
-                            logging.getLogger("api").exception(
-                                f"Failed to invoke group_members_added hook for group {group.id} with plugin '{plugin_id}'"
-                            )
-                            await db.session.rollback()
+                        await invoke_app_group_lifecycle_hook(
+                            "group_members_added", group=group, members=members_gaining_access
+                        )
 
                 for member in active_role_memberships:
                     # Add user to okta group members

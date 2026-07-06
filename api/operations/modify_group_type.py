@@ -20,7 +20,7 @@ from api.models import (
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -105,21 +105,7 @@ class ModifyGroupType:
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
                 # the linked GitHub team).
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-                if plugin_id is not None:
-                    try:
-                        hook = get_app_group_lifecycle_hook()
-                        # The hookspec takes a sync `Session`; bridge the AsyncSession
-                        # through run_sync so plugins can use it synchronously (TODO 18).
-                        await db.session.run_sync(
-                            lambda s: hook.group_deleted(session=s, group=group, plugin_id=plugin_id)
-                        )
-                        await db.session.commit()
-                    except Exception:
-                        logging.getLogger("api").exception(
-                            f"Failed to invoke group_deleted hook for group {group.id} with plugin '{plugin_id}'"
-                        )
-                        await db.session.rollback()
+                await invoke_app_group_lifecycle_hook("group_deleted", group=group)
 
                 # Remove app tag map for this group that is no longer attached to an app
                 await db.session.execute(
@@ -275,21 +261,7 @@ class ModifyGroupType:
             # Invoke group_created hook after converting to an AppGroup (symmetric
             # with group_deleted which fires when converting away from AppGroup).
             if type(self.group_changes) is AppGroup:
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-                if plugin_id is not None:
-                    try:
-                        hook = get_app_group_lifecycle_hook()
-                        # The hookspec takes a sync `Session`; bridge the AsyncSession
-                        # through run_sync so plugins can use it synchronously (TODO 18).
-                        await db.session.run_sync(
-                            lambda s: hook.group_created(session=s, group=group, plugin_id=plugin_id)
-                        )
-                        await db.session.commit()
-                    except Exception:
-                        logging.getLogger("api").exception(
-                            f"Failed to invoke group_created hook for group {group.id}" f" with plugin '{plugin_id}'"
-                        )
-                        await db.session.rollback()
+                await invoke_app_group_lifecycle_hook("group_created", group=group)
 
         # Audit logging if type changed
         if group.type != old_group_type:

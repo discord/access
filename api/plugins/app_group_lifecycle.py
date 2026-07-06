@@ -6,6 +6,7 @@ from typing import Any, Literal
 import pluggy
 from sqlalchemy.orm import Session
 
+from api.extensions import db
 from api.models import App, AppGroup, OktaUser
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
@@ -328,6 +329,35 @@ def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> str | None:
         return None
 
     return group.app.app_group_lifecycle_plugin
+
+
+async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwargs: Any) -> None:
+    """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
+
+    No-op when no lifecycle plugin applies to ``group``. The hookspecs take a sync
+    ``Session``, so this bridges the request's ``AsyncSession`` through ``run_sync``
+    and hands the plugin a working sync session (TODO 18). Commits on success; on any
+    hook error it logs and rolls back so a misbehaving plugin can't abort the
+    surrounding operation.
+
+    ``kwargs`` are forwarded to the hook alongside ``session`` and ``group`` — e.g.
+    ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
+    ``group_updated``.
+    """
+    plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+    if plugin_id is None:
+        return
+    try:
+        hook = get_app_group_lifecycle_hook()
+        await db.session.run_sync(
+            lambda s: getattr(hook, hook_method)(session=s, group=group, plugin_id=plugin_id, **kwargs)
+        )
+        await db.session.commit()
+    except Exception:
+        logging.getLogger("api").exception(
+            f"Failed to invoke {hook_method} hook for group {getattr(group, 'id', None)} with plugin '{plugin_id}'"
+        )
+        await db.session.rollback()
 
 
 def _get_data_for_plugin(plugin_data: dict[str, Any], plugin_id: str) -> AppGroupLifecyclePluginData:

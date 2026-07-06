@@ -23,7 +23,7 @@ from api.models import (
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -312,19 +312,7 @@ class DeleteGroup:
         await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-        if plugin_id is not None:
-            try:
-                hook = get_app_group_lifecycle_hook()
-                # The hookspec takes a sync `Session`; bridge the AsyncSession
-                # through run_sync so plugins can use it synchronously (TODO 18).
-                await db.session.run_sync(lambda s: hook.group_deleted(session=s, group=group, plugin_id=plugin_id))
-                await db.session.commit()
-            except Exception:
-                logging.getLogger("api").exception(
-                    f"Failed to invoke group_deleted hook for group {group.id} with plugin '{plugin_id}'"
-                )
-                await db.session.rollback()
+        await invoke_app_group_lifecycle_hook("group_deleted", group=group)
 
         if len(okta_tasks) > 0:
             await asyncio.wait(okta_tasks)

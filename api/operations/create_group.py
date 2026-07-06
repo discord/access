@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -120,21 +120,7 @@ class CreateGroup:
             await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
-        if plugin_id is not None:
-            try:
-                hook = get_app_group_lifecycle_hook()
-                # The hookspec takes a sync `Session`; bridge the AsyncSession
-                # through run_sync so plugins can use it synchronously (TODO 18).
-                await db.session.run_sync(
-                    lambda s: hook.group_created(session=s, group=self.group, plugin_id=plugin_id)
-                )
-                await db.session.commit()
-            except Exception:
-                logging.getLogger("api").exception(
-                    f"Failed to invoke group_created hook for group {self.group.id} with plugin '{plugin_id}'"
-                )
-                await db.session.rollback()
+        await invoke_app_group_lifecycle_hook("group_created", group=self.group)
 
         # Audit logging
         email = None

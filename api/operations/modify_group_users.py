@@ -25,7 +25,7 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import get_notification_hook
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -457,23 +457,7 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for removed members
             for affected_group, members in members_lost_by_group.items():
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(affected_group)
-                if plugin_id is not None:
-                    try:
-                        hook = get_app_group_lifecycle_hook()
-                        # The hookspec takes a sync `Session`; bridge the AsyncSession
-                        # through run_sync so plugins can use it synchronously (TODO 18).
-                        await db.session.run_sync(
-                            lambda s: hook.group_members_removed(
-                                session=s, group=affected_group, members=members, plugin_id=plugin_id
-                            )
-                        )
-                        await db.session.commit()
-                    except Exception:
-                        logging.getLogger("api").exception(
-                            f"Failed to invoke group_members_removed hook for group {affected_group.id if affected_group else None} with plugin '{plugin_id}'"
-                        )
-                        await db.session.rollback()
+                await invoke_app_group_lifecycle_hook("group_members_removed", group=affected_group, members=members)
 
         # Commit all changes so far
         await db.session.commit()
@@ -686,23 +670,7 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for added members
             for affected_group, members in members_gained_by_group.items():
-                plugin_id = get_app_group_lifecycle_plugin_to_invoke(affected_group)
-                if plugin_id is not None:
-                    try:
-                        hook = get_app_group_lifecycle_hook()
-                        # The hookspec takes a sync `Session`; bridge the AsyncSession
-                        # through run_sync so plugins can use it synchronously (TODO 18).
-                        await db.session.run_sync(
-                            lambda s: hook.group_members_added(
-                                session=s, group=affected_group, members=members, plugin_id=plugin_id
-                            )
-                        )
-                        await db.session.commit()
-                    except Exception:
-                        logging.getLogger("api").exception(
-                            f"Failed to invoke group_members_added hook for group {affected_group.id if affected_group else None} with plugin '{plugin_id}'"
-                        )
-                        await db.session.rollback()
+                await invoke_app_group_lifecycle_hook("group_members_added", group=affected_group, members=members)
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (
