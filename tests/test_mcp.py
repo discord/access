@@ -20,6 +20,8 @@ exact code path FastMCP would take, minus the JSON-RPC framing.
 
 from __future__ import annotations
 
+import asyncio
+import gc
 import json
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Generator, Optional
@@ -28,10 +30,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import event, select
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from api.config import settings
 from api.context import RequestContext, set_request_context
-from api.extensions import Db
+from api.extensions import Base, Db, _session_scope, db as _db
 from api.mcp.auth import (
     ALL_V1_SCOPES,
     MCP_SCOPE_CREATE_REQUESTS,
@@ -228,6 +231,64 @@ async def _call_tool(mcp_server: Any, tool_name: str, **kwargs: Any) -> str:
     would in production because they consult the active ContextVar."""
     tool = mcp_server._tool_manager._tools[tool_name]
     return await tool.fn(**kwargs)
+
+
+async def test_read_tool_over_http_returns_its_db_connection(
+    override_mcp_auth: Any,
+    tmp_path: Any,
+) -> None:
+    """A read tool invoked over the real Streamable-HTTP transport must
+    return its pooled DB connection to the pool.
+
+    Regression test for the connection leak where MCP tools run in the
+    FastMCP session-manager task (not the ``/mcp`` request task), so the
+    request task's ``RequestIdMiddleware`` teardown closes the session
+    from the wrong task and the connection is never checked back in —
+    surfacing later as SQLAlchemy's "garbage collector is trying to clean
+    up non-checked-in connection" warning. ``requires_scope`` now scopes
+    and removes the session inside the tool's own task; see
+    ``api.mcp.db.tool_session_scope``.
+
+    Uses a file-backed aiosqlite engine so the pool is a real
+    ``AsyncAdaptedQueuePool`` (the in-memory ``StaticPool`` the ``db``
+    fixture uses never returns connections, hiding the bug), and drives
+    the tool through an actual JSON-RPC ``tools/call`` so the decoupled
+    server task is exercised.
+    """
+    override_mcp_auth(MCPIdentity(user_id="u", scopes=ALL_V1_SCOPES))
+    from api.app import create_app
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'mcp_leak.db'}")
+    _db.init_app(engine=engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    app = create_app(testing=True)
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "list_groups", "arguments": {}},
+    }
+
+    # A fresh /mcp request owns its session scope in production; make the
+    # ambient scope the default so RequestIdMiddleware behaves the same here.
+    token = _session_scope.set("__default__")
+    try:
+        async with _mcp_client(app) as client:
+            for _ in range(3):
+                r = await client.post("/mcp", headers=headers, content=json.dumps(body))
+                assert r.status_code == 200, r.text
+    finally:
+        _session_scope.reset(token)
+
+    # Force finalization of anything that a leak would have orphaned, then
+    # assert every checked-out connection made it back to the pool.
+    gc.collect()
+    await asyncio.sleep(0.05)
+    assert engine.pool.checkedout() == 0, "MCP tool call leaked a pooled DB connection"
+    await engine.dispose()
 
 
 async def test_read_tool_requires_read_all_scope(
