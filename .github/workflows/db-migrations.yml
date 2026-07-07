@@ -51,21 +51,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
+          # Pin uv itself (not "latest") so a compromised uv release can't
+          # run in CI. Keep in sync with the uv version in the Dockerfile.
+          version: "0.11.10"
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-          python -m pip install -e .
+        run: uv sync --locked --no-dev
 
       - name: Check for a single migration head
         # Two migrations that branch from the same parent produce divergent
         # heads that won't apply cleanly. Fail loudly so they get merged.
         run: |
-          heads="$(alembic heads)"
+          heads="$(uv run alembic heads)"
           echo "$heads"
           count="$(printf '%s\n' "$heads" | grep -c '(head)')"
           if [ "$count" -ne 1 ]; then
@@ -74,19 +75,19 @@ jobs:
           fi
 
       - name: Apply all migrations (alembic upgrade head)
-        run: alembic upgrade head
+        run: uv run alembic upgrade head
 
       - name: Verify models and migrations are in sync (alembic check)
         # `alembic check` autogenerates a diff between the SQLAlchemy models
         # and the migrated schema. A non-empty diff means a model changed
         # without a matching migration — generate one with
         # `make db-revision msg="..."` (alembic revision --autogenerate).
-        run: alembic check
+        run: uv run alembic check
 
       - name: Verify the latest migration is reversible (downgrade one step, then re-upgrade)
         # Rolls back just the most recent migration — the one a PR typically
         # adds — and re-applies it, so every new migration ships with a
         # working downgrade.
         run: |
-          alembic downgrade -1
-          alembic upgrade head
+          uv run alembic downgrade -1
+          uv run alembic upgrade head

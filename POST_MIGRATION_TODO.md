@@ -91,10 +91,13 @@ Kubernetes Deployment and CronJobs already documents this pattern.)
 
 ### 14. Strict type checking on routers + schemas
 
-Enforce `pyright` / `mypy` strict mode on `api/routers/` and `api/schemas/`.
-Operations and models can stay loose initially since they're inherited
-from the Flask era. Add a CI check that fails the build on new strict-mode
-violations in those directories.
+Tighten `ty` on `api/routers/`. It is currently listed in the relaxed
+`[[tool.ty.overrides]]` block in [`pyproject.toml`](pyproject.toml); remove
+it from the `include` list and resolve the resulting diagnostics.
+(`api/schemas/` is already checked strictly — it's not in the override.)
+Operations can stay loose initially since it's inherited from the Flask
+era. Add a CI check that fails the build on new violations in those
+directories.
 
 ---
 

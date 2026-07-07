@@ -1,5 +1,3 @@
-ACTIVATE := $(if $(wildcard venv/bin/activate),. venv/bin/activate &&,)
-
 .DEFAULT_GOAL := help
 
 # Local sqlite DB used for `make run` / `make db-*` targets
@@ -37,12 +35,12 @@ help:
 	@echo "Tests / lint:"
 	@echo "  make pytest             pytest (sqlite in-memory)"
 	@echo "  make pytest-postgres    pytest against a disposable postgres:16 container"
-	@echo "  make ruff               tox -e ruff"
-	@echo "  make mypy               tox -e mypy"
-	@echo "  make test               ruff + mypy + pytest"
+	@echo "  make ruff               ruff check + ruff format --check"
+	@echo "  make ty                 ty check"
+	@echo "  make test               ruff + ty + pytest"
 	@echo ""
 	@echo "Other:"
-	@echo "  make dev                Install deps into venv (idempotent)"
+	@echo "  make dev                Sync deps into .venv via uv (idempotent)"
 	@echo "  make clean              Remove caches and build artifacts"
 
 .env:
@@ -58,7 +56,6 @@ help:
 .PHONY: clean
 clean:
 	rm -rf \
-		.mypy_cache/ \
 		.pytest_cache \
 		.ruff_cache \
 		**/__pycache__ \
@@ -68,8 +65,7 @@ clean:
 
 .PHONY: dev
 dev:
-	$(ACTIVATE) pip install -r requirements.txt -r requirements-test.txt
-	$(ACTIVATE) pip install -e .
+	uv sync
 
 # ----------------------------------------------------------------------
 # Run targets
@@ -79,8 +75,8 @@ dev:
 run: .env dev db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app & \
+	DATABASE_URI=$(LOCAL_DB_URI) \
+	uv run uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app & \
 	npm install && npx vite --host 0.0.0.0 --port $(FRONTEND_PORT)
 
 .PHONY: run-frontend
@@ -91,8 +87,8 @@ run-frontend:
 run-backend: .env dev db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) \
-	uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app
+	DATABASE_URI=$(LOCAL_DB_URI) \
+	uv run uvicorn --reload --host 0.0.0.0 --port $(BACKEND_PORT) api.asgi:app
 
 # ----------------------------------------------------------------------
 # Database / migrations
@@ -100,29 +96,29 @@ run-backend: .env dev db-migrate
 
 .PHONY: db-migrate
 db-migrate: dev
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) alembic upgrade head
+	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic upgrade head
 
 .PHONY: db-downgrade
 db-downgrade: dev
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) alembic downgrade -1
+	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic downgrade -1
 
 .PHONY: db-current
 db-current: dev
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) alembic current
+	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic current
 
 .PHONY: db-history
 db-history: dev
-	$(ACTIVATE) alembic history
+	uv run alembic history
 
 .PHONY: db-revision
 db-revision: dev
 	@if [ -z "$(msg)" ]; then echo "usage: make db-revision msg=\"<message>\""; exit 1; fi
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) alembic revision --autogenerate -m "$(msg)"
+	DATABASE_URI=$(LOCAL_DB_URI) uv run alembic revision --autogenerate -m "$(msg)"
 
 .PHONY: db-init
 db-init: db-migrate
 	@if [ -z "$(email)" ]; then echo "usage: make db-init email=<admin-okta-email>"; exit 1; fi
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) access init "$(email)"
+	DATABASE_URI=$(LOCAL_DB_URI) uv run access init "$(email)"
 
 # ----------------------------------------------------------------------
 # Sync / management commands
@@ -130,11 +126,11 @@ db-init: db-migrate
 
 .PHONY: sync
 sync: dev
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) access sync
+	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync
 
 .PHONY: notify
 notify: dev
-	$(ACTIVATE) DATABASE_URI=$(LOCAL_DB_URI) access notify
+	DATABASE_URI=$(LOCAL_DB_URI) uv run access notify
 
 # ----------------------------------------------------------------------
 # Docker
@@ -158,7 +154,7 @@ compose-down:
 
 .PHONY: pytest
 pytest: dev
-	$(ACTIVATE) pytest
+	uv run pytest
 
 # ----------------------------------------------------------------------
 # Postgres integration test target
@@ -169,11 +165,11 @@ pytest: dev
 # back to.
 PG_TEST_CONTAINER ?= access-test-pg
 PG_TEST_PORT ?= 5433
-PG_TEST_URI := postgresql+pg8000://postgres:postgres@localhost:$(PG_TEST_PORT)/access_test
+PG_TEST_URI := postgresql+asyncpg://postgres:postgres@localhost:$(PG_TEST_PORT)/access_test
 
 .PHONY: pytest-postgres
 pytest-postgres: dev pytest-postgres-up
-	$(ACTIVATE) TEST_DATABASE_URI='$(PG_TEST_URI)' pytest tests/; \
+	TEST_DATABASE_URI='$(PG_TEST_URI)' uv run pytest tests/; \
 	  status=$$?; \
 	  $(MAKE) pytest-postgres-down; \
 	  exit $$status
@@ -193,13 +189,14 @@ pytest-postgres-up:
 pytest-postgres-down:
 	@docker rm -f $(PG_TEST_CONTAINER) >/dev/null 2>&1 || :
 
-.PHONY: mypy
-mypy: dev
-	$(ACTIVATE) tox -e mypy
+.PHONY: ty
+ty: dev
+	uv run ty check .
 
 .PHONY: ruff
 ruff: dev
-	$(ACTIVATE) tox -e ruff
+	uv run ruff check .
+	uv run ruff format --check .
 
 .PHONY: test
-test: ruff mypy pytest
+test: ruff ty pytest

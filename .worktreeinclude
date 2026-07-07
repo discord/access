@@ -16,6 +16,7 @@ config/config.test.json
 instance/access.db
 
 # Installed dependencies. Copying these avoids re-running `npm install` /
-# `make install` in every new worktree.
+# `make dev` in every new worktree. uv re-validates the copied .venv on the
+# next `uv run`/`uv sync`, rebuilding it if the interpreter path drifted.
 node_modules/
-venv/
+.venv/

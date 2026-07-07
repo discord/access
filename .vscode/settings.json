@@ -22,7 +22,4 @@
   "python.analysis.inlayHints.variableTypes": false,
   "python.analysis.inlayHints.functionReturnTypes": false,
   "python.analysis.inlayHints.callArgumentNames": false,
-  "mypy-type-checker.args": [
-    "--config-file=.mypy.ini"
-  ],
 }

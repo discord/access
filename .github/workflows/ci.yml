@@ -33,23 +33,31 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
+          # Pin uv itself (not "latest") so a compromised uv release can't
+          # run in CI. Keep in sync with the uv version in the Dockerfile.
+          version: "0.11.10"
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install tox tox-gh-actions
-      - name: Test with tox
-        run: tox -e test
-      - name: Test with tox with postgresql
-        run: tox -e test-with-postgresql
+        run: uv sync --locked
+      - name: Check dependencies are in sync
+        # Fail if uv.lock drifts from pyproject.toml or the environment
+        # drifts from uv.lock (e.g. a dependency edit without `uv lock`).
+        run: uv sync --locked --check
+      - name: Test (sqlite)
+        run: uv run pytest -s tests
+      - name: Test (postgresql)
+        run: uv run pytest -s tests
+        env:
+          TEST_DATABASE_URI: postgresql+asyncpg://postgres:postgres@localhost:5432
       - name: Test installing the notifications plugin
         run: |
           # Install the notifications plugin from examples/plugins/notifications
           if [ -d "examples/plugins/notifications" ]; then
-            python -m pip install ./examples/plugins/notifications
+            uv pip install ./examples/plugins/notifications
           else
             echo "Notifications plugin directory not found; skipping installation"
           fi
@@ -57,7 +65,7 @@ jobs:
         run: |
           # Install the Slack notifications plugin from examples/plugins/notifications_slack
           if [ -d "examples/plugins/notifications_slack" ]; then
-            python -m pip install ./examples/plugins/notifications_slack
+            uv pip install ./examples/plugins/notifications_slack
           else
             echo "Slack notifications plugin directory not found; skipping installation"
           fi
@@ -65,7 +73,7 @@ jobs:
         run: |
           # Install the conditional access plugin from examples/plugins/conditional_access
           if [ -d "examples/plugins/conditional_access" ]; then
-            python -m pip install ./examples/plugins/conditional_access
+            uv pip install ./examples/plugins/conditional_access
           else
             echo "Conditional access plugin directory not found; skipping installation"
           fi
@@ -73,7 +81,7 @@ jobs:
         run: |
           # Install the health check plugin from examples/plugins/health_check_plugin
           if [ -d "examples/plugins/health_check_plugin" ]; then
-            python -m pip install ./examples/plugins/health_check_plugin
+            uv pip install ./examples/plugins/health_check_plugin
           else
             echo "Health check plugin directory not found; skipping installation"
           fi
@@ -81,7 +89,7 @@ jobs:
         run: |
           # Install the Datadog metrics reporter plugin from examples/plugins/datadog_metrics_reporter
           if [ -d "examples/plugins/datadog_metrics_reporter" ]; then
-            python -m pip install ./examples/plugins/datadog_metrics_reporter
+            uv pip install ./examples/plugins/datadog_metrics_reporter
           else
             echo "Datadog metrics reporter plugin directory not found; skipping installation"
           fi
@@ -89,7 +97,7 @@ jobs:
         run: |
           # Install the app group lifecycle audit logger plugin from examples/plugins/app_group_lifecycle_audit_logger
           if [ -d "examples/plugins/app_group_lifecycle_audit_logger" ]; then
-            python -m pip install ./examples/plugins/app_group_lifecycle_audit_logger
+            uv pip install ./examples/plugins/app_group_lifecycle_audit_logger
           else
             echo "App group lifecycle audit logger plugin directory not found; skipping installation"
           fi
