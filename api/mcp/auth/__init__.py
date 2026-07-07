@@ -150,7 +150,16 @@ def requires_scope(scope: str) -> Callable[[F], F]:
 
     ``functools.wraps`` preserves the wrapped function's signature so
     FastMCP's schema introspection sees the original parameter list.
+
+    Besides enforcing the scope, the wrapper binds a per-call DB session
+    scope (via ``tool_session_scope``) so any connection the tool checks
+    out is returned to the pool from the FastMCP server task that opened
+    it — the ``/mcp`` request task's ``db.remove()`` runs in a different
+    task and would otherwise leak it (see ``api.mcp.db``).
     """
+    # Imported lazily to keep the auth package importable without the DB
+    # facade during config validation / lightweight tooling.
+    from api.mcp.db import tool_session_scope
 
     def decorator(fn: F) -> F:
         @functools.wraps(fn)
@@ -159,7 +168,8 @@ def requires_scope(scope: str) -> Callable[[F], F]:
                 require_scope(scope)
             except MCPScopeError as e:
                 return json.dumps({"error": str(e)})
-            return await fn(*args, **kwargs)
+            async with tool_session_scope():
+                return await fn(*args, **kwargs)
 
         return wrapper  # type: ignore[return-value]
 
