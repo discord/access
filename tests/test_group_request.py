@@ -277,7 +277,9 @@ async def test_approve_group_request_creates_group(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -337,7 +339,9 @@ async def test_approve_group_request_sets_owner_with_ending_time(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -404,7 +408,9 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -498,7 +504,9 @@ async def test_approve_group_request_applies_tags(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -561,7 +569,9 @@ async def test_approve_group_request_sets_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -607,7 +617,9 @@ async def test_approve_group_request_sets_type(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -709,7 +721,9 @@ async def test_app_owner_can_approve_request(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -834,7 +848,9 @@ async def test_wrong_app_owner_cannot_approve_request(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1047,7 +1063,9 @@ async def test_approver_can_modify_group_details(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1116,7 +1134,9 @@ async def test_cannot_approve_already_resolved_request(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1170,7 +1190,9 @@ async def test_cannot_approve_deleted_requester(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1217,7 +1239,9 @@ async def test_app_owner_auto_approves_own_app_group_request(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1306,7 +1330,9 @@ async def test_app_owner_auto_approves_own_app_group_request_tagged(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1411,7 +1437,9 @@ async def test_random_user_cannot_approve_group_request(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1457,7 +1485,9 @@ async def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1532,7 +1562,9 @@ async def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1606,7 +1638,9 @@ async def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1682,7 +1716,9 @@ async def test_app_owner_cannot_hijack_group_via_resolved_name_case_insensitive(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1755,7 +1791,9 @@ async def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1821,7 +1859,9 @@ async def test_cannot_approve_role_group_with_reserved_app_owners_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1887,7 +1927,9 @@ async def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -1954,7 +1996,9 @@ async def test_cannot_approve_app_group_request_with_owners_group_name(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2024,7 +2068,9 @@ async def test_cannot_approve_non_role_group_request_with_role_prefix(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2328,7 +2374,9 @@ async def test_put_group_request_app_owner_cannot_escalate_to_role_group(
     admin check.
     """
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2412,7 +2460,9 @@ async def test_put_group_request_app_owner_cannot_escalate_to_other_app(
     don't own. Mirror of the type-escalation case for the app_id branch.
     """
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2490,7 +2540,9 @@ async def test_approve_group_request_op_blocks_type_mismatch_for_non_admin(
     PENDING and no group may be created.
     """
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2562,7 +2614,9 @@ async def test_approve_app_group_request_with_non_conforming_resolved_name_is_re
     app_name = app_obj.name
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -2621,7 +2675,9 @@ async def test_approve_group_request_notify_false_suppresses_completion(
     ).execute()
     assert group_request is not None
 
-    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group({"id": "00gNOTIFYGATEGRP001"}))
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: Group.from_dict({"id": "00gNOTIFYGATEGRP001"})
+    )
     mocker.patch.object(okta, "add_owner_to_group")
     admin = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))

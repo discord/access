@@ -36,7 +36,7 @@ dependencies = [
     # Error Reporting
     "sentry-sdk[starlette,fastapi]==2.59.0",
     # Okta
-    "okta==2.9.8",
+    "okta==3.4.4",
     # Plugins
     "pluggy==1.6.0",
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).

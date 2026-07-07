@@ -135,9 +135,10 @@ async def test_group_sync_externally_managed_group_in_okta(db: Db, mocker: Mocke
 
     groups_in_okta.insert(0, await GroupFactory.create_access_owner_group())
 
-    # Create an externally managed group and add it to Okta
+    # Create an externally managed group and add it to Okta. Its managed state
+    # is derived by the syncer from the group rule below (a group with an active
+    # rule is not Access-managed), not set on the SDK model.
     externally_managed_group = GroupFactory.create()
-    externally_managed_group.is_managed = False
     groups_in_okta.append(externally_managed_group)
 
     async with AsyncSession(db.engine) as session:

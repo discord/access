@@ -62,7 +62,7 @@ def _mock_okta(mocker: MockerFixture) -> None:
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
     # Group-request approval creates a group in Okta; stub it.
-    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group({"id": uuid.uuid4().hex}))
+    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group.from_dict({"id": uuid.uuid4().hex}))
 
 
 async def _access_owner(db: Db) -> OktaUser:

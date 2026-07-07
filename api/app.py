@@ -226,11 +226,18 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         # Bound the worker-thread pool inside the running event loop (the anyio
         # limiter is loop-scoped, so this can't run at import time).
         _configure_threadpool_limit()
-        if mcp_lifespan is not None:
-            async with mcp_lifespan():
+        # Hold one Okta client (and its pooled aiohttp connector) for the life of
+        # the server loop so request handlers reuse it instead of building a
+        # session per Okta call. No-op when Okta isn't configured.
+        await okta.start_pooled_client()
+        try:
+            if mcp_lifespan is not None:
+                async with mcp_lifespan():
+                    yield
+            else:
                 yield
-        else:
-            yield
+        finally:
+            await okta.stop_pooled_client()
 
     app = FastAPI(
         title=settings.APP_NAME,

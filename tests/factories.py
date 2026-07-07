@@ -5,9 +5,7 @@ from typing import Any, Dict
 import factory
 from factory import fuzzy
 from okta.models.group import Group
-from okta.models.group_profile import GroupProfile
 from okta.models.user import User
-from okta.models.user_profile import UserProfile
 from okta.models.user_schema import UserSchema
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
@@ -26,36 +24,45 @@ from api.models import (
 )
 
 
-class GroupProfileFactory(factory.Factory[GroupProfile]):
-    config: Any = factory.Dict(
-        {
-            "name": factory.Faker("pystr"),
-            "description": factory.Faker("pystr"),
-            "allow_discord_access": None,  # Default to None for the custom attribute
-        }
-    )
+class OktaSDKModelFactory(factory.Factory):
+    """Base for Okta SDK (openapi-generator, Pydantic) model factories.
+
+    The SDK models are Pydantic models, so factories express plain JSON-shaped
+    data in a ``config`` dict and hydrate it through the model's ``from_dict``
+    (which honors the camelCase field aliases and routes custom attributes into
+    ``additional_properties``) rather than passing Pydantic constructor kwargs.
+    """
 
     class Meta:
-        model = GroupProfile
+        abstract = True
+
+    @classmethod
+    def _build(cls, model_class: Any, **kwargs: Any) -> Any:
+        return model_class.from_dict(kwargs["config"])
+
+    @classmethod
+    def _create(cls, model_class: Any, **kwargs: Any) -> Any:
+        return model_class.from_dict(kwargs["config"])
 
 
-class GroupFactory(factory.Factory[Group]):
-    is_deleted: bool = False
+class GroupFactory(OktaSDKModelFactory):
     config: Any = factory.Dict(
         {
             "id": factory.Faker("pystr"),
-            "name": factory.Faker("pystr"),
-            "description": factory.Faker("pystr"),
-            "created": "2022-02-02 11:54:51.724560",
-            "last_updated": "2022-02-02 11:54:51.724560",
-            "profile": factory.SubFactory(GroupProfileFactory),
             "type": "OKTA_GROUP",
+            "created": "2022-02-02T11:54:51.724560Z",
+            "lastUpdated": "2022-02-02T11:54:51.724560Z",
+            "profile": factory.Dict(
+                {
+                    "name": factory.Faker("pystr"),
+                    "description": factory.Faker("pystr"),
+                }
+            ),
         }
     )
 
     class Meta:
         model = Group
-        exclude = "is_deleted"
 
     @staticmethod
     async def create_access_owner_group() -> Group:
@@ -71,59 +78,42 @@ class GroupFactory(factory.Factory[Group]):
         assert access_app is not None
         access_owner_group = access_app.active_owner_app_groups[0]
         okta_access_owner_group = GroupFactory.build()
-        okta_access_owner_group.profile.name = access_owner_group.name
+        # ``profile`` is the anyOf union wrapper; reach through actual_instance.
+        okta_access_owner_group.profile.actual_instance.name = access_owner_group.name
         okta_access_owner_group.id = access_owner_group.id
         return okta_access_owner_group
 
 
-class UserProfileFactory(factory.Factory[UserProfile]):
-    config: Any = factory.Dict(
-        {
-            "login": factory.Faker("pystr"),
-            "firstName": factory.Faker("pystr"),
-            "lastName": factory.Faker("pystr"),
-        }
-    )
-
-    class Meta:
-        model = UserProfile
-
-
-class UserFactory(factory.Factory[User]):
-    is_deleted: bool = False
+class UserFactory(OktaSDKModelFactory):
     config: Any = factory.Dict(
         {
             "id": factory.Faker("pystr"),
-            "login": factory.Faker("pystr"),
-            "created": "2022-02-02 11:54:51.724560",
-            "last_updated": "2022-02-02 11:54:51.724560",
-            "profile": factory.SubFactory(UserProfileFactory),
-            "status": factory.Maybe(
-                "..is_deleted",
-                yes_declaration="DEPROVISIONED",
-                no_declaration=None,
-            ),
-            "statusChanged": factory.Maybe(
-                "..is_deleted",
-                yes_declaration="2022-06-02 11:54:51.724560",
-                no_declaration=None,
-            ),
+            "created": "2022-02-02T11:54:51.724560Z",
+            "lastUpdated": "2022-02-02T11:54:51.724560Z",
             "type": factory.Dict({"id": "default"}),
+            "profile": factory.Dict(
+                {
+                    "login": factory.Faker("pystr"),
+                    "firstName": factory.Faker("pystr"),
+                    "lastName": factory.Faker("pystr"),
+                }
+            ),
         }
     )
 
     class Meta:
         model = User
-        exclude = "is_deleted"
 
 
-class UserSchemaFactory(factory.Factory[UserSchema]):
+class UserSchemaFactory(OktaSDKModelFactory):
     config: Any = factory.Dict(
         {
             "definitions": factory.Dict(
                 {
                     "base": factory.Dict(
                         {
+                            "id": "#base",
+                            "type": "object",
                             "properties": factory.Dict(
                                 {
                                     "city": factory.Dict({"title": "City"}),
@@ -158,16 +148,18 @@ class UserSchemaFactory(factory.Factory[UserSchema]):
                                     "userType": factory.Dict({"title": "User Type"}),
                                     "zipCode": factory.Dict({"title": "Zip Code"}),
                                 }
-                            )
+                            ),
                         }
                     ),
                     "custom": factory.Dict(
                         {
+                            "id": "#custom",
+                            "type": "object",
                             "properties": factory.Dict(
                                 {
                                     "custom_attr": factory.Dict({"title": "Custom Attribute"}),
                                 }
-                            )
+                            ),
                         }
                     ),
                 }

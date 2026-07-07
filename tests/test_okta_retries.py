@@ -10,8 +10,11 @@ from tests.factories import UserFactory
 
 
 def mock_get_user(mocker: MockerFixture, status_code: int) -> Mock:
+    # The SDK returns an ``ApiResponse``-shaped object; ``_retry`` reads
+    # ``.status_code`` and ``.headers`` off it.
     mock_response_object = Mock()
-    mock_response_object.configure_mock(**{"get_status_code.return_value": status_code})
+    mock_response_object.status_code = status_code
+    mock_response_object.headers = {}
     if status_code < 400:  # success
         mock_response: Tuple[Any, Any, Optional[Exception]] = (UserFactory(), mock_response_object, None)
     else:  # error

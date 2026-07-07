@@ -71,7 +71,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "itsdangerous", specifier = "==2.2.0" },
     { name = "mcp", extras = ["cli"], specifier = "==1.27.0" },
-    { name = "okta", specifier = "==2.9.8" },
+    { name = "okta", specifier = "==3.4.4" },
     { name = "pluggy", specifier = "==1.6.0" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pydantic-settings", specifier = ">=2.6,<3" },
@@ -109,11 +109,11 @@ test = [
 
 [[package]]
 name = "aenum"
-version = "3.1.11"
+version = "3.1.17"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/63/6c/a71e18de7c651f384b328be6bccadbbd472aca62f547c1a307b9388d03ca/aenum-3.1.11.tar.gz", hash = "sha256:aed2c273547ae72a0d5ee869719c02a643da16bf507c80958faadc7e038e3f73", size = 130979, upload-time = "2022-04-16T22:58:07.926Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/e9/8b283567c1fef7c24d1f390b37daede8b61593d8cdaffb8e95d571699e83/aenum-3.1.17.tar.gz", hash = "sha256:a969a4516b194895de72c875ece355f17c0d272146f7fda346ef74f93cf4d5ba", size = 137648, upload-time = "2026-03-20T20:43:29.846Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/38/bd/2c911f3ff06b34e90639058e84a5b198447e24b9ff386984da365bea6964/aenum-3.1.11-py3-none-any.whl", hash = "sha256:12ae89967f2e25c0ce28c293955d643f891603488bc3d9946158ba2b35203638", size = 131513, upload-time = "2022-04-16T22:58:02.968Z" },
+    { url = "https://files.pythonhosted.org/packages/48/8d/1fe30c6fd8999b9d462547c4a1bb6690bda24af38f2913c4bec7decb81f2/aenum-3.1.17-py3-none-any.whl", hash = "sha256:8b883a37a04e74cc838ac442bdd28c266eae5bbf13e1342c7ef123ed25230139", size = 165560, upload-time = "2026-03-20T20:43:27.681Z" },
 ]
 
 [[package]]
@@ -332,6 +332,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/36/98/7d93f30d029643c0275dbc0bd6d5a6f670661ee6c9a94d93af7ab4887600/authlib-1.7.2.tar.gz", hash = "sha256:2cea25fefcd4e7173bdf1372c0afc265c8034b23a8cd5dcb6a9164b826c64231", size = 176511, upload-time = "2026-05-06T08:10:23.116Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/95/adcb68e20c34162e9135f370d6e31737719c2b6f94bc953fe7ed1f10fe21/authlib-1.7.2-py2.py3-none-any.whl", hash = "sha256:3e1faedc9d87e7d56a164eca3ccb6ace0d61b94abe83e92242f8dc8bba9b4a9f", size = 259548, upload-time = "2026-05-06T08:10:21.436Z" },
+]
+
+[[package]]
+name = "blinker"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/28/9b3f50ce0e048515135495f198351908d99540d69bfdc8c1d15b73dc55ce/blinker-1.9.0.tar.gz", hash = "sha256:b4ce2265a7abece45e7cc896e98dbebe6cead56bcf805a3d23136d145f5445bf", size = 22460, upload-time = "2024-11-08T17:25:47.436Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/cb/f2ad4230dc2eb1a74edf38f1a38b9b52277f75bef262d8908e60d957e13c/blinker-1.9.0-py3-none-any.whl", hash = "sha256:ba0efaa9080b619ff2f3459d1d500c57bddea4a6b424b60a91141db6fd2f08bc", size = 8458, upload-time = "2024-11-08T17:25:46.184Z" },
 ]
 
 [[package]]
@@ -627,15 +636,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f9/d5/33326364b30976148e92baad853b8fbe34f3a33f2dd40ed1fd70d17b1d3b/fastapi_pagination-0.15.13.tar.gz", hash = "sha256:2ed92e90085fdeb818fa88432e1b2d1b66aa3240b7c09f1eec7ba55e069a86ca", size = 606282, upload-time = "2026-05-19T13:49:40.716Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/dc/5f770e102a3500a1a363e72d9f2b1f05e37867a5ef1c625ff23a566e6143/fastapi_pagination-0.15.13-py3-none-any.whl", hash = "sha256:95c6733f7c93280ccfa551c3a76722ccea2ffb3ad6a5e4a733cbbf03df4c6b30", size = 65387, upload-time = "2026-05-19T13:49:42.009Z" },
-]
-
-[[package]]
-name = "flatdict"
-version = "4.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/ba/e0461697020839f60741e493fc42b20a4cd3f91594ed3228f65ae9a50aee/flatdict-4.1.0.tar.gz", hash = "sha256:63bcd906a0859d91d0aace44b327178706c7fcf85a88c7ccf0825628376ad66b", size = 33930, upload-time = "2026-02-15T19:00:27.175Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/b5/6b6c496304047982b67d984ed2f77c183f73d69f7dbbc0cd2928252cc6b4/flatdict-4.1.0-py3-none-any.whl", hash = "sha256:24c3ff816733e472f91071031bd286c3826ecf2d646d5020af49fe10b20a5677", size = 7248, upload-time = "2026-02-15T19:00:26.131Z" },
 ]
 
 [[package]]
@@ -1155,23 +1155,25 @@ wheels = [
 
 [[package]]
 name = "okta"
-version = "2.9.8"
+version = "3.4.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aenum" },
     { name = "aiohttp" },
-    { name = "flatdict" },
+    { name = "blinker" },
     { name = "jwcrypto" },
     { name = "pycryptodomex" },
+    { name = "pydantic" },
     { name = "pydash" },
     { name = "pyjwt" },
+    { name = "python-dateutil" },
     { name = "pyyaml" },
+    { name = "requests" },
     { name = "xmltodict" },
-    { name = "yarl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/41/c8/925b6dea5358bc0c5b44e0f1f72e64599c9d9b39b7fbc7b58faf7db035d0/okta-2.9.8.tar.gz", hash = "sha256:4439d188fb1ce29e7223d8c5cceb5123eaf4d2dbec91af31e2e0928e5f9c5afa", size = 959230, upload-time = "2024-08-08T16:35:24.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/5e/fbb1eedea847a056c46703d6f5dff53baed4c1ebf3c10e057c5db9419507/okta-3.4.4.tar.gz", hash = "sha256:e7c82176b5afd2301e3b685e0715620dfd92513fc45999147e33d7485263a3f2", size = 2717483, upload-time = "2026-07-01T12:42:54.649Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/a2/24190a1098297a8c46d40a1907c878e9e5e381defddec3db336f6428d64a/okta-2.9.8-py2.py3-none-any.whl", hash = "sha256:d246002dd9c082aff2c55b21fb235bdf046914da862960917d7a8bf7a635c584", size = 555607, upload-time = "2024-08-08T16:35:22.351Z" },
+    { url = "https://files.pythonhosted.org/packages/39/60/e9beb7de34841b2b2c1b2c378043df1a31f0c5710df8c06f93e37d4d29ea/okta-3.4.4-py3-none-any.whl", hash = "sha256:2f4c34ec241e586ce8f879f6b608356bbe719964e295440154b22810a76b5604", size = 3869793, upload-time = "2026-07-01T12:42:52.596Z" },
 ]
 
 [[package]]

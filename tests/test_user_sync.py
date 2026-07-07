@@ -92,7 +92,7 @@ async def test_user_sync_updates_deleted_user(
     new_db_users = await run_sync(db, mocker, initial_users_in_okta)
 
     deleted_user = get_user_by_id(new_db_users, initial_users_in_okta[0].id)
-    assert str(deleted_user.deleted_at) == initial_users_in_okta[0].status_changed
+    assert deleted_user.deleted_at == initial_users_in_okta[0].status_changed
     # synchronize_session="fetch" expired these rows during the sync; refresh
     # them on the async session before reading their attributes.
     for membership in (managed_membership, managed_ownership, unmanaged_membership, unmanaged_ownership):
@@ -226,7 +226,7 @@ async def test_user_sync_ends_memberships_for_previously_deleted_user(
     new_db_users = await run_sync(db, mocker, initial_users_in_okta)
 
     deleted_user = get_user_by_id(new_db_users, initial_users_in_okta[0].id)
-    assert str(deleted_user.deleted_at) == initial_users_in_okta[0].status_changed
+    assert deleted_user.deleted_at == initial_users_in_okta[0].status_changed
     # synchronize_session="fetch" expired these rows during the sync; refresh
     # them on the async session before reading their attributes.
     for membership in (managed_membership, managed_ownership, unmanaged_membership, unmanaged_ownership):

@@ -874,7 +874,7 @@ async def test_create_group(
 
     # Cast faker to our Protocol type that has the pystr method
     create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
     data = {"type": "okta_group", "name": "Created", "description": "", "tags_to_add": [tag.id]}
@@ -912,7 +912,7 @@ async def test_create_app_group(
     await db.session.commit()
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
@@ -960,7 +960,7 @@ async def test_create_app_group_cannot_set_is_owner_shadow_escalation(
 
     await ModifyGroupUsers(group=owners_group, owners_to_add=[alice.id], sync_to_okta=False).execute()
 
-    mocker.patch.object(okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()}))
+    mocker.patch.object(okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}))
 
     # act as Alice — a plain app owner, NOT an Access admin.
     app.state.current_user_email = alice.email
@@ -1214,7 +1214,9 @@ async def test_create_groups_with_and_without_description(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
 
     groups_url = url_for("api-groups.groups")
@@ -1366,7 +1368,9 @@ async def test_cannot_create_group_with_reserved_app_prefix(
     url_for: Any,
 ) -> None:
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
 
     db.session.add(access_app)
@@ -1414,7 +1418,9 @@ async def test_create_app_group_requires_app_name_prefix(
     url_for: Any,
 ) -> None:
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
 
     db.session.add(access_app)
@@ -1648,7 +1654,9 @@ async def test_cannot_create_group_with_reserved_role_prefix(
     url_for: Any,
 ) -> None:
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
 
     groups_url = url_for("api-groups.groups")

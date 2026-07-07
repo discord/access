@@ -41,28 +41,6 @@ scale may want:
 
 ## Background Work / Long-Running Operations
 
-### 11a. Okta SDK v3 upgrade
-
-The async migration kept `okta==2.9.8` (aiohttp-based, async-native)
-behind the `OktaService` facade. The SDK's v3 line (3.x, late 2025+) is
-a ground-up openapi-generator rewrite: Pydantic models replace
-`OktaObject`, API methods move to `okta.api.*` classes, and the
-exception hierarchy changes. Still async, so nothing blocks on it — but
-v2 is in maintenance mode. The facade contains the blast radius:
-upgrading touches `api/services/okta_service.py` (retry/pagination/
-custom group-owners endpoint plumbing), `tests/factories.py` (Okta SDK
-model factories), and the okta service/retry tests. Verify rate-limit
-and pagination behavior against a live org when upgrading.
-
-### 11b. Shared pooled Okta client
-
-`OktaService._okta_client()` creates a fresh SDK client (and aiohttp
-session) per call so CLI invocations and per-test event loops stay
-isolated. The FastAPI server loop could instead hold one client for
-connection pooling — e.g. created in a lifespan hook and reused when
-`asyncio.get_running_loop()` matches. Measure before bothering: Okta
-API latency dominates connection setup for most operations.
-
 (Note: the previous "Replace the in-process syncer.py loop with a
 proper task runner" entry was removed — the syncer already runs as a
 Kubernetes CronJob via `examples/kubernetes/cron-job-syncer.yaml`,
