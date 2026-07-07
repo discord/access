@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy import String, and_, cast, not_, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectinload
@@ -34,6 +34,7 @@ from api.routers._eager import (
     polymorphic_group_options,
     user_group_member_options,
 )
+from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateRoleRequestBody,
     ResolveRoleRequestBody,
@@ -42,7 +43,7 @@ from api.schemas import (
     SearchRoleRequestQuery,
 )
 
-router = APIRouter(prefix="/api/role-requests", tags=["role-requests"])
+router = APIRouter(prefix="/api/role-requests", tags=["role-requests"], dependencies=[Depends(defer_fan_out)])
 
 
 def _detail_load_options() -> tuple:

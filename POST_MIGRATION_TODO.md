@@ -41,21 +41,6 @@ scale may want:
 
 ## Background Work / Long-Running Operations
 
-### 10. FastAPI `BackgroundTasks` for multi-Okta-call operations
-
-`CreateApp`, `ApproveAccessRequest`, `ModifyGroupUsers`, and
-`ModifyRoleGroups` each make several Okta API calls per HTTP request, often
-serially. Move the slow tail (Okta sync, plugin lifecycle hooks, downstream
-audit log emission) into `BackgroundTasks` so the HTTP response returns as
-soon as the local DB state commits.
-
-Care needed:
-- Errors after the response are silent — consider a retry queue with a
-  dead-letter table
-- Audit log ordering may shift slightly
-- Tests that assert call-count of mocked Okta methods may need to await
-  background tasks before asserting
-
 ### 11a. Okta SDK v3 upgrade
 
 The async migration kept `okta==2.9.8` (aiohttp-based, async-native)

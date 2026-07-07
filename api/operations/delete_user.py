@@ -7,7 +7,7 @@ from sqlalchemy.orm import (
 
 from sqlalchemy import func, or_, select, update
 from api.extensions import db
-from api.operations._fan_out import drain_fan_out_tasks
+from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -153,4 +153,4 @@ class DeleteUser:
                 current_user_id=current_user_id,
             ).execute()
 
-        await drain_fan_out_tasks(okta_tasks, f"DeleteUser for user {self.user_id}")
+        await defer_or_drain_fan_out(okta_tasks, f"DeleteUser for user {self.user_id}")

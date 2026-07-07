@@ -2,7 +2,7 @@ from typing import Any
 
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select
 
 from api.extensions import Db
 from api.models import (
@@ -21,6 +21,20 @@ from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGrou
 from api.services import okta
 from tests.factories import TagFactory
 from tests.helpers import db_count
+
+
+async def _reload(db: Db, obj: Any) -> Any:
+    """Re-fetch an ORM instance as a live session object, whether it is
+    expired-attached or detached.
+
+    These tests share one session and reuse fixtures across many approvals. Two
+    things can invalidate a held instance between requests: the router's
+    `db.expire_all()` (expired-but-attached — reading `obj.id` would then trigger
+    sync IO under the async session) and an approve's deferred completion
+    notification, which `expunge`s its payload (requester/group → detached, so a
+    plain `refresh` fails). `inspect(...).identity` reads the primary key from
+    instance state without IO, so a `get` works for both."""
+    return await db.session.get(type(obj), sa_inspect(obj).identity[0])
 
 
 async def test_require_reason_modify_group_users(
@@ -1351,8 +1365,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the okta group as owner and approve without a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(okta_group)
+    user = await _reload(db, user)
+    okta_group = await _reload(db, okta_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
@@ -1393,11 +1407,13 @@ async def test_require_reason_approve_access_request(
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
 
-    # Approve an access request to the okta group as member and approve with a reason
-    # the PUT above expired the shared session (router db.expire_all());
-    # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(okta_group)
+    # Approve an access request to the okta group as member and approve with a reason.
+    # The PUT above ran an approval whose deferred completion notification
+    # expunged its payload (requester=user, group=okta_group) from the shared
+    # session, so re-fetch them (a plain refresh would fail — they're detached,
+    # not merely expired) before the operation reads their attributes.
+    user = await _reload(db, user)
+    okta_group = await _reload(db, okta_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
@@ -1443,8 +1459,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the okta group as owner and approve with a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(okta_group)
+    user = await _reload(db, user)
+    okta_group = await _reload(db, okta_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
@@ -1488,8 +1504,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the app group as member and approve without a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(app_group)
+    user = await _reload(db, user)
+    app_group = await _reload(db, app_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
@@ -1535,8 +1551,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the app group as owner and approve without a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(app_group)
+    user = await _reload(db, user)
+    app_group = await _reload(db, app_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
@@ -1571,8 +1587,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the app group as member and approve with a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(app_group)
+    user = await _reload(db, user)
+    app_group = await _reload(db, app_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
@@ -1618,8 +1634,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the app group as owner and approve with a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(app_group)
+    user = await _reload(db, user)
+    app_group = await _reload(db, app_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=app_group,
@@ -1663,8 +1679,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the role group as member and approve without a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(role_group)
+    user = await _reload(db, user)
+    role_group = await _reload(db, role_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
@@ -1701,8 +1717,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the role group as owner and approve without a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(role_group)
+    user = await _reload(db, user)
+    role_group = await _reload(db, role_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
@@ -1746,8 +1762,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the role group as member and approve with a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(role_group)
+    user = await _reload(db, user)
+    role_group = await _reload(db, role_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,
@@ -1793,8 +1809,8 @@ async def test_require_reason_approve_access_request(
     # Approve an access request to the role group as owner and approve with a reason
     # the PUT above expired the shared session (router db.expire_all());
     # reload instances async before the operation reads their attributes
-    await db.session.refresh(user)
-    await db.session.refresh(role_group)
+    user = await _reload(db, user)
+    role_group = await _reload(db, role_group)
     access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=role_group,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy import String, cast, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
@@ -27,6 +27,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import group_tag_map_options, role_group_map_options
+from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     AccessRequestDetail,
     AccessRequestSummary,
@@ -35,7 +36,7 @@ from api.schemas import (
     SearchAccessRequestQuery,
 )
 
-router = APIRouter(prefix="/api/requests", tags=["access-requests"])
+router = APIRouter(prefix="/api/requests", tags=["access-requests"], dependencies=[Depends(defer_fan_out)])
 
 
 # Eager-load options for the *detail* GET (`AccessRequestDetail`). Chains the

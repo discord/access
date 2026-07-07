@@ -68,6 +68,23 @@ async def _record_sent(metric_name: str, tags: Optional[Dict[str, str]] = None) 
 
 
 class NotificationPluginSpec:
+    """Notification hook specifications.
+
+    **The ORM instances passed to these hooks are read-only, detached
+    snapshots.** The request-completion hooks (`access_request_completed`,
+    `access_role_request_completed`) are dispatched from a post-response
+    background task, i.e. *after* the request's DB session has been committed and
+    torn down; Access `expunge`s the objects it hands them so their already-loaded
+    attributes stay readable. So a hook may only read attributes Access has
+    already loaded — the request/role-request, its `group`, the `requester`, and
+    the `approvers`, and their column attributes. Do **not** access an unloaded
+    relationship or otherwise trigger a lazy load / re-query (there is no live
+    session behind these objects; `lazy="raise_on_sql"` forbids it regardless),
+    and do not mutate them expecting it to persist. Treat the values as a snapshot
+    taken when the operation ran. If a hook needs a wider object graph, that graph
+    must be eager-loaded by the operation before dispatch — open an issue.
+    """
+
     @hookspec
     async def access_request_created(
         self, access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]

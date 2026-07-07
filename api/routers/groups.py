@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
@@ -50,6 +50,7 @@ from api.routers._eager import (
     role_group_map_options_for_own_group,
     user_group_member_options,
 )
+from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     GroupSummary,
     CreateGroupBody,
@@ -69,7 +70,7 @@ from api.schemas.requests_schemas import (
 
 import copy
 
-router = APIRouter(prefix="/api/groups", tags=["groups"])
+router = APIRouter(prefix="/api/groups", tags=["groups"], dependencies=[Depends(defer_fan_out)])
 
 ROLE_ASSOCIATED_GROUP_TYPES = with_polymorphic(OktaGroup, [AppGroup])
 

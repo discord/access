@@ -186,11 +186,17 @@ in `api/plugins/_async_dispatch.py`, which uses `asyncio.wait` (not `gather`, so
 or a cancelled request can't tear down its siblings' in-flight I/O) and logs a failing hook at
 **ERROR** — a plugin's failure is surfaced, not swallowed, yet never breaks the committed
 operation; plugins are expected to catch their own expected/noisy errors. Separately,
-side-effecting Okta/notification work is spawned as
-`asyncio` tasks after the local DB state commits, then drained at the end of `execute()` via
-`drain_fan_out_tasks` in `api/operations/_fan_out.py` — which surfaces task failures (logged at
-WARNING) instead of dropping them, and likewise uses `asyncio.wait` so a cancelled request doesn't
-tear down in-flight Okta calls. These fan-out tasks do network I/O only, never `db.session` access. Operations fall into two broad groups — request
+side-effecting Okta/notification work is spawned as `asyncio` tasks after the local DB state
+commits and drained via `drain_fan_out_tasks` in `api/operations/_fan_out.py` — which surfaces
+task failures (logged at **ERROR**, non-propagating) instead of dropping them, and uses
+`asyncio.wait` (not `gather`) so a cancelled request doesn't tear down in-flight Okta calls. On the
+HTTP request path the drain is **deferred to a post-response FastAPI `BackgroundTask`** (via the
+`defer_fan_out` router dependency in `api/routers/_fan_out.py`), so the response returns as soon as
+the local DB state commits; outside a request (CLI, syncer, MCP, direct `execute()`) it drains
+inline. These fan-out tasks do network I/O only, never `db.session` access — and because the
+deferred drain runs after the request session is torn down, the operations `expunge` the
+notification payload before deferring so the hooks read detached, already-loaded state (see the
+Plugin system section). Operations fall into two broad groups — request
 operations (create/approve/reject for access, group, and role requests) and resource operations
 (create/delete/modify for apps, groups, tags, users, and roles). The exact set changes as
 features land, so read `api/operations/` for the current, authoritative list — one class per
@@ -515,6 +521,18 @@ that mutate state receive an `AsyncSession` (await ORM calls on it; `session.add
 the pure metadata/config/status/validation hooks stay **sync**. Plugin-contributed
 `access.commands` CLI commands run as ordinary Click commands and must drive their own
 `asyncio.run(...)`. The README's plugin section documents this in full.
+
+**Notification completion hooks receive read-only, detached ORM snapshots.**
+`access_request_completed` / `access_role_request_completed` fire from the post-response fan-out
+drain — after the request session has committed and been torn down — so the operations
+(`ModifyGroupUsers` / `ModifyRoleGroups`) `expunge` the payload (the request, its `group`, the
+`requester`, the `approvers`) from the session *before* deferring, leaving their already-loaded
+attributes readable. A hook may therefore read only what the operation eager-loaded; touching an
+unloaded relationship or otherwise triggering a lazy load raises (`lazy="raise_on_sql"` /
+`DetachedInstanceError`), and the failure is logged then swallowed — silently dropping that
+notification. So if a notifier needs a wider object graph, the operation must eager-load it before
+dispatch (don't reach for a lazy load in the hook). This contract is documented for plugin authors
+in `NotificationPluginSpec` and the README.
 
 For hook signatures, adding a new plugin type, and implementing an operator override, read the
 hookspecs in `api/plugins/`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import String, and_, cast, or_, select
 from sqlalchemy.orm import aliased, joinedload
@@ -15,6 +15,7 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
+from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupRequestBody,
     GroupRequestDetail,
@@ -23,7 +24,7 @@ from api.schemas import (
 )
 from api.schemas.requests_schemas import _AppGroupRequestBody
 
-router = APIRouter(prefix="/api/group-requests", tags=["group-requests"])
+router = APIRouter(prefix="/api/group-requests", tags=["group-requests"], dependencies=[Depends(defer_fan_out)])
 
 
 def _load_options() -> tuple:
