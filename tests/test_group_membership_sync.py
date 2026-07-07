@@ -369,6 +369,9 @@ async def _get_group_members(db: Db, group_id: str) -> dict[str, MembershipDetai
                 select(OktaUserGroupMember)
                 .where(OktaUserGroupMember.group_id == group_id)
                 .where(OktaUserGroupMember.is_owner.is_(False))
+                # Keyed by user_id below, so the newest row per user must win
+                # regardless of which scan plan (and row order) the DB picks.
+                .order_by(OktaUserGroupMember.id)
             )
         ).all()
     }

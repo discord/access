@@ -82,6 +82,18 @@ class OktaUserGroupMember(Base):
         Boolean, nullable=False, server_default=expression.false(), default=False
     )
 
+    # Postgres does not index FK columns automatically; the hot lookups filter
+    # by group_id (usually with is_owner and an active-membership ended_at
+    # predicate) and seq-scan without this.
+    __table_args__ = (
+        Index(
+            "idx_okta_user_group_member_group_id_is_owner_ended_at",
+            "group_id",
+            "is_owner",
+            "ended_at",
+        ),
+    )
+
     # See more details on specifying alternative join conditions for relationships at
     # https://docs.sqlalchemy.org/en/14/orm/join_conditions.html#specifying-alternate-join-conditions
     group: Mapped["OktaGroup"] = relationship(
