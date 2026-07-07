@@ -260,35 +260,40 @@ async def test_read_tool_over_http_returns_its_db_connection(
 
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'mcp_leak.db'}")
     _db.init_app(engine=engine)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    app = create_app(testing=True)
-    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-    body = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {"name": "list_groups", "arguments": {}},
-    }
-
-    # A fresh /mcp request owns its session scope in production; make the
-    # ambient scope the default so RequestIdMiddleware behaves the same here.
-    token = _session_scope.set("__default__")
+    # `_db` is process-global; dispose the engine no matter what so a failed
+    # assertion below can't leak it into unrelated downstream tests (mirrors
+    # the `db` fixture's own teardown).
     try:
-        async with _mcp_client(app) as client:
-            for _ in range(3):
-                r = await client.post("/mcp", headers=headers, content=json.dumps(body))
-                assert r.status_code == 200, r.text
-    finally:
-        _session_scope.reset(token)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    # Force finalization of anything that a leak would have orphaned, then
-    # assert every checked-out connection made it back to the pool.
-    gc.collect()
-    await asyncio.sleep(0.05)
-    assert engine.pool.checkedout() == 0, "MCP tool call leaked a pooled DB connection"
-    await engine.dispose()
+        app = create_app(testing=True)
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        body = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "list_groups", "arguments": {}},
+        }
+
+        # A fresh /mcp request owns its session scope in production; make the
+        # ambient scope the default so RequestIdMiddleware behaves the same here.
+        token = _session_scope.set("__default__")
+        try:
+            async with _mcp_client(app) as client:
+                for _ in range(3):
+                    r = await client.post("/mcp", headers=headers, content=json.dumps(body))
+                    assert r.status_code == 200, r.text
+        finally:
+            _session_scope.reset(token)
+
+        # Force finalization of anything that a leak would have orphaned, then
+        # assert every checked-out connection made it back to the pool.
+        gc.collect()
+        await asyncio.sleep(0.05)
+        assert engine.pool.checkedout() == 0, "MCP tool call leaked a pooled DB connection"
+    finally:
+        await engine.dispose()
 
 
 async def test_read_tool_requires_read_all_scope(
