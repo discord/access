@@ -8,23 +8,6 @@ Items grouped roughly by surface area; ordering within each group is rough prior
 
 ## Database / SQLAlchemy
 
-### 2. Switch to async SQLAlchemy
-
-The migration kept SQLAlchemy synchronous. To go async:
-- Engine: `create_engine` → `create_async_engine`
-- Sessionmaker: `sessionmaker` → `async_sessionmaker`
-- `get_db`: `Generator[Session, …]` → `AsyncGenerator[AsyncSession, …]`
-- Operations: every `db.session.query(...).first()` → `await session.execute(select(...))`
-- Routers: `def` → `async def`
-
-Major lift — every operation file changes — but unlocks concurrent I/O and
-removes the sync-thread-pool overhead per request.
-
-### 3. Replace the `_session_scope` ContextVar dance with `async_scoped_session`
-
-Once #2 lands, SQLAlchemy's built-in `async_scoped_session` replaces the
-manual ContextVar plumbing in `api/extensions.py`.
-
 ### 4. Eager-loading hygiene
 
 **Strict serialization landed.** `api/schemas/_serialize.py` exposes
@@ -73,21 +56,27 @@ Care needed:
 - Tests that assert call-count of mocked Okta methods may need to await
   background tasks before asserting
 
-### 11. Async HTTP for Okta calls
+### 11a. Okta SDK v3 upgrade
 
-Replace synchronous `requests` calls in `api/services/okta_service.py` with
-`httpx.AsyncClient` and connection pooling. Pairs naturally with #2 (async
-SQLAlchemy).
+The async migration kept `okta==2.9.8` (aiohttp-based, async-native)
+behind the `OktaService` facade. The SDK's v3 line (3.x, late 2025+) is
+a ground-up openapi-generator rewrite: Pydantic models replace
+`OktaObject`, API methods move to `okta.api.*` classes, and the
+exception hierarchy changes. Still async, so nothing blocks on it — but
+v2 is in maintenance mode. The facade contains the blast radius:
+upgrading touches `api/services/okta_service.py` (retry/pagination/
+custom group-owners endpoint plumbing), `tests/factories.py` (Okta SDK
+model factories), and the okta service/retry tests. Verify rate-limit
+and pagination behavior against a live org when upgrading.
 
-**Important sequencing note.** The current `OktaService` sync wrappers
-each call `asyncio.run(...)` internally on an inner async helper. That
-works *today* because every router is `def` (sync) and runs on an
-`anyio.to_thread.run_sync` worker thread that has no event loop. The
-moment any router becomes `async def`, the same call breaks with
-`asyncio.run() cannot be called from a running event loop`. So this
-work is gated on #2 (async SQLAlchemy / async routers) and must land
-together — converting `OktaService` to async without converting the
-routers buys nothing and is risky.
+### 11b. Shared pooled Okta client
+
+`OktaService._okta_client()` creates a fresh SDK client (and aiohttp
+session) per call so CLI invocations and per-test event loops stay
+isolated. The FastAPI server loop could instead hold one client for
+connection pooling — e.g. created in a lifespan hook and reused when
+`asyncio.get_running_loop()` matches. Measure before bothering: Okta
+API latency dominates connection setup for most operations.
 
 (Note: the previous "Replace the in-process syncer.py loop with a
 proper task runner" entry was removed — the syncer already runs as a
@@ -110,14 +99,6 @@ violations in those directories.
 ---
 
 ## Test Ergonomics
-
-### 15. Async test client
-
-Once routers are async (#2), switch from `fastapi.testclient.TestClient`
-to `httpx.AsyncClient(transport=ASGITransport(app=app))` with
-`pytest-asyncio`. Lets tests exercise true async paths (e.g. concurrent
-DB calls in a single request) and avoids the sync-bridge in the current
-TestClient.
 
 ### 16. Replace `factory_boy` with Pydantic-based builders
 
@@ -146,8 +127,29 @@ clean `--snapshot-update` ergonomics.
 
 The four plugin types (`notifications`, `conditional_access`,
 `app_group_lifecycle`, `metrics_reporter`) currently expose synchronous
-hooks via `pluggy`. Once the application goes async (#2), plugins
-should follow.
+hooks via `pluggy`. The application is now async, so every call site
+bridges the sync hook — and the bridge differs by call site, which is
+exactly the smell that motivates going natively async:
+
+- `app_group_lifecycle` hooks (which receive `session=`) run through
+  `AsyncSession.run_sync`, which hands them a working sync `Session` on
+  the greenlet bridge (`create_group`, `delete_group`, `modify_group_*`).
+- The syncer's `access_expiring_*` `notifications` hooks also run through
+  `db.session.run_sync` — the syncer is a batch CLI job holding
+  AsyncSession-bound ORM rows, so run_sync keeps those rows on the
+  session's own thread instead of handing them to an `anyio` worker
+  thread (which was the original cross-thread hazard). Every ORM
+  relationship is `lazy="raise_on_sql"`, so a hook can only read what the
+  syncer eager-loaded regardless — extend the `joinedload`s there if a
+  notification plugin needs a wider graph.
+- `notifications` / `conditional_access` hooks fired from request-path
+  operations still run **inline on the event loop**, so a plugin doing
+  slow network I/O blocks the request. Moving that slow tail off the hot
+  path is item 10 (`BackgroundTasks`); `conditional_access` is harder
+  because its return value gates the request.
+
+Making the hooks natively async collapses all three bridges into one
+`await`. Plugins should eventually follow the app.
 
 Strategy mirrors the existing `DeprecationWarning` pattern in
 `api/plugins/notifications.py:48-74`:
@@ -160,6 +162,17 @@ Strategy mirrors the existing `DeprecationWarning` pattern in
 
 Plugins authored in this window can pick either flavor; the application
 prefers the async hook when both are registered.
+
+Rules to document with the async hook specs:
+- Hooks must not import `api.extensions.db` — they receive everything
+  they need (the lifecycle hooks' `session` argument is a sync
+  `Session` shim today and becomes an `AsyncSession` for the `_async`
+  variants).
+- **Plugin-contributed CLI commands** (the `access.commands` entry
+  point) now run inside the CLI's `asyncio.run` boundary; commands
+  written against the old sync `db.session` will break. They should
+  declare `async def` bodies and await session calls — document this
+  in the plugin guide alongside the async hook rollout.
 
 ### 19. Pre-2.0 release checklist: drop deprecated plugin parameters
 

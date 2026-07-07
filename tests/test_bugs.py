@@ -9,7 +9,7 @@ from typing import Any, Generator
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 
 from api.auth.dependencies import require_authenticated
@@ -37,8 +37,8 @@ def with_real_dsn(production_env: None, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(settings, "REACT_SENTRY_DSN", _REAL_DSN)
 
 
-def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
-    client: TestClient, with_real_dsn: None, mocker: MockerFixture
+async def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
+    client: AsyncClient, with_real_dsn: None, mocker: MockerFixture
 ) -> None:
     captured: dict[str, Any] = {}
 
@@ -56,7 +56,9 @@ def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
 
     mocker.patch("api.routers.bugs.httpx.AsyncClient", _FakeAsyncClient)
 
-    rep = client.post("/api/bugs/sentry", content=_ENVELOPE, headers={"Content-Type": "application/x-sentry-envelope"})
+    rep = await client.post(
+        "/api/bugs/sentry", content=_ENVELOPE, headers={"Content-Type": "application/x-sentry-envelope"}
+    )
     assert rep.status_code == 200
     assert rep.json() == {}
 
@@ -67,22 +69,22 @@ def test_sentry_envelope_is_forwarded_with_dsn_rewritten(
     assert captured["headers"]["Content-Type"] == "application/x-sentry-envelope"
 
 
-def test_sentry_skips_in_dev(client: TestClient, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture) -> None:
+async def test_sentry_skips_in_dev(client: AsyncClient, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture) -> None:
     # Default test env is "test"; override DSN but keep ENV → expect skip.
     monkeypatch.setattr(settings, "REACT_SENTRY_DSN", _REAL_DSN)
     spy = mocker.patch("api.routers.bugs.httpx.AsyncClient")
 
-    rep = client.post("/api/bugs/sentry", content=_ENVELOPE)
+    rep = await client.post("/api/bugs/sentry", content=_ENVELOPE)
     assert rep.status_code == 200
     spy.assert_not_called()
 
 
-def test_sentry_skips_when_dsn_unset(
-    client: TestClient, production_env: None, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+async def test_sentry_skips_when_dsn_unset(
+    client: AsyncClient, production_env: None, monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
 ) -> None:
     monkeypatch.setattr(settings, "REACT_SENTRY_DSN", None)
     spy = mocker.patch("api.routers.bugs.httpx.AsyncClient")
 
-    rep = client.post("/api/bugs/sentry", content=_ENVELOPE)
+    rep = await client.post("/api/bugs/sentry", content=_ENVELOPE)
     assert rep.status_code == 200
     spy.assert_not_called()

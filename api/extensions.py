@@ -3,35 +3,48 @@
 Exposes:
 
 - `Base`: declarative base for all ORM models.
-- `db.session`: the request-scoped Session bound to the active `_session_scope`.
-- `db.engine`: the configured Engine.
+- `db.session`: the request-scoped AsyncSession bound to the active
+  `_session_scope`.
+- `db.engine`: the configured AsyncEngine.
 - `db.init_app(engine=...)`, `db.remove()`, `db.create_all()`, `db.drop_all()`.
 
-The session is bound to a `ContextVar` so each FastAPI request (or CLI
-invocation) gets its own Session. The dependency in `api.database.get_db`
-sets and clears this var per request.
+The session is scoped on a `ContextVar` so each FastAPI request (or CLI
+invocation) gets its own AsyncSession. The dependency in `api.database.get_db`
+yields it per request; `RequestIdMiddleware` sets and clears the scope.
+
+Concurrency rule: an AsyncSession must never be used concurrently. ContextVars
+propagate into tasks spawned with `asyncio.create_task`, so a spawned task
+sees the *same* session as its parent — tasks handed to `create_task` /
+`gather` / `wait` may only perform network I/O (Okta calls, notification
+hooks), never `db.session` access.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextvars
-import threading
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
-from google.cloud.sql.connector import Connector, IPTypes
-from sqlalchemy import Engine, MetaData
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Session,
-    scoped_session,
-    sessionmaker,
+from sqlalchemy import MetaData
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_scoped_session,
+    async_sessionmaker,
 )
+from sqlalchemy.orm import DeclarativeBase
 
 
-# Per-request session scope. The FastAPI dependency sets this to a unique
+# Per-request session scope. The FastAPI middleware sets this to a unique
 # request id; CLI/syncer entrypoints set it to a per-run sentinel. Default
 # is a single process-global scope identifier so that ad-hoc usage (alembic,
 # scripts) just works without explicit setup.
+#
+# Scoping on the ContextVar (rather than `asyncio.current_task`) is load-
+# bearing: `BaseHTTPMiddleware.call_next` runs the downstream app in a child
+# task, and context copies propagate to child tasks while task identity does
+# not — task-scoping would register the handler's session under a key the
+# middleware teardown could never remove.
 _session_scope: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "access_session_scope", default="__default__"
 )
@@ -78,54 +91,56 @@ class Base(DeclarativeBase):
 
 
 class _DB:
-    """Session/engine facade. Provides per-request scoped session via
+    """Session/engine facade. Provides per-request scoped AsyncSession via
     `db.session`, plus startup/teardown plumbing (`init_app`, `remove`)."""
 
     def __init__(self) -> None:
-        self._engine: Optional[Engine] = None
-        self._sessionmaker: Optional[sessionmaker[Session]] = None
-        self._scoped: Optional[scoped_session[Session]] = None
+        self._engine: Optional[AsyncEngine] = None
+        self._sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
+        self._scoped: Optional[async_scoped_session[AsyncSession]] = None
 
-    def init_app(self, *, engine: Engine) -> None:
+    def init_app(self, *, engine: AsyncEngine) -> None:
         """Bind the session facade to a SQLAlchemy engine. Must be called
         once at app (or CLI) startup before any ORM operation."""
         self._engine = engine
-        self._sessionmaker = sessionmaker(
+        self._sessionmaker = async_sessionmaker(
             bind=engine,
             autoflush=False,
-            # Loaded state survives commits. Required for the async flip:
+            # Loaded state survives commits. Required under async:
             # expired-attribute access on an AsyncSession raises MissingGreenlet,
             # and operations/syncer keep using ORM objects across mid-flow
             # commits. Attributes assigned SQL expressions (e.g. func.now())
             # still expire at flush and need an explicit refresh before use.
             expire_on_commit=False,
         )
-        self._scoped = scoped_session(self._sessionmaker, scopefunc=lambda: _session_scope.get())
+        self._scoped = async_scoped_session(self._sessionmaker, scopefunc=lambda: _session_scope.get())
 
     @property
-    def engine(self) -> Engine:
+    def engine(self) -> AsyncEngine:
         if self._engine is None:
             raise RuntimeError("db.init_app(engine=...) was not called")
         return self._engine
 
     @property
-    def session(self) -> Session:
+    def session(self) -> AsyncSession:
         """Returns the current scoped session for the active scope."""
         if self._scoped is None:
             raise RuntimeError("db.init_app(engine=...) was not called")
         return self._scoped()
 
-    def remove(self) -> None:
-        """Removes the session for the current scope. Called by the FastAPI
-        dependency on request teardown and by CLI entrypoints on exit."""
+    async def remove(self) -> None:
+        """Removes (closes) the session for the current scope. Called by the
+        middleware on request teardown and by CLI entrypoints on exit."""
         if self._scoped is not None:
-            self._scoped.remove()
+            await self._scoped.remove()
 
-    def create_all(self) -> None:
-        Base.metadata.create_all(self.engine)
+    async def create_all(self) -> None:
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    def drop_all(self) -> None:
-        Base.metadata.drop_all(self.engine)
+    async def drop_all(self) -> None:
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
 
 
 db = _DB()
@@ -135,48 +150,35 @@ db = _DB()
 Db = _DB
 
 
-# Process-wide singleton Connector, shared by every engine/creator for the
-# life of the worker. The Connector owns a background event loop + aiohttp
-# session and a RefreshAheadCache that renews the ephemeral client cert ahead
-# of expiry, and it caches connection info per (instance, enable_iam_auth)
-# internally — so a single instance serves every Cloud SQL target.
-#
-# The previous `with Connector()` built and closed one *per connection*, which
-# (a) tore the loop/session down while the background cert refresh to
-# sqladmin.googleapis.com was still in flight — racing it and surfacing
-# ServerDisconnectedError / "Task pending" errors — and (b) gave every
-# connection a fresh empty cache, defeating the refresh-ahead design.
-_connector: Optional[Connector] = None
-_connector_lock = threading.Lock()
-
-
-def _get_connector() -> Connector:
-    """Return the process-wide Connector, building it on first use.
-
-    Built lazily (double-checked lock; the SQLAlchemy pool may call the creator
-    from multiple threads) so the Connector's background thread is spawned
-    inside the worker process, after any gunicorn fork — a thread created in a
-    preloaded master would not survive fork() and the loop would be dead in the
-    workers.
-    """
-    global _connector
-    if _connector is None:
-        with _connector_lock:
-            if _connector is None:
-                _connector = Connector()
-    return _connector
-
-
-def get_cloudsql_conn(
+def get_cloudsql_async_conn(
     cloudsql_connection_name: str,
     db_user: Optional[str] = "root",
     db_name: Optional[str] = "access",
     uses_public_ip: Optional[bool] = False,
-) -> Callable[[], Any]:
-    def _get_conn() -> Any:
-        return _get_connector().connect(
+) -> Callable[[], Awaitable[Any]]:
+    """Build an `async_creator` for `create_async_engine` that connects to
+    Cloud SQL over the Cloud SQL Python Connector with asyncpg + IAM auth.
+
+    A single Connector is created lazily on first connect and reused for the
+    engine's lifetime — for the server that's one engine per worker, so the
+    Connector is effectively process-wide. Reusing it (rather than
+    `async with Connector()` per connection) keeps the background cert refresh
+    from being torn down mid-flight, which raced sqladmin and surfaced
+    ServerDisconnectedError. It's scoped to the creator rather than a module
+    global because the Connector binds to the running loop, and the CLI/tests
+    use a fresh loop per invocation.
+    """
+    from google.cloud.sql.connector import Connector, IPTypes
+
+    connector: Optional[Connector] = None
+
+    async def _get_conn() -> Any:
+        nonlocal connector
+        if connector is None:
+            connector = Connector(loop=asyncio.get_running_loop())
+        return await connector.connect_async(
             cloudsql_connection_name,
-            "pg8000",
+            "asyncpg",
             user=db_user,
             db=db_name,
             ip_type=IPTypes.PUBLIC if uses_public_ip else IPTypes.PRIVATE,
@@ -191,5 +193,5 @@ __all__ = [
     "Db",
     "_session_scope",
     "db",
-    "get_cloudsql_conn",
+    "get_cloudsql_async_conn",
 ]

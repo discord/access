@@ -1,10 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from pytest_mock import MockerFixture
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from api.extensions import Db
 from api.models import (
     AccessRequest,
@@ -23,10 +23,11 @@ from api.operations import CreateAccessRequest, CreateRoleRequest, ModifyGroupUs
 from api.plugins import get_notification_hook
 from api.services import okta
 from tests.factories import OktaUserFactory, RoleGroupFactory
+from tests.helpers import db_count
 
 
-def test_get_role(
-    client: TestClient,
+async def test_get_role(
+    client: AsyncClient,
     db: Db,
     role_group: RoleGroup,
     access_app: App,
@@ -37,22 +38,28 @@ def test_get_role(
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_by_id", role_id="randomid")
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 404
 
     db.session.add(access_app)
     db.session.add(okta_group)
     db.session.add(user)
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyRoleGroups(
+    await ModifyGroupUsers(
+        group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -74,75 +81,75 @@ def test_get_role(
 
     # test get role
     role_url = url_for("api-roles.role_by_id", role_id=role_group_id)
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 200
 
     data = rep.json()
     assert data["name"] == role_group_name
 
     app_url = url_for("api-roles.role_by_id", role_id=app_group_id)
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 404
 
     app_url = url_for("api-roles.role_by_id", role_id=okta_group_id)
-    rep = client.get(app_url)
+    rep = await client.get(app_url)
     assert rep.status_code == 404
 
 
-def test_get_role_prefers_active_after_name_reuse(
-    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+async def test_get_role_prefers_active_after_name_reuse(
+    client: AsyncClient, db: Db, role_group: RoleGroup, url_for: Any
 ) -> None:
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     role_name = role_group.name
     soft_deleted_id = role_group.id
 
     role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
-    db.session.commit()
+    await db.session.commit()
 
     new_role = RoleGroupFactory.create(name=role_name)
     db.session.add(new_role)
-    db.session.commit()
+    await db.session.commit()
     active_id = new_role.id
     assert active_id != soft_deleted_id
 
-    rep = client.get(url_for("api-roles.role_by_id", role_id=role_name))
+    rep = await client.get(url_for("api-roles.role_by_id", role_id=role_name))
     assert rep.status_code == 200
     assert rep.json()["id"] == active_id
 
 
-def test_get_role_members_404_when_role_soft_deleted(
-    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+async def test_get_role_members_404_when_role_soft_deleted(
+    client: AsyncClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id))
-    db.session.commit()
+    await db.session.commit()
     role_id = role_group.id
 
     role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(url_for("api-roles.role_members_by_id", role_id=role_id))
+    rep = await client.get(url_for("api-roles.role_members_by_id", role_id=role_id))
     assert rep.status_code == 404
 
 
-def test_get_role_members(
-    client: TestClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
+async def test_get_role_members(
+    client: AsyncClient, db: Db, role_group: RoleGroup, okta_group: OktaGroup, url_for: Any
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 404
 
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.commit()
+    await db.session.commit()
 
     # test get role group members
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 200
 
     data = rep.json()
@@ -150,10 +157,10 @@ def test_get_role_members(
     assert len(data["groups_owned_by_role"]) == 0
 
     db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id))
-    db.session.commit()
+    await db.session.commit()
 
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 200
 
     data = rep.json()
@@ -162,10 +169,10 @@ def test_get_role_members(
     assert len(data["groups_owned_by_role"]) == 0
 
     db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id, is_owner=True))
-    db.session.commit()
+    await db.session.commit()
 
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.get(role_url)
+    rep = await client.get(role_url)
     assert rep.status_code == 200
 
     data = rep.json()
@@ -175,8 +182,8 @@ def test_get_role_members(
     assert data["groups_owned_by_role"][0] == okta_group.id
 
 
-def test_put_role_members(
-    client: TestClient,
+async def test_put_role_members(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     role_group: RoleGroup,
@@ -186,23 +193,23 @@ def test_put_role_members(
 ) -> None:
     # test 404
     role_url = url_for("api-roles.role_members_by_id", role_id="randomid")
-    rep = client.put(role_url)
+    rep = await client.put(role_url)
     assert rep.status_code == 404
 
     db.session.add(role_group)
     db.session.add(okta_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
 
-    membership_access_request = CreateAccessRequest(
+    membership_access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=False,
         request_reason="test reason",
     ).execute()
-    ownership_access_request = CreateAccessRequest(
+    ownership_access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_ownership=True,
@@ -211,10 +218,10 @@ def test_put_role_members(
     assert membership_access_request is not None
     assert ownership_access_request is not None
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # test put role group members
     data: dict[str, Any] = {
@@ -224,7 +231,7 @@ def test_put_role_members(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -250,7 +257,7 @@ def test_put_role_members(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
@@ -279,7 +286,7 @@ def test_put_role_members(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -307,7 +314,7 @@ def test_put_role_members(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 1
@@ -334,7 +341,7 @@ def test_put_role_members(
         "owner_groups_to_remove": [okta_group.id],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -350,7 +357,7 @@ def test_put_role_members(
     assert ownership_access_request.approved_membership_id is not None
 
 
-def test_role_group_add_approves_pending_requests_on_cold_session(
+async def test_role_group_add_approves_pending_requests_on_cold_session(
     db: Db,
     mocker: MockerFixture,
     role_group: RoleGroup,
@@ -378,16 +385,16 @@ def test_role_group_add_approves_pending_requests_on_cold_session(
     the completion hooks.
     """
     db.session.add_all([role_group, okta_group, user])
-    db.session.commit()
+    await db.session.commit()
 
     # `user` must be an active role member so adding `okta_group` to the role
     # grants them access and approves their pending membership request.
-    ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    access_request = CreateAccessRequest(
+    access_request = await CreateAccessRequest(
         requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
     ).execute()
-    role_request = CreateRoleRequest(
+    role_request = await CreateRoleRequest(
         requester_user=user,
         requester_role=role_group,
         requested_group=okta_group,
@@ -399,8 +406,8 @@ def test_role_group_add_approves_pending_requests_on_cold_session(
     assert role_request.status == AccessRequestStatus.PENDING
     access_request_id, role_request_id = access_request.id, role_request.id
 
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
     hook = get_notification_hook()
     access_completed_spy = mocker.patch.object(hook, "access_request_completed")
     role_completed_spy = mocker.patch.object(hook, "access_role_request_completed")
@@ -409,19 +416,19 @@ def test_role_group_add_approves_pending_requests_on_cold_session(
     # than reuse the warm instances created above.
     db.session.expunge_all()
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group.id, groups_to_add=[okta_group.id], current_user_id=user.id, sync_to_okta=False
     ).execute()
 
     # Both pending requests were auto-approved and their completion hooks fired,
     # i.e. the notify loop read its relationships without tripping raise_on_sql.
-    assert db.session.get(AccessRequest, access_request_id).status == AccessRequestStatus.APPROVED
-    assert db.session.get(RoleRequest, role_request_id).status == AccessRequestStatus.APPROVED
+    assert (await db.session.get(AccessRequest, access_request_id)).status == AccessRequestStatus.APPROVED
+    assert (await db.session.get(RoleRequest, role_request_id)).status == AccessRequestStatus.APPROVED
     assert access_completed_spy.call_count == 1
     assert role_completed_spy.call_count == 1
 
 
-def test_role_group_add_with_notify_false_suppresses_completion_notifications(
+async def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     db: Db,
     mocker: MockerFixture,
     role_group: RoleGroup,
@@ -436,14 +443,14 @@ def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     resolve to APPROVED.
     """
     db.session.add_all([role_group, okta_group, user])
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role_group.id, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    access_request = CreateAccessRequest(
+    access_request = await CreateAccessRequest(
         requester_user=user, requested_group=okta_group, request_ownership=False, request_reason="please"
     ).execute()
-    role_request = CreateRoleRequest(
+    role_request = await CreateRoleRequest(
         requester_user=user,
         requester_role=role_group,
         requested_group=okta_group,
@@ -453,13 +460,13 @@ def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     assert access_request is not None and role_request is not None
     access_request_id, role_request_id = access_request.id, role_request.id
 
-    mocker.patch.object(okta, "async_add_user_to_group")
-    mocker.patch.object(okta, "async_add_owner_to_group")
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
     hook = get_notification_hook()
     access_completed_spy = mocker.patch.object(hook, "access_request_completed")
     role_completed_spy = mocker.patch.object(hook, "access_role_request_completed")
 
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group.id,
         groups_to_add=[okta_group.id],
         current_user_id=user.id,
@@ -468,8 +475,8 @@ def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     ).execute()
 
     # Requests are still approved — `notify` only controls the completion DMs.
-    assert db.session.get(AccessRequest, access_request_id).status == AccessRequestStatus.APPROVED
-    assert db.session.get(RoleRequest, role_request_id).status == AccessRequestStatus.APPROVED
+    assert (await db.session.get(AccessRequest, access_request_id)).status == AccessRequestStatus.APPROVED
+    assert (await db.session.get(RoleRequest, role_request_id)).status == AccessRequestStatus.APPROVED
     # ...and neither completion notification fired. This covers both notify
     # gates: `_notify_access_request` (the loop this change moved under
     # `if self.notify:`) and `_notify_role_request` (already gated before it).
@@ -479,21 +486,21 @@ def test_role_group_add_with_notify_false_suppresses_completion_notifications(
     assert role_completed_spy.call_count == 0  # _notify_role_request gate
 
 
-def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_get_all_role(client: AsyncClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
     groups = RoleGroupFactory.create_batch(10)
 
     db.session.add_all(groups)
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(groups_url)
+    rep = await client.get(groups_url)
     assert rep.status_code == 200
 
     results = rep.json()
     for group in groups:
         assert any(u["id"] == group.id for u in results["items"])
 
-    rep = client.get(groups_url, params={"q": "r"})
+    rep = await client.get(groups_url, params={"q": "r"})
     assert rep.status_code == 200
 
     results = rep.json()
@@ -501,8 +508,8 @@ def test_get_all_role(client: TestClient, db: Db, url_for: Any) -> None:
         assert any(u["id"] == group.id for u in results["items"])
 
 
-def test_complex_role_modifications(
-    client: TestClient,
+async def test_complex_role_modifications(
+    client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
     okta_group: OktaGroup,
@@ -515,7 +522,7 @@ def test_complex_role_modifications(
     db.session.add(role_group)
     db.session.add(access_app)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     # Store IDs before requests — expunge_all() in ModifyGroupType can
     # detach fixture objects, causing DetachedInstanceError on access.
@@ -523,10 +530,10 @@ def test_complex_role_modifications(
     okta_group_id = okta_group.id
     role_group_id = role_group.id
 
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # Add user to okta group and role group
     data: dict[str, Any] = {
@@ -536,13 +543,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 2
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -560,13 +567,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 3
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -585,13 +592,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -610,14 +617,14 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     # The user is still in the okta group, so they shouldn't be removed
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 3
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 3
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 0
@@ -635,13 +642,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -660,7 +667,7 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     # The user is still in the okta group, so they shouldn't be removed
@@ -668,7 +675,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 2
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 2
 
     data = rep.json()
     assert len(data["members"]) == 0
@@ -686,13 +693,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -711,13 +718,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -736,13 +743,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 6
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -762,13 +769,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -789,13 +796,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [okta_group_id],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 6
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -814,13 +821,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -840,13 +847,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [user_id],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 6
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 6
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -865,13 +872,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -891,7 +898,7 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     # The user is still in the okta group, so they shouldn't be removed
@@ -899,7 +906,7 @@ def test_complex_role_modifications(
     assert remove_user_from_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
     data = rep.json()
     assert len(data["members"]) == 0
@@ -918,13 +925,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -949,14 +956,14 @@ def test_complex_role_modifications(
 
     group_id = role_group_id
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert data["type"] == "app_group"
@@ -964,7 +971,7 @@ def test_complex_role_modifications(
     assert data["description"] == "new description app_group"
     assert data["id"] == group_id
 
-    app_group = db.session.get(AppGroup, group_id)
+    app_group = await db.session.get(AppGroup, group_id)
 
     # Modify group type back to role group
     add_user_to_group_spy.reset_mock()
@@ -983,14 +990,14 @@ def test_complex_role_modifications(
 
     group_id = app_group.id
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert data["type"] == "role_group"
@@ -998,8 +1005,8 @@ def test_complex_role_modifications(
     assert data["description"] == "new description role_group"
     assert data["id"] == group_id
 
-    role_group = db.session.get(RoleGroup, group_id)
-    okta_group = db.session.get(OktaGroup, okta_group_id)
+    role_group = await db.session.get(RoleGroup, group_id)
+    okta_group = await db.session.get(OktaGroup, okta_group_id)
 
     # Add the role group back as a member and owner of the okta group, for a limited time
     add_user_to_group_spy.reset_mock()
@@ -1014,14 +1021,14 @@ def test_complex_role_modifications(
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=3),
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at > func.now()).count() == 2
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at > func.now())) == 2
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -1043,30 +1050,32 @@ def test_complex_role_modifications(
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=1),
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should only be added for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > func.now(),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > func.now(),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+            ),
         )
-        .count()
         == 3
     )
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+            ),
         )
-        .count()
         == 0
     )
 
@@ -1084,31 +1093,33 @@ def test_complex_role_modifications(
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=7),
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should be added for the length of the okta group membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+            ),
         )
-        .count()
         == 2
     )
     # User should only be added for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+            ),
         )
-        .count()
         == 1
     )
 
@@ -1130,21 +1141,22 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+            ),
         )
-        .count()
         == 3
     )
 
@@ -1167,21 +1179,22 @@ def test_complex_role_modifications(
         "users_added_ending_at": datetime.now(UTC) + timedelta(days=5),
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+            ),
         )
-        .count()
         == 3
     )
 
@@ -1205,21 +1218,22 @@ def test_complex_role_modifications(
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=14),
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+            ),
         )
-        .count()
         == 3
     )
 
@@ -1243,31 +1257,33 @@ def test_complex_role_modifications(
         "groups_added_ending_at": datetime.now(UTC) + timedelta(days=3),
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 4
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=4)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=6)),
+            ),
         )
-        .count()
         == 1
     )
     # User should be added for the length of the okta group membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+            ),
         )
-        .count()
         == 2
     )
 
@@ -1289,21 +1305,22 @@ def test_complex_role_modifications(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 2
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
     # User should only be in associated groups for the length of their membership to the role group
     assert (
-        db.session.query(OktaUserGroupMember)
-        .filter(
-            OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-            OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+            ),
         )
-        .count()
         == 2
     )
 
@@ -1325,13 +1342,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -1351,13 +1368,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [user_id],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -1380,14 +1397,14 @@ def test_complex_role_modifications(
     }
 
     group_url = url_for("api-groups.group_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert data["type"] == "role_group"
@@ -1410,14 +1427,14 @@ def test_complex_role_modifications(
     }
 
     group_url = url_for("api-groups.group_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
     assert update_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert data["type"] == "okta_group"
@@ -1437,13 +1454,13 @@ def test_complex_role_modifications(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group_id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 1
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 1
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 7
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 7
 
     data = rep.json()
     assert len(data["groups_in_role"]) == 1
@@ -1463,13 +1480,13 @@ def test_complex_role_modifications(
         "owners_to_remove": [user_id],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group_id)
-    rep = client.put(group_url, json=data)
+    rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 0
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
 
     data = rep.json()
     assert len(data["members"]) == 1
@@ -1483,26 +1500,29 @@ def test_complex_role_modifications(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    delete_group_spy = mocker.patch.object(okta, "async_delete_group")
+    delete_group_spy = mocker.patch.object(okta, "delete_group")
 
     group_url = url_for("api-groups.group_by_id", group_id=role_group_id)
-    rep = client.delete(group_url)
+    rep = await client.delete(group_url)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 1
     assert add_owner_to_group_spy.call_count == 0
     assert remove_owner_from_group_spy.call_count == 1
     assert delete_group_spy.call_count == 1
-    assert db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.ended_at.is_(None)).count() == 1
-    assert db.session.get(OktaGroup, group_id).deleted_at is not None
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
+    # The shared app/test session holds a stale identity-map entry for the
+    # deleted group; expire it so the awaited get() refreshes it async.
+    db.session.expire_all()
+    assert (await db.session.get(OktaGroup, group_id)).deleted_at is not None
 
 
 # Do not renew functionality test
 # Since this field is only for expiring access, there are no checks for it anywhere in the API (only in the front end).
 # Test is just to make sure the field is set correctly
-def test_do_not_renew(
+async def test_do_not_renew(
     db: Db,
-    client: TestClient,
+    client: AsyncClient,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
@@ -1511,14 +1531,14 @@ def test_do_not_renew(
 ) -> None:
     db.session.add(okta_group)
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
 
     expiration_datetime = datetime.now() + timedelta(days=1)
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
     ).execute()
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_added_ended_at=expiration_datetime,
         groups_to_add=[okta_group.id],
@@ -1526,13 +1546,15 @@ def test_do_not_renew(
     ).execute()
 
     # need the RoleGroupMap id to pass in later
-    role_group_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role_group.id).first()
+    role_group_map = (
+        await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.role_group_id == role_group.id))
+    ).first()
 
     # set one user to renew and one do not renew
-    add_user_to_group_spy = mocker.patch.object(okta, "async_add_user_to_group")
-    remove_user_from_group_spy = mocker.patch.object(okta, "async_remove_user_from_group")
-    add_owner_to_group_spy = mocker.patch.object(okta, "async_add_owner_to_group")
-    remove_owner_from_group_spy = mocker.patch.object(okta, "async_remove_owner_from_group")
+    add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
+    remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
+    add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
+    remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     data: dict[str, Any] = {
         "groups_to_add": [],
@@ -1543,7 +1565,7 @@ def test_do_not_renew(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
     assert add_user_to_group_spy.call_count == 0
     assert remove_user_from_group_spy.call_count == 0
@@ -1557,24 +1579,25 @@ def test_do_not_renew(
 
     # get OktaUserGroupMembers, check expiration dates and should_expire
     membership_role = (
-        db.session.query(RoleGroupMap)
-        .filter(
-            or_(
-                RoleGroupMap.ended_at.is_(None),
-                RoleGroupMap.ended_at > func.now(),
+        await db.session.scalars(
+            select(RoleGroupMap)
+            .where(
+                or_(
+                    RoleGroupMap.ended_at.is_(None),
+                    RoleGroupMap.ended_at > func.now(),
+                )
             )
+            .where(RoleGroupMap.role_group_id == role_group.id)
         )
-        .filter(RoleGroupMap.role_group_id == role_group.id)
-        .all()
-    )
+    ).all()
 
     assert len(membership_role) == 1
     assert membership_role[0].ended_at == expiration_datetime
     assert membership_role[0].should_expire is True
 
 
-def test_do_not_renew_scoped_to_route_role(
-    db: Db, client: TestClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
+async def test_do_not_renew_scoped_to_route_role(
+    db: Db, client: AsyncClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
     victim_role = RoleGroupFactory.create()
     victim_okta_group = OktaGroup(
@@ -1588,27 +1611,29 @@ def test_do_not_renew_scoped_to_route_role(
     db.session.add(victim_role)
     db.session.add(victim_okta_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     expiration_datetime = datetime.now() + timedelta(days=1)
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
     ).execute()
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_added_ended_at=expiration_datetime,
         groups_to_add=[okta_group.id],
         sync_to_okta=False,
     ).execute()
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=victim_role,
         groups_added_ended_at=expiration_datetime,
         groups_to_add=[victim_okta_group.id],
         sync_to_okta=False,
     ).execute()
 
-    victim_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == victim_role.id).first()
+    victim_map = (
+        await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.role_group_id == victim_role.id))
+    ).first()
     assert victim_map is not None
 
     data: dict[str, Any] = {
@@ -1620,16 +1645,16 @@ def test_do_not_renew_scoped_to_route_role(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
 
-    db.session.refresh(victim_map)
+    await db.session.refresh(victim_map)
     assert victim_map.should_expire is False
 
 
-def test_do_not_renew_requires_group_ownership(
+async def test_do_not_renew_requires_group_ownership(
     db: Db,
-    client: TestClient,
+    client: AsyncClient,
     mocker: MockerFixture,
     role_group: RoleGroup,
     okta_group: OktaGroup,
@@ -1639,21 +1664,23 @@ def test_do_not_renew_requires_group_ownership(
     db.session.add(role_group)
     db.session.add(okta_group)
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     expiration_datetime = datetime.now() + timedelta(days=1)
 
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=role_group, users_added_ended_at=expiration_datetime, members_to_add=[user.id], sync_to_okta=False
     ).execute()
-    ModifyRoleGroups(
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_added_ended_at=expiration_datetime,
         groups_to_add=[okta_group.id],
         sync_to_okta=False,
     ).execute()
 
-    role_group_map = db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role_group.id).first()
+    role_group_map = (
+        await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.role_group_id == role_group.id))
+    ).first()
     assert role_group_map is not None
 
     # User is not an admin and not an owner of the group in the mapping
@@ -1669,14 +1696,14 @@ def test_do_not_renew_requires_group_ownership(
         "owner_groups_to_remove": [],
     }
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
-    rep = client.put(role_url, json=data)
+    rep = await client.put(role_url, json=data)
     assert rep.status_code == 403
 
-    db.session.refresh(role_group_map)
+    await db.session.refresh(role_group_map)
     assert role_group_map.should_expire is False
 
 
-def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_role_list_owner_id_filter(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`?owner_id=<user>` and `?owner_id=@me` filter /api/roles to the
     roles owned by that user. Flask had this; the FastAPI port previously
     only honored `q`."""
@@ -1689,22 +1716,22 @@ def test_role_list_owner_id_filter(client: TestClient, db: Db, url_for: Any) -> 
     role_a = RoleGroupFactory.create()
     role_b = RoleGroupFactory.create()
     db.session.add_all([owner, other, role_a, role_b])
-    db.session.commit()
+    await db.session.commit()
     end = datetime.now(timezone.utc) + timedelta(days=30)
     db.session.add(_OUGM(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end))
     db.session.add(_OUGM(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end))
-    db.session.commit()
+    await db.session.commit()
 
     list_url = url_for("api-roles.roles")
-    rep = client.get(list_url, params={"owner_id": owner.id})
+    rep = await client.get(list_url, params={"owner_id": owner.id})
     assert rep.status_code == 200
     ids = [r["id"] for r in rep.json()["items"]]
     assert role_a.id in ids
     assert role_b.id not in ids
 
 
-def test_put_role_members_rejects_role_in_role(
-    client: TestClient,
+async def test_put_role_members_rejects_role_in_role(
+    client: AsyncClient,
     db: Db,
     role_group: RoleGroup,
     url_for: Any,
@@ -1713,15 +1740,19 @@ def test_put_role_members_rejects_role_in_role(
     inner_role = RoleGroupFactory.create()
     db.session.add(role_group)
     db.session.add(inner_role)
-    db.session.commit()
+    await db.session.commit()
+
+    # Store the ID before requests — the 400 response path rolls back the
+    # shared session, expiring inner_role and breaking sync attribute access.
+    inner_role_id = inner_role.id
 
     role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
 
     # As member
-    rep = client.put(
+    rep = await client.put(
         role_url,
         json={
-            "groups_to_add": [inner_role.id],
+            "groups_to_add": [inner_role_id],
             "owner_groups_to_add": [],
             "groups_to_remove": [],
             "owner_groups_to_remove": [],
@@ -1731,11 +1762,11 @@ def test_put_role_members_rejects_role_in_role(
     assert "Roles cannot be added to other Roles" in rep.text
 
     # As owner
-    rep = client.put(
+    rep = await client.put(
         role_url,
         json={
             "groups_to_add": [],
-            "owner_groups_to_add": [inner_role.id],
+            "owner_groups_to_add": [inner_role_id],
             "groups_to_remove": [],
             "owner_groups_to_remove": [],
         },
@@ -1744,15 +1775,15 @@ def test_put_role_members_rejects_role_in_role(
     assert "Roles cannot be added to other Roles" in rep.text
 
 
-def test_put_role_members_rejects_short_group_id(
-    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+async def test_put_role_members_rejects_short_group_id(
+    client: AsyncClient, db: Db, role_group: RoleGroup, url_for: Any
 ) -> None:
     """Each group id must be exactly 20 characters wide. Pydantic enforces
     the constraint at the request boundary."""
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
-    rep = client.put(
+    rep = await client.put(
         role_url,
         json={
             "groups_to_add": ["short"],
@@ -1766,26 +1797,28 @@ def test_put_role_members_rejects_short_group_id(
     assert rep.status_code == 400
 
 
-def test_put_role_members_rejects_missing_required_lists(
-    client: TestClient, db: Db, role_group: RoleGroup, url_for: Any
+async def test_put_role_members_rejects_missing_required_lists(
+    client: AsyncClient, db: Db, role_group: RoleGroup, url_for: Any
 ) -> None:
     """`groups_to_add`, `groups_to_remove`, `owner_groups_to_add`, and
     `owner_groups_to_remove` are required fields on the request body. The
     Pydantic schema must reject a body that omits them entirely."""
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
-    rep = client.put(role_url, json={})
+    rep = await client.put(role_url, json={})
     # The project's exception handler maps Pydantic validation errors to 400
     # (not the FastAPI default 422) — see `api/exception_handlers.py`.
     assert rep.status_code == 400
 
 
-def test_put_role_members_missing_body_400(client: TestClient, db: Db, role_group: RoleGroup, url_for: Any) -> None:
+async def test_put_role_members_missing_body_400(
+    client: AsyncClient, db: Db, role_group: RoleGroup, url_for: Any
+) -> None:
     """No body at all returns 400 (matches groups.py PUT members shape).
     Regression guard for the dropped `RoleMember()` substitution path."""
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     role_url = url_for("api-roles.role_members_by_id_put", role_id=role_group.id)
-    rep = client.put(role_url)
+    rep = await client.put(role_url)
     assert rep.status_code == 400

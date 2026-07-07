@@ -28,7 +28,7 @@ from api.models import OktaUser
 logger = logging.getLogger(__name__)
 
 
-def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
+async def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
     if settings.ENV not in ("development", "test"):
         return None
 
@@ -37,8 +37,10 @@ def resolve_identity(scope: Scope) -> Optional[MCPIdentity]:
         return None
 
     db = _db_shim.session
-    user = db.scalars(
-        select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+    user = (
+        await db.scalars(
+            select(OktaUser).where(func.lower(OktaUser.email) == func.lower(email)).where(OktaUser.deleted_at.is_(None))
+        )
     ).first()
     if user is None:
         logger.warning(

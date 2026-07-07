@@ -20,7 +20,7 @@ import contextvars
 import functools
 import json
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 # Scope strings used by the v1 tool surface. Tools declare a required
 # scope via ``@require_scope(MCP_SCOPE_READ_ALL)`` etc.; the
@@ -127,7 +127,7 @@ def require_scope(scope: str) -> None:
         raise MCPScopeError(f"This tool requires the '{scope}' scope; the active token does not carry it.")
 
 
-F = TypeVar("F", bound=Callable[..., str])
+F = TypeVar("F", bound=Callable[..., Awaitable[str]])
 
 
 def requires_scope(scope: str) -> Callable[[F], F]:
@@ -146,7 +146,7 @@ def requires_scope(scope: str) -> Callable[[F], F]:
 
         @mcp.tool(name="list_groups", ...)
         @requires_scope(MCP_SCOPE_READ_ALL)
-        def list_groups(...): ...
+        async def list_groups(...): ...
 
     ``functools.wraps`` preserves the wrapped function's signature so
     FastMCP's schema introspection sees the original parameter list.
@@ -154,12 +154,12 @@ def requires_scope(scope: str) -> Callable[[F], F]:
 
     def decorator(fn: F) -> F:
         @functools.wraps(fn)
-        def wrapper(*args: Any, **kwargs: Any) -> str:
+        async def wrapper(*args: Any, **kwargs: Any) -> str:
             try:
                 require_scope(scope)
             except MCPScopeError as e:
                 return json.dumps({"error": str(e)})
-            return fn(*args, **kwargs)
+            return await fn(*args, **kwargs)
 
         return wrapper  # type: ignore[return-value]
 

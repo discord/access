@@ -21,12 +21,13 @@ exact code path FastMCP would take, minus the JSON-RPC framing.
 from __future__ import annotations
 
 import json
-from typing import Any, Generator, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator, Generator, Optional
 
+import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import event
+from sqlalchemy import event, select
 
 from api.config import settings
 from api.context import RequestContext, set_request_context
@@ -41,6 +42,22 @@ from api.mcp.auth import (
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from tests.factories import RoleGroupFactory
+
+
+@asynccontextmanager
+async def _mcp_client(a: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
+    """In-process client for an MCP-enabled app with its lifespan running.
+
+    ``httpx.AsyncClient`` over ``ASGITransport`` does not run the app
+    lifespan, but the MCP ``StreamableHTTPSessionManager``'s task group only
+    exists while the lifespan is entered (the old sync ``TestClient`` context
+    manager did this implicitly) — so enter it manually around the request
+    phase.
+    """
+    async with a.router.lifespan_context(a):
+        transport = httpx.ASGITransport(app=a, raise_app_exceptions=False)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            yield client
 
 
 @pytest.fixture
@@ -67,7 +84,7 @@ def override_mcp_auth(with_mcp_enabled: None, monkeypatch: pytest.MonkeyPatch) -
     """
     holder: dict[str, Optional[MCPIdentity]] = {"identity": None}
 
-    def _stub(_scope: Any) -> Optional[MCPIdentity]:
+    async def _stub(_scope: Any) -> Optional[MCPIdentity]:
         return holder["identity"]
 
     # Patch all three providers as the middleware imports them. Any of
@@ -100,7 +117,7 @@ def test_mcp_route_present_when_enabled(with_mcp_enabled: None) -> None:
     assert "/mcp" in paths
 
 
-def test_unauthenticated_request_returns_401(
+async def test_unauthenticated_request_returns_401(
     override_mcp_auth: Any,
 ) -> None:
     """When every provider defers (returns None), the middleware emits a
@@ -109,13 +126,13 @@ def test_unauthenticated_request_returns_401(
     from api.app import create_app
 
     a = create_app(testing=True)
-    with TestClient(a, raise_server_exceptions=False) as client:
-        r = client.post("/mcp", json={})
+    async with _mcp_client(a) as client:
+        r = await client.post("/mcp", json={})
         assert r.status_code == 401
         assert r.headers.get("WWW-Authenticate", "").startswith("Bearer ")
 
 
-def test_authenticated_request_proceeds_past_middleware(
+async def test_authenticated_request_proceeds_past_middleware(
     db: Db,
     user: OktaUser,
     override_mcp_auth: Any,
@@ -125,31 +142,39 @@ def test_authenticated_request_proceeds_past_middleware(
     JSON-RPC framing isn't part of this contract; that's tested by the
     direct-call tool tests below."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     override_mcp_auth(MCPIdentity(user_id=user.id, scopes=ALL_V1_SCOPES))
     from api.app import create_app
 
     a = create_app(testing=True)
-    with TestClient(a, raise_server_exceptions=False) as client:
-        r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    async with _mcp_client(a) as client:
+        r = await client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "initialize"})
         # We accept any non-401 — FastMCP may 400/406 on a malformed
         # body, but it's past the auth gate, which is what we care about.
         assert r.status_code != 401, f"Auth gate rejected a valid identity: {r.status_code} {r.text}"
 
 
-def test_provider_chain_first_non_none_wins(
+async def test_provider_chain_first_non_none_wins(
     with_mcp_enabled: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The middleware walks dev → cloudflare → oidc in that order and
     takes the first non-None identity. Exercises the chain logic
-    directly against ``MCPAuthMiddleware`` rather than a TestClient so
+    directly against ``MCPAuthMiddleware`` rather than an HTTP client so
     each iteration is independent of FastMCP's session-manager lifecycle
     (which can only ``.run()`` once per instance).
     """
     dev_id = MCPIdentity(user_id="dev-user", scopes=ALL_V1_SCOPES)
     cf_id = MCPIdentity(user_id="cf-user", scopes=ALL_V1_SCOPES)
     oidc_id = MCPIdentity(user_id="oidc-user", scopes=ALL_V1_SCOPES)
+
+    def _resolves_to(identity: Optional[MCPIdentity]) -> Any:
+        # The middleware awaits each provider's resolve_identity, so the
+        # stubs must be coroutine functions.
+        async def _resolve(_scope: Any) -> Optional[MCPIdentity]:
+            return identity
+
+        return _resolve
 
     captured: dict[str, Any] = {}
 
@@ -176,38 +201,36 @@ def test_provider_chain_first_non_none_wins(
         await middleware({"type": "http", "path": "/mcp", "headers": []}, _async_receive, _async_send)
         return captured.get("identity")
 
-    import asyncio
-
     # Dev wins outright; CF and OIDC don't get called.
-    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", lambda _s: dev_id)
-    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", lambda _s: cf_id)
-    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", lambda _s: oidc_id)
-    assert asyncio.run(_run()) == dev_id
+    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", _resolves_to(dev_id))
+    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", _resolves_to(cf_id))
+    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", _resolves_to(oidc_id))
+    assert await _run() == dev_id
 
     # Dev defers → CF wins; OIDC doesn't get called.
-    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", lambda _s: None)
-    assert asyncio.run(_run()) == cf_id
+    monkeypatch.setattr("api.mcp.auth.dev.resolve_identity", _resolves_to(None))
+    assert await _run() == cf_id
 
     # Dev + CF defer → OIDC wins.
-    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", lambda _s: None)
-    assert asyncio.run(_run()) == oidc_id
+    monkeypatch.setattr("api.mcp.auth.cloudflare.resolve_identity", _resolves_to(None))
+    assert await _run() == oidc_id
 
     # All defer → identity remains None (the middleware short-circuits
     # with 401 in that case; the inner app is not called, so 'identity'
     # is missing from captured rather than set to None).
-    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", lambda _s: None)
-    assert asyncio.run(_run()) is None
+    monkeypatch.setattr("api.mcp.auth.oidc.resolve_identity", _resolves_to(None))
+    assert await _run() is None
 
 
-def _call_tool(mcp_server: Any, tool_name: str, **kwargs: Any) -> str:
+async def _call_tool(mcp_server: Any, tool_name: str, **kwargs: Any) -> str:
     """Invoke a registered tool's Python function directly, bypassing
     the JSON-RPC framing. The tool's authorization checks fire as they
     would in production because they consult the active ContextVar."""
     tool = mcp_server._tool_manager._tools[tool_name]
-    return tool.fn(**kwargs)
+    return await tool.fn(**kwargs)
 
 
-def test_read_tool_requires_read_all_scope(
+async def test_read_tool_requires_read_all_scope(
     with_mcp_enabled: None,
     db: Db,
     okta_group: OktaGroup,
@@ -216,7 +239,7 @@ def test_read_tool_requires_read_all_scope(
     """A token without read_all gets an error envelope from a read tool;
     a token with read_all gets data."""
     db.session.add_all([user, okta_group])
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.server import create_mcp_server
 
     mcp = create_mcp_server()
@@ -224,7 +247,7 @@ def test_read_tool_requires_read_all_scope(
     # No scope → error envelope.
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset()))
     try:
-        result = _call_tool(mcp, "list_groups")
+        result = await _call_tool(mcp, "list_groups")
     finally:
         from api.mcp.auth import reset_mcp_identity
 
@@ -236,7 +259,7 @@ def test_read_tool_requires_read_all_scope(
     # With read_all → data.
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
     try:
-        result = _call_tool(mcp, "list_groups")
+        result = await _call_tool(mcp, "list_groups")
     finally:
         from api.mcp.auth import reset_mcp_identity
 
@@ -246,7 +269,7 @@ def test_read_tool_requires_read_all_scope(
     assert isinstance(payload["results"], list)
 
 
-def test_get_group_tool_role_grants_do_not_reload_own_group(
+async def test_get_group_tool_role_grants_do_not_reload_own_group(
     with_mcp_enabled: None,
     db: Db,
     access_app: App,
@@ -257,16 +280,16 @@ def test_get_group_tool_role_grants_do_not_reload_own_group(
     # `get_group` MCP tool shares `_group_load_options()` with the REST
     # router's default loader.
     db.session.add_all([user, access_app])
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
     for _ in range(5):
         granting_role = RoleGroupFactory.create()
         db.session.add(granting_role)
-        db.session.commit()
-        ModifyRoleGroups(
+        await db.session.commit()
+        await ModifyRoleGroups(
             role_group=granting_role,
             groups_to_add=[app_group.id],
             owner_groups_to_add=[],
@@ -283,11 +306,13 @@ def test_get_group_tool_role_grants_do_not_reload_own_group(
         queries.append(statement)
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
-    event.listen(db.engine, "before_cursor_execute", _record)
+    # `db.engine` is an AsyncEngine; Core cursor events attach to the wrapped
+    # sync engine, which async queries still flow through via the greenlet bridge.
+    event.listen(db.engine.sync_engine, "before_cursor_execute", _record)
     try:
-        result = _call_tool(mcp, "get_group", group_id_or_name=app_group.id)
+        result = await _call_tool(mcp, "get_group", group_id_or_name=app_group.id)
     finally:
-        event.remove(db.engine, "before_cursor_execute", _record)
+        event.remove(db.engine.sync_engine, "before_cursor_execute", _record)
         from api.mcp.auth import reset_mcp_identity
 
         reset_mcp_identity(token)
@@ -302,7 +327,7 @@ def test_get_group_tool_role_grants_do_not_reload_own_group(
     )
 
 
-def test_write_tool_requires_create_requests_scope(
+async def test_write_tool_requires_create_requests_scope(
     with_mcp_enabled: None,
     db: Db,
     okta_group: OktaGroup,
@@ -312,7 +337,7 @@ def test_write_tool_requires_create_requests_scope(
     read-only token gets an error envelope; granting the scope produces
     a request."""
     db.session.add_all([user, okta_group])
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -321,7 +346,7 @@ def test_write_tool_requires_create_requests_scope(
     # Read-only token — cannot create.
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
     try:
-        result = _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="testing")
+        result = await _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="testing")
     finally:
         reset_mcp_identity(token)
     payload = json.loads(result)
@@ -333,7 +358,7 @@ def test_write_tool_requires_create_requests_scope(
         MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS}))
     )
     try:
-        result = _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="legitimate ask")
+        result = await _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="legitimate ask")
     finally:
         reset_mcp_identity(token)
     payload = json.loads(result)
@@ -343,17 +368,19 @@ def test_write_tool_requires_create_requests_scope(
     assert payload["status"] == "PENDING"
 
 
-def _make_access_admin(db: Db) -> OktaUser:
+async def _make_access_admin(db: Db) -> OktaUser:
     """Return the bootstrap Access admin (seeded by the `db` fixture).
     Conftest's setup adds them as a *member* (not owner) of
     App-Access-Owners — that's the membership pattern is_access_admin
     checks for, so no additional wiring is needed."""
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     assert admin is not None
     return admin
 
 
-def test_cloudflare_fallback_read_only_opt_in(
+async def test_cloudflare_fallback_read_only_opt_in(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
@@ -363,7 +390,7 @@ def test_cloudflare_fallback_read_only_opt_in(
     agents filing requests via MCP. Verifies the read-only configuration
     actually disables write capability."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     # CF provider gates on CLOUDFLARE_TEAM_DOMAIN being set.
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
@@ -380,14 +407,14 @@ def test_cloudflare_fallback_read_only_opt_in(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = resolve_identity(scope=scope)
+    identity = await resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL})
     # Critical: writes are NOT in this read-only fallback.
     assert MCP_SCOPE_CREATE_REQUESTS not in identity.scopes
 
 
-def test_cloudflare_fallback_honours_operator_config(
+async def test_cloudflare_fallback_honours_operator_config(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
@@ -396,7 +423,7 @@ def test_cloudflare_fallback_honours_operator_config(
     grants both scopes on CF-issued tokens that don't carry a scope
     claim, enabling read and write tools. Mirrors the shipped default."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "read_all,create_requests")
@@ -410,12 +437,12 @@ def test_cloudflare_fallback_honours_operator_config(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = resolve_identity(scope=scope)
+    identity = await resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL, MCP_SCOPE_CREATE_REQUESTS})
 
 
-def test_cloudflare_fallback_empty_string_fails_closed(
+async def test_cloudflare_fallback_empty_string_fails_closed(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
@@ -425,7 +452,7 @@ def test_cloudflare_fallback_empty_string_fails_closed(
     require_scope check fails. Right answer once the provider starts
     emitting scope claims."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
     monkeypatch.setattr(settings, "MCP_FALLBACK_SCOPES", "")
@@ -439,12 +466,12 @@ def test_cloudflare_fallback_empty_string_fails_closed(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = resolve_identity(scope=scope)
+    identity = await resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset()
 
 
-def test_cloudflare_explicit_scope_claim_overrides_fallback(
+async def test_cloudflare_explicit_scope_claim_overrides_fallback(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
@@ -454,7 +481,7 @@ def test_cloudflare_explicit_scope_claim_overrides_fallback(
     OAuth ships scope claims; nothing in our code needs to change at
     that point, the fallback just stops firing."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
     monkeypatch.setattr(settings, "CLOUDFLARE_TEAM_DOMAIN", "example.cloudflareaccess.com")
     # Permissive fallback — but the token's explicit scope should win.
@@ -469,33 +496,32 @@ def test_cloudflare_explicit_scope_claim_overrides_fallback(
     scope: dict[str, Any] = {
         "headers": [(b"cf-access-jwt-assertion", b"any-token")],
     }
-    identity = resolve_identity(scope=scope)
+    identity = await resolve_identity(scope=scope)
     assert identity is not None
     assert identity.scopes == frozenset({MCP_SCOPE_READ_ALL})
     assert MCP_SCOPE_CREATE_REQUESTS not in identity.scopes
 
 
-def test_dev_provider_resolves_in_development(
+async def test_dev_provider_resolves_in_development(
     db: Db,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """In ENV=development, the dev provider resolves CURRENT_OKTA_USER_EMAIL
     to an OktaUser and grants the full v1 scope set so local testing can
     exercise both read and write tools without a faked CF JWT."""
-    admin = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
-    assert admin is not None
+    admin = await _make_access_admin(db)
 
     monkeypatch.setattr(settings, "ENV", "development")
 
     from api.mcp.auth.dev import resolve_identity
 
-    identity = resolve_identity(scope={"headers": []})
+    identity = await resolve_identity(scope={"headers": []})
     assert identity is not None
     assert identity.user_id == admin.id
     assert identity.scopes == ALL_V1_SCOPES
 
 
-def test_dev_provider_defers_outside_dev_or_test(
+async def test_dev_provider_defers_outside_dev_or_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """In any production-style ENV, the dev provider returns None so the
@@ -505,10 +531,10 @@ def test_dev_provider_defers_outside_dev_or_test(
 
     from api.mcp.auth.dev import resolve_identity
 
-    assert resolve_identity(scope={"headers": []}) is None
+    assert await resolve_identity(scope={"headers": []}) is None
 
 
-def test_oidc_provider_defers_when_unconfigured(
+async def test_oidc_provider_defers_when_unconfigured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Without OIDC_SERVER_METADATA_URL, the OIDC provider returns None
@@ -516,10 +542,10 @@ def test_oidc_provider_defers_when_unconfigured(
     monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", None)
     from api.mcp.auth.oidc import resolve_identity
 
-    assert resolve_identity(scope={"headers": []}) is None
+    assert await resolve_identity(scope={"headers": []}) is None
 
 
-def test_oidc_provider_defers_when_no_bearer_token(
+async def test_oidc_provider_defers_when_no_bearer_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """OIDC configured but no Authorization header → defer (None)."""
@@ -527,12 +553,12 @@ def test_oidc_provider_defers_when_no_bearer_token(
     monkeypatch.setattr(settings, "OIDC_MCP_AUDIENCE", "access-mcp")
     from api.mcp.auth.oidc import resolve_identity
 
-    assert resolve_identity(scope={"headers": []}) is None
+    assert await resolve_identity(scope={"headers": []}) is None
     # Also: a non-bearer Authorization header → still defer.
-    assert resolve_identity(scope={"headers": [(b"authorization", b"Basic abc")]}) is None
+    assert await resolve_identity(scope={"headers": [(b"authorization", b"Basic abc")]}) is None
 
 
-def test_oidc_provider_resolves_valid_token(
+async def test_oidc_provider_resolves_valid_token(
     db: Db,
     user: OktaUser,
     monkeypatch: pytest.MonkeyPatch,
@@ -540,7 +566,7 @@ def test_oidc_provider_resolves_valid_token(
     """Happy path: a verified token's email claim resolves to an
     OktaUser; the token's scope claim becomes the identity's scopes."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     monkeypatch.setattr(settings, "OIDC_SERVER_METADATA_URL", "https://idp.example/.well-known/openid-configuration")
     monkeypatch.setattr(settings, "OIDC_MCP_AUDIENCE", "access-mcp")
 
@@ -585,13 +611,13 @@ def test_oidc_provider_resolves_valid_token(
     scope: dict[str, Any] = {
         "headers": [(b"authorization", b"Bearer any-token")],
     }
-    identity = oidc_provider.resolve_identity(scope=scope)
+    identity = await oidc_provider.resolve_identity(scope=scope)
     assert identity is not None
     assert identity.user_id == user.id
     assert identity.scopes == ALL_V1_SCOPES
 
 
-def test_oidc_provider_rejects_invalid_token(
+async def test_oidc_provider_rejects_invalid_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A token that fails verification → defer (None), no raise."""
@@ -626,7 +652,7 @@ def test_oidc_provider_rejects_invalid_token(
     scope: dict[str, Any] = {
         "headers": [(b"authorization", b"Bearer any-token")],
     }
-    assert oidc_provider.resolve_identity(scope=scope) is None
+    assert await oidc_provider.resolve_identity(scope=scope) is None
 
 
 def test_config_validation_rejects_both_cf_and_oidc(
@@ -680,7 +706,7 @@ def test_config_validation_no_op_when_mcp_disabled(
     _validate_mcp_auth_settings(s)
 
 
-def test_create_role_request_denies_non_owner(
+async def test_create_role_request_denies_non_owner(
     with_mcp_enabled: None,
     db: Db,
     role_group: RoleGroup,
@@ -692,7 +718,7 @@ def test_create_role_request_denies_non_owner(
     admin seeded by the test harness is intentionally not assigned as
     a role owner here, so the user has no path to authorization."""
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -700,7 +726,7 @@ def test_create_role_request_denies_non_owner(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_role_request",
             role_id=role_group.id,
@@ -714,7 +740,7 @@ def test_create_role_request_denies_non_owner(
     assert payload["error"] == "Current user is not allowed to perform this action"
 
 
-def test_create_role_request_allowed_for_role_owner(
+async def test_create_role_request_allowed_for_role_owner(
     with_mcp_enabled: None,
     db: Db,
     role_group: RoleGroup,
@@ -724,8 +750,8 @@ def test_create_role_request_allowed_for_role_owner(
     """A user who owns the role can submit a role request — same path
     POST /api/role-requests takes."""
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
-    ModifyGroupUsers(
+    await db.session.commit()
+    await ModifyGroupUsers(
         group=role_group,
         members_to_add=[user.id],
         owners_to_add=[user.id],
@@ -738,7 +764,7 @@ def test_create_role_request_allowed_for_role_owner(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_role_request",
             role_id=role_group.id,
@@ -755,7 +781,7 @@ def test_create_role_request_allowed_for_role_owner(
     assert payload["status"] == "PENDING"
 
 
-def test_create_role_request_allowed_for_access_admin(
+async def test_create_role_request_allowed_for_access_admin(
     with_mcp_enabled: None,
     db: Db,
     role_group: RoleGroup,
@@ -765,8 +791,8 @@ def test_create_role_request_allowed_for_access_admin(
     without being an owner of it — can_manage_group falls through to
     is_access_admin."""
     db.session.add_all([role_group, okta_group])
-    db.session.commit()
-    admin = _make_access_admin(db)
+    await db.session.commit()
+    admin = await _make_access_admin(db)
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -774,7 +800,7 @@ def test_create_role_request_allowed_for_access_admin(
 
     token = set_mcp_identity(MCPIdentity(user_id=admin.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_role_request",
             role_id=role_group.id,
@@ -788,7 +814,7 @@ def test_create_role_request_allowed_for_access_admin(
     assert payload["requester_user_id"] == admin.id
 
 
-def test_create_role_request_rejects_role_as_target(
+async def test_create_role_request_rejects_role_as_target(
     with_mcp_enabled: None,
     db: Db,
     role_group: RoleGroup,
@@ -800,8 +826,8 @@ def test_create_role_request_rejects_role_as_target(
     authorization check passes and we reach the type guard."""
     other_role = RoleGroupFactory.build(name="Role-OtherRole", description="other role for testing")
     db.session.add_all([user, role_group, other_role])
-    db.session.commit()
-    ModifyGroupUsers(
+    await db.session.commit()
+    await ModifyGroupUsers(
         group=role_group,
         members_to_add=[user.id],
         owners_to_add=[user.id],
@@ -814,7 +840,7 @@ def test_create_role_request_rejects_role_as_target(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_role_request",
             role_id=role_group.id,
@@ -828,7 +854,7 @@ def test_create_role_request_rejects_role_as_target(
     assert "role" in payload["error"].lower()
 
 
-def test_create_role_request_requires_create_requests_scope(
+async def test_create_role_request_requires_create_requests_scope(
     with_mcp_enabled: None,
     db: Db,
     role_group: RoleGroup,
@@ -838,8 +864,8 @@ def test_create_role_request_requires_create_requests_scope(
     """A read-only token cannot submit role requests even if the user
     is a role owner — scope check fires before authorization."""
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
-    ModifyGroupUsers(
+    await db.session.commit()
+    await ModifyGroupUsers(
         group=role_group,
         members_to_add=[user.id],
         owners_to_add=[user.id],
@@ -852,7 +878,7 @@ def test_create_role_request_requires_create_requests_scope(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_READ_ALL})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_role_request",
             role_id=role_group.id,
@@ -866,7 +892,7 @@ def test_create_role_request_requires_create_requests_scope(
     assert "create_requests" in payload["error"]
 
 
-def test_create_group_request_allowed_for_authenticated_user(
+async def test_create_group_request_allowed_for_authenticated_user(
     with_mcp_enabled: None,
     db: Db,
     user: OktaUser,
@@ -874,7 +900,7 @@ def test_create_group_request_allowed_for_authenticated_user(
     """Group requests are open to any authenticated, non-deleted user
     — same gate as POST /api/group-requests."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -882,7 +908,7 @@ def test_create_group_request_allowed_for_authenticated_user(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_group_request",
             group_name="SomeNewGroup",
@@ -898,7 +924,7 @@ def test_create_group_request_allowed_for_authenticated_user(
     assert payload["status"] == "PENDING"
 
 
-def test_create_group_request_requires_app_id_for_app_group(
+async def test_create_group_request_requires_app_id_for_app_group(
     with_mcp_enabled: None,
     db: Db,
     user: OktaUser,
@@ -907,7 +933,7 @@ def test_create_group_request_requires_app_id_for_app_group(
     raises 400 here, the MCP tool returns an error envelope with the
     same message."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -917,7 +943,7 @@ def test_create_group_request_requires_app_id_for_app_group(
     try:
         # Missing app_id on app_group request — fails at body validation
         # because the discriminated union variant requires it.
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_group_request",
             group_name="App-Foo-Newgrp",
@@ -930,7 +956,7 @@ def test_create_group_request_requires_app_id_for_app_group(
     assert "error" in payload, payload
 
 
-def test_create_group_request_rejects_unknown_app_id(
+async def test_create_group_request_rejects_unknown_app_id(
     with_mcp_enabled: None,
     db: Db,
     user: OktaUser,
@@ -938,7 +964,7 @@ def test_create_group_request_rejects_unknown_app_id(
     """A well-formed app_group request whose app_id doesn't resolve
     surfaces 'App not found' — mirrors POST /api/group-requests."""
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -946,7 +972,7 @@ def test_create_group_request_rejects_unknown_app_id(
 
     token = set_mcp_identity(MCPIdentity(user_id=user.id, scopes=frozenset({MCP_SCOPE_CREATE_REQUESTS})))
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_group_request",
             group_name="App-Foo-Newgrp",
@@ -960,7 +986,7 @@ def test_create_group_request_rejects_unknown_app_id(
     assert payload.get("error") == "App not found"
 
 
-def test_create_group_request_for_app_group(
+async def test_create_group_request_for_app_group(
     with_mcp_enabled: None,
     db: Db,
     user: OktaUser,
@@ -969,7 +995,8 @@ def test_create_group_request_for_app_group(
     """Happy-path for an app_group request: well-formed body, real
     app_id, returns a PENDING GroupRequest pointing at the app."""
     db.session.add_all([user, access_app])
-    db.session.commit()
+    await db.session.commit()
+    access_app_id = access_app.id
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -979,12 +1006,12 @@ def test_create_group_request_for_app_group(
     # Use the prefix matching this app so it passes the name pattern.
     target_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Newgrp"
     try:
-        result = _call_tool(
+        result = await _call_tool(
             mcp,
             "create_group_request",
             group_name=target_name,
             group_type="app_group",
-            app_id=access_app.id,
+            app_id=access_app_id,
             reason="want this app group",
         )
     finally:
@@ -992,10 +1019,10 @@ def test_create_group_request_for_app_group(
     payload = json.loads(result)
     assert "error" not in payload, payload
     assert payload["requested_group_type"] == "app_group"
-    assert payload["requested_app_id"] == access_app.id
+    assert payload["requested_app_id"] == access_app_id
 
 
-def test_mcp_write_tags_audit_log_with_source_mcp(
+async def test_mcp_write_tags_audit_log_with_source_mcp(
     with_mcp_enabled: None,
     db: Db,
     okta_group: OktaGroup,
@@ -1009,7 +1036,7 @@ def test_mcp_write_tags_audit_log_with_source_mcp(
     import logging
 
     db.session.add_all([user, okta_group])
-    db.session.commit()
+    await db.session.commit()
     from api.mcp.auth import reset_mcp_identity
     from api.mcp.server import create_mcp_server
 
@@ -1027,7 +1054,7 @@ def test_mcp_write_tags_audit_log_with_source_mcp(
     )
     try:
         with caplog.at_level(logging.INFO, logger="access.audit"):
-            result = _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="audit-source-test")
+            result = await _call_tool(mcp, "create_access_request", group_id=okta_group.id, reason="audit-source-test")
     finally:
         reset_mcp_identity(id_token)
         from api.context import reset_request_context
@@ -1054,7 +1081,7 @@ def test_prm_route_absent_when_disabled(app: FastAPI) -> None:
     assert "/.well-known/oauth-protected-resource/mcp" not in paths
 
 
-def test_prm_document_served_unauthenticated(
+async def test_prm_document_served_unauthenticated(
     override_mcp_auth: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1069,12 +1096,12 @@ def test_prm_document_served_unauthenticated(
     from api.app import create_app
 
     a = create_app(testing=True)
-    with TestClient(a, raise_server_exceptions=False) as client:
+    async with _mcp_client(a) as client:
         # /mcp is gated...
-        assert client.post("/mcp", json={}).status_code == 401
+        assert (await client.post("/mcp", json={})).status_code == 401
         # ...the metadata document is not.
         for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
-            r = client.get(path)
+            r = await client.get(path)
             assert r.status_code == 200, (path, r.text)
             body = r.json()
             assert body["resource"] == "http://testserver/mcp"
@@ -1084,7 +1111,7 @@ def test_prm_document_served_unauthenticated(
             assert body["bearer_methods_supported"] == ["header"]
 
 
-def test_prm_resource_url_honours_config_override(
+async def test_prm_resource_url_honours_config_override(
     with_mcp_enabled: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1096,14 +1123,14 @@ def test_prm_resource_url_honours_config_override(
     from api.app import create_app
 
     a = create_app(testing=True)
-    with TestClient(a, raise_server_exceptions=False) as client:
-        body = client.get("/.well-known/oauth-protected-resource").json()
+    async with _mcp_client(a) as client:
+        body = (await client.get("/.well-known/oauth-protected-resource")).json()
         # Trailing slash trimmed; Host header ignored in favour of config.
         assert body["resource"] == "https://access.example.com/mcp"
         assert body["authorization_servers"] == ["https://team.cloudflareaccess.com"]
 
 
-def test_401_advertises_resource_metadata(
+async def test_401_advertises_resource_metadata(
     override_mcp_auth: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1115,8 +1142,8 @@ def test_401_advertises_resource_metadata(
     from api.app import create_app
 
     a = create_app(testing=True)
-    with TestClient(a, raise_server_exceptions=False) as client:
-        r = client.post("/mcp", json={})
+    async with _mcp_client(a) as client:
+        r = await client.post("/mcp", json={})
         assert r.status_code == 401
         challenge = r.headers.get("WWW-Authenticate", "")
         assert challenge.startswith("Bearer ")

@@ -6,6 +6,7 @@ GroupRequests are handled the same way (the AccessRequest test is the baseline).
 
 import pytest
 from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.config import settings
 from api.extensions import Db
@@ -25,21 +26,23 @@ DELETION_REASON = "Closed because the requestor was deleted"
 @pytest.fixture(autouse=True)
 def _mock_okta(mocker: MockerFixture) -> None:
     # Keep operations off the network.
-    mocker.patch.object(okta, "async_remove_user_from_group")
-    mocker.patch.object(okta, "async_remove_owner_from_group")
+    mocker.patch.object(okta, "remove_user_from_group")
+    mocker.patch.object(okta, "remove_owner_from_group")
 
 
-def _access_owner(db: Db) -> OktaUser:
-    owner = db.session.query(OktaUser).filter(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL).first()
+async def _access_owner(db: Db) -> OktaUser:
+    owner = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
     assert owner is not None
     return owner
 
 
-def test_delete_user_rejects_pending_access_request(db: Db, user: OktaUser, okta_group: OktaGroup) -> None:
+async def test_delete_user_rejects_pending_access_request(db: Db, user: OktaUser, okta_group: OktaGroup) -> None:
     db.session.add_all([user, okta_group])
-    db.session.commit()
+    await db.session.commit()
 
-    access_request = CreateAccessRequest(
+    access_request = await CreateAccessRequest(
         requester_user=user,
         requested_group=okta_group,
         request_reason="need this group",
@@ -50,23 +53,23 @@ def test_delete_user_rejects_pending_access_request(db: Db, user: OktaUser, okta
     created_status: AccessRequestStatus = access_request.status
     assert created_status == AccessRequestStatus.PENDING
 
-    DeleteUser(user=user, sync_to_okta=False, current_user_id=_access_owner(db).id).execute()
+    await DeleteUser(user=user, sync_to_okta=False, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(access_request)
+    await db.session.refresh(access_request)
     assert access_request.status == AccessRequestStatus.REJECTED
     assert access_request.resolved_at is not None
     assert access_request.resolution_reason == DELETION_REASON
 
 
-def test_delete_user_rejects_pending_role_request(
+async def test_delete_user_rejects_pending_role_request(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
+    await db.session.commit()
 
     # Requester must own the role to file a role request for it.
-    ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
-    role_request = CreateRoleRequest(
+    await ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = await CreateRoleRequest(
         requester_user=user,
         requester_role=role_group,
         requested_group=okta_group,
@@ -76,15 +79,15 @@ def test_delete_user_rejects_pending_role_request(
     created_status: AccessRequestStatus = role_request.status
     assert created_status == AccessRequestStatus.PENDING
 
-    DeleteUser(user=user, sync_to_okta=False, current_user_id=_access_owner(db).id).execute()
+    await DeleteUser(user=user, sync_to_okta=False, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(role_request)
+    await db.session.refresh(role_request)
     assert role_request.status == AccessRequestStatus.REJECTED
     assert role_request.resolved_at is not None
     assert role_request.resolution_reason == DELETION_REASON
 
 
-def test_delete_user_rejects_pending_role_request_on_cold_session(
+async def test_delete_user_rejects_pending_role_request_on_cold_session(
     db: Db, user: OktaUser, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
     """Cold-session regression for the RejectRoleRequest audit-log eager-load.
@@ -98,11 +101,11 @@ def test_delete_user_rejects_pending_role_request_on_cold_session(
     eager-load this raises rather than rejecting the request.
     """
     db.session.add_all([user, role_group, okta_group])
-    db.session.commit()
+    await db.session.commit()
 
     # Requester must own the role to file a role request for it.
-    ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
-    role_request = CreateRoleRequest(
+    await ModifyGroupUsers(group=role_group, owners_to_add=[user.id], sync_to_okta=False).execute()
+    role_request = await CreateRoleRequest(
         requester_user=user,
         requester_role=role_group,
         requested_group=okta_group,
@@ -111,25 +114,25 @@ def test_delete_user_rejects_pending_role_request_on_cold_session(
     assert role_request is not None
     role_request_id = role_request.id
     user_id = user.id
-    owner_id = _access_owner(db).id
+    owner_id = (await _access_owner(db)).id
 
     # Cold session: force RejectRoleRequest to re-load the role request with no
     # resident role group, mirroring the sync cronjob that surfaced this.
     db.session.expunge_all()
 
-    DeleteUser(user=user_id, sync_to_okta=False, current_user_id=owner_id).execute()
+    await DeleteUser(user=user_id, sync_to_okta=False, current_user_id=owner_id).execute()
 
-    rejected = db.session.get(RoleRequest, role_request_id)
+    rejected = await db.session.get(RoleRequest, role_request_id)
     assert rejected is not None
     assert rejected.status == AccessRequestStatus.REJECTED
     assert rejected.resolution_reason == DELETION_REASON
 
 
-def test_delete_user_rejects_pending_group_request(db: Db, user: OktaUser) -> None:
+async def test_delete_user_rejects_pending_group_request(db: Db, user: OktaUser) -> None:
     db.session.add(user)
-    db.session.commit()
+    await db.session.commit()
 
-    group_request = CreateGroupRequest(
+    group_request = await CreateGroupRequest(
         requester_user=user,
         requested_group_name="Test Group",
         requested_group_description="Test Description",
@@ -140,9 +143,9 @@ def test_delete_user_rejects_pending_group_request(db: Db, user: OktaUser) -> No
     created_status: AccessRequestStatus = group_request.status
     assert created_status == AccessRequestStatus.PENDING
 
-    DeleteUser(user=user, sync_to_okta=False, current_user_id=_access_owner(db).id).execute()
+    await DeleteUser(user=user, sync_to_okta=False, current_user_id=(await _access_owner(db)).id).execute()
 
-    db.session.refresh(group_request)
+    await db.session.refresh(group_request)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolved_at is not None
     assert group_request.resolution_reason == DELETION_REASON

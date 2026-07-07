@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi_pagination.ext.sqlalchemy import paginate
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import String, and_, cast, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
@@ -37,7 +37,7 @@ def _load_options() -> tuple:
 
 
 @router.get("", name="group_requests")
-def list_group_requests(
+async def list_group_requests(
     request: Request,
     db: DbSession,
     current_user_id: CurrentUserId,
@@ -74,14 +74,16 @@ def list_group_requests(
         # owners see app-group requests for apps they own. In both cases the
         # assignee's own requests are stripped out.
         assignee_user_id = current_user_id if q_args.assignee_user_id == "@me" else q_args.assignee_user_id
-        assignee_user = db.scalars(
-            select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+        assignee_user = (
+            await db.scalars(
+                select(OktaUser).where(or_(OktaUser.id == assignee_user_id, OktaUser.email.ilike(assignee_user_id)))
+            )
         ).first()
         if assignee_user is not None:
-            if not is_access_admin(db, assignee_user.id):
+            if not await is_access_admin(db, assignee_user.id):
                 owned_app_ids: list[str] = []
-                for app in db.scalars(select(App).where(App.deleted_at.is_(None))).all():
-                    manager_ids = [m.id for m in get_app_managers(app.id)]
+                for app in (await db.scalars(select(App).where(App.deleted_at.is_(None)))).all():
+                    manager_ids = [m.id for m in await get_app_managers(app.id)]
                     if assignee_user.id in manager_ids:
                         owned_app_ids.append(app.id)
                 if owned_app_ids:
@@ -142,27 +144,29 @@ def list_group_requests(
             )
         )
 
-    return paginate(db, stmt, transformer=validated(GroupRequestDetail))
+    return await apaginate(db, stmt, transformer=validated(GroupRequestDetail))
 
 
 @router.get("/{group_request_id}", name="group_request_by_id")
-def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupRequestDetail:
-    gr = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)).first()
+async def get_group_request(group_request_id: str, db: DbSession, current_user_id: CurrentUserId) -> GroupRequestDetail:
+    gr = (
+        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id))
+    ).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
     return GroupRequestDetail.model_validate(gr, from_attributes=True)
 
 
 @router.post("", name="group_requests_create", status_code=201)
-def post_group_request(
+async def post_group_request(
     body: CreateGroupRequestBody,
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> GroupRequestDetail:
     # Soft-deleted requesters cannot create new requests; Flask returned 403
     # here, not 404.
-    requester = db.scalars(
-        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id)
+    requester = (
+        await db.scalars(select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == current_user_id))
     ).first()
     if requester is None:
         raise HTTPException(403, "Current user is not allowed to perform this action")
@@ -173,14 +177,14 @@ def post_group_request(
     if body.requested_group_type == "app_group":
         if requested_app_id is None:
             raise HTTPException(400, "app_id is required for app group requests")
-        app = db.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == requested_app_id)).first()
+        app = (await db.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == requested_app_id))).first()
         if app is None:
             raise HTTPException(404, "App not found")
 
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
-        tags = db.scalars(
-            select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(body.requested_group_tags))
+        tags = (
+            await db.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(body.requested_group_tags)))
         ).all()
         if len(tags) != len(body.requested_group_tags):
             raise HTTPException(400, "One or more tags not found")
@@ -197,15 +201,15 @@ def post_group_request(
     )
     if body.requested_group_type == "app_group":
         existing_stmt = existing_stmt.where(GroupRequest.requested_app_id == requested_app_id)
-    for prior in db.scalars(existing_stmt).all():
-        RejectGroupRequest(
+    for prior in (await db.scalars(existing_stmt)).all():
+        await RejectGroupRequest(
             group_request=prior,
             rejection_reason="Closed due to duplicate group request creation",
             notify_requester=False,
             current_user_id=current_user_id,
         ).execute()
 
-    gr = CreateGroupRequest(
+    gr = await CreateGroupRequest(
         requester_user=requester,
         requested_group_name=body.requested_group_name,
         requested_group_description=body.requested_group_description or "",
@@ -219,13 +223,16 @@ def post_group_request(
         raise HTTPException(400, "Failed to create group request")
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
+    gr_id = gr.id
     db.expire_all()
-    refreshed = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr.id)).first()
+    refreshed = (
+        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == gr_id))
+    ).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)
 
 
 @router.put("/{group_request_id}", name="group_request_by_id_put")
-def put_group_request(
+async def put_group_request(
     group_request_id: str,
     body: ResolveGroupRequestBody,
     db: DbSession,
@@ -234,7 +241,9 @@ def put_group_request(
     from api.auth.permissions import is_access_admin
     from api.models.app_group import get_app_managers
 
-    gr = db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)).first()
+    gr = (
+        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id))
+    ).first()
     if gr is None:
         raise HTTPException(404, "Not Found")
 
@@ -243,9 +252,9 @@ def put_group_request(
     if gr.requester_user_id == current_user_id:
         if body.approved:
             raise HTTPException(403, "Users cannot approve their own requests")
-    elif not is_access_admin(db, current_user_id):
+    elif not await is_access_admin(db, current_user_id):
         if gr.requested_app_id is not None:
-            approver_ids = [u.id for u in get_app_managers(gr.requested_app_id)]
+            approver_ids = [u.id for u in await get_app_managers(gr.requested_app_id)]
             if current_user_id not in approver_ids:
                 raise HTTPException(403, "Current user is not allowed to perform this action")
         else:
@@ -254,7 +263,7 @@ def put_group_request(
     if gr.status != AccessRequestStatus.PENDING or gr.resolved_at is not None:
         raise HTTPException(409, "Group request is not pending")
 
-    if body.approved and not is_access_admin(db, current_user_id):
+    if body.approved and not await is_access_admin(db, current_user_id):
         type_changed = body.resolved_group_type is not None and body.resolved_group_type != gr.requested_group_type
         app_changed = body.resolved_app_id is not None and body.resolved_app_id != gr.requested_app_id
         if type_changed or app_changed:
@@ -277,12 +286,12 @@ def put_group_request(
     if body.resolved_ownership_ending_at is not None:
         gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
 
-    db.commit()
+    await db.commit()
 
     resolution_reason = body.reason or ""
     if body.approved:
         try:
-            ApproveGroupRequest(
+            await ApproveGroupRequest(
                 group_request=gr,
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
@@ -290,7 +299,7 @@ def put_group_request(
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
     else:
-        RejectGroupRequest(
+        await RejectGroupRequest(
             group_request=gr,
             current_user_id=current_user_id,
             rejection_reason=resolution_reason,
@@ -299,7 +308,7 @@ def put_group_request(
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     db.expire_all()
-    refreshed = db.scalars(
-        select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id)
+    refreshed = (
+        await db.scalars(select(GroupRequest).options(*_load_options()).where(GroupRequest.id == group_request_id))
     ).first()
     return GroupRequestDetail.model_validate(refreshed, from_attributes=True)

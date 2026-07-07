@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -30,22 +30,28 @@ class CreateGroup:
         self.tag_ids = tags
         self.current_user_id = current_user_id
 
-    def execute(self, *, _group: Optional[T] = None) -> T:
-        tags = db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids))).all()
+    async def execute(self, *, _group: Optional[T] = None) -> T:
+        tags = (
+            await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids)))
+        ).all()
 
         current_user_id = getattr(
-            db.session.scalars(
-                select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+            (
+                await db.session.scalars(
+                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                )
             ).first(),
             "id",
             None,
         )
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
-        existing_group = db.session.scalars(
-            select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-            .where(func.lower(OktaGroup.name) == func.lower(self.group.name))
-            .where(OktaGroup.deleted_at.is_(None))
+        existing_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(self.group.name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
         ).first()
         if existing_group is not None:
             return existing_group
@@ -55,8 +61,8 @@ class CreateGroup:
         # is load-bearing: app renames rewrite group names by prefix substitution
         # and group request approval reasons about reserved prefixes.
         if type(self.group) is AppGroup:
-            app = db.session.scalars(
-                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            app = (
+                await db.session.scalars(select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None)))
             ).first()
             if app is None:
                 raise ValueError("App for AppGroup does not exist")
@@ -70,22 +76,24 @@ class CreateGroup:
                     )
                 )
 
-        okta_group = okta.create_group(self.group.name, self.group.description)
+        okta_group = await okta.create_group(self.group.name, self.group.description)
         if okta_group is None:
-            okta_group = okta.list_groups(query_params={"q": self.group.name})[0]
+            okta_group = (await okta.list_groups(query_params={"q": self.group.name}))[0]
         self.group.id = okta_group.id
         db.session.add(self.group)
-        db.session.commit()
+        await db.session.commit()
 
         # If this is an app group, add any app tags
         if type(self.group) is AppGroup:
-            app_tag_maps = db.session.scalars(
-                select(AppTagMap)
-                .where(AppTagMap.app_id == self.group.app_id)
-                .where(
-                    or_(
-                        AppTagMap.ended_at.is_(None),
-                        AppTagMap.ended_at > func.now(),
+            app_tag_maps = (
+                await db.session.scalars(
+                    select(AppTagMap)
+                    .where(AppTagMap.app_id == self.group.app_id)
+                    .where(
+                        or_(
+                            AppTagMap.ended_at.is_(None),
+                            AppTagMap.ended_at > func.now(),
+                        )
                     )
                 )
             ).all()
@@ -98,7 +106,7 @@ class CreateGroup:
                         app_tag_map_id=app_tag_map.id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
         # Add direct tags
         if len(tags) > 0:
@@ -109,31 +117,23 @@ class CreateGroup:
                         group_id=self.group.id,
                     )
                 )
-            db.session.commit()
+            await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
-        if plugin_id is not None:
-            try:
-                hook = get_app_group_lifecycle_hook()
-                hook.group_created(session=db.session, group=self.group, plugin_id=plugin_id)
-                db.session.commit()
-            except Exception:
-                logging.getLogger("api").exception(
-                    f"Failed to invoke group_created hook for group {self.group.id} with plugin '{plugin_id}'"
-                )
-                db.session.rollback()
+        await invoke_app_group_lifecycle_hook("group_created", group=self.group)
 
         # Audit logging
         email = None
         if current_user_id is not None:
-            email = getattr(db.session.get(OktaUser, current_user_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, current_user_id), "email", None)
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.deleted_at.is_(None))
-            .where(OktaGroup.id == self.group.id)
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.deleted_at.is_(None))
+                .where(OktaGroup.id == self.group.id)
+            )
         ).first()
 
         _ctx = get_request_context()

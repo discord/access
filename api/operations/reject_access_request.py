@@ -37,20 +37,24 @@ class RejectAccessRequest:
 
         self.notification_hook = get_notification_hook()
 
-    def execute(self) -> AccessRequest:
+    async def execute(self) -> AccessRequest:
         # Lock the request row so a reject can't race a concurrent approve/
         # reject; both serialize on this row and the loser hits the resolved
         # guard. No-op on SQLite.
-        access_request = db.session.scalars(
-            select(AccessRequest).where(AccessRequest.id == self.access_request_id).with_for_update()
+        access_request = (
+            await db.session.scalars(
+                select(AccessRequest).where(AccessRequest.id == self.access_request_id).with_for_update()
+            )
         ).first()
 
         if self.current_user_id is None:
             rejecter_id = None
         else:
             rejecter_id = getattr(
-                db.session.scalars(
-                    select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                (
+                    await db.session.scalars(
+                        select(OktaUser).where(OktaUser.deleted_at.is_(None)).where(OktaUser.id == self.current_user_id)
+                    )
                 ).first(),
                 "id",
                 None,
@@ -67,18 +71,20 @@ class RejectAccessRequest:
         access_request.resolver_user_id = rejecter_id
         access_request.resolution_reason = self.rejection_reason
 
-        db.session.commit()
+        await db.session.commit()
 
         # Audit logging
         email = None
         if rejecter_id is not None:
-            email = getattr(db.session.get(OktaUser, rejecter_id), "email", None)
+            email = getattr(await db.session.get(OktaUser, rejecter_id), "email", None)
 
-        group = db.session.scalars(
-            select(OktaGroup)
-            .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
-            .where(OktaGroup.id == access_request.requested_group_id)
-            .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+        group = (
+            await db.session.scalars(
+                select(OktaGroup)
+                .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
+                .where(OktaGroup.id == access_request.requested_group_id)
+                .order_by(nullsfirst(OktaGroup.deleted_at.desc()))
+            )
         ).first()
 
         _ctx = get_request_context()
@@ -93,15 +99,15 @@ class RejectAccessRequest:
                     "current_user_email": email,
                     "group": group,
                     "request": access_request,
-                    "requester": db.session.get(OktaUser, access_request.requester_user_id),
+                    "requester": await db.session.get(OktaUser, access_request.requester_user_id),
                 }
             )
         )
 
         if self.notify:
-            requester = db.session.get(OktaUser, access_request.requester_user_id)
+            requester = await db.session.get(OktaUser, access_request.requester_user_id)
 
-            approvers = get_all_possible_request_approvers(access_request)
+            approvers = await get_all_possible_request_approvers(access_request)
 
             self.notification_hook.access_request_completed(
                 access_request=access_request,

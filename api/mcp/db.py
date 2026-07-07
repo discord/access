@@ -15,16 +15,16 @@ discipline a write operation requires.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Iterator
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.extensions import db as _db_shim
 
 
-@contextmanager
-def mcp_db_session() -> Iterator[Session]:
+@asynccontextmanager
+async def mcp_db_session() -> AsyncIterator[AsyncSession]:
     """Yield the request-scoped DB session, committing on success and
     rolling back on exception. Matches the contract of
     ``api/database.py::get_db`` so write tools behave the same way as
@@ -34,13 +34,13 @@ def mcp_db_session() -> Iterator[Session]:
         yield session
     except Exception:
         try:
-            session.rollback()
+            await session.rollback()
         except Exception:
             pass
         raise
     else:
         try:
-            session.commit()
+            await session.commit()
         except Exception:
-            session.rollback()
+            await session.rollback()
             raise

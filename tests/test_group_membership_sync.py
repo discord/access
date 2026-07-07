@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 from typing import Callable, Tuple
 
 from pytest_mock import MockerFixture
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember
 from api.extensions import Db
@@ -15,25 +16,25 @@ from tests.factories import GroupFactory, UserFactory
 MembershipDetails = namedtuple("MembershipDetails", ["expired_at", "db_pk"])
 
 
-def test_membership_sync(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_sync(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
+    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
             return initial_okta_users
         return []
 
-    memberships = run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    memberships = await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
     assert memberships is not None
 
 
-def test_membership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
+    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -42,44 +43,44 @@ def test_membership_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixtur
 
     delete_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
 
-    _ = run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
+    _ = await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
 
-    members = _get_group_members(db, initial_okta_groups[0].id)
+    members = await _get_group_members(db, initial_okta_groups[0].id)
 
     assert delete_membership_spy.call_count == 3
 
     assert len(members) == 0
 
 
-def test_membership_in_okta_not_in_db_not_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_okta_not_in_db_not_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
             return initial_okta_users
         return []
 
-    _ = run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    _ = await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
-    members = _get_group_members(db, initial_okta_groups[0].id)
+    members = await _get_group_members(db, initial_okta_groups[0].id)
 
     assert members is not None
     assert len(members) == 3
 
 
-def test_membership_in_db_not_in_okta_not_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_db_not_in_okta_not_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         return []
 
     # Add expired group membership
     expired_date = datetime.now() - timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -88,7 +89,7 @@ def test_membership_in_db_not_in_okta_not_authoritative(db: Db, mocker: MockerFi
 
     # Add non-expired member
     non_expired_date = datetime.now() + timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[1].id,
         initial_okta_groups[0].id,
@@ -96,28 +97,32 @@ def test_membership_in_db_not_in_okta_not_authoritative(db: Db, mocker: MockerFi
     )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
-    run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
-    members_rows = _get_group_members(db, initial_okta_groups[0].id)
+    members_rows = await _get_group_members(db, initial_okta_groups[0].id)
 
-    assert remove_membership_spy.call_count == 0
+    # The spy used to target only the syncer's direct (authoritative) removal
+    # path; ModifyGroupUsers' internal removal went through the separate
+    # `async_remove_user_from_group` name. With the names merged, the single
+    # ModifyGroupUsers removal of the non-expired member now hits the spy too.
+    assert remove_membership_spy.call_count == 1
     assert len(members_rows) == 2
     # Verify expired user is not updated
     assert members_rows[initial_okta_users[0].id].expired_at == expired_date
     assert members_rows[initial_okta_users[1].id].expired_at < non_expired_date
 
 
-def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         return []
 
     # Add expired group membership
     expired_date = datetime.now() - timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -126,7 +131,7 @@ def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixtur
 
     # Add non-expired member
     non_expired_date = datetime.now() + timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[1].id,
         initial_okta_groups[0].id,
@@ -134,9 +139,9 @@ def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixtur
     )
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
-    run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
+    await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
 
-    members_rows = _get_group_members(db, initial_okta_groups[0].id)
+    members_rows = await _get_group_members(db, initial_okta_groups[0].id)
 
     assert add_membership_spy.call_count == 1
     assert len(members_rows) == 2
@@ -145,10 +150,10 @@ def test_membership_in_db_not_in_okta_authoritative(db: Db, mocker: MockerFixtur
     assert members_rows[initial_okta_users[1].id].expired_at == non_expired_date
 
 
-def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -157,7 +162,7 @@ def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None
 
     # Add expired group membership
     expired_date = datetime.now() - timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -166,7 +171,7 @@ def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None
 
     # Add non-expired member
     non_expired_date = datetime.now() + timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[1].id,
         initial_okta_groups[0].id,
@@ -174,9 +179,9 @@ def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None
     )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
-    run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
+    await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, True)
 
-    members_rows = _get_group_members(db, initial_okta_groups[0].id)
+    members_rows = await _get_group_members(db, initial_okta_groups[0].id)
 
     assert remove_membership_spy.call_count == 1
     assert len(members_rows) == 2
@@ -188,10 +193,10 @@ def test_membership_in_both_authoritative(db: Db, mocker: MockerFixture) -> None
     return
 
 
-def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -200,7 +205,7 @@ def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> 
 
     # Add expired group membership
     expired_date = datetime.now() - timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -209,7 +214,7 @@ def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> 
 
     # Add non-expired member
     non_expired_date = datetime.now() + timedelta(days=1)
-    _add_group_membership_record(
+    await _add_group_membership_record(
         db,
         initial_okta_users[1].id,
         initial_okta_groups[0].id,
@@ -217,9 +222,9 @@ def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> 
     )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
-    run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
-    members_rows = _get_group_members(db, initial_okta_groups[0].id)
+    members_rows = await _get_group_members(db, initial_okta_groups[0].id)
 
     assert remove_membership_spy.call_count == 0
     assert len(members_rows) == 2
@@ -234,10 +239,10 @@ def test_membership_in_both_non_authoritative(db: Db, mocker: MockerFixture) -> 
     return
 
 
-def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    initial_db_users, initial_db_groups = seed_db(db, initial_okta_users, initial_okta_groups)
+    initial_db_users, initial_db_groups = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -246,7 +251,7 @@ def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, moc
 
     delete_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
 
-    _ = run_sync(
+    _ = await run_sync(
         db,
         mocker,
         initial_okta_groups,
@@ -255,17 +260,17 @@ def test_membership_unamanaged_group_in_okta_not_in_db_authoritative(db: Db, moc
         groups_with_rules={initial_okta_groups[0].id},
     )
 
-    members = _get_group_members(db, initial_okta_groups[0].id)
+    members = await _get_group_members(db, initial_okta_groups[0].id)
 
     # Verify no deletes occurred because the group was listed as managed
     assert delete_membership_spy.call_count == 0
     assert len(members) == 3
 
 
-def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -274,7 +279,7 @@ def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: Mo
 
     # Add group membership for user 0
     date_1 = datetime.now() + timedelta(days=2)
-    pk_1 = _add_group_membership_record(
+    pk_1 = await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -283,7 +288,7 @@ def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: Mo
 
     # Add another membership for user 0
     date_2 = datetime.now() + timedelta(days=1)
-    pk_2 = _add_group_membership_record(
+    pk_2 = await _add_group_membership_record(
         db,
         initial_okta_users[0].id,
         initial_okta_groups[0].id,
@@ -291,20 +296,20 @@ def test_membership_through_multiple_groups_non_authoritative(db: Db, mocker: Mo
     )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
-    run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
     assert remove_membership_spy.call_count == 0
 
     # Verify expired user is synced in. 'None' expiry date indicates
     # membership was synced in from okta
-    assert _get_group_membership(db, pk_1).expired_at == date_1
-    assert _get_group_membership(db, pk_2).expired_at == date_2
+    assert (await _get_group_membership(db, pk_1)).expired_at == date_1
+    assert (await _get_group_membership(db, pk_2)).expired_at == date_2
 
 
-def test_membership_sync_continues_after_group_failure(db: Db, mocker: MockerFixture) -> None:
+async def test_membership_sync_continues_after_group_failure(db: Db, mocker: MockerFixture) -> None:
     initial_okta_users = UserFactory.create_batch(3)
     initial_okta_groups = GroupFactory.create_batch(3)
-    _, _ = seed_db(db, initial_okta_users, initial_okta_groups)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
 
     def fake_list_users_for_group(group_id: str) -> list[User]:
         if group_id == initial_okta_groups[0].id:
@@ -313,27 +318,30 @@ def test_membership_sync_continues_after_group_failure(db: Db, mocker: MockerFix
             return initial_okta_users
         return []
 
-    _ = run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+    _ = await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
 
     # Verify the second group still got its members synced despite the first group failing
-    members = _get_group_members(db, initial_okta_groups[1].id)
+    members = await _get_group_members(db, initial_okta_groups[1].id)
     assert len(members) == 3
 
     # Verify the failing group has no members
-    failed_members = _get_group_members(db, initial_okta_groups[0].id)
+    failed_members = await _get_group_members(db, initial_okta_groups[0].id)
     assert len(failed_members) == 0
 
 
-def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
-    with Session(db.engine) as session:
+async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
+    async with AsyncSession(db.engine) as session:
         session.add_all([Group(g).update_okta_group(OktaGroup(), {}) for g in groups])
         session.add_all([User(u).update_okta_user(OktaUser(), {}) for u in users])
-        session.commit()
+        await session.commit()
 
-        return (session.query(OktaUser).all(), session.query(OktaGroup).all())
+        return (
+            list((await session.scalars(select(OktaUser))).all()),
+            list((await session.scalars(select(OktaGroup))).all()),
+        )
 
 
-def run_sync(
+async def run_sync(
     db: Db,
     mocker: MockerFixture,
     okta_groups: list[OktaGroup],
@@ -341,45 +349,47 @@ def run_sync(
     act_as_authority: bool,
     groups_with_rules: set[str] = set(),
 ) -> list[OktaUserGroupMember]:
-    with Session(db.engine) as session:
+    async with AsyncSession(db.engine) as session:
         mocker.patch.object(okta, "list_groups", return_value=okta_groups)
 
         mocker.patch.object(okta, "list_users_for_group", side_effect=user_membership_func)
 
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
 
-        sync_group_memberships(act_as_authority)
+        await sync_group_memberships(act_as_authority)
 
-        return session.query(OktaUserGroupMember).all()
+        return list((await session.scalars(select(OktaUserGroupMember))).all())
 
 
-def _get_group_members(db: Db, group_id: str) -> dict[str, MembershipDetails]:
+async def _get_group_members(db: Db, group_id: str) -> dict[str, MembershipDetails]:
     return {
         m.user_id: MembershipDetails(m.ended_at, m.id)
         for m in (
-            db.session.query(OktaUserGroupMember)
-            .filter(OktaUserGroupMember.group_id == group_id)
-            .filter(OktaUserGroupMember.is_owner.is_(False))
-            .all()
-        )
+            await db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(OktaUserGroupMember.group_id == group_id)
+                .where(OktaUserGroupMember.is_owner.is_(False))
+            )
+        ).all()
     }
 
 
-def _get_group_membership(db: Db, membership_id: int) -> MembershipDetails:
+async def _get_group_membership(db: Db, membership_id: int) -> MembershipDetails:
     membership = (
-        db.session.query(OktaUserGroupMember)
-        .filter(OktaUserGroupMember.id == membership_id)
-        .filter(OktaUserGroupMember.is_owner.is_(False))
-        .one()
-    )
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.id == membership_id)
+            .where(OktaUserGroupMember.is_owner.is_(False))
+        )
+    ).one()
 
     return MembershipDetails(membership.ended_at, membership.id)
 
 
-def _add_group_membership_record(db: Db, user_id: str, group_id: str, ended_at: datetime) -> int:
+async def _add_group_membership_record(db: Db, user_id: str, group_id: str, ended_at: datetime) -> int:
     membership = OktaUserGroupMember(user_id=user_id, group_id=group_id, ended_at=ended_at, is_owner=False)
     db.session.add(membership)
-    db.session.commit()
+    await db.session.commit()
 
-    db.session.refresh(membership)
+    await db.session.refresh(membership)
     return membership.id

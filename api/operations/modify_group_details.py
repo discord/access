@@ -6,7 +6,7 @@ from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook, get_app_group_lifecycle_plugin_to_invoke
+from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -33,16 +33,18 @@ class ModifyGroupDetails:
         # requires it gone before it will convert).
         self.validate_app_group_prefix = validate_app_group_prefix
 
-    def execute(self) -> OktaGroup:
+    async def execute(self) -> OktaGroup:
         old_name = self.group.name
         old_description = self.group.description or ""
 
         # Do not allow non-deleted groups with the same name (case-insensitive)
         if self.name is not None and old_name.lower() != self.name.lower():
-            existing_group = db.session.scalars(
-                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .where(func.lower(OktaGroup.name) == func.lower(self.name))
-                .where(OktaGroup.deleted_at.is_(None))
+            existing_group = (
+                await db.session.scalars(
+                    select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                    .where(func.lower(OktaGroup.name) == func.lower(self.name))
+                    .where(OktaGroup.deleted_at.is_(None))
+                )
             ).first()
             if existing_group is not None:
                 raise ValueError("Group already exists with the same name")
@@ -56,8 +58,8 @@ class ModifyGroupDetails:
             and self.name != old_name
             and type(self.group) is AppGroup
         ):
-            app = db.session.scalars(
-                select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None))
+            app = (
+                await db.session.scalars(select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None)))
             ).first()
             if app is None:
                 raise ValueError("App for AppGroup does not exist")
@@ -77,34 +79,20 @@ class ModifyGroupDetails:
             self.group.description = self.description or ""
 
         if self.group.deleted_at is None:
-            okta.update_group(self.group.id, self.group.name, self.group.description)
-        db.session.commit()
+            await okta.update_group(self.group.id, self.group.name, self.group.description)
+        await db.session.commit()
 
         # Fire group_updated hook if name or description changed
         if old_name != self.group.name or old_description != self.group.description:
-            plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
-            if plugin_id is not None:
-                try:
-                    hook = get_app_group_lifecycle_hook()
-                    hook.group_updated(
-                        session=db.session,
-                        group=self.group,
-                        old_name=old_name,
-                        old_description=old_description,
-                        plugin_id=plugin_id,
-                    )
-                    db.session.commit()
-                except Exception:
-                    logging.getLogger("api").exception(
-                        f"Failed to invoke group_updated hook for group {self.group.id} with plugin '{plugin_id}'"
-                    )
-                    db.session.rollback()
+            await invoke_app_group_lifecycle_hook(
+                "group_updated", group=self.group, old_name=old_name, old_description=old_description
+            )
 
         # Audit logging, only if group name changed
         if old_name.lower() != self.group.name.lower():
             _ctx = get_request_context()
             email = (
-                getattr(db.session.get(OktaUser, self.current_user_id), "email", None)
+                getattr(await db.session.get(OktaUser, self.current_user_id), "email", None)
                 if self.current_user_id is not None
                 else None
             )

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from sqlalchemy import select
 
 from api.models import (
     App,
@@ -19,11 +20,11 @@ from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 from typing import Any
 
 
-def test_user_audit_resolves_at_me(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_user_audit_resolves_at_me(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`?user_id=@me` is the reserved alias the React Expiring page uses;
     it must resolve to the authenticated user's id, not 404."""
     user_url = url_for("api-audit.users_and_groups")
-    rep = client.get(
+    rep = await client.get(
         user_url,
         params={"user_id": "@me", "page": 1, "size": 20, "order_by": "created_at", "order_desc": "true"},
     )
@@ -31,7 +32,7 @@ def test_user_audit_resolves_at_me(client: TestClient, db: Db, url_for: Any) -> 
     assert "items" in rep.json()
 
 
-def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_group_audit_resolves_at_me_role_owner(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`?role_owner_id=@me` and `?owner_id=@me` should both resolve to the
     authenticated user."""
     url = url_for("api-audit.groups_and_roles")
@@ -39,12 +40,12 @@ def test_group_audit_resolves_at_me_role_owner(client: TestClient, db: Db, url_f
         {"role_owner_id": "@me"},
         {"owner_id": "@me"},
     ):
-        rep = client.get(url, params={**params, "page": 1, "size": 20})
+        rep = await client.get(url, params={**params, "page": 1, "size": 20})
         assert rep.status_code == 200, rep.text
 
 
-def test_user_audit_returns_nested_objects(
-    client: TestClient,
+async def test_user_audit_returns_nested_objects(
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
     okta_group: OktaGroup,
@@ -54,10 +55,10 @@ def test_user_audit_returns_nested_objects(
     row.role_group_mapping etc. Confirm the audit endpoint emits these."""
     db.session.add(user)
     db.session.add(okta_group)
-    db.session.commit()
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     assert len(rows) >= 1
@@ -69,8 +70,8 @@ def test_user_audit_returns_nested_objects(
     assert row["group"]["type"] == "okta_group"
 
 
-def test_group_audit_returns_nested_role_and_group(
-    client: TestClient,
+async def test_group_audit_returns_nested_role_and_group(
+    client: AsyncClient,
     db: Db,
     role_group: RoleGroup,
     okta_group: OktaGroup,
@@ -80,10 +81,10 @@ def test_group_audit_returns_nested_role_and_group(
     these the page renders blank role/group names."""
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.commit()
-    ModifyRoleGroups(role_group=role_group, groups_to_add=[okta_group.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyRoleGroups(role_group=role_group, groups_to_add=[okta_group.id], sync_to_okta=False).execute()
 
-    rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role_group.id})
+    rep = await client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role_group.id})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     assert len(rows) >= 1
@@ -94,8 +95,8 @@ def test_group_audit_returns_nested_role_and_group(
     assert row["group"]["name"] == okta_group.name
 
 
-def test_user_audit_row_includes_group_active_group_tags(
-    client: TestClient,
+async def test_user_audit_row_includes_group_active_group_tags(
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
     okta_group: OktaGroup,
@@ -106,12 +107,12 @@ def test_user_audit_row_includes_group_active_group_tags(
     db.session.add(user)
     db.session.add(okta_group)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    db.session.commit()
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]
     assert len(rows) >= 1
@@ -121,8 +122,8 @@ def test_user_audit_row_includes_group_active_group_tags(
     assert tag.id in tag_ids
 
 
-def test_get_user_audit(
-    client: TestClient,
+async def test_get_user_audit(
+    client: AsyncClient,
     db: Db,
     user: OktaUser,
     access_app: App,
@@ -133,22 +134,28 @@ def test_get_user_audit(
 ) -> None:
     # test 404
     user_url = url_for("api-audit.users_and_groups")
-    rep = client.get(user_url, params={"user_id": "randomid"})
+    rep = await client.get(user_url, params={"user_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
     db.session.add(okta_group)
     db.session.add(user)
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyRoleGroups(
+    await ModifyGroupUsers(
+        group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[okta_group.id, app_group.id],
         owner_groups_to_add=[okta_group.id, app_group.id],
@@ -160,7 +167,7 @@ def test_get_user_audit(
     db.session.expunge_all()
 
     # test get user
-    rep = client.get(user_url, params={"user_id": user_id})
+    rep = await client.get(user_url, params={"user_id": user_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -169,7 +176,7 @@ def test_get_user_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, params={"user_id": user_id, "owner": True})
+    rep = await client.get(user_url, params={"user_id": user_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -178,7 +185,7 @@ def test_get_user_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(user_url, params={"user_id": user_id, "q": "App-"})
+    rep = await client.get(user_url, params={"user_id": user_id, "q": "App-"})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -186,8 +193,8 @@ def test_get_user_audit(
     assert data["total"] == 4
 
 
-def test_get_group_audit(
-    client: TestClient,
+async def test_get_group_audit(
+    client: AsyncClient,
     db: Db,
     access_app: App,
     app_group: AppGroup,
@@ -199,7 +206,7 @@ def test_get_group_audit(
 ) -> None:
     # test 404
     group_url = url_for("api-audit.users_and_groups")
-    rep = client.get(group_url, params={"group_id": "randomid"})
+    rep = await client.get(group_url, params={"group_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
@@ -207,23 +214,29 @@ def test_get_group_audit(
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(tag)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
     db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
     db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tag.id))
     app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
     db.session.add(app_tag_map)
-    db.session.commit()
+    await db.session.commit()
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyRoleGroups(
+    await ModifyGroupUsers(
+        group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[okta_group.id, app_group.id],
         owner_groups_to_add=[okta_group.id, app_group.id],
@@ -237,7 +250,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": role_group_id})
+    rep = await client.get(group_url, params={"group_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -247,7 +260,7 @@ def test_get_group_audit(
     db.session.expunge_all()
 
     # test get group
-    rep = client.get(group_url, params={"group_id": okta_group_id})
+    rep = await client.get(group_url, params={"group_id": okta_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -256,7 +269,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": okta_group_id, "owner": True})
+    rep = await client.get(group_url, params={"group_id": okta_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -265,7 +278,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": okta_group_id, "q": user_email})
+    rep = await client.get(group_url, params={"group_id": okta_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -274,7 +287,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": role_group_id})
+    rep = await client.get(group_url, params={"group_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -283,7 +296,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": role_group_id, "owner": True})
+    rep = await client.get(group_url, params={"group_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -292,7 +305,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": role_group_id, "q": user_email})
+    rep = await client.get(group_url, params={"group_id": role_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -301,7 +314,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": app_group_id})
+    rep = await client.get(group_url, params={"group_id": app_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -310,7 +323,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": app_group_id, "owner": True})
+    rep = await client.get(group_url, params={"group_id": app_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -319,7 +332,7 @@ def test_get_group_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(group_url, params={"group_id": app_group_id, "q": user_email})
+    rep = await client.get(group_url, params={"group_id": app_group_id, "q": user_email})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -327,8 +340,8 @@ def test_get_group_audit(
     assert data["total"] == 4
 
 
-def test_get_role_audit(
-    client: TestClient,
+async def test_get_role_audit(
+    client: AsyncClient,
     db: Db,
     role_group: RoleGroup,
     access_app: App,
@@ -339,22 +352,28 @@ def test_get_role_audit(
 ) -> None:
     # test 404
     role_url = url_for("api-audit.groups_and_roles")
-    rep = client.get(role_url, params={"role_id": "randomid"})
+    rep = await client.get(role_url, params={"role_id": "randomid"})
     assert rep.status_code == 404
 
     db.session.add(access_app)
     db.session.add(okta_group)
     db.session.add(user)
     db.session.add(role_group)
-    db.session.commit()
+    await db.session.commit()
     app_group.app_id = access_app.id
     db.session.add(app_group)
-    db.session.commit()
+    await db.session.commit()
 
-    ModifyGroupUsers(group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyRoleGroups(
+    await ModifyGroupUsers(
+        group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[
             okta_group.id,
@@ -374,7 +393,7 @@ def test_get_role_audit(
     db.session.expunge_all()
 
     # test get role
-    rep = client.get(role_url, params={"role_id": role_group_id})
+    rep = await client.get(role_url, params={"role_id": role_group_id})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -383,7 +402,7 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, params={"role_id": role_group_id, "owner": True})
+    rep = await client.get(role_url, params={"role_id": role_group_id, "owner": True})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -392,7 +411,7 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, params={"role_id": role_group_id, "q": "App-"})
+    rep = await client.get(role_url, params={"role_id": role_group_id, "q": "App-"})
     assert rep.status_code == 200
 
     data = rep.json()
@@ -401,16 +420,16 @@ def test_get_role_audit(
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, params={"role_id": app_group_id})
+    rep = await client.get(role_url, params={"role_id": app_group_id})
     assert rep.status_code == 404
 
     db.session.expunge_all()
 
-    rep = client.get(role_url, params={"role_id": okta_group_id})
+    rep = await client.get(role_url, params={"role_id": okta_group_id})
     assert rep.status_code == 404
 
 
-def test_audit_users_default_order_is_newest_first(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_audit_users_default_order_is_newest_first(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Without `order_by` / `order_desc`, /api/audit/users must default to
     `created_at DESC`. Flask's Marshmallow schema declared
     `order_desc=True`; the FastAPI Query Model mirrors that. Seed three
@@ -419,8 +438,8 @@ def test_audit_users_default_order_is_newest_first(client: TestClient, db: Db, u
     group = OktaGroupFactory.create()
     u_old, u_mid, u_new = (OktaUserFactory.create() for _ in range(3))
     db.session.add_all([group, u_old, u_mid, u_new])
-    db.session.commit()
-    ModifyGroupUsers(
+    await db.session.commit()
+    await ModifyGroupUsers(
         group=group,
         members_to_add=[u_old.id, u_mid.id, u_new.id],
         sync_to_okta=False,
@@ -432,27 +451,29 @@ def test_audit_users_default_order_is_newest_first(client: TestClient, db: Db, u
         u_mid.id: base + timedelta(days=2),
         u_new.id: base + timedelta(days=4),
     }
-    for ugm in db.session.query(OktaUserGroupMember).filter(OktaUserGroupMember.group_id == group.id).all():
+    for ugm in (
+        await db.session.scalars(select(OktaUserGroupMember).where(OktaUserGroupMember.group_id == group.id))
+    ).all():
         if ugm.user_id in pinned:
             ugm.created_at = pinned[ugm.user_id]
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     seeded_rows = [r for r in rows if r["user_id"] in pinned]
     assert [r["user_id"] for r in seeded_rows] == [u_new.id, u_mid.id, u_old.id]
 
 
-def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_audit_groups_default_order_is_newest_first(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Same direction-of-default contract as `users` — seed three
     `RoleGroupMap` rows at controlled `created_at` and confirm the
     response order is newest-first when no order params are provided."""
     role = RoleGroupFactory.create()
     g_old, g_mid, g_new = (OktaGroupFactory.create() for _ in range(3))
     db.session.add_all([role, g_old, g_mid, g_new])
-    db.session.commit()
-    ModifyRoleGroups(
+    await db.session.commit()
+    await ModifyRoleGroups(
         role_group=role,
         groups_to_add=[g_old.id, g_mid.id, g_new.id],
         sync_to_okta=False,
@@ -464,12 +485,12 @@ def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, 
         g_mid.id: base + timedelta(days=2),
         g_new.id: base + timedelta(days=4),
     }
-    for rgm in db.session.query(RoleGroupMap).filter(RoleGroupMap.role_group_id == role.id).all():
+    for rgm in (await db.session.scalars(select(RoleGroupMap).where(RoleGroupMap.role_group_id == role.id))).all():
         if rgm.group_id in pinned:
             rgm.created_at = pinned[rgm.group_id]
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id})
+    rep = await client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     seeded_rows = [r for r in rows if r["group_id"] in pinned]
@@ -479,7 +500,7 @@ def test_audit_groups_default_order_is_newest_first(client: TestClient, db: Db, 
 # --- Fix 4 parity tests --------------------------------------------------------
 
 
-def test_users_audit_q_with_user_id_searches_only_groups(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_q_with_user_id_searches_only_groups(client: AsyncClient, db: Db, url_for: Any) -> None:
     """When `user_id` is pinned, the free-text `q` filter must narrow to
     *group* columns only — `?user_id=...&q=Alice` should match group
     names but not user profile fields (the user is already pinned)."""
@@ -487,14 +508,14 @@ def test_users_audit_q_with_user_id_searches_only_groups(client: TestClient, db:
     matching_group = OktaGroupFactory.create(name="MatchableGroup", description="contains Alice")
     other_group = OktaGroupFactory.create(name="UnrelatedGroup", description="no match")
     db.session.add_all([user, matching_group, other_group])
-    db.session.commit()
-    ModifyGroupUsers(group=matching_group, members_to_add=[user.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=other_group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=matching_group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=other_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     # Searching `Alice` with the user filter pinned should only match the
     # group whose description contains "Alice" — not the other group, even
     # though the user's first_name is "Alice".
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id, "q": "Alice"})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id, "q": "Alice"})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     matched_group_ids = {r["group_id"] for r in rows}
@@ -502,7 +523,7 @@ def test_users_audit_q_with_user_id_searches_only_groups(client: TestClient, db:
     assert other_group.id not in matched_group_ids
 
 
-def test_users_audit_q_with_group_id_searches_only_users(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_q_with_group_id_searches_only_users(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Symmetric: with `group_id` set, `q` must restrict to user columns
     so the response excludes memberships whose user doesn't match — even
     if the group name does."""
@@ -510,10 +531,10 @@ def test_users_audit_q_with_group_id_searches_only_users(client: TestClient, db:
     other_user = OktaUserFactory.create(email="other@example.com", first_name="Other")
     group = OktaGroupFactory.create(name="GroupZlatan", description="zlatan-themed")
     db.session.add_all([matching_user, other_user, group])
-    db.session.commit()
-    ModifyGroupUsers(group=group, members_to_add=[matching_user.id, other_user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=group, members_to_add=[matching_user.id, other_user.id], sync_to_okta=False).execute()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id, "q": "zlatan"})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id, "q": "zlatan"})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     matched_user_ids = {r["user_id"] for r in rows}
@@ -521,21 +542,21 @@ def test_users_audit_q_with_group_id_searches_only_users(client: TestClient, db:
     assert other_user.id not in matched_user_ids
 
 
-def test_groups_audit_q_with_role_id_searches_only_groups(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_groups_audit_q_with_role_id_searches_only_groups(client: AsyncClient, db: Db, url_for: Any) -> None:
     """When `role_id` is set on /api/audit/groups, `q` must restrict to
     the *associated group* columns and ignore the role columns."""
     role = RoleGroupFactory.create(name="ZebraRole")
     matching_group = OktaGroupFactory.create(name="ZebraStripeGroup")
     other_group = OktaGroupFactory.create(name="UnrelatedGroup")
     db.session.add_all([role, matching_group, other_group])
-    db.session.commit()
-    ModifyRoleGroups(
+    await db.session.commit()
+    await ModifyRoleGroups(
         role_group=role,
         groups_to_add=[matching_group.id, other_group.id],
         sync_to_okta=False,
     ).execute()
 
-    rep = client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id, "q": "Zebra"})
+    rep = await client.get(url_for("api-audit.groups_and_roles"), params={"role_id": role.id, "q": "Zebra"})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     matched_group_ids = {r["group_id"] for r in rows}
@@ -545,7 +566,7 @@ def test_groups_audit_q_with_role_id_searches_only_groups(client: TestClient, db
     assert other_group.id not in matched_group_ids
 
 
-def test_users_audit_owner_id_excludes_owner_self_membership(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_owner_id_excludes_owner_self_membership(client: AsyncClient, db: Db, url_for: Any) -> None:
     """When filtering /api/audit/users by `owner_id`, the response must
     exclude the owner's own memberships. The frontend's "expiring access"
     review surface is meant to show *other* users' access the owner owes
@@ -554,17 +575,17 @@ def test_users_audit_owner_id_excludes_owner_self_membership(client: TestClient,
     other = OktaUserFactory.create(email="other@example.com")
     group = OktaGroupFactory.create(name="OwnedGroup")
     db.session.add_all([owner, other, group])
-    db.session.commit()
+    await db.session.commit()
     # Owner is owner of group; owner is also a regular member of the same
     # group; another user is also a member.
-    ModifyGroupUsers(
+    await ModifyGroupUsers(
         group=group,
         members_to_add=[owner.id, other.id],
         owners_to_add=[owner.id],
         sync_to_okta=False,
     ).execute()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"owner_id": owner.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"owner_id": owner.id})
     assert rep.status_code == 200
     rows = rep.json()["items"]
     user_ids_in_response = {r["user_id"] for r in rows}
@@ -572,8 +593,8 @@ def test_users_audit_owner_id_excludes_owner_self_membership(client: TestClient,
     assert other.id in user_ids_in_response
 
 
-def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
-    client: TestClient, db: Db, url_for: Any
+async def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
+    client: AsyncClient, db: Db, url_for: Any
 ) -> None:
     """When neither `user_id` nor `group_id` is set, rows whose group is a
     RoleGroup must surface `active_role_associated_group_member_mappings`
@@ -583,14 +604,14 @@ def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
     associated = OktaGroupFactory.create(name="UnfilteredAssociatedGroup")
     user = OktaUserFactory.create()
     db.session.add_all([role, associated, user])
-    db.session.commit()
-    ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
 
     # drop identity-map state staled by the ops above (expire_on_commit=False)
     db.session.expire_all()
 
-    rep = client.get(url_for("api-audit.users_and_groups"))
+    rep = await client.get(url_for("api-audit.users_and_groups"))
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]
     role_rows = [r for r in rows if r.get("group", {}).get("id") == role.id]
@@ -603,8 +624,8 @@ def test_users_audit_includes_role_associated_group_mappings_when_unfiltered(
     ), f"associated group missing from member mappings: {member_maps}"
 
 
-def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
-    client: TestClient, db: Db, url_for: Any
+async def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
+    client: AsyncClient, db: Db, url_for: Any
 ) -> None:
     """With `user_id` pinned, `active_role_associated_group_*_mappings`
     must be suppressed on the response (eager-loading them under a
@@ -614,11 +635,11 @@ def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
     associated = OktaGroupFactory.create(name="FilteredAssociatedGroup")
     user = OktaUserFactory.create()
     db.session.add_all([role, associated, user])
-    db.session.commit()
-    ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]
     role_rows = [r for r in rows if r.get("group", {}).get("id") == role.id]
@@ -630,7 +651,7 @@ def test_users_audit_omits_role_associated_group_mappings_when_user_filter(
     assert not sample.get("active_role_associated_group_owner_mappings")
 
 
-def test_users_audit_direct_flag_reorders(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_direct_flag_reorders(client: AsyncClient, db: Db, url_for: Any) -> None:
     """When `direct` is present and neither `user_id` nor `owner_id` is
     supplied, the order_by re-applies using the email/created_at compound
     shape: with `?direct=true&order_by=moniker`, rows come back ordered
@@ -639,13 +660,13 @@ def test_users_audit_direct_flag_reorders(client: TestClient, db: Db, url_for: A
     u_z = OktaUserFactory.create(email="zara@example.com")
     u_a = OktaUserFactory.create(email="alpha@example.com")
     db.session.add_all([group, u_a, u_z])
-    db.session.commit()
+    await db.session.commit()
     # Insert in non-alphabetical order so a default unordered query would
     # surface them in insertion order rather than sorted.
-    ModifyGroupUsers(group=group, members_to_add=[u_z.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=group, members_to_add=[u_a.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=group, members_to_add=[u_z.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=group, members_to_add=[u_a.id], sync_to_okta=False).execute()
 
-    rep = client.get(
+    rep = await client.get(
         url_for("api-audit.users_and_groups"),
         params={"direct": "true", "order_by": "moniker", "order_desc": "false"},
     )
@@ -657,7 +678,9 @@ def test_users_audit_direct_flag_reorders(client: TestClient, db: Db, url_for: A
     assert seeded_emails == ["alpha@example.com", "zara@example.com"]
 
 
-def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(
+    client: AsyncClient, db: Db, url_for: Any
+) -> None:
     """`user_id` + `owner_id` pinned: the narrow group-only `q` filter
     AND-applies on top of the broad either-side filter. A search term that
     matches user columns but no group columns must return zero rows."""
@@ -665,15 +688,15 @@ def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(client: Tes
     owner = OktaUserFactory.create(email="owner-pin@example.com", first_name="Pin", last_name="Owner")
     group = OktaGroupFactory.create(name="GroupA", description="alpha")
     db.session.add_all([user, owner, group])
-    db.session.commit()
-    ModifyGroupUsers(
+    await db.session.commit()
+    await ModifyGroupUsers(
         group=group,
         members_to_add=[user.id],
         owners_to_add=[owner.id],
         sync_to_okta=False,
     ).execute()
 
-    rep = client.get(
+    rep = await client.get(
         url_for("api-audit.users_and_groups"),
         params={"user_id": user.id, "owner_id": owner.id, "q": "Zzqterm"},
     )
@@ -682,8 +705,8 @@ def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(client: Tes
     assert all(r["group"]["id"] != group.id for r in rows)
 
 
-def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
-    client: TestClient, db: Db, url_for: Any
+async def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
+    client: AsyncClient, db: Db, url_for: Any
 ) -> None:
     """`user_id` + `group_id` pinned: both narrow filters compose. A `q`
     that matches user columns but no group columns must filter out the
@@ -691,10 +714,10 @@ def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
     user = OktaUserFactory.create(email="qtfirst@example.com", first_name="Qtfirst", last_name="X")
     group = OktaGroupFactory.create(name="GroupBeta", description="beta")
     db.session.add_all([user, group])
-    db.session.commit()
-    ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
 
-    rep = client.get(
+    rep = await client.get(
         url_for("api-audit.users_and_groups"),
         params={"user_id": user.id, "group_id": group.id, "q": "Qtfirst"},
     )
@@ -703,7 +726,7 @@ def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
     assert rows == []
 
 
-def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_groups_audit_q_with_role_and_owner_pin(client: AsyncClient, db: Db, url_for: Any) -> None:
     """On `/api/audit/groups`, `role_id` + `owner_id` pinned: the narrow
     associated-group `q` filter AND-applies on top of the broad either-side
     filter. A `q` that matches role columns but no group columns must
@@ -712,11 +735,11 @@ def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_
     associated = OktaGroupFactory.create(name="GroupGamma", description="gamma")
     owner = OktaUserFactory.create(email="role-pin-owner@example.com", first_name="Pin", last_name="Owner")
     db.session.add_all([role, associated, owner])
-    db.session.commit()
-    ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
-    ModifyGroupUsers(group=associated, owners_to_add=[owner.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(group=associated, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
-    rep = client.get(
+    rep = await client.get(
         url_for("api-audit.groups_and_roles"),
         params={"role_id": role.id, "owner_id": owner.id, "q": "Zqx"},
     )
@@ -725,7 +748,7 @@ def test_groups_audit_q_with_role_and_owner_pin(client: TestClient, db: Db, url_
     assert all(r.get("group", {}).get("id") != associated.id for r in rows)
 
 
-def test_users_audit_returns_rows_when_user_is_soft_deleted(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_users_audit_returns_rows_when_user_is_soft_deleted(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`/api/audit/users` must surface every membership in a group's history,
     including those whose user has since been soft-deleted. Pre-fix the query
     eager-loaded `OktaUserGroupMember.active_user`, whose relationship carries
@@ -734,13 +757,13 @@ def test_users_audit_returns_rows_when_user_is_soft_deleted(client: TestClient, 
     group = OktaGroupFactory.create()
     user = OktaUserFactory.create()
     db.session.add_all([group, user])
-    db.session.commit()
-    ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     user.deleted_at = datetime.now(timezone.utc)
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
+    rep = await client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id})
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]
     matching = [r for r in rows if r["user_id"] == user.id]
@@ -753,7 +776,9 @@ def test_users_audit_returns_rows_when_user_is_soft_deleted(client: TestClient, 
         assert absent not in row, f"audit row should not include {absent!r}"
 
 
-def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(client: TestClient, db: Db, url_for: Any) -> None:
+async def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
+    client: AsyncClient, db: Db, url_for: Any
+) -> None:
     """Mirror regression for `/api/audit/groups`. The migration added
     `joinedload(RoleGroupMap.active_role_group)`, and that relationship has
     the same `innerjoin=True` + `deleted_at IS NULL` shape, so audit rows
@@ -761,13 +786,13 @@ def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(client: TestC
     role = RoleGroupFactory.create()
     group = OktaGroupFactory.create()
     db.session.add_all([role, group])
-    db.session.commit()
-    ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
+    await db.session.commit()
+    await ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
 
     role.deleted_at = datetime.now(timezone.utc)
-    db.session.commit()
+    await db.session.commit()
 
-    rep = client.get(url_for("api-audit.groups_and_roles"), params={"group_id": group.id})
+    rep = await client.get(url_for("api-audit.groups_and_roles"), params={"group_id": group.id})
     assert rep.status_code == 200, rep.text
     rows = rep.json()["items"]
     matching = [r for r in rows if r["role_group_id"] == role.id]
