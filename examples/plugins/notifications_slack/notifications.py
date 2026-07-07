@@ -4,12 +4,11 @@ import asyncio
 import logging
 import os
 import random
-import time
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 import pluggy
-from slack_sdk import WebClient
+from slack_sdk.web.async_client import AsyncWebClient
 
 from api.models import (
     AccessRequest,
@@ -29,14 +28,14 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def retry_operation(
-    operation_func: Callable[[], T], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
+async def retry_operation(
+    operation_func: Callable[[], Awaitable[T]], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
 ) -> Optional[T]:
     """
-    Execute an operation with retries, without propagating exceptions
+    Await an async operation with retries, without propagating exceptions.
 
     Args:
-        operation_func: Function that performs the operation
+        operation_func: Async function that performs the operation
         max_attempts: Maximum number of retry attempts
         base_delay: Initial delay between retries in seconds
         max_delay: Maximum delay between retries in seconds
@@ -49,7 +48,7 @@ def retry_operation(
 
     while attempt < max_attempts:
         try:
-            return operation_func()
+            return await operation_func()
         except Exception as e:
             attempt += 1
 
@@ -64,15 +63,16 @@ def retry_operation(
                 logger.warning(
                     f"Operation failed (attempt {attempt}/{max_attempts}): {str(e)}. Retrying in {sleep_time:.2f}s"
                 )
-                time.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)  # Exponential backoff
 
     return None
 
 
-# Initialize Slack client and signature verifier
+# Initialize Slack client. AsyncWebClient is the Slack SDK's native-async client
+# (aiohttp-backed), so its calls are awaited directly on the event loop.
 slack_token = os.environ["SLACK_BOT_TOKEN"]
-client = WebClient(token=slack_token)
+client = AsyncWebClient(token=slack_token)
 alerts_channel = os.environ.get("SLACK_ALERTS_CHANNEL")
 CLIENT_ORIGIN_URL = os.environ.get("CLIENT_ORIGIN_URL")  # e.g. "https://discord-access-instance.com"
 
@@ -239,7 +239,7 @@ def expiring_access_list_role_owner(expiring_access_list: List[RoleGroupMap]) ->
     return out
 
 
-def get_user_id_by_email(email: str) -> Optional[str]:
+async def get_user_id_by_email(email: str) -> Optional[str]:
     """Get Slack user ID by email with retry logic.
 
     Args:
@@ -249,11 +249,11 @@ def get_user_id_by_email(email: str) -> Optional[str]:
         Optional[str]: The Slack user ID if found, otherwise None.
     """
 
-    def lookup_user() -> str:
-        response = client.users_lookupByEmail(email=email)
+    async def lookup_user() -> str:
+        response = await client.users_lookupByEmail(email=email)
         return response["user"]["id"]
 
-    user_id = retry_operation(lookup_user)
+    user_id = await retry_operation(lookup_user)
     if not user_id:
         logger.error(f"Failed to fetch user ID for {email} after multiple attempts")
 
@@ -263,40 +263,34 @@ def get_user_id_by_email(email: str) -> Optional[str]:
 async def send_slack_dm(user: OktaUser, message: str) -> None:
     """Send a direct message to a Slack user with retry logic.
 
-    The Slack SDK ``WebClient`` (and the sleep-based ``retry_operation``) are
-    synchronous and blocking. Under the Access 2.0 async plugin interface the
-    hooks run on the event loop, so the blocking work is dispatched to a worker
-    thread with ``asyncio.to_thread`` — the general recipe for wrapping any
-    synchronous client (TODO 18).
+    Uses the Slack SDK's native-async ``AsyncWebClient``, so the API calls are
+    awaited directly on the event loop — no thread offload needed (the async
+    plugin interface, TODO 18).
 
     Args:
         user (OktaUser): The user to send the message to.
         message (str): The message content.
     """
+    user_id = await get_user_id_by_email(user.email)
+    if user_id:
+        mention_message = f"<@{user_id}> {message}"
 
-    def _send() -> None:
-        user_id = get_user_id_by_email(user.email)
-        if user_id:
-            mention_message = f"<@{user_id}> {message}"
+        async def send_message() -> Dict[str, Any]:
+            response = await client.chat_postMessage(
+                channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
+            )
+            logger.info(f"Slack DM sent: {response['ts']}")
+            return response
 
-            def send_message() -> Dict[str, Any]:
-                response = client.chat_postMessage(
-                    channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
-                )
-                logger.info(f"Slack DM sent: {response['ts']}")
-                return response
-
-            result = retry_operation(send_message)
-            if not result:
-                logger.error(f"Failed to send Slack DM to {user.email} after multiple attempts")
-
-    await asyncio.to_thread(_send)
+        result = await retry_operation(send_message)
+        if not result:
+            logger.error(f"Failed to send Slack DM to {user.email} after multiple attempts")
 
 
 async def send_slack_channel_message(user: OktaUser, message: str) -> None:
     """Send a message to a Slack channel with retry logic.
 
-    See ``send_slack_dm`` — the blocking Slack call runs in a worker thread.
+    See ``send_slack_dm`` — the Slack calls are awaited on the async client.
 
     Args:
         message (str): The message content.
@@ -305,24 +299,20 @@ async def send_slack_channel_message(user: OktaUser, message: str) -> None:
     if not alerts_channel:
         return
 
-    def _send() -> None:
-        user_id = get_user_id_by_email(user.email)
+    user_id = await get_user_id_by_email(user.email)
+    if user_id:
+        channel_message = f"{user.email} - {message}"
 
-        if user_id:
-            channel_message = f"{user.email} - {message}"
+        async def send_message() -> Dict[str, Any]:
+            response = await client.chat_postMessage(
+                channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
+            )
+            logger.info(f"Slack channel message sent: {response['ts']}")
+            return response
 
-            def send_message() -> Dict[str, Any]:
-                response = client.chat_postMessage(
-                    channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
-                )
-                logger.info(f"Slack channel message sent: {response['ts']}")
-                return response
-
-            result = retry_operation(send_message)
-            if not result:
-                logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
-
-    await asyncio.to_thread(_send)
+        result = await retry_operation(send_message)
+        if not result:
+            logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
 
 
 @notification_hook_impl
