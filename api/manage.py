@@ -361,12 +361,10 @@ async def sync_app_group_memberships() -> None:
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
         try:
-            # App-group-lifecycle hooks are sync plugin code that expects a
-            # sync Session; run them through the session's greenlet bridge.
-            await db.session.run_sync(
-                lambda session, app=app: hook.sync_all_group_membership(  # type: ignore[misc]
-                    session=session, app=app, plugin_id=app.app_group_lifecycle_plugin
-                )
+            # App-group-lifecycle hooks are native async (TODO 18): await them
+            # directly with the AsyncSession, no run_sync bridge.
+            await asyncio.gather(
+                *hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
             )
             await db.session.commit()
             click.echo(f"  ✓ Synced app '{app.name}'")

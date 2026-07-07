@@ -10,7 +10,7 @@ from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
 from api.models.access_request import get_all_possible_request_approvers
-from api.plugins import get_notification_hook
+from api.plugins import send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -34,8 +34,6 @@ class RejectRoleRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> RoleRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -119,7 +117,8 @@ class RejectRoleRequest:
 
             approvers = await get_all_possible_request_approvers(role_request)
 
-            self.notification_hook.access_role_request_completed(
+            await send_notification(
+                "access_role_request_completed",
                 role_request=role_request,
                 role=requester_role,
                 group=group,

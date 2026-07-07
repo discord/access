@@ -1,19 +1,32 @@
+import asyncio
 import logging
-import sys
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 import pluggy
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaUser
+from api.plugins._async_dispatch import verify_async_impls
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
 hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
 hookimpl = pluggy.HookimplMarker(app_group_lifecycle_plugin_name)
 
 _cached_app_group_lifecycle_hook: pluggy.HookRelay | None = None
+
+# The lifecycle hooks that receive an AsyncSession and are awaited by the
+# application. The metadata/config/status/validation hooks are pure schema
+# accessors and remain synchronous, so they are excluded from the async check.
+_LIFECYCLE_HOOKS = (
+    "group_created",
+    "group_updated",
+    "group_deleted",
+    "group_members_added",
+    "group_members_removed",
+    "sync_all_group_membership",
+)
 
 
 class PluginNotFoundError(Exception):
@@ -161,26 +174,26 @@ class AppGroupLifecyclePluginSpec:
     # Group lifecycle hooks
 
     @hookspec
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group creation.
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             group: The app group that was created.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
 
     @hookspec
-    def group_updated(
-        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    async def group_updated(
+        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
     ) -> None:
         """
         Handle group update (name or description change).
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             group: The app group after the update.
             old_name: The group's name before the update.
             old_description: The group's description before the update.
@@ -189,12 +202,12 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group deletion.
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             group: The app group that was deleted.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -203,14 +216,14 @@ class AppGroupLifecyclePluginSpec:
     # Membership hooks
 
     @hookspec
-    def group_members_added(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    async def group_members_added(
+        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         """
         Handle member addition.
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             group: The app group to which members were added.
             members: The list of users that were added to the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -218,14 +231,14 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def group_members_removed(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    async def group_members_removed(
+        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         """
         Handle member removal.
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             group: The app group from which members were removed.
             members: The list of users that were removed from the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -233,12 +246,12 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
+    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
         """
-        Bulk sync all group memberships for an app. This is invoked periodically by a CLI command `flask sync-app-group-memberships`.
+        Bulk sync all group memberships for an app. This is invoked periodically by the CLI command `access sync-app-group-memberships`.
 
         Args:
-            session: The Access database session.
+            session: The Access database AsyncSession. Await ORM calls on it.
             app: The app for which to sync all group membership.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -255,11 +268,9 @@ def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
     pm = pluggy.PluginManager(app_group_lifecycle_plugin_name)
     pm.add_hookspecs(AppGroupLifecyclePluginSpec)
 
-    # Register the hook wrappers
-    pm.register(sys.modules[__name__])
-
     count = pm.load_setuptools_entrypoints(app_group_lifecycle_plugin_name)
     logger.info(f"Loaded {count} app group lifecycle plugin(s)")
+    verify_async_impls(pm, _LIFECYCLE_HOOKS)
 
     _cached_app_group_lifecycle_hook = pm.hook
 
@@ -334,11 +345,11 @@ def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> str | None:
 async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwargs: Any) -> None:
     """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
 
-    No-op when no lifecycle plugin applies to ``group``. The hookspecs take a sync
-    ``Session``, so this bridges the request's ``AsyncSession`` through ``run_sync``
-    and hands the plugin a working sync session (TODO 18). Commits on success; on any
-    hook error it logs and rolls back so a misbehaving plugin can't abort the
-    surrounding operation.
+    No-op when no lifecycle plugin applies to ``group``. The lifecycle hooks are
+    native async (TODO 18): they receive the request's ``AsyncSession`` directly
+    and run on the event loop, so no ``run_sync`` bridge is needed. Commits on
+    success; on any hook error it logs and rolls back so a misbehaving plugin
+    can't abort the surrounding operation.
 
     ``kwargs`` are forwarded to the hook alongside ``session`` and ``group`` — e.g.
     ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
@@ -349,8 +360,8 @@ async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwa
         return
     try:
         hook = get_app_group_lifecycle_hook()
-        await db.session.run_sync(
-            lambda s: getattr(hook, hook_method)(session=s, group=group, plugin_id=plugin_id, **kwargs)
+        await asyncio.gather(
+            *getattr(hook, hook_method)(session=db.session, group=group, plugin_id=plugin_id, **kwargs)
         )
         await db.session.commit()
     except Exception:

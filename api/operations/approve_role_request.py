@@ -13,7 +13,6 @@ from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.operations.constraints import CheckForReason
 from api.operations.modify_role_groups import ModifyRoleGroups
-from api.plugins import get_notification_hook
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -37,8 +36,6 @@ class ApproveRoleRequest:
         self.ending_at = ending_at
 
         self.notify = notify
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> RoleRequest:
         # Lock the request row for the transaction so concurrent approvers

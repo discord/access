@@ -25,7 +25,7 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.plugins import get_notification_hook
+from api.plugins import send_notification
 from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
@@ -63,8 +63,6 @@ class ModifyGroupUsers:
 
         self.created_reason = created_reason
         self.notify = notify
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> OktaGroup:
         group = (
@@ -773,7 +771,8 @@ class ModifyGroupUsers:
         requester: Optional[OktaUser],
         approvers: Set[OktaUser],
     ) -> None:
-        self.notification_hook.access_request_completed(
+        await send_notification(
+            "access_request_completed",
             access_request=access_request,
             group=group,
             requester=requester,

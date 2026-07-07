@@ -22,7 +22,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
-from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins import evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -50,9 +50,6 @@ class CreateGroupRequest:
         self.requested_group_tags = requested_group_tags if requested_group_tags is not None else []
         self.requested_ownership_ending_at = requested_ownership_ending_at
         self.request_reason = request_reason
-
-        self.conditional_access_hook = get_conditional_access_hook()
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> Optional[GroupRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
@@ -183,7 +180,8 @@ class CreateGroupRequest:
         )
 
         # Check conditional access hook
-        conditional_access_responses = self.conditional_access_hook.group_request_created(
+        conditional_access_responses = await evaluate_conditional_access(
+            "group_request_created",
             group_request=group_request,
             requester=requester,
         )
@@ -206,7 +204,8 @@ class CreateGroupRequest:
                 return group_request
 
         # Send notification to approvers
-        self.notification_hook.access_group_request_created(
+        await send_notification(
+            "access_group_request_created",
             group_request=group_request,
             requester=requester,
             approvers=approvers,

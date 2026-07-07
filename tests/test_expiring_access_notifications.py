@@ -68,10 +68,6 @@ async def test_individual_expiring_access_notifications(
         assert kwargs["expiration_datetime"] is None
     else:
         assert expiration_datetime.date() == kwargs["expiration_datetime"].date()
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert okta_group in kwargs["groups"]
-    assert role_group in kwargs["groups"]
 
 
 # Test with one user who has a membership expiring tomorrow and one in a week
@@ -120,10 +116,6 @@ async def test_individual_expiring_access_notifications_week(
     assert membership2 in kwargs["okta_user_group_members"]
     assert user == kwargs["user"]
     assert kwargs["expiration_datetime"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert okta_group in kwargs["groups"]
-    assert role_group in kwargs["groups"]
 
 
 # Test with one user who has one direct membership expiring tomorrow and a role membership for the same group
@@ -237,14 +229,6 @@ async def test_owner_expiring_access_notifications(db: Db, mocker: MockerFixture
     assert membership1 in kwargs["group_user_associations"]
     assert membership2 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert len(kwargs["users"]) == 2
-    assert user1 in kwargs["users"]
-    assert user2 in kwargs["users"]
-    assert kwargs["roles"] is None
 
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring this week
@@ -330,14 +314,6 @@ async def test_owner_expiring_access_notifications_owner_member(db: Db, mocker: 
     assert membership2 not in kwargs["group_user_associations"]
     assert membership3 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert len(kwargs["users"]) == 2
-    assert user1 in kwargs["users"]
-    assert user2 in kwargs["users"]
-    assert kwargs["roles"] is None
 
 
 # Test with one owner who owns two groups, each group has a member whose access expires next week
@@ -391,14 +367,6 @@ async def test_owner_expiring_access_notifications_week(db: Db, mocker: MockerFi
     assert membership1 in kwargs["group_user_associations"]
     assert membership2 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert len(kwargs["users"]) == 2
-    assert user1 in kwargs["users"]
-    assert user2 in kwargs["users"]
-    assert kwargs["roles"] is None
 
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring next week
@@ -484,14 +452,6 @@ async def test_owner_expiring_access_notifications_owner_member_week(db: Db, moc
     assert membership2 not in kwargs["group_user_associations"]
     assert membership3 in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert len(kwargs["users"]) == 2
-    assert user1 in kwargs["users"]
-    assert user2 in kwargs["users"]
-    assert kwargs["roles"] is None
 
 
 # Test with one owner who owns a groups, the group has a role member whose access expires this week
@@ -533,12 +493,6 @@ async def test_owner_expiring_access_notifications_role(db: Db, mocker: MockerFi
     _, kwargs = expiring_access_notification_spy.call_args
     assert len(kwargs["role_group_associations"]) == 1
     assert membership1 in kwargs["role_group_associations"]
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 1
-    assert group2 in kwargs["groups"]
-    assert kwargs["users"] is None
-    assert len(kwargs["roles"]) == 1
-    assert group1 in kwargs["roles"]
 
 
 # Test with one owner who owns two groups, each group has a role member whose access expires next week
@@ -590,13 +544,6 @@ async def test_owner_expiring_access_notifications_role_week(db: Db, mocker: Moc
     assert len(kwargs["role_group_associations"]) == 2
     assert membership1 in kwargs["role_group_associations"]
     assert membership2 in kwargs["role_group_associations"]
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 2
-    assert group1 in kwargs["groups"]
-    assert group2 in kwargs["groups"]
-    assert kwargs["users"] is None
-    assert len(kwargs["roles"]) == 2
-    assert role in kwargs["roles"]
 
 
 # Test should not renew funtionality for individual notifications
@@ -638,8 +585,6 @@ async def test_individual_do_not_renew_notification_behavior(
 
     assert expiring_access_notification_spy.call_count == 1
     _, kwargs = expiring_access_notification_spy.call_args
-    assert len(kwargs["groups"]) == 1
-    assert okta_group in kwargs["groups"]
     assert user == kwargs["user"]
     if datetime.now().weekday() == 4:
         assert kwargs["expiration_datetime"] is None
@@ -873,19 +818,12 @@ async def test_owner_expiring_access_notifications_managed_group_admin(
     assert len(kwargs["group_user_associations"]) == 1
     assert membership in kwargs["group_user_associations"]
     assert kwargs["role_group_associations"] is None
-    # TODO eventually clean this up, leaving for now for backwards compatibility
-    assert len(kwargs["groups"]) == 1
-    assert group2 in kwargs["groups"]
-    assert len(kwargs["users"]) == 1
-    assert user in kwargs["users"]
-    assert kwargs["roles"] is None
 
 
-# The syncer offloads notification hooks (sync plugin code) while holding ORM objects
-# bound to the request's AsyncSession. It invokes them via db.session.run_sync so they
-# run on the event loop's own greenlet — never a worker thread — which is what keeps
-# passing those session-bound objects safe. This guards that contract: the hook must
-# run on the loop thread and must be handed usable, eager-loaded ORM objects.
+# Notification hooks are now native async: the syncer awaits them directly on the event
+# loop while holding ORM objects bound to its AsyncSession — no run_sync/worker-thread
+# bridge (TODO 18). This guards that contract: the hook runs on the loop thread and is
+# handed usable, eager-loaded ORM objects it can read without emitting SQL.
 async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_orm_objects(
     db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup
 ) -> None:
@@ -903,7 +841,7 @@ async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_o
     hook = get_notification_hook()
     observed: dict[str, object] = {}
 
-    def _record(**kwargs: Any) -> None:
+    def _record(**kwargs: Any) -> list[Any]:
         member = kwargs["okta_user_group_members"][0]
         # The syncer eager-loads active_user/active_group, so a hook can read them
         # (and their columns) without emitting SQL.
@@ -915,10 +853,12 @@ async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_o
         # because active_group put the row in the identity map and the many-to-one
         # resolves from it via use_get without emitting SQL. Guards that eager-load.
         observed["nonactive_group_name"] = member.group.name
-        # run_sync executes the hook on the event loop's thread (a greenlet), not an
-        # anyio worker thread. If this were reverted to anyio.to_thread.run_sync the
-        # hook would run on a worker thread and this id would differ from the test's.
+        # The hook is awaited directly on the event loop (no run_sync/worker thread),
+        # so it runs on the test's own thread.
         observed["thread_id"] = threading.get_ident()
+        # send_notification unpacks the caller's result with `*` and awaits it; async
+        # hookimpls return coroutines, so this stand-in returns an (empty) iterable.
+        return []
 
     mocker.patch.object(hook, "access_expiring_user", side_effect=_record)
 
@@ -956,11 +896,12 @@ async def test_expiring_owner_notification_hook_can_read_association_relationshi
 
     observed: dict[str, object] = {}
 
-    def _record(**kwargs: Any) -> None:
+    def _record(**kwargs: Any) -> list[Any]:
         assoc = kwargs["group_user_associations"][0]
         # Non-active .user / .group relationships (not the eager-loaded active_* ones).
         observed["member_email"] = assoc.user.email
         observed["group_name"] = assoc.group.name
+        return []  # send_notification unpacks and awaits the caller's result
 
     mocker.patch.object(get_notification_hook(), "access_expiring_owner", side_effect=_record)
 
@@ -989,11 +930,12 @@ async def test_expiring_role_owner_notification_hook_can_read_association_relati
 
     observed: dict[str, object] = {}
 
-    def _record(**kwargs: Any) -> None:
+    def _record(**kwargs: Any) -> list[Any]:
         rgm = kwargs["roles"][0]
         # Non-active .role_group / .group relationships on the RoleGroupMap row.
         observed["role_name"] = rgm.role_group.name
         observed["group_name"] = rgm.group.name
+        return []  # send_notification unpacks and awaits the caller's result
 
     mocker.patch.object(get_notification_hook(), "access_expiring_role_owner", side_effect=_record)
 

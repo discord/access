@@ -23,7 +23,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins import evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -47,9 +47,6 @@ class CreateAccessRequest:
         self.request_ending_at = request_ending_at
 
         self.request_approvers = select()
-
-        self.conditional_access_hook = get_conditional_access_hook()
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> Optional[AccessRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
@@ -131,7 +128,8 @@ class CreateAccessRequest:
             )
         )
 
-        conditional_access_responses = self.conditional_access_hook.access_request_created(
+        conditional_access_responses = await evaluate_conditional_access(
+            "access_request_created",
             access_request=access_request,
             group=group,
             group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
@@ -156,7 +154,8 @@ class CreateAccessRequest:
 
                 return access_request
 
-        self.notification_hook.access_request_created(
+        await send_notification(
+            "access_request_created",
             access_request=access_request,
             group=group,
             requester=requester,

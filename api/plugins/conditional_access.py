@@ -1,12 +1,13 @@
+import asyncio
 import logging
-import sys
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Generator, List, Optional
+from typing import Any, List, Optional
 
 import pluggy
 
 from api.models import AccessRequest, App, GroupRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
+from api.plugins._async_dispatch import verify_async_impls
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
@@ -15,6 +16,8 @@ hookimpl = pluggy.HookimplMarker(conditional_access_plugin_name)
 _cached_conditional_access_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
+
+_HOOK_NAMES = ("access_request_created", "role_request_created", "group_request_created")
 
 
 @dataclass
@@ -26,19 +29,19 @@ class ConditionalAccessResponse:
 
 class ConditionalAccessPluginSpec:
     @hookspec
-    def access_request_created(
+    async def access_request_created(
         self, access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
     ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the access request."""
 
     @hookspec
-    def role_request_created(
+    async def role_request_created(
         self, role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
     ) -> Optional[ConditionalAccessResponse]:
         """Automatically approve, deny, or continue the role request."""
 
     @hookspec
-    def group_request_created(
+    async def group_request_created(
         self,
         group_request: GroupRequest,
         requester: OktaUser,
@@ -47,52 +50,24 @@ class ConditionalAccessPluginSpec:
         """Automatically approve, deny, or continue the group request."""
 
 
-@hookimpl(wrapper=True)
-def access_request_created(
-    access_request: AccessRequest, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
-) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
+async def evaluate_conditional_access(hook_name: str, /, **kwargs: Any) -> list[Optional[ConditionalAccessResponse]]:
+    """Run an async conditional-access hook and return every plugin's response.
+
+    This is the async replacement for the old ``@hookimpl(wrapper=True)``
+    wrappers: pluggy cannot wrap coroutines, so the gather + error handling lives
+    here. On any plugin error the failure is logged and an empty list is returned
+    — the request is left for manual approval/denial rather than being broken.
+
+    ``kwargs`` are forwarded verbatim; pluggy passes each implementation only the
+    parameters it declares, so extra kwargs (e.g. ``requester_role``) are ignored
+    safely.
+    """
+    hook = get_conditional_access_hook()
     try:
-        # Trigger exception if it exists
-        return (yield)
+        return list(await asyncio.gather(*getattr(hook, hook_name)(**kwargs)))
     except Exception:
-        # Log and do not raise since request failures should not
-        # break the flow. The access request can still be manually
-        # approved or denied
-        logger.exception("Failed to execute access request created callback")
-
-    return []
-
-
-@hookimpl(wrapper=True)
-def role_request_created(
-    role_request: RoleRequest, role: RoleGroup, group: OktaGroup, group_tags: List[Tag], requester: OktaUser
-) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
-    try:
-        # Trigger exception if it exists
-        return (yield)
-    except Exception:
-        # Log and do not raise since request failures should not
-        # break the flow. The access request can still be manually
-        # approved or denied
-        logger.exception("Failed to execute role request created callback")
-
-    return []
-
-
-@hookimpl(wrapper=True)
-def group_request_created(
-    group_request: GroupRequest, requester: OktaUser, app: Optional[App] = None
-) -> Generator[Any, None, Optional[ConditionalAccessResponse]] | List[Optional[ConditionalAccessResponse]]:
-    try:
-        # Trigger exception if it exists
-        return (yield)
-    except Exception:
-        # Log and do not raise since request failures should not
-        # break the flow. The access request can still be manually
-        # approved or denied
-        logger.exception("Failed to execute group request created callback")
-
-    return []
+        logger.exception("Failed to execute %s callback", hook_name)
+        return []
 
 
 def get_conditional_access_hook() -> pluggy.HookRelay:
@@ -104,11 +79,9 @@ def get_conditional_access_hook() -> pluggy.HookRelay:
     pm = pluggy.PluginManager(conditional_access_plugin_name)
     pm.add_hookspecs(ConditionalAccessPluginSpec)
 
-    # Register the hook wrappers
-    pm.register(sys.modules[__name__])
-
     count = pm.load_setuptools_entrypoints(conditional_access_plugin_name)
     print(f"Count of loaded conditional access plugins: {count}")
+    verify_async_impls(pm, _HOOK_NAMES)
     _cached_conditional_access_hook = pm.hook
 
     return _cached_conditional_access_hook

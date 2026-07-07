@@ -21,9 +21,13 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_app_config,
     validate_app_group_lifecycle_plugin_group_config,
 )
-from api.plugins.conditional_access import ConditionalAccessResponse, get_conditional_access_hook
+from api.plugins.conditional_access import (
+    ConditionalAccessResponse,
+    evaluate_conditional_access,
+    get_conditional_access_hook,
+)
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
-from api.plugins.notifications import get_notification_hook
+from api.plugins.notifications import get_notification_hook, send_notification
 
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
 conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
@@ -69,9 +73,11 @@ __all__ = [
     # Conditional Access Plugin
     "ConditionalAccessResponse",
     "get_conditional_access_hook",
+    "evaluate_conditional_access",
     "conditional_access_hook_impl",
     # Notifications Plugin
     "get_notification_hook",
+    "send_notification",
     "notification_hook_impl",
     # Metrics Reporter Plugin
     "get_metrics_reporter_hook",

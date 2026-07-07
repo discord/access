@@ -471,6 +471,17 @@ Plugins in Access follow the conventions defined by the [Python pluggy framework
 
 Plugins can also extend the `access` CLI with new commands via setuptools entry points — see [health_check_plugin](https://github.com/discord/access/tree/main/examples/plugins/health_check_plugin), which adds an `access health` command.
 
+### Async hook interface (Access 2.0)
+
+As of Access 2.0 the plugin hooks are **async** — Access is an async application and awaits each hook directly on the event loop, with no thread/greenlet bridge. When writing a plugin:
+
+- **Declare hook implementations with `async def`.** This applies to the notification hooks, the conditional-access hooks, the metrics `record_*` / `set_global_tags` / `flush` hooks, and the app-group-lifecycle *lifecycle* hooks (`group_created`, `group_updated`, `group_deleted`, `group_members_added`, `group_members_removed`, `sync_all_group_membership`). Access fails fast at startup with a clear error if one of these is registered as a plain `def`.
+- **Do blocking I/O off the event loop.** If your backend client is synchronous (e.g. `requests`, a sync SDK), wrap the blocking call in `await asyncio.to_thread(...)` — see [notifications_slack](https://github.com/discord/access/tree/main/examples/plugins/notifications_slack) — or use an async client (`httpx`, `aiohttp`). Do not run blocking network calls directly in an `async def` hook.
+- **Lifecycle hooks receive an `AsyncSession`.** Await ORM calls on it (`await session.scalars(...)`); `session.add(...)` is synchronous. Never import `api.extensions.db` — everything a hook needs is passed in.
+- **Metrics `batch_metrics` is an async context manager** — use it as `async with metrics.batch_metrics(): await metrics.record_counter(...)`.
+- **These hooks stay synchronous:** the app-group-lifecycle metadata/config-schema/status-schema/validation hooks (`get_plugin_metadata`, `get_plugin_*_config_properties`, `validate_plugin_*_config`, `get_plugin_*_status_properties`). They are pure schema accessors with no I/O.
+- **Plugin-contributed CLI commands** (the `access.commands` entry point) run as ordinary Click commands, so they must drive their own async boundary — write an `async def` body and run it with `asyncio.run(...)`, as [health_check_plugin](https://github.com/discord/access/tree/main/examples/plugins/health_check_plugin) does.
+
 ### Installing a Plugin in the Docker Container
 
 Below is an example Dockerfile that would install the example notification plugin into the Access Docker container, which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is copied into the `/app/plugins` directory and installed with `uv` into the application virtualenv at `/app/.venv` (the environment gunicorn and the `access` CLI run from).

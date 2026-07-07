@@ -1,9 +1,10 @@
 import inspect
 import logging
-import sys
-from typing import ContextManager, Dict, List, Optional
+from typing import AsyncContextManager, Dict, List, Optional
 
 import pluggy
+
+from api.plugins._async_dispatch import verify_async_impls
 
 metrics_reporter_plugin_name = "access_metrics_reporter"
 hookspec = pluggy.HookspecMarker(metrics_reporter_plugin_name)
@@ -17,12 +18,17 @@ _cached_metrics_reporter_hook: Optional[pluggy.HookRelay] = None
 _TAG_FORWARDING_HOOKS = ("record_counter", "record_gauge", "record_histogram", "record_summary")
 _MUST_NOT_DEFAULT = ("value", "tags")
 
+# Awaited metric hooks — must be `async def` (TODO 18). `batch_metrics` is
+# excluded: it returns an async context manager (used via `async with`), not a
+# coroutine, so it would fail the coroutine-function check.
+_ASYNC_HOOKS = ("record_counter", "record_gauge", "record_histogram", "record_summary", "set_global_tags", "flush")
+
 logger = logging.getLogger(__name__)
 
 
 class MetricsReporterPluginSpec:
     @hookspec
-    def record_counter(
+    async def record_counter(
         self,
         metric_name: str,
         value: float,
@@ -43,7 +49,7 @@ class MetricsReporterPluginSpec:
         """
 
     @hookspec
-    def record_gauge(
+    async def record_gauge(
         self,
         metric_name: str,
         value: float,
@@ -52,7 +58,7 @@ class MetricsReporterPluginSpec:
         """Record a gauge metric value (snapshot/current value)."""
 
     @hookspec
-    def record_histogram(
+    async def record_histogram(
         self,
         metric_name: str,
         value: float,
@@ -72,7 +78,7 @@ class MetricsReporterPluginSpec:
         """
 
     @hookspec
-    def record_summary(
+    async def record_summary(
         self,
         metric_name: str,
         value: float,
@@ -86,31 +92,32 @@ class MetricsReporterPluginSpec:
         """
 
     @hookspec
-    def batch_metrics(self) -> ContextManager[None]:
+    def batch_metrics(self) -> AsyncContextManager[None]:
         """
-        Context manager for batching multiple metric operations.
+        Async context manager for batching multiple metric operations.
 
-        Returns a context manager that batches metric operations for efficiency.
-        Particularly useful for HTTP-based backends to reduce network calls.
+        Returns an async context manager that batches metric operations for
+        efficiency. Particularly useful for HTTP-based backends to reduce network
+        calls.
 
         Example:
-            with metrics.batch_metrics():
-                metrics.record_counter("requests", 1, tags={"method": "GET"})
-                metrics.record_gauge("queue_size", 42, tags=None)
-                metrics.record_histogram("response_time", 0.123, tags={"route": "/api"})
+            async with metrics.batch_metrics():
+                await metrics.record_counter("requests", 1, tags={"method": "GET"})
+                await metrics.record_gauge("queue_size", 42, tags=None)
+                await metrics.record_histogram("response_time", 0.123, tags={"route": "/api"})
             # All metrics sent in one batch here
         """
         return NotImplemented
 
     @hookspec
-    def set_global_tags(
+    async def set_global_tags(
         self,
         tags: Dict[str, str],
     ) -> None:
         """Set global tags to be included with all metrics."""
 
     @hookspec
-    def flush(self) -> None:
+    async def flush(self) -> None:
         """Force flush any buffered metrics to the backend."""
 
 
@@ -152,12 +159,10 @@ def get_metrics_reporter_hook() -> pluggy.HookRelay:
     pm = pluggy.PluginManager(metrics_reporter_plugin_name)
     pm.add_hookspecs(MetricsReporterPluginSpec)
 
-    # Register the hook wrappers
-    pm.register(sys.modules[__name__])
-
     count = pm.load_setuptools_entrypoints(metrics_reporter_plugin_name)
     logger.debug(f"Count of loaded metrics reporter plugins: {count}")
     _verify_tag_forwarding(pm)
+    verify_async_impls(pm, _ASYNC_HOOKS)
     _cached_metrics_reporter_hook = pm.hook
 
     return _cached_metrics_reporter_hook

@@ -10,7 +10,7 @@ from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.models.access_request import get_all_possible_request_approvers
-from api.plugins import get_notification_hook
+from api.plugins import send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -34,8 +34,6 @@ class RejectAccessRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> AccessRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -109,7 +107,8 @@ class RejectAccessRequest:
 
             approvers = await get_all_possible_request_approvers(access_request)
 
-            self.notification_hook.access_request_completed(
+            await send_notification(
+                "access_request_completed",
                 access_request=access_request,
                 group=group,
                 requester=requester,
