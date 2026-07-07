@@ -19,12 +19,10 @@ depends_on = None
 def upgrade():
     # Plain (non-CONCURRENT) CREATE INDEX, deliberately: it stays transactional
     # (clean rollback, no INVALID index to clean up) at the cost of blocking
-    # writes to this one table while the index builds. Reads are unaffected.
-    # The lock_timeout makes the migration fail fast instead of stalling queued
-    # writes behind a long-running transaction holding the table lock; if it
-    # trips, just re-run the migration.
-    if op.get_bind().dialect.name == "postgresql":
-        op.execute("SET lock_timeout = '10s'")
+    # writes to this one table while the index builds. Reads are unaffected,
+    # and write volume here is low enough that queued writes clear trivially.
+    # If the migration hangs waiting on a lock, cancelling it is safe - it
+    # rolls back cleanly and can simply be re-run.
     op.create_index(
         "idx_okta_user_group_member_group_id_is_owner_ended_at",
         "okta_user_group_member",
