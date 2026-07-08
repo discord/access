@@ -26,7 +26,7 @@ from api.models.okta_group import get_group_managers
 from api.models.tag import coalesce_constraints
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins import evaluate_conditional_access, send_notification
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -182,7 +182,7 @@ class CreateRoleRequest:
         )
 
         conditional_access_responses = await evaluate_conditional_access(
-            "role_request_created",
+            ConditionalAccessHook.ROLE_REQUEST_CREATED,
             role_request=role_request,
             role=requester_role,
             group=requested_group,
@@ -210,7 +210,7 @@ class CreateRoleRequest:
                 return role_request
 
         await send_notification(
-            "access_role_request_created",
+            NotificationHook.ACCESS_ROLE_REQUEST_CREATED,
             role_request=role_request,
             role=requester_role,
             group=requested_group,

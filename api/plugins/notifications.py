@@ -1,5 +1,6 @@
 import datetime
 import logging
+from enum import StrEnum
 from typing import Any, Dict, Optional
 
 import pluggy
@@ -25,19 +26,35 @@ _cached_notification_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
 
-# hook name -> (metric name, static tags) recorded once the hook fans out
+
+class NotificationHook(StrEnum):
+    """Notification hook names. Each value is the pluggy hook attribute name, so a
+    member can be passed straight to ``getattr(hook_relay, member)``."""
+
+    ACCESS_REQUEST_CREATED = "access_request_created"
+    ACCESS_REQUEST_COMPLETED = "access_request_completed"
+    ACCESS_EXPIRING_USER = "access_expiring_user"
+    ACCESS_EXPIRING_OWNER = "access_expiring_owner"
+    ACCESS_EXPIRING_ROLE_OWNER = "access_expiring_role_owner"
+    ACCESS_ROLE_REQUEST_CREATED = "access_role_request_created"
+    ACCESS_ROLE_REQUEST_COMPLETED = "access_role_request_completed"
+    ACCESS_GROUP_REQUEST_CREATED = "access_group_request_created"
+    ACCESS_GROUP_REQUEST_COMPLETED = "access_group_request_completed"
+
+
+# hook -> (metric name, static tags) recorded once the hook fans out
 # successfully. Kept here (not at call sites) so the "sent" accounting lives
 # next to the spec it measures.
-_SENT_METRICS: dict[str, tuple[str, Optional[Dict[str, str]]]] = {
-    "access_request_created": ("notifications.access_request_created.sent", None),
-    "access_request_completed": ("notifications.access_request_completed.sent", None),
-    "access_expiring_user": ("notifications.expiring_access.sent", {"kind": "user"}),
-    "access_expiring_owner": ("notifications.expiring_access.sent", {"kind": "owner"}),
-    "access_expiring_role_owner": ("notifications.expiring_access.sent", {"kind": "role_owner"}),
-    "access_role_request_created": ("notifications.role_request_created.sent", None),
-    "access_role_request_completed": ("notifications.role_request_completed.sent", None),
-    "access_group_request_created": ("notifications.group_request_created.sent", None),
-    "access_group_request_completed": ("notifications.group_request_completed.sent", None),
+_SENT_METRICS: dict[NotificationHook, tuple[str, Optional[Dict[str, str]]]] = {
+    NotificationHook.ACCESS_REQUEST_CREATED: ("notifications.access_request_created.sent", None),
+    NotificationHook.ACCESS_REQUEST_COMPLETED: ("notifications.access_request_completed.sent", None),
+    NotificationHook.ACCESS_EXPIRING_USER: ("notifications.expiring_access.sent", {"kind": "user"}),
+    NotificationHook.ACCESS_EXPIRING_OWNER: ("notifications.expiring_access.sent", {"kind": "owner"}),
+    NotificationHook.ACCESS_EXPIRING_ROLE_OWNER: ("notifications.expiring_access.sent", {"kind": "role_owner"}),
+    NotificationHook.ACCESS_ROLE_REQUEST_CREATED: ("notifications.role_request_created.sent", None),
+    NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED: ("notifications.role_request_completed.sent", None),
+    NotificationHook.ACCESS_GROUP_REQUEST_CREATED: ("notifications.group_request_created.sent", None),
+    NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED: ("notifications.group_request_completed.sent", None),
 }
 
 
@@ -140,7 +157,7 @@ class NotificationPluginSpec:
         """Notify the requester that their group request has been processed."""
 
 
-async def send_notification(hook_name: str, /, **kwargs: Any) -> None:
+async def send_notification(hook: NotificationHook, /, **kwargs: Any) -> None:
     """Fire an async notification hook, swallow plugin errors, and record a
     "sent" counter when every implementation succeeded.
 
@@ -158,14 +175,14 @@ async def send_notification(hook_name: str, /, **kwargs: Any) -> None:
     parameters it declares, so extra kwargs (e.g. ``requester_role``) are ignored
     safely.
     """
-    hook = get_notification_hook()
+    relay = get_notification_hook()
     _, exceptions = await run_hooks_to_completion(
-        getattr(hook, hook_name)(**kwargs), context=f"{hook_name} notification callback"
+        getattr(relay, hook)(**kwargs), context=f"{hook} notification callback"
     )
     if exceptions:
         # Failures are already logged; don't record a "sent" for a partial fire.
         return
-    metric, tags = _SENT_METRICS[hook_name]
+    metric, tags = _SENT_METRICS[hook]
     await _record_sent(metric, tags)
 
 
@@ -180,7 +197,7 @@ def get_notification_hook() -> pluggy.HookRelay:
 
     count = pm.load_setuptools_entrypoints(notification_plugin_name)
     print(f"Count of loaded notification plugins: {count}")
-    verify_async_impls(pm, tuple(_SENT_METRICS.keys()))
+    verify_async_impls(pm, tuple(NotificationHook))
     _cached_notification_hook = pm.hook
 
     return _cached_notification_hook

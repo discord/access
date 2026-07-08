@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from typing import Any, List, Optional
 
 import pluggy
@@ -16,7 +17,13 @@ _cached_conditional_access_hook: pluggy.HookRelay | None = None
 
 logger = logging.getLogger(__name__)
 
-_HOOK_NAMES = ("access_request_created", "role_request_created", "group_request_created")
+
+class ConditionalAccessHook(StrEnum):
+    """Conditional-access hook names (StrEnum value == the pluggy hook name)."""
+
+    ACCESS_REQUEST_CREATED = "access_request_created"
+    ROLE_REQUEST_CREATED = "role_request_created"
+    GROUP_REQUEST_CREATED = "group_request_created"
 
 
 @dataclass
@@ -49,7 +56,9 @@ class ConditionalAccessPluginSpec:
         """Automatically approve, deny, or continue the group request."""
 
 
-async def evaluate_conditional_access(hook_name: str, /, **kwargs: Any) -> list[Optional[ConditionalAccessResponse]]:
+async def evaluate_conditional_access(
+    hook: ConditionalAccessHook, /, **kwargs: Any
+) -> list[Optional[ConditionalAccessResponse]]:
     """Run an async conditional-access hook and return each plugin's response.
 
     This is the async replacement for the old ``@hookimpl(wrapper=True)``
@@ -63,9 +72,9 @@ async def evaluate_conditional_access(hook_name: str, /, **kwargs: Any) -> list[
     parameters it declares, so extra kwargs (e.g. ``requester_role``) are ignored
     safely.
     """
-    hook = get_conditional_access_hook()
+    relay = get_conditional_access_hook()
     results, _ = await run_hooks_to_completion(
-        getattr(hook, hook_name)(**kwargs), context=f"{hook_name} conditional access callback"
+        getattr(relay, hook)(**kwargs), context=f"{hook} conditional access callback"
     )
     return list(results)
 
@@ -81,7 +90,7 @@ def get_conditional_access_hook() -> pluggy.HookRelay:
 
     count = pm.load_setuptools_entrypoints(conditional_access_plugin_name)
     print(f"Count of loaded conditional access plugins: {count}")
-    verify_async_impls(pm, _HOOK_NAMES)
+    verify_async_impls(pm, tuple(ConditionalAccessHook))
     _cached_conditional_access_hook = pm.hook
 
     return _cached_conditional_access_hook

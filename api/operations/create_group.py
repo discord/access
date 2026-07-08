@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload, selectin_polymorphic, with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -120,7 +120,7 @@ class CreateGroup:
             await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        await invoke_app_group_lifecycle_hook("group_created", group=self.group)
+        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=self.group)
 
         # Audit logging
         email = None

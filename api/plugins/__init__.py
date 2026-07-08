@@ -1,6 +1,7 @@
 import pluggy
 
 from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleHook,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
@@ -22,12 +23,13 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.plugins.conditional_access import (
+    ConditionalAccessHook,
     ConditionalAccessResponse,
     evaluate_conditional_access,
     get_conditional_access_hook,
 )
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
-from api.plugins.notifications import get_notification_hook, send_notification
+from api.plugins.notifications import NotificationHook, get_notification_hook, send_notification
 
 app_group_lifecycle_hook_impl = pluggy.HookimplMarker("access_app_group_lifecycle")
 conditional_access_hook_impl = pluggy.HookimplMarker("access_conditional_access")
@@ -51,6 +53,7 @@ def load_plugins() -> None:
 __all__ = [
     # App Group Lifecycle Plugin
     "app_group_lifecycle_plugin_name",
+    "AppGroupLifecycleHook",
     "AppGroupLifecyclePluginConfigProperty",
     "AppGroupLifecyclePluginFilteringError",
     "AppGroupLifecyclePluginMetadata",
@@ -71,11 +74,13 @@ __all__ = [
     "validate_app_group_lifecycle_plugin_group_config",
     "app_group_lifecycle_hook_impl",
     # Conditional Access Plugin
+    "ConditionalAccessHook",
     "ConditionalAccessResponse",
     "get_conditional_access_hook",
     "evaluate_conditional_access",
     "conditional_access_hook_impl",
     # Notifications Plugin
+    "NotificationHook",
     "get_notification_hook",
     "send_notification",
     "notification_hook_impl",

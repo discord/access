@@ -10,7 +10,7 @@ from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleRequest
 from api.models.access_request import get_all_possible_request_approvers
-from api.plugins import send_notification
+from api.plugins import NotificationHook, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -118,7 +118,7 @@ class RejectRoleRequest:
             approvers = await get_all_possible_request_approvers(role_request)
 
             await send_notification(
-                "access_role_request_completed",
+                NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED,
                 role_request=role_request,
                 role=requester_role,
                 group=group,

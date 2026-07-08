@@ -32,7 +32,7 @@ from api.operations import (
     RejectAccessRequest,
     UnmanageGroup,
 )
-from api.plugins import send_notification
+from api.plugins import NotificationHook, send_notification
 from api.services import okta
 from api.services.okta_service import OktaTimeout, is_managed_group
 
@@ -522,14 +522,14 @@ async def expiring_access_notifications_user() -> None:
             # loop, so the ORM objects they read stay on this AsyncSession without any
             # run_sync/worker-thread bridge.
             await send_notification(
-                "access_expiring_user",
+                NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None,
                 okta_user_group_members=grouped_tomorrow[user] + grouped_next_week[user],
             )
         else:
             await send_notification(
-                "access_expiring_user",
+                NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
                 okta_user_group_members=grouped_tomorrow[user],
@@ -538,7 +538,7 @@ async def expiring_access_notifications_user() -> None:
     for user in grouped_next_week:
         if user not in grouped_tomorrow:
             await send_notification(
-                "access_expiring_user",
+                NotificationHook.ACCESS_EXPIRING_USER,
                 user=user,
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),
                 okta_user_group_members=grouped_next_week[user],
@@ -641,7 +641,7 @@ async def expiring_access_notifications_owner() -> None:
             # loop, so the ORM objects they read stay on this AsyncSession without any
             # run_sync/worker-thread bridge.
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=None,
                 group_user_associations=owner_expiring_groups_this[owner] + owner_expiring_groups_next[owner],
@@ -649,7 +649,7 @@ async def expiring_access_notifications_owner() -> None:
             )
         else:
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=datetime.now(),
                 group_user_associations=owner_expiring_groups_this[owner],
@@ -659,7 +659,7 @@ async def expiring_access_notifications_owner() -> None:
     for owner in owner_expiring_groups_next:
         if owner not in owner_expiring_groups_this:
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
                 group_user_associations=owner_expiring_groups_next[owner],
@@ -741,7 +741,7 @@ async def expiring_access_notifications_owner() -> None:
         # If the owner has members with access expiring both this week and next week, only send one message
         if owner in owner_expiring_roles_next:
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=None,
                 group_user_associations=None,
@@ -749,7 +749,7 @@ async def expiring_access_notifications_owner() -> None:
             )
         else:
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=datetime.now(),
                 group_user_associations=None,
@@ -759,7 +759,7 @@ async def expiring_access_notifications_owner() -> None:
     for owner in owner_expiring_roles_next:
         if owner not in owner_expiring_roles_this:
             await send_notification(
-                "access_expiring_owner",
+                NotificationHook.ACCESS_EXPIRING_OWNER,
                 owner=owner,
                 expiration_datetime=datetime.now() + timedelta(weeks=1),
                 group_user_associations=None,
@@ -850,14 +850,14 @@ async def expiring_access_notifications_role_owner() -> None:
             # loop, so the ORM objects they read stay on this AsyncSession without any
             # run_sync/worker-thread bridge.
             await send_notification(
-                "access_expiring_role_owner",
+                NotificationHook.ACCESS_EXPIRING_ROLE_OWNER,
                 owner=owner,
                 roles=role_owner_expiring_roles_tomorrow[owner] + role_owner_expiring_roles_next[owner],
                 expiration_datetime=None,
             )
         else:
             await send_notification(
-                "access_expiring_role_owner",
+                NotificationHook.ACCESS_EXPIRING_ROLE_OWNER,
                 owner=owner,
                 roles=role_owner_expiring_roles_tomorrow[owner],
                 expiration_datetime=None if weekend_notif_tomorrow else datetime.now() + timedelta(days=1),
@@ -866,7 +866,7 @@ async def expiring_access_notifications_role_owner() -> None:
     for owner in role_owner_expiring_roles_next:
         if owner not in role_owner_expiring_roles_tomorrow:
             await send_notification(
-                "access_expiring_role_owner",
+                NotificationHook.ACCESS_EXPIRING_ROLE_OWNER,
                 owner=owner,
                 roles=role_owner_expiring_roles_next[owner],
                 expiration_datetime=None if weekend_notif_week else datetime.now() + timedelta(weeks=1),

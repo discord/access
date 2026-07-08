@@ -10,7 +10,7 @@ from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
-from api.plugins import send_notification
+from api.plugins import NotificationHook, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -125,7 +125,7 @@ class RejectGroupRequest:
             approvers = await get_all_possible_request_approvers(group_request)
 
             await send_notification(
-                "access_group_request_completed",
+                NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED,
                 group_request=group_request,
                 group=None,
                 requester=requester,

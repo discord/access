@@ -1,5 +1,6 @@
 import logging
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 from typing import Any, Literal
 
 import pluggy
@@ -15,17 +16,19 @@ hookimpl = pluggy.HookimplMarker(app_group_lifecycle_plugin_name)
 
 _cached_app_group_lifecycle_hook: pluggy.HookRelay | None = None
 
-# The lifecycle hooks that receive an AsyncSession and are awaited by the
-# application. The metadata/config/status/validation hooks are pure schema
-# accessors and remain synchronous, so they are excluded from the async check.
-_LIFECYCLE_HOOKS = (
-    "group_created",
-    "group_updated",
-    "group_deleted",
-    "group_members_added",
-    "group_members_removed",
-    "sync_all_group_membership",
-)
+
+class AppGroupLifecycleHook(StrEnum):
+    """The lifecycle hooks that receive an AsyncSession and are awaited by the
+    application (StrEnum value == the pluggy hook name). The
+    metadata/config/status/validation hooks are pure schema accessors and remain
+    synchronous, so they are not members here (and are excluded from the async check)."""
+
+    GROUP_CREATED = "group_created"
+    GROUP_UPDATED = "group_updated"
+    GROUP_DELETED = "group_deleted"
+    GROUP_MEMBERS_ADDED = "group_members_added"
+    GROUP_MEMBERS_REMOVED = "group_members_removed"
+    SYNC_ALL_GROUP_MEMBERSHIP = "sync_all_group_membership"
 
 
 class PluginNotFoundError(Exception):
@@ -269,7 +272,7 @@ def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
 
     count = pm.load_setuptools_entrypoints(app_group_lifecycle_plugin_name)
     logger.info(f"Loaded {count} app group lifecycle plugin(s)")
-    verify_async_impls(pm, _LIFECYCLE_HOOKS)
+    verify_async_impls(pm, tuple(AppGroupLifecycleHook))
 
     _cached_app_group_lifecycle_hook = pm.hook
 
@@ -341,7 +344,7 @@ def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> str | None:
     return group.app.app_group_lifecycle_plugin
 
 
-async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwargs: Any) -> None:
+async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *, group: Any, **kwargs: Any) -> None:
     """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
 
     No-op when no lifecycle plugin applies to ``group``. The lifecycle hooks are

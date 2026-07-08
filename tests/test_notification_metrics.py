@@ -7,20 +7,21 @@ import pytest
 
 import api.plugins.notifications as notifications_module
 from api.plugins import notifications
+from api.plugins.notifications import NotificationHook
 
-# hook name -> (metric name, tags) — mirrors notifications._SENT_METRICS. The
+# hook -> (metric name, tags) — mirrors notifications._SENT_METRICS. The
 # "sent" counter is recorded by send_notification after the async hook fans out
 # successfully (the async replacement for the old @hookimpl(wrapper=True) set).
-HOOKS: list[tuple[str, str, Optional[dict[str, str]]]] = [
-    ("access_request_created", "notifications.access_request_created.sent", None),
-    ("access_request_completed", "notifications.access_request_completed.sent", None),
-    ("access_expiring_user", "notifications.expiring_access.sent", {"kind": "user"}),
-    ("access_expiring_owner", "notifications.expiring_access.sent", {"kind": "owner"}),
-    ("access_expiring_role_owner", "notifications.expiring_access.sent", {"kind": "role_owner"}),
-    ("access_role_request_created", "notifications.role_request_created.sent", None),
-    ("access_role_request_completed", "notifications.role_request_completed.sent", None),
-    ("access_group_request_created", "notifications.group_request_created.sent", None),
-    ("access_group_request_completed", "notifications.group_request_completed.sent", None),
+HOOKS: list[tuple[NotificationHook, str, Optional[dict[str, str]]]] = [
+    (NotificationHook.ACCESS_REQUEST_CREATED, "notifications.access_request_created.sent", None),
+    (NotificationHook.ACCESS_REQUEST_COMPLETED, "notifications.access_request_completed.sent", None),
+    (NotificationHook.ACCESS_EXPIRING_USER, "notifications.expiring_access.sent", {"kind": "user"}),
+    (NotificationHook.ACCESS_EXPIRING_OWNER, "notifications.expiring_access.sent", {"kind": "owner"}),
+    (NotificationHook.ACCESS_EXPIRING_ROLE_OWNER, "notifications.expiring_access.sent", {"kind": "role_owner"}),
+    (NotificationHook.ACCESS_ROLE_REQUEST_CREATED, "notifications.role_request_created.sent", None),
+    (NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED, "notifications.role_request_completed.sent", None),
+    (NotificationHook.ACCESS_GROUP_REQUEST_CREATED, "notifications.group_request_created.sent", None),
+    (NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED, "notifications.group_request_completed.sent", None),
 ]
 
 
@@ -49,11 +50,11 @@ def fake_metrics(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     return fake
 
 
-@pytest.mark.parametrize("hook_name,metric,tags", HOOKS)
+@pytest.mark.parametrize("hook,metric,tags", HOOKS)
 async def test_send_notification_emits_counter_on_success(
     fake_metrics: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
-    hook_name: str,
+    hook: NotificationHook,
     metric: str,
     tags: Optional[dict[str, str]],
 ) -> None:
@@ -61,20 +62,20 @@ async def test_send_notification_emits_counter_on_success(
         return None
 
     _install_hook(monkeypatch, ok)
-    await notifications.send_notification(hook_name)
+    await notifications.send_notification(hook)
     fake_metrics.record_counter.assert_called_once_with(metric_name=metric, value=1, tags=tags)
 
 
-@pytest.mark.parametrize("hook_name", [h[0] for h in HOOKS])
+@pytest.mark.parametrize("hook", [h[0] for h in HOOKS])
 async def test_send_notification_does_not_emit_on_failure(
-    fake_metrics: MagicMock, monkeypatch: pytest.MonkeyPatch, hook_name: str
+    fake_metrics: MagicMock, monkeypatch: pytest.MonkeyPatch, hook: NotificationHook
 ) -> None:
     async def boom() -> None:
         raise RuntimeError("inner plugin blew up")
 
     _install_hook(monkeypatch, boom)
     # The plugin failure is swallowed (logged, not raised) and no counter emitted.
-    await notifications.send_notification(hook_name)
+    await notifications.send_notification(hook)
     fake_metrics.record_counter.assert_not_called()
 
 
@@ -89,4 +90,4 @@ async def test_metric_emit_failure_does_not_break_send(monkeypatch: pytest.Monke
 
     _install_hook(monkeypatch, ok)
     # A failure recording the metric must not propagate out of send_notification.
-    await notifications.send_notification("access_request_created")
+    await notifications.send_notification(NotificationHook.ACCESS_REQUEST_CREATED)

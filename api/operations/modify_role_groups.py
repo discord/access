@@ -26,8 +26,8 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.plugins import send_notification
-from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugin_to_invoke, invoke_app_group_lifecycle_hook
+from api.plugins import NotificationHook, send_notification
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, get_app_group_lifecycle_plugin_to_invoke, invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -308,7 +308,7 @@ class ModifyRoleGroups:
                             )
                         ).all()
                         await invoke_app_group_lifecycle_hook(
-                            "group_members_removed", group=group, members=members_losing_access
+                            AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED, group=group, members=members_losing_access
                         )
 
                 if self.sync_to_okta:
@@ -449,7 +449,7 @@ class ModifyRoleGroups:
                             )
                         ).all()
                         await invoke_app_group_lifecycle_hook(
-                            "group_members_added", group=group, members=members_gaining_access
+                            AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, group=group, members=members_gaining_access
                         )
 
                 for member in active_role_memberships:
@@ -704,7 +704,7 @@ class ModifyRoleGroups:
         approvers: Set[OktaUser],
     ) -> None:
         await send_notification(
-            "access_request_completed",
+            NotificationHook.ACCESS_REQUEST_COMPLETED,
             access_request=access_request,
             group=group,
             requester=requester,
@@ -731,7 +731,7 @@ class ModifyRoleGroups:
         approvers: Set[OktaUser],
     ) -> None:
         await send_notification(
-            "access_role_request_completed",
+            NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED,
             role_request=role_request,
             role=role,
             group=group,

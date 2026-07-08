@@ -23,7 +23,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.plugins import evaluate_conditional_access, send_notification
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -129,7 +129,7 @@ class CreateAccessRequest:
         )
 
         conditional_access_responses = await evaluate_conditional_access(
-            "access_request_created",
+            ConditionalAccessHook.ACCESS_REQUEST_CREATED,
             access_request=access_request,
             group=group,
             group_tags=[active_tag_map.enabled_active_tag for active_tag_map in group.active_group_tags],
@@ -155,7 +155,7 @@ class CreateAccessRequest:
                 return access_request
 
         await send_notification(
-            "access_request_created",
+            NotificationHook.ACCESS_REQUEST_CREATED,
             access_request=access_request,
             group=group,
             requester=requester,

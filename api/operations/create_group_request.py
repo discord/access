@@ -22,7 +22,7 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
-from api.plugins import evaluate_conditional_access, send_notification
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -181,7 +181,7 @@ class CreateGroupRequest:
 
         # Check conditional access hook
         conditional_access_responses = await evaluate_conditional_access(
-            "group_request_created",
+            ConditionalAccessHook.GROUP_REQUEST_CREATED,
             group_request=group_request,
             requester=requester,
         )
@@ -205,7 +205,7 @@ class CreateGroupRequest:
 
         # Send notification to approvers
         await send_notification(
-            "access_group_request_created",
+            NotificationHook.ACCESS_GROUP_REQUEST_CREATED,
             group_request=group_request,
             requester=requester,
             approvers=approvers,
