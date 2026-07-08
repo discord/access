@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
@@ -8,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaUser
-from api.plugins._async_dispatch import verify_async_impls
+from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
 hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
@@ -358,15 +357,24 @@ async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwa
     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
     if plugin_id is None:
         return
+    hook = get_app_group_lifecycle_hook()
+    # run_hooks_to_completion uses asyncio.wait (not gather): a cancelled request
+    # won't tear down an in-flight hook, and one plugin failing won't cancel the
+    # others. Failures are logged there; we roll back rather than commit partial
+    # writes, but never propagate, so a misbehaving plugin can't abort the
+    # surrounding operation.
+    _, exceptions = await run_hooks_to_completion(
+        getattr(hook, hook_method)(session=db.session, group=group, plugin_id=plugin_id, **kwargs),
+        context=f"{hook_method} hook for group {getattr(group, 'id', None)} (plugin '{plugin_id}')",
+    )
+    if exceptions:
+        await db.session.rollback()
+        return
     try:
-        hook = get_app_group_lifecycle_hook()
-        await asyncio.gather(
-            *getattr(hook, hook_method)(session=db.session, group=group, plugin_id=plugin_id, **kwargs)
-        )
         await db.session.commit()
     except Exception:
         logging.getLogger("api").exception(
-            f"Failed to invoke {hook_method} hook for group {getattr(group, 'id', None)} with plugin '{plugin_id}'"
+            f"Failed to commit after {hook_method} hook for group {getattr(group, 'id', None)} with plugin '{plugin_id}'"
         )
         await db.session.rollback()
 

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,7 +6,7 @@ from typing import Any, List, Optional
 import pluggy
 
 from api.models import AccessRequest, App, GroupRequest, OktaGroup, OktaUser, RoleGroup, RoleRequest, Tag
-from api.plugins._async_dispatch import verify_async_impls
+from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 
 conditional_access_plugin_name = "access_conditional_access"
 hookspec = pluggy.HookspecMarker(conditional_access_plugin_name)
@@ -51,23 +50,24 @@ class ConditionalAccessPluginSpec:
 
 
 async def evaluate_conditional_access(hook_name: str, /, **kwargs: Any) -> list[Optional[ConditionalAccessResponse]]:
-    """Run an async conditional-access hook and return every plugin's response.
+    """Run an async conditional-access hook and return each plugin's response.
 
     This is the async replacement for the old ``@hookimpl(wrapper=True)``
-    wrappers: pluggy cannot wrap coroutines, so the gather + error handling lives
-    here. On any plugin error the failure is logged and an empty list is returned
-    — the request is left for manual approval/denial rather than being broken.
+    wrappers: pluggy cannot wrap coroutines, so the run + error handling lives
+    here. Implementations run via ``run_hooks_to_completion`` (``asyncio.wait``,
+    not ``gather``) so one plugin's failure doesn't cancel the others; a failing
+    plugin is logged and simply omitted from the responses, leaving that decision
+    to manual approval/denial rather than breaking the request.
 
     ``kwargs`` are forwarded verbatim; pluggy passes each implementation only the
     parameters it declares, so extra kwargs (e.g. ``requester_role``) are ignored
     safely.
     """
     hook = get_conditional_access_hook()
-    try:
-        return list(await asyncio.gather(*getattr(hook, hook_name)(**kwargs)))
-    except Exception:
-        logger.exception("Failed to execute %s callback", hook_name)
-        return []
+    results, _ = await run_hooks_to_completion(
+        getattr(hook, hook_name)(**kwargs), context=f"{hook_name} conditional access callback"
+    )
+    return list(results)
 
 
 def get_conditional_access_hook() -> pluggy.HookRelay:

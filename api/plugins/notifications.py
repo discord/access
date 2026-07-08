@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import logging
 from typing import Any, Dict, Optional
@@ -15,7 +14,7 @@ from api.models import (
     RoleGroupMap,
     RoleRequest,
 )
-from api.plugins._async_dispatch import verify_async_impls
+from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
 
 notification_plugin_name = "access_notifications"
@@ -44,9 +43,11 @@ _SENT_METRICS: dict[str, tuple[str, Optional[Dict[str, str]]]] = {
 
 async def _record_sent(metric_name: str, tags: Optional[Dict[str, str]] = None) -> None:
     try:
-        await asyncio.gather(*get_metrics_reporter_hook().record_counter(metric_name=metric_name, value=1, tags=tags))
+        coros = get_metrics_reporter_hook().record_counter(metric_name=metric_name, value=1, tags=tags)
     except Exception:
         logger.exception("Failed to record %s metric", metric_name)
+        return
+    await run_hooks_to_completion(coros, context=f"metrics record_counter {metric_name}")
 
 
 class NotificationPluginSpec:
@@ -141,7 +142,7 @@ class NotificationPluginSpec:
 
 async def send_notification(hook_name: str, /, **kwargs: Any) -> None:
     """Fire an async notification hook, swallow plugin errors, and record a
-    "sent" counter on success.
+    "sent" counter when every implementation succeeded.
 
     This is the async replacement for the old ``@hookimpl(wrapper=True)``
     wrappers: pluggy cannot wrap coroutines, so exception handling and the
@@ -149,15 +150,20 @@ async def send_notification(hook_name: str, /, **kwargs: Any) -> None:
     propagate — a request must still succeed even if a plugin's DM/email fails,
     and approvers can be pinged manually from the UI.
 
+    The plugin coroutines are run via ``run_hooks_to_completion`` (``asyncio.wait``,
+    not ``gather``) so a cancelled request doesn't tear down an in-flight send and
+    one plugin's failure doesn't cancel the others.
+
     ``kwargs`` are forwarded verbatim; pluggy passes each implementation only the
     parameters it declares, so extra kwargs (e.g. ``requester_role``) are ignored
     safely.
     """
     hook = get_notification_hook()
-    try:
-        await asyncio.gather(*getattr(hook, hook_name)(**kwargs))
-    except Exception:
-        logger.exception("Failed to execute %s notification callback", hook_name)
+    _, exceptions = await run_hooks_to_completion(
+        getattr(hook, hook_name)(**kwargs), context=f"{hook_name} notification callback"
+    )
+    if exceptions:
+        # Failures are already logged; don't record a "sent" for a partial fire.
         return
     metric, tags = _SENT_METRICS[hook_name]
     await _record_sent(metric, tags)

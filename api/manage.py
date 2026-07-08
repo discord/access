@@ -338,6 +338,7 @@ async def sync_app_group_memberships() -> None:
     """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
     from api.extensions import db
     from api.models import App
+    from api.plugins._async_dispatch import run_hooks_to_completion
     from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
 
     click.echo("Starting app group lifecycle plugin sync")
@@ -360,12 +361,18 @@ async def sync_app_group_memberships() -> None:
 
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
+        # App-group-lifecycle hooks are native async (TODO 18): awaited directly
+        # with the AsyncSession, no run_sync bridge. run_hooks_to_completion uses
+        # asyncio.wait (not gather) and logs any plugin failure itself.
+        _, exceptions = await run_hooks_to_completion(
+            hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin),
+            context=f"sync_all_group_membership for app '{app.name}'",
+        )
+        if exceptions:
+            await db.session.rollback()
+            click.echo(f"  ✗ Failed to sync app '{app.name}': {exceptions[0]}", err=True)
+            continue
         try:
-            # App-group-lifecycle hooks are native async (TODO 18): await them
-            # directly with the AsyncSession, no run_sync bridge.
-            await asyncio.gather(
-                *hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin)
-            )
             await db.session.commit()
             click.echo(f"  ✓ Synced app '{app.name}'")
         except Exception as e:
