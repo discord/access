@@ -9,6 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
+from api.operations._fan_out import drain_fan_out_tasks
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -632,8 +633,7 @@ class ModifyRoleGroups:
                     asyncio.create_task(self._notify_role_request(role_request, role, group, requester, approvers))
                 )
 
-        if len(async_tasks) > 0:
-            await asyncio.wait(async_tasks)
+        await drain_fan_out_tasks(async_tasks, f"ModifyRoleGroups for role {self.role.id}")
 
         return self.role
 
