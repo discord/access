@@ -822,7 +822,7 @@ async def test_owner_expiring_access_notifications_managed_group_admin(
 
 # Notification hooks are now native async: the syncer awaits them directly on the event
 # loop while holding ORM objects bound to its AsyncSession — no run_sync/worker-thread
-# bridge (TODO 18). This guards that contract: the hook runs on the loop thread and is
+# bridge. This guards that contract: the hook runs on the loop thread and is
 # handed usable, eager-loaded ORM objects it can read without emitting SQL.
 async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_orm_objects(
     db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup

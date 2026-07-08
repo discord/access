@@ -345,7 +345,7 @@ async def invoke_app_group_lifecycle_hook(hook_method: str, *, group: Any, **kwa
     """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
 
     No-op when no lifecycle plugin applies to ``group``. The lifecycle hooks are
-    native async (TODO 18): they receive the request's ``AsyncSession`` directly
+    native async: they receive the request's ``AsyncSession`` directly
     and run on the event loop, so no ``run_sync`` bridge is needed. Commits on
     success; on any hook error it logs and rolls back so a misbehaving plugin
     can't abort the surrounding operation.

@@ -361,7 +361,7 @@ async def sync_app_group_memberships() -> None:
 
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
-        # App-group-lifecycle hooks are native async (TODO 18): awaited directly
+        # App-group-lifecycle hooks are native async: awaited directly
         # with the AsyncSession, no run_sync bridge. run_hooks_to_completion uses
         # asyncio.wait (not gather) and logs any plugin failure itself.
         _, exceptions = await run_hooks_to_completion(

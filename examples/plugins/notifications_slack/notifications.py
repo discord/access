@@ -264,8 +264,8 @@ async def send_slack_dm(user: OktaUser, message: str) -> None:
     """Send a direct message to a Slack user with retry logic.
 
     Uses the Slack SDK's native-async ``AsyncWebClient``, so the API calls are
-    awaited directly on the event loop — no thread offload needed (the async
-    plugin interface, TODO 18).
+    awaited directly on the event loop — no thread offload needed (an async
+    client, awaited on the event loop).
 
     Args:
         user (OktaUser): The user to send the message to.

@@ -1,4 +1,4 @@
-"""Shared helpers for the async pluggy plugin interface (TODO 18).
+"""Shared helpers for the async pluggy plugin interface.
 
 `pluggy` never awaits a hook: calling ``pm.hook.<name>(**kwargs)`` just invokes
 each registered implementation and collects its return value. For the Access 2.0

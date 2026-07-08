@@ -18,7 +18,7 @@ _cached_metrics_reporter_hook: Optional[pluggy.HookRelay] = None
 _TAG_FORWARDING_HOOKS = ("record_counter", "record_gauge", "record_histogram", "record_summary")
 _MUST_NOT_DEFAULT = ("value", "tags")
 
-# Awaited metric hooks — must be `async def` (TODO 18). `batch_metrics` is
+# Awaited metric hooks — must be `async def`. `batch_metrics` is
 # excluded: it returns an async context manager (used via `async with`), not a
 # coroutine, so it would fail the coroutine-function check.
 _ASYNC_HOOKS = ("record_counter", "record_gauge", "record_histogram", "record_summary", "set_global_tags", "flush")

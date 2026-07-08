@@ -520,7 +520,7 @@ async def expiring_access_notifications_user() -> None:
         if user in grouped_next_week:
             # Notification hooks are native async now: awaited directly on the event
             # loop, so the ORM objects they read stay on this AsyncSession without any
-            # run_sync/worker-thread bridge (TODO 18).
+            # run_sync/worker-thread bridge.
             await send_notification(
                 "access_expiring_user",
                 user=user,
@@ -639,7 +639,7 @@ async def expiring_access_notifications_owner() -> None:
         if owner in owner_expiring_groups_next:
             # Notification hooks are native async now: awaited directly on the event
             # loop, so the ORM objects they read stay on this AsyncSession without any
-            # run_sync/worker-thread bridge (TODO 18).
+            # run_sync/worker-thread bridge.
             await send_notification(
                 "access_expiring_owner",
                 owner=owner,
@@ -848,7 +848,7 @@ async def expiring_access_notifications_role_owner() -> None:
         if owner in role_owner_expiring_roles_next:
             # Notification hooks are native async now: awaited directly on the event
             # loop, so the ORM objects they read stay on this AsyncSession without any
-            # run_sync/worker-thread bridge (TODO 18).
+            # run_sync/worker-thread bridge.
             await send_notification(
                 "access_expiring_role_owner",
                 owner=owner,
