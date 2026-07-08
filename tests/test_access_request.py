@@ -349,6 +349,86 @@ async def test_put_access_request_by_non_owner(
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
 
 
+async def test_put_app_group_access_request_by_app_owner(
+    client: AsyncClient,
+    app: FastAPI,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Regression for the production MissingGreenlet after the async migration (#480).
+
+    Resolving an *app group* request as a non-requester falls through
+    `can_manage_group` into `is_app_owner_group_owner`, which reads
+    `AppGroup.app_id`. If the requested group is loaded with only its base
+    `OktaGroup` columns, that read triggers an implicit lazy load of the
+    `app_group` subclass columns — illegal under async SQLAlchemy, so the PUT
+    500s instead of resolving. `test_put_access_request_by_non_owner` never
+    caught it because a plain `OktaGroup` short-circuits before `app_id` is
+    touched; only an `AppGroup` reaches the lazy load."""
+    app_owner_user = OktaUserFactory.build()
+    app_owner_group = AppGroupFactory.build()
+
+    db.session.add(user)
+    db.session.add(app_owner_user)
+    db.session.add(access_app)
+    await db.session.commit()
+
+    # The requested group is a non-owner group on the app.
+    app_group.app_id = access_app.id
+    app_group.is_owner = False
+    db.session.add(app_group)
+
+    # A separate owner group for the same app; its owners can manage the
+    # app's groups without being direct owners of `app_group`.
+    app_owner_group.app_id = access_app.id
+    app_owner_group.is_owner = True
+    db.session.add(app_owner_group)
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=app_owner_group,
+        members_to_add=[],
+        owners_to_add=[app_owner_user.id],
+        sync_to_okta=False,
+    ).execute()
+
+    access_request = await CreateAccessRequest(
+        requester_user=user,
+        requested_group=app_group,
+        request_ownership=False,
+        request_reason="please grant",
+    ).execute()
+    assert access_request is not None
+    assert access_request.status == AccessRequestStatus.PENDING
+
+    access_request_id = access_request.id
+    app_owner_user_id = app_owner_user.id
+
+    # Evict everything the setup loaded. The HTTP request reuses this session,
+    # so a warm identity map would serve the fully-populated AppGroup and hide
+    # the missing subclass load. Production gives each request a cold session,
+    # where the group arrives with only base columns — `expunge_all` reproduces
+    # that so the lazy load of `app_id` fails deterministically pre-fix.
+    db.session.expunge_all()
+
+    # Act as the app owner: not the requester, not a direct owner of
+    # `app_group`, so the permission gate reaches the app-owner check.
+    app.state.current_user_email = app_owner_user.email
+    access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request_id)
+
+    rep = await client.put(access_request_url, json={"approved": False, "reason": "already granted elsewhere"})
+    assert rep.status_code == 200, rep.text
+    assert rep.json()["status"] == AccessRequestStatus.REJECTED
+
+    resolved = (await db.session.scalars(select(AccessRequest).where(AccessRequest.id == access_request_id))).first()
+    assert resolved is not None
+    assert resolved.status == AccessRequestStatus.REJECTED
+    assert resolved.resolver_user_id == app_owner_user_id
+
+
 async def test_create_access_request(
     app: FastAPI, client: AsyncClient, db: Db, okta_group: OktaGroup, url_for: Any
 ) -> None:

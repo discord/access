@@ -296,11 +296,14 @@ async def put_access_request(
     from api.auth.permissions import can_manage_group
     from api.operations.constraints import CheckForReason
 
+    # Eager-load the polymorphic group subtype (+ AppGroup.app) up front. The
+    # permission check below reads AppGroup-only columns (e.g. `app_id`), and
+    # under async SQLAlchemy an implicit lazy load of unloaded subclass columns
+    # raises MissingGreenlet. `_summary_load_options()` also matches the shape
+    # the response is re-queried with, so nothing downstream lazy-loads.
     ar = (
         await db.scalars(
-            select(AccessRequest)
-            .options(joinedload(AccessRequest.active_requested_group))
-            .where(AccessRequest.id == access_request_id)
+            select(AccessRequest).options(*_summary_load_options()).where(AccessRequest.id == access_request_id)
         )
     ).first()
     if ar is None:
