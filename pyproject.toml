@@ -68,7 +68,7 @@ dev = [
     # Typing
     "ty==0.0.56",
     "types-python-dateutil==2.9.0.20260518",
-    "types-cachetools==7.0.0.20260503",
+    "types-cachetools==7.0.0.20260518",
     { include-group = "test" },
 ]
 
