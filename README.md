@@ -50,14 +50,9 @@ VITE_API_SERVER_URL=
 
 > **Note:** `VITE_API_SERVER_URL` is left empty so the frontend uses relative URLs. The Vite dev server proxies `/api` requests to the backend on port 6060.
 
-Create the Python virtual environment. Access is built and tested against Python 3.13:
+Access uses [uv](https://docs.astral.sh/uv/) to manage the Python toolchain and dependencies. [Install uv](https://docs.astral.sh/uv/getting-started/installation/) first; it reads the pinned interpreter from [`.python-version`](.python-version) and will download Python 3.13 automatically if it isn't already present, so there's no manual `venv` step.
 
-```
-python3 -m venv venv
-. venv/bin/activate
-```
-
-The included [Makefile](Makefile) wraps the rest. Install Python deps:
+The included [Makefile](Makefile) wraps the rest. Install Python deps — `make dev` runs `uv sync`, which creates `.venv`, installs the locked dependencies from [`uv.lock`](uv.lock), and installs the `access` CLI:
 
 ```
 make dev
@@ -107,16 +102,16 @@ A CI check ([openapi-client-drift.yml](.github/workflows/openapi-client-drift.ym
 
 ```
 make pytest          # run pytest
-make test            # run ruff + mypy + pytest
+make test            # run ruff + ty + pytest
 ```
 
-Under the hood this calls tox (`tox -e test`, etc.); the Makefile is just a thin wrapper.
+Under the hood these run `uv run pytest` / `uv run ruff` / `uv run ty`; the Makefile is just a thin wrapper. Run any of them directly with `uv run` if you prefer.
 
 ## Linting
 
 ```
-make ruff
-make mypy
+make ruff            # ruff check + ruff format --check
+make ty              # ty check (type checking)
 ```
 
 ## Production Setup
@@ -383,7 +378,7 @@ Access can embed a [Model Context Protocol](https://modelcontextprotocol.io/) se
 
 Set `ENABLE_MCP=true` in your `.env.production`. When the flag is on, Access mounts the FastMCP server at `POST /mcp` and activates the MCP auth middleware. When off, the `/mcp` route is not registered and the MCP code path is never imported.
 
-`mcp[cli]` is pinned in [`requirements.txt`](requirements.txt) and imported unconditionally; only the runtime wiring is gated by the flag.
+`mcp[cli]` is pinned in [`pyproject.toml`](pyproject.toml) and imported unconditionally; only the runtime wiring is gated by the flag.
 
 ### Tool surface (v1)
 
@@ -478,7 +473,7 @@ Plugins can also extend the `access` CLI with new commands via setuptools entry 
 
 ### Installing a Plugin in the Docker Container
 
-Below is an example Dockerfile that would install the example notification plugin into the Access Docker container, which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is installed into the `/app/plugins` directory and then installed using pip.
+Below is an example Dockerfile that would install the example notification plugin into the Access Docker container, which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is copied into the `/app/plugins` directory and installed with `uv` into the application virtualenv at `/app/.venv` (the environment gunicorn and the `access` CLI run from).
 
 ```Dockerfile
 FROM access:latest
@@ -486,7 +481,7 @@ FROM access:latest
 WORKDIR /app/plugins
 ADD ./examples/plugins/ ./
 
-RUN pip install ./notifications
+RUN uv pip install --python /app/.venv/bin/python ./notifications
 
 WORKDIR /app
 ```

@@ -42,19 +42,30 @@ RUN touch sentry
 FROM python:3.13 AS false
 ARG SENTRY_RELEASE=""
 WORKDIR /app
+
+# Pull the uv binary from its published image and point it at the base
+# image's interpreter (UV_PYTHON_DOWNLOADS=0 — no managed-Python download).
+# The project venv lives at /app/.venv; putting it on PATH exposes both
+# `gunicorn` and the `access` console script (entry point api.manage:cli)
+# for CronJobs and other CLI invocations.
+COPY --from=ghcr.io/astral-sh/uv:0.11.10 /uv /bin/uv
+ENV UV_PYTHON_DOWNLOADS=0 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
 COPY --from=build-step /app/build ./build
 
-RUN mkdir ./api && mkdir ./migrations
-COPY requirements.txt api/ ./api/
-COPY migrations/ ./migrations/
-COPY alembic.ini setup.py ./
+# Install dependencies first from the frozen lockfile (this layer is cached
+# until pyproject.toml/uv.lock change), then the project itself. --no-dev
+# keeps the dev/test dependency groups out of the production image.
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-install-project --no-dev
+COPY ./api ./api
+COPY ./migrations ./migrations
 COPY ./config ./config
-RUN pip install -r ./api/requirements.txt
-# Install the project itself so the `access` console script declared in
-# setup.py (entry_points -> api.manage:cli) is available on PATH for
-# CronJobs and other CLI invocations. --no-deps keeps the pinned
-# versions from requirements.txt authoritative.
-RUN pip install --no-deps .
+COPY alembic.ini ./
+RUN uv sync --frozen --no-dev
 
 # Build an image that includes the optional sentry release push build step
 FROM false AS true
