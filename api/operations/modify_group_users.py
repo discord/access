@@ -456,7 +456,9 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for removed members
             for affected_group, members in members_lost_by_group.items():
-                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED, group=affected_group, members=members)
+                await invoke_app_group_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED, group=affected_group, members=members
+                )
 
         # Commit all changes so far
         await db.session.commit()
@@ -669,7 +671,9 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for added members
             for affected_group, members in members_gained_by_group.items():
-                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, group=affected_group, members=members)
+                await invoke_app_group_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, group=affected_group, members=members
+                )
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (

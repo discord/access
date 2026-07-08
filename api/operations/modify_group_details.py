@@ -85,7 +85,10 @@ class ModifyGroupDetails:
         # Fire group_updated hook if name or description changed
         if old_name != self.group.name or old_description != self.group.description:
             await invoke_app_group_lifecycle_hook(
-                AppGroupLifecycleHook.GROUP_UPDATED, group=self.group, old_name=old_name, old_description=old_description
+                AppGroupLifecycleHook.GROUP_UPDATED,
+                group=self.group,
+                old_name=old_name,
+                old_description=old_description,
             )
 
         # Audit logging, only if group name changed

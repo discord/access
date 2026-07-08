@@ -27,7 +27,11 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook, send_notification
-from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, get_app_group_lifecycle_plugin_to_invoke, invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleHook,
+    get_app_group_lifecycle_plugin_to_invoke,
+    invoke_app_group_lifecycle_hook,
+)
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
