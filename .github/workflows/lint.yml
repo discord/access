@@ -35,7 +35,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
         with:
           # Pin uv itself (not "latest") so a compromised uv release can't
           # run in CI. Keep in sync with the uv version in the Dockerfile.
