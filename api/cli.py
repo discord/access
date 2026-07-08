@@ -7,7 +7,7 @@ Run via:
     access init <admin_email>
     access sync
     access notify
-    python -m api.manage <command>
+    python -m api.cli <command>
 """
 
 from __future__ import annotations

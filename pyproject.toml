@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [project.scripts]
-access = "api.manage:cli"
+access = "api.cli:cli"
 
 # ----------------------------------------------------------------------
 # Dependency groups (PEP 735) — installed by `uv sync`, excluded from the
@@ -134,7 +134,7 @@ include = [
     "api/auth/**",
     "api/mcp/**",
     "api/exception_handlers.py",
-    "api/manage.py",
+    "api/cli.py",
     "api/app.py",
 ]
 

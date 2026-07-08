@@ -55,7 +55,7 @@ WORKDIR /app
 # Pull the uv binary from its published image and point it at the base
 # image's interpreter (UV_PYTHON_DOWNLOADS=0 — no managed-Python download).
 # The project venv lives at /app/.venv; putting it on PATH exposes both
-# `gunicorn` and the `access` console script (entry point api.manage:cli)
+# `gunicorn` and the `access` console script (entry point api.cli:cli)
 # for CronJobs and other CLI invocations.
 COPY --from=ghcr.io/astral-sh/uv:0.11.10 /uv /bin/uv
 ENV UV_PYTHON_DOWNLOADS=0 \

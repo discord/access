@@ -185,6 +185,64 @@ def oidc_app(
         _restore_oidc_registry(saved_clients, saved_registry)
 
 
+# `oidc_app` / `dev_oidc_app` are sync fixtures with async dependencies
+# (`db`), so — like `oidc_client` — they must be pulled through an async
+# fixture to be consumable by the async docs-wiring tests below.
+@pytest.fixture
+async def staging_app(oidc_app: FastAPI) -> FastAPI:
+    return oidc_app
+
+
+@pytest.fixture
+async def dev_app(dev_oidc_app: FastAPI) -> FastAPI:
+    return dev_oidc_app
+
+
+@pytest.fixture
+async def oidc_app_with_docs(
+    monkeypatch: pytest.MonkeyPatch,
+    db: Db,
+    seed_oidc_user: OktaUser,
+    oidc_mock: SimpleNamespace,
+    stub_build_dir: Path,
+) -> AsyncGenerator[FastAPI, None]:
+    # Same as `oidc_app` (staging), but with ENABLE_API_DOCS flipped on so
+    # the OpenAPI docs are mounted outside development.
+    saved = (
+        settings.ENV,
+        settings.SECRET_KEY,
+        settings.OIDC_CLIENT_SECRETS,
+        settings.CLOUDFLARE_TEAM_DOMAIN,
+        settings.SQLALCHEMY_DATABASE_URI,
+        settings.CLOUDSQL_CONNECTION_NAME,
+        settings.ALLOWED_HOSTS,
+        settings.ENABLE_MCP,
+        settings.ENABLE_API_DOCS,
+    )
+    saved_clients = dict(oidc_module.oauth._clients)
+    saved_registry = dict(oidc_module.oauth._registry)
+    monkeypatch.setenv("ENV", "staging")
+    try:
+        _install_oidc_settings("staging")
+        settings.ENABLE_API_DOCS = True
+        _install_oidc_mock(oidc_mock)
+        app = create_app(testing=False)
+        yield app
+    finally:
+        (
+            settings.ENV,
+            settings.SECRET_KEY,
+            settings.OIDC_CLIENT_SECRETS,
+            settings.CLOUDFLARE_TEAM_DOMAIN,
+            settings.SQLALCHEMY_DATABASE_URI,
+            settings.CLOUDSQL_CONNECTION_NAME,
+            settings.ALLOWED_HOSTS,
+            settings.ENABLE_MCP,
+            settings.ENABLE_API_DOCS,
+        ) = saved
+        _restore_oidc_registry(saved_clients, saved_registry)
+
+
 @pytest.fixture
 async def oidc_client(oidc_app: FastAPI) -> AsyncGenerator[httpx.AsyncClient, None]:
     # Use https so the cookie jar will replay a Secure-flagged session cookie
@@ -265,6 +323,24 @@ def _read_session_from_set_cookie(set_cookie_header: str) -> dict[str, Any] | No
 # ---------------------------------------------------------------------------
 # Routing and auth gate
 # ---------------------------------------------------------------------------
+
+
+async def test_dev_app_exposes_api_docs(dev_app: FastAPI) -> None:
+    # Development always mounts the OpenAPI docs and schema.
+    assert dev_app.docs_url == "/api/docs"
+    assert dev_app.openapi_url == "/api/openapi.json"
+
+
+async def test_staging_app_hides_api_docs_by_default(staging_app: FastAPI) -> None:
+    # Outside development the docs are off unless ENABLE_API_DOCS is set.
+    assert staging_app.docs_url is None
+    assert staging_app.openapi_url is None
+
+
+async def test_staging_app_exposes_api_docs_when_enabled(oidc_app_with_docs: FastAPI) -> None:
+    # ENABLE_API_DOCS=true mounts the docs even in staging/production.
+    assert oidc_app_with_docs.docs_url == "/api/docs"
+    assert oidc_app_with_docs.openapi_url == "/api/openapi.json"
 
 
 async def test_unauthenticated_protected_endpoint_redirects_to_oidc_login(
