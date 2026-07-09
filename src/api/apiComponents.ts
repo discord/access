@@ -637,9 +637,10 @@ export type AppGroupsByIdVariables = {
  * many members any single group has. The UI fetches a group's members on
  * demand from `GET /api/groups/{id}/member-details`.
  *
- * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
- * have an active member matching the query by name or email — the app page's
- * user search, computed in SQL so it doesn't need every member client-side.
+ * `owner` filters to owner / non-owner app-groups. `q` is the app page's
+ * search: it filters to groups whose own name matches the query, or that have
+ * an active member matching by name or email, computed in SQL so it doesn't
+ * need every member client-side.
  */
 export const fetchAppGroupsById = (variables: AppGroupsByIdVariables, signal?: AbortSignal) =>
   apiFetch<
@@ -658,9 +659,10 @@ export const fetchAppGroupsById = (variables: AppGroupsByIdVariables, signal?: A
  * many members any single group has. The UI fetches a group's members on
  * demand from `GET /api/groups/{id}/member-details`.
  *
- * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
- * have an active member matching the query by name or email — the app page's
- * user search, computed in SQL so it doesn't need every member client-side.
+ * `owner` filters to owner / non-owner app-groups. `q` is the app page's
+ * search: it filters to groups whose own name matches the query, or that have
+ * an active member matching by name or email, computed in SQL so it doesn't
+ * need every member client-side.
  */
 export function appGroupsByIdQuery(variables: AppGroupsByIdVariables): {
   queryKey: reactQuery.QueryKey;
@@ -695,9 +697,10 @@ export function appGroupsByIdQuery(variables: AppGroupsByIdVariables | reactQuer
  * many members any single group has. The UI fetches a group's members on
  * demand from `GET /api/groups/{id}/member-details`.
  *
- * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
- * have an active member matching the query by name or email — the app page's
- * user search, computed in SQL so it doesn't need every member client-side.
+ * `owner` filters to owner / non-owner app-groups. `q` is the app page's
+ * search: it filters to groups whose own name matches the query, or that have
+ * an active member matching by name or email, computed in SQL so it doesn't
+ * need every member client-side.
  */
 export const useSuspenseAppGroupsById = <TData = Schemas.PageTypeVarCustomizedAppGroupForAppDetail>(
   variables: AppGroupsByIdVariables,
@@ -721,9 +724,10 @@ export const useSuspenseAppGroupsById = <TData = Schemas.PageTypeVarCustomizedAp
  * many members any single group has. The UI fetches a group's members on
  * demand from `GET /api/groups/{id}/member-details`.
  *
- * `owner` filters to owner / non-owner app-groups. `q` filters to groups that
- * have an active member matching the query by name or email — the app page's
- * user search, computed in SQL so it doesn't need every member client-side.
+ * `owner` filters to owner / non-owner app-groups. `q` is the app page's
+ * search: it filters to groups whose own name matches the query, or that have
+ * an active member matching by name or email, computed in SQL so it doesn't
+ * need every member client-side.
  */
 export const useAppGroupsById = <TData = Schemas.PageTypeVarCustomizedAppGroupForAppDetail>(
   variables: AppGroupsByIdVariables | reactQuery.SkipToken,
