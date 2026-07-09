@@ -53,8 +53,10 @@ async def run_hooks_to_completion(coros: list[Any], *, context: str) -> tuple[li
 
     Returns ``(results, exceptions)``: the return values of the implementations
     that succeeded (in input order) and the exceptions raised by those that
-    failed. Every failure is also logged at WARNING with its traceback. The call
-    never raises on a plugin's behalf.
+    failed. Every failure is also logged at ERROR with its traceback — the app
+    does not swallow plugin errors, it surfaces them; a plugin that expects noisy
+    failures (e.g. connection timeouts) should catch those itself. The call still
+    never raises on a plugin's behalf, so one plugin can't break the operation.
 
     Uses ``asyncio.wait`` rather than ``asyncio.gather`` deliberately, mirroring
     the fan-out drain in ``api/operations/_fan_out.py`` (discord/access#481):
@@ -86,5 +88,5 @@ async def run_hooks_to_completion(coros: list[Any], *, context: str) -> tuple[li
             results.append(task.result())
         else:
             exceptions.append(exc)
-            logger.warning("%s: plugin hook raised %r", context, exc, exc_info=exc)
+            logger.error("%s: plugin hook raised %r", context, exc, exc_info=exc)
     return results, exceptions
