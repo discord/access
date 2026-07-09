@@ -1947,3 +1947,33 @@ async def test_group_member_details_counts_users_not_rows(client: AsyncClient, d
     # Both rows are returned so the UI can render direct + via-role chips.
     rows = [r for r in data["items"] if r.get("active_user") and r["active_user"]["id"] == user_id]
     assert len(rows) == 2
+
+
+async def test_get_group_member_details_paginates_in_email_order(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """member-details pages in email order, so the alphabetical list the UI
+    renders is continuous across pages instead of restarting A-Z on every page.
+    User ids are assigned in reverse-email order to prove pages are ordered by
+    email, not by the opaque user id."""
+    group = OktaGroupFactory.create()
+    db.session.add(group)
+    await db.session.commit()
+
+    members = [OktaUserFactory.create(id=f"id-{59 - i:03d}", email=f"member-{i:03d}@example.com") for i in range(60)]
+    for u in members:
+        db.session.add(u)
+    await db.session.commit()
+
+    await ModifyGroupUsers(group=group, members_to_add=[u.id for u in members], sync_to_okta=False).execute()
+
+    group_id = group.id
+    db.session.expunge_all()
+
+    url = url_for("api-groups.group_member_details_by_id", group_id=group_id)
+
+    page1 = (await client.get(url, params={"owner": "false", "page": 1, "size": 50})).json()
+    page2 = (await client.get(url, params={"owner": "false", "page": 2, "size": 50})).json()
+
+    emails = [r["active_user"]["email"] for r in page1["items"]] + [r["active_user"]["email"] for r in page2["items"]]
+    assert emails == sorted(emails)
+    assert emails[0] == "member-000@example.com"
+    assert emails[-1] == "member-059@example.com"
