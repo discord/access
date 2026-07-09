@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
-from sqlalchemy import func, nullsfirst, or_, select
+from sqlalchemy import and_, func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 from starlette.requests import Request
 
@@ -29,7 +29,7 @@ from api.auth.permissions import (
     is_app_owner_group_owner,
 )
 from api.database import DbSession
-from api.models import App, AppGroup, OktaGroup, OktaUserGroupMember, RoleGroup
+from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import (
     CreateGroup,
     DeleteGroup,
@@ -515,14 +515,21 @@ async def get_group_member_details(
         OktaUserGroupMember.ended_at > func.now(),
     )
 
-    # Page over distinct user ids (stable order by user id); total is then the
-    # distinct user count.
+    # Page over distinct users ordered by email so the alphabetical list the UI
+    # renders is continuous across pages instead of restarting A-Z on each page.
+    # Join the active (non-deleted) user both to sort by email and to keep total
+    # aligned with the rows that actually render (a member's detail row requires
+    # an active user). `email` is in the select list so SELECT DISTINCT can order
+    # by it; total is then the distinct user count.
     user_stmt = (
-        select(OktaUserGroupMember.user_id).where(OktaUserGroupMember.group_id == resolved_group_id).where(active)
+        select(OktaUserGroupMember.user_id, OktaUser.email)
+        .join(OktaUser, and_(OktaUser.id == OktaUserGroupMember.user_id, OktaUser.deleted_at.is_(None)))
+        .where(OktaUserGroupMember.group_id == resolved_group_id)
+        .where(active)
     )
     if owner is not None:
         user_stmt = user_stmt.where(OktaUserGroupMember.is_owner.is_(owner))
-    user_stmt = user_stmt.distinct().order_by(OktaUserGroupMember.user_id)
+    user_stmt = user_stmt.distinct().order_by(OktaUser.email, OktaUserGroupMember.user_id)
 
     async def _load_rows(user_rows: Any) -> list[Any]:
         user_ids = [r if isinstance(r, str) else r[0] for r in user_rows]
@@ -530,6 +537,7 @@ async def get_group_member_details(
             return []
         detail_stmt = (
             select(OktaUserGroupMember)
+            .join(OktaUser, and_(OktaUser.id == OktaUserGroupMember.user_id, OktaUser.deleted_at.is_(None)))
             .options(*user_group_member_options())
             .where(OktaUserGroupMember.group_id == resolved_group_id)
             .where(active)
@@ -537,7 +545,7 @@ async def get_group_member_details(
         )
         if owner is not None:
             detail_stmt = detail_stmt.where(OktaUserGroupMember.is_owner.is_(owner))
-        detail_stmt = detail_stmt.order_by(OktaUserGroupMember.user_id, OktaUserGroupMember.id)
+        detail_stmt = detail_stmt.order_by(OktaUser.email, OktaUserGroupMember.user_id, OktaUserGroupMember.id)
         return validated(OktaUserGroupMemberDetail)((await db.scalars(detail_stmt)).all())
 
     return await apaginate(db, user_stmt, transformer=_load_rows)
