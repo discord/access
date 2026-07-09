@@ -8,8 +8,9 @@ import {deepMerge} from './apiUtils';
  * Infinite-scroll variant of `useAppGroupsById`: pages an app's groups
  * (owners-first, 10/page) and accumulates them across pages so the app page can
  * load more on scroll instead of via a page-number control. `owner` filters
- * owner vs non-owner groups; `q` is the server-side member search (omitted when
- * empty so the fetcher doesn't serialize it as the literal "undefined"). Reuses
+ * owner vs non-owner groups; `q` is the server-side search by group name or
+ * member (omitted when empty so the fetcher doesn't serialize it as the literal
+ * "undefined"). Reuses
  * the generated fetcher + API context so auth options are injected like the
  * generated hooks.
  */

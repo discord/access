@@ -194,6 +194,32 @@ async def test_get_app_groups_search_by_user(client: AsyncClient, db: Db, url_fo
     assert [g["id"] for g in rep.json()["items"]] == [group_b.id]
 
 
+async def test_get_app_groups_search_by_group_name(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """`?q=` also matches an app group's own name (not just its members), so the
+    app page's search box can find a specific group or a subset of groups by
+    name via a case-insensitive substring."""
+    app = AppFactory.create()
+    db.session.add(app)
+    await db.session.commit()
+    prd_group = AppGroupFactory.create(app_id=app.id, name="App-Github-Prd")
+    stg_group = AppGroupFactory.create(app_id=app.id, name="App-Github-Stg")
+    db.session.add_all([prd_group, stg_group])
+    await db.session.commit()
+
+    app_id = app.id
+    prd_group_id = prd_group.id
+    db.session.expunge_all()
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = await client.get(url, params={"q": "App-Github-Prd"})
+    assert rep.status_code == 200, rep.text
+    assert [g["id"] for g in rep.json()["items"]] == [prd_group_id]
+
+    # case-insensitive subset query matches on name
+    rep = await client.get(url, params={"q": "prd"})
+    assert [g["id"] for g in rep.json()["items"]] == [prd_group_id]
+
+
 async def test_get_app_groups_size_capped_at_10(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Requesting more than 10 per page is rejected so the bound can't be opted out of."""
     app = AppFactory.create()

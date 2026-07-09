@@ -29,8 +29,8 @@ export default function ReadApp() {
   });
 
   // App groups are no longer inlined on the app payload. Owners (few) are
-  // fetched whole; non-owner groups load page-by-page on scroll. Member-based
-  // filtering is computed server-side via the `q` query param.
+  // fetched whole; non-owner groups load page-by-page on scroll. Filtering by
+  // group name or member is computed server-side via the `q` query param.
   const [searchQuery, setSearchQuery] = React.useState('');
   const [isExpanded, setIsExpanded] = React.useState(false);
 
