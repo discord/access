@@ -83,12 +83,18 @@ class OktaUserGroupMember(Base):
     )
 
     # Postgres does not index FK columns automatically; the hot lookups filter
-    # by group_id (usually with is_owner and an active-membership ended_at
-    # predicate) and seq-scan without this.
+    # by group_id or user_id (usually with is_owner and an active-membership
+    # ended_at predicate) and seq-scan without these.
     __table_args__ = (
         Index(
             "idx_okta_user_group_member_group_id_is_owner_ended_at",
             "group_id",
+            "is_owner",
+            "ended_at",
+        ),
+        Index(
+            "idx_okta_user_group_member_user_id_is_owner_ended_at",
+            "user_id",
             "is_owner",
             "ended_at",
         ),
