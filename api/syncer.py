@@ -585,11 +585,19 @@ async def expiring_access_notifications_owner() -> None:
     day = date.today()
     next_week = day + timedelta(weeks=1)
 
+    # Eager-load the polymorphic subclass columns (e.g. AppGroup.app_id) so reads like
+    # `okta_user_group_member.group.app_id` below don't emit lazy SQL — under async
+    # SQLAlchemy an unexpected lazy load raises MissingGreenlet.
+    all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
+
     # Expiring groups
     db_memberships_expiring_this_week = (
         await db.session.scalars(
             select(OktaUserGroupMember)
-            .options(joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group))
+            .options(
+                joinedload(OktaUserGroupMember.active_user),
+                joinedload(OktaUserGroupMember.active_group.of_type(all_group_types)),
+            )
             .join(OktaUserGroupMember.active_user)
             .join(OktaUserGroupMember.active_group)
             .where(OktaGroup.is_managed.is_(True))
@@ -650,7 +658,10 @@ async def expiring_access_notifications_owner() -> None:
     db_memberships_expiring_next_week = (
         await db.session.scalars(
             select(OktaUserGroupMember)
-            .options(joinedload(OktaUserGroupMember.active_user), joinedload(OktaUserGroupMember.active_group))
+            .options(
+                joinedload(OktaUserGroupMember.active_user),
+                joinedload(OktaUserGroupMember.active_group.of_type(all_group_types)),
+            )
             .join(OktaUserGroupMember.active_user)
             .join(OktaUserGroupMember.active_group)
             .where(OktaGroup.is_managed.is_(True))
@@ -755,7 +766,6 @@ async def expiring_access_notifications_owner() -> None:
                 )
             )
 
-    all_group_types = with_polymorphic(OktaGroup, [AppGroup, RoleGroup], flat=True)
     role_group_alias = aliased(RoleGroup)
 
     # Expiring roles
