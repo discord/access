@@ -16,8 +16,10 @@ import Container from '@mui/material/Container';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import AccountIcon from '@mui/icons-material/AccountCircle';
+import SearchIcon from '@mui/icons-material/Search';
 import {
   alpha,
+  Button,
   CssBaseline,
   PaletteMode,
   Stack,
@@ -46,6 +48,7 @@ import ListRoleRequests from './pages/role_requests/List';
 import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
+import QuickSwitcher from './components/QuickSwitcher';
 import NotFound from './pages/NotFound';
 import ReadApp from './pages/apps/Read';
 import ReadGroup from './pages/groups/Read';
@@ -59,6 +62,9 @@ import ReadRoleRequest from './pages/role_requests/Read';
 import {appName} from './config/accessConfig';
 
 const drawerWidth: number = 240;
+
+const isMacPlatform =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? navigator.userAgent);
 
 interface AppBarProps extends MuiAppBarProps {
   open?: boolean;
@@ -168,9 +174,27 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
 
 function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void}) {
   const [open, setOpen] = React.useState(true);
+  const [quickSwitcherOpen, setQuickSwitcherOpen] = React.useState(false);
   const toggleDrawer = () => {
     setOpen(!open);
   };
+
+  // Global cmd/ctrl+K opens the quick switcher from anywhere in the app.
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only claim the platform-native palette chord (⌘K on macOS, Ctrl+K
+      // elsewhere) so we don't clobber macOS's Ctrl+K "delete to end of line"
+      // in text fields. `event.key` can be undefined for some synthetic/IME
+      // keydowns, hence the optional chaining.
+      const modifierPressed = isMacPlatform ? event.metaKey : event.ctrlKey;
+      if (modifierPressed && event.key?.toLowerCase() === 'k') {
+        event.preventDefault();
+        setQuickSwitcherOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <Box sx={{display: 'flex', minWidth: '20rem', overflowX: 'hidden'}}>
@@ -191,11 +215,41 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <MenuIcon />
           </IconButton>
           <Box sx={{flexGrow: 1}} />
+          <Tooltip title="Search (users, groups, roles, apps)">
+            <Button
+              color="inherit"
+              onClick={() => setQuickSwitcherOpen(true)}
+              startIcon={<SearchIcon />}
+              sx={{
+                mr: 1,
+                textTransform: 'none',
+                borderColor: alpha('#fff', 0.4),
+                color: 'inherit',
+              }}
+              variant="outlined"
+              size="small">
+              Search
+              <Box
+                component="span"
+                sx={{
+                  ml: 1.5,
+                  px: 0.75,
+                  py: 0.1,
+                  borderRadius: 1,
+                  fontSize: '0.7rem',
+                  lineHeight: 1.6,
+                  backgroundColor: alpha('#fff', 0.15),
+                }}>
+                {isMacPlatform ? '⌘K' : 'Ctrl K'}
+              </Box>
+            </Button>
+          </Tooltip>
           <IconButton color="inherit" component={RouterLink} to="/users/@me">
             <AccountIcon />
           </IconButton>
         </Toolbar>
       </AppBar>
+      <QuickSwitcher open={quickSwitcherOpen} onClose={() => setQuickSwitcherOpen(false)} />
       <Drawer variant="permanent" open={open}>
         <Toolbar
           sx={{
