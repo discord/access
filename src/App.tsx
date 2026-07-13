@@ -182,7 +182,12 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
   // Global cmd/ctrl+K opens the quick switcher from anywhere in the app.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      // Only claim the platform-native palette chord (⌘K on macOS, Ctrl+K
+      // elsewhere) so we don't clobber macOS's Ctrl+K "delete to end of line"
+      // in text fields. `event.key` can be undefined for some synthetic/IME
+      // keydowns, hence the optional chaining.
+      const modifierPressed = isMacPlatform ? event.metaKey : event.ctrlKey;
+      if (modifierPressed && event.key?.toLowerCase() === 'k') {
         event.preventDefault();
         setQuickSwitcherOpen((prev) => !prev);
       }

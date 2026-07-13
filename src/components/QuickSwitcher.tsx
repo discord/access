@@ -215,6 +215,12 @@ export default function QuickSwitcher({open, onClose}: QuickSwitcherProps) {
       setHighlightedIndex((index) => (index - 1 + results.length) % results.length);
     } else if (event.key === 'Enter') {
       event.preventDefault();
+      // `results` reflect `debouncedQuery`, which lags the visible input by the
+      // debounce interval. Ignore Enter until the two agree so a fast typist
+      // can't navigate to a stale match that no longer matches what they see.
+      if (query.trim() !== trimmedQuery) {
+        return;
+      }
       const result = results[Math.min(highlightedIndex, results.length - 1)];
       if (result) {
         goTo(result);
