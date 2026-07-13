@@ -17,7 +17,7 @@ from api.syncer import (
     expiring_access_notifications_role_owner,
     expiring_access_notifications_user,
 )
-from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
 # Test with one user who has two memberships expiring tomorrow
@@ -1001,3 +1001,63 @@ async def test_expiring_role_owner_notification_hook_can_read_association_relati
 
     assert observed["role_name"] == role.name
     assert observed["group_name"] == group.name
+
+
+# Regression test for the notify-owners cronjob crashing with MissingGreenlet after the
+# async-SQLAlchemy flip (#480). When a managed AppGroup with an expiring membership has no
+# direct group owners, the owner syncer falls back to
+# `get_app_managers(okta_user_group_member.group.app_id)`. Reading `.group.app_id` needs the
+# AppGroup polymorphic subclass columns; the membership query must eager-load them
+# (`of_type(with_polymorphic(...))`) or the read emits a lazy SELECT, which raises
+# MissingGreenlet under async SQLAlchemy. expire_all() drops the identity map so the syncer
+# reloads the group fresh (base okta_group row only) — reproducing the cronjob's cold-load
+# path, which is where the missing eager-load bites.
+async def test_owner_expiring_access_notifications_app_group_falls_back_to_app_managers(
+    db: Db, mocker: MockerFixture
+) -> None:
+    app = AppFactory.create()
+    owner_app_group = AppGroupFactory.create(app_id=app.id, is_owner=True)
+    member_app_group = AppGroupFactory.create(app_id=app.id, is_owner=False)
+    app_owner = OktaUserFactory.create()
+    member = OktaUserFactory.create()
+    expiration_datetime = datetime.now() + timedelta(days=2)
+
+    db.session.add_all([app, owner_app_group, member_app_group, app_owner, member])
+    await db.session.commit()
+
+    # app_owner administers the app by owning the app owner group.
+    await ModifyGroupUsers(group=owner_app_group, owners_to_add=[app_owner.id], sync_to_okta=False).execute()
+    # member's access to the member app group (which has no direct owners) is expiring this week.
+    await ModifyGroupUsers(
+        group=member_app_group,
+        users_added_ended_at=expiration_datetime,
+        members_to_add=[member.id],
+        sync_to_okta=False,
+    ).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == member_app_group.id)
+            .where(OktaUserGroupMember.user_id == member.id)
+        )
+    ).first()
+    assert membership is not None
+    # Capture ids before expire_all() — reading them off the expired ORM objects afterwards
+    # would itself emit lazy SQL and raise under async.
+    membership_id = membership.id
+    app_owner_id = app_owner.id
+
+    hook = get_notification_hook()
+    expiring_access_notification_spy = mocker.patch.object(hook, "access_expiring_owner")
+
+    db.session.expire_all()
+
+    await expiring_access_notifications_owner()
+
+    # The app owner is notified (via the app-manager fallback) about the expiring member.
+    assert expiring_access_notification_spy.call_count == 1
+    _, kwargs = expiring_access_notification_spy.call_args
+    assert kwargs["owner"].id == app_owner_id
+    assert len(kwargs["group_user_associations"]) == 1
+    assert kwargs["group_user_associations"][0].id == membership_id
