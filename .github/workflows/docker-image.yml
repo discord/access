@@ -40,6 +40,8 @@ jobs:
       - id: docker-push-tagged
         name: Tag Docker image and push to Google Artifact Registry
         uses: docker/build-push-action@v7
+        env:
+          ACCESS_CONFIG_OVERRIDE: ${{ secrets.ACCESS_CONFIG_OVERRIDE }}
         with:
           push: true
           tags: |
@@ -51,4 +53,5 @@ jobs:
             "SENTRY_ORG=${{ secrets.SENTRY_ORG }}"
             "SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}"
             "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
-            "ACCESS_CONFIG_OVERRIDE=${{ secrets.ACCESS_CONFIG_OVERRIDE }}"
+          secret-envs: |
+            ACCESS_CONFIG_OVERRIDE=ACCESS_CONFIG_OVERRIDE
