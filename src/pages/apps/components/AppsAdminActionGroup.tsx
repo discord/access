@@ -5,6 +5,9 @@ import CreateUpdateGroup from '../../groups/CreateUpdate';
 import {OktaUserDetail, AppDetail} from '../../../api/apiSchemas';
 import React from 'react';
 
+// How long to wait after the last keystroke before firing the search query.
+const SEARCH_DEBOUNCE_MS = 200;
+
 interface AppsAdminActionGroupProps {
   currentUser: OktaUserDetail;
   app: AppDetail;
@@ -21,7 +24,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     const onSearchChangeRef = React.useRef(onSearchChange);
     onSearchChangeRef.current = onSearchChange;
 
-    // Search as you type, debounced: fire the query ~2s after the user stops
+    // Search as you type, debounced: fire the query shortly after the user stops
     // typing rather than per keystroke (or only on Enter), so it stays responsive
     // without a request per character.
     const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
@@ -30,7 +33,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
-      debounceRef.current = setTimeout(() => onSearchChangeRef.current?.(q), 2000);
+      debounceRef.current = setTimeout(() => onSearchChangeRef.current?.(q), SEARCH_DEBOUNCE_MS);
     }, []);
 
     React.useEffect(
