@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import functools
+import inspect
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -61,6 +63,31 @@ def _is_timeout_or_rate_limited(error: Any) -> bool:
     return str(error) == "Request Timeout exceeded."
 
 
+class _WrapperClient:
+    """Proxy over an Okta client that routes every async API call through ``OktaService._call``.
+
+    Attribute access returns the underlying client's coroutine methods wrapped
+    so their timeout / rate-limit outcomes become ``OktaTimeout``. Applying the
+    mapping here — rather than at each call site — makes it uniform and
+    impossible to forget when a new facade method is added. Non-coroutine
+    attributes (e.g. ``get_request_executor``) pass through unchanged.
+    """
+
+    def __init__(self, client: OktaClient) -> None:
+        self._client = client
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._client, name)
+        if not inspect.iscoroutinefunction(attr):
+            return attr
+
+        @functools.wraps(attr)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return await OktaService._call(attr(*args, **kwargs))
+
+        return wrapper
+
+
 class OktaService:
     """For interacting with the Okta API"""
 
@@ -98,25 +125,26 @@ class OktaService:
         )
 
     @asynccontextmanager
-    async def _okta_client(self) -> AsyncIterator[OktaClient]:
-        """Yield an Okta client whose pooled aiohttp session is bound to the running loop.
+    async def _okta_client(self) -> AsyncIterator[_WrapperClient]:
+        """Yield a wrapping proxy over an Okta client bound to the running loop.
 
-        On the FastAPI server loop a single client is created in a lifespan hook
-        (``start_pooled_client``) and reused here for connection pooling. Every
-        other caller — each CLI command's ``asyncio.run`` in ``manage.py`` and
-        each per-test loop under pytest — gets a fresh client per call. A client
-        (and its aiohttp session/connector/DNS resolver) must never be shared
-        across event loops, which otherwise raises "Future attached to a
-        different loop"; the running-loop check below enforces that.
+        The proxy (``_WrapperClient``) routes every async API call through
+        ``_call``. On the FastAPI server loop a single client is created in a
+        lifespan hook (``start_pooled_client``) and reused here for connection
+        pooling. Every other caller — each CLI command's ``asyncio.run`` in
+        ``manage.py`` and each per-test loop under pytest — gets a fresh client
+        per call. A client (and its aiohttp session/connector/DNS resolver) must
+        never be shared across event loops, which otherwise raises "Future
+        attached to a different loop"; the running-loop check below enforces that.
         """
         running_loop = asyncio.get_running_loop()
         if self._pooled_client is not None and self._pooled_loop is running_loop:
-            yield self._pooled_client
+            yield _WrapperClient(self._pooled_client)
             return
 
         client = self._build_client()
         async with client:
-            yield client
+            yield _WrapperClient(client)
 
     async def start_pooled_client(self) -> None:
         """Create a process-wide Okta client bound to the current event loop.
@@ -169,7 +197,9 @@ class OktaService:
         results: list[Any] = []
         after: Optional[str] = None
         while True:
-            result = await OktaService._call(list_method(*args, limit=LIST_PAGE_LIMIT, after=after, **kwargs))
+            # ``list_method`` is a proxied client method, so it already routes
+            # through ``_call``.
+            result = await list_method(*args, limit=LIST_PAGE_LIMIT, after=after, **kwargs)
             # List endpoints are data-returning, so the tuple is (data, resp, error).
             page, response, error = result
             if error is not None:
@@ -183,7 +213,7 @@ class OktaService:
 
     async def get_user(self, userId: str) -> User:
         async with self._okta_client() as client:
-            user, _, error = await OktaService._call(client.get_user(userId))
+            user, _, error = await client.get_user(userId)
 
         if error is not None:
             raise Exception(error)
@@ -194,7 +224,7 @@ class OktaService:
 
     async def get_user_schema(self, userTypeId: str) -> UserSchema:
         async with self._okta_client() as client:
-            userType, user_type_resp, error = await OktaService._call(client.get_user_type(userTypeId))
+            userType, user_type_resp, error = await client.get_user_type(userTypeId)
 
             if error is not None:
                 raise Exception(error)
@@ -206,7 +236,7 @@ class OktaService:
             user_type_body = json.loads(user_type_resp.raw_data)
             schemaId = user_type_body["_links"]["schema"]["href"].rsplit("/", 1).pop()
 
-            schema, _, error = await OktaService._call(client.get_user_schema(schemaId))
+            schema, _, error = await client.get_user_schema(schemaId)
 
         if error is not None:
             raise Exception(error)
@@ -221,8 +251,8 @@ class OktaService:
 
     async def create_group(self, name: str, description: str) -> Group:
         async with self._okta_client() as client:
-            group, _, error = await OktaService._call(
-                client.add_group(AddGroupRequest(profile=OktaUserGroupProfile(name=name, description=description)))
+            group, _, error = await client.add_group(
+                AddGroupRequest(profile=OktaUserGroupProfile(name=name, description=description))
             )
 
         if error is not None:
@@ -235,7 +265,7 @@ class OktaService:
     async def update_group(self, groupId: str, name: str, description: str) -> Group:
         async with self._okta_client() as client:
             # Fetch Existing Group Data
-            existing_group_data, _, get_error = await OktaService._call(client.get_group(groupId))
+            existing_group_data, _, get_error = await client.get_group(groupId)
             if get_error is not None:
                 logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
                 raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
@@ -263,7 +293,7 @@ class OktaService:
             group_payload = AddGroupRequest(profile=OktaUserGroupProfile.from_dict(new_profile))
 
             # Modify the Update Call to use the new payload
-            group, _, error = await OktaService._call(client.replace_group(groupId, group_payload))
+            group, _, error = await client.replace_group(groupId, group_payload)
 
         if error is not None:
             raise Exception(error)
@@ -283,7 +313,7 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._call(client.assign_user_to_group(groupId, userId))
+                *_, error = await client.assign_user_to_group(groupId, userId)
 
             if error is not None:
                 raise Exception(error)
@@ -301,7 +331,7 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._call(client.unassign_user_from_group(groupId, userId))
+                *_, error = await client.unassign_user_from_group(groupId, userId)
 
             if error is not None:
                 raise Exception(error)
@@ -312,7 +342,7 @@ class OktaService:
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
     async def get_group(self, groupId: str) -> Group:
         async with self._okta_client() as client:
-            group, _, error = await OktaService._call(client.get_group(groupId))
+            group, _, error = await client.get_group(groupId)
 
         if error is not None:
             raise Exception(error)
@@ -357,7 +387,7 @@ class OktaService:
 
     async def delete_group(self, groupId: str) -> None:
         async with self._okta_client() as client:
-            *_, error = await OktaService._call(client.delete_group(groupId))
+            *_, error = await client.delete_group(groupId)
 
         if error is not None:
             raise Exception(error)
@@ -375,8 +405,8 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._call(
-                    client.assign_group_owner(groupId, AssignGroupOwnerRequestBody(id=userId, type=GroupOwnerType.USER))
+                *_, error = await client.assign_group_owner(
+                    groupId, AssignGroupOwnerRequestBody(id=userId, type=GroupOwnerType.USER)
                 )
 
             # Ignore error if owner is already assigned to group
@@ -401,7 +431,7 @@ class OktaService:
         try:
             async with self._okta_client() as client:
                 # A group owner of type USER is identified by the user's id.
-                *_, error = await OktaService._call(client.delete_group_owner(groupId, userId))
+                *_, error = await client.delete_group_owner(groupId, userId)
 
             if error is not None:
                 raise Exception(error)
