@@ -70,4 +70,5 @@ on `op.get_bind().dialect.name`.
 
 For local dev against a real Okta instance, use an Okta preview/sandbox org (e.g. an
 `*.oktapreview.com` tenant) rather than production. Ask your Okta administrator to set up an
-account if you don't have one.
+account if you don't have one. Use `OKTA_DOMAIN` to set your sandbox/preview org domain
+and `OKTA_API_TOKEN` to set an API token minted in that sandbox org for Access to use.

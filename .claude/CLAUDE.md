@@ -237,7 +237,9 @@ Before implementing anything, look at existing code that does something similar:
 - **New auth check:** check `api/auth/permissions.py` for existing dependency functions before
   writing a new one.
 
-When you do need a new pattern, make it consistent with the closest existing one.
+When you do need a new pattern, make it consistent with the closest existing one. Watch for
+writing near-duplicate logic across multiple call sites — if the same behavior is needed in
+several places, extract and reuse it rather than repeating it.
 
 ## Check core_models and helper files before writing queries or auth logic
 

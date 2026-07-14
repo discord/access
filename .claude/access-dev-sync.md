@@ -5,7 +5,7 @@ or on notification-plugin code.
 
 ## Sync and authority
 
-`syncer.py` runs as a Kubernetes cronjob every 15 minutes. It is fully `async` like the rest of
+`syncer.py` is written to run as a cronjob. It is fully `async` like the rest of
 the app (`async def sync_groups(act_as_authority)`, etc.), and uses `db.session.run_sync(...)`
 to run sync-only ORM work on the session's own greenlet. Behavior depends on `act_as_authority`
 and whether a group `is_managed` (`act_authoritatively = act_as_authority and is_managed`):
