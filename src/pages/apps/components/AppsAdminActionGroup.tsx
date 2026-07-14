@@ -11,7 +11,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 interface AppsAdminActionGroupProps {
   currentUser: OktaUserDetail;
   app: AppDetail;
-  // Emits the raw user search query. Group filtering by member is computed
+  // Emits the raw search query. Filtering by group name or member is computed
   // server-side (GET /api/apps/{id}/groups?q=…) so the page no longer needs
   // every member loaded client-side.
   onSearchChange?: (q: string) => void;
@@ -84,7 +84,7 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
               <Autocomplete
                 size="small"
                 sx={{flex: '1 1 220px', minWidth: 0, maxWidth: 320}}
-                renderInput={(params) => <TextField {...params} label="Search Users" />}
+                renderInput={(params) => <TextField {...params} label="Search groups or users" />}
                 options={[]}
                 onInputChange={handleSearchChange}
                 clearOnEscape

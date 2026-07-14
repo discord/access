@@ -92,9 +92,10 @@ async def get_app_groups(
     many members any single group has. The UI fetches a group's members on
     demand from `GET /api/groups/{id}/member-details`.
 
-    `owner` filters to owner / non-owner app-groups. `q` filters to groups that
-    have an active member matching the query by name or email — the app page's
-    user search, computed in SQL so it doesn't need every member client-side."""
+    `owner` filters to owner / non-owner app-groups. `q` is the app page's
+    search: it filters to groups whose own name matches the query, or that have
+    an active member matching by name or email, computed in SQL so it doesn't
+    need every member client-side."""
     resolved_app_id = (
         await db.scalars(
             select(App.id).where(App.deleted_at.is_(None)).where(or_(App.id == app_id, App.name == app_id))
@@ -128,7 +129,7 @@ async def get_app_groups(
             )
             .exists()
         )
-        stmt = stmt.where(member_match)
+        stmt = stmt.where(or_(AppGroup.name.ilike(like), member_match))
     # AppGroup.id is a unique final tiebreaker so rows that tie on
     # (is_owner, lower(name)) have a stable order across LIMIT/OFFSET pages.
     stmt = stmt.order_by(AppGroup.is_owner.desc(), func.lower(AppGroup.name), AppGroup.id)
