@@ -511,7 +511,6 @@ async def access_group_request_completed(
 
 @notification_hook_impl
 async def access_expiring_user(
-    groups: List[OktaGroup],
     user: OktaUser,
     expiration_datetime: datetime,
     okta_user_group_members: List[OktaUserGroupMember],
@@ -519,7 +518,6 @@ async def access_expiring_user(
     """Notify individuals that their access to a group is expiring soon.
 
     Args:
-        groups (List[OktaGroup]): The list of groups.
         user (OktaUser): The user whose access is expiring.
         expiration_datetime (datetime): The expiration date and time.
         okta_user_group_members (List[OktaUserGroupMember]): List of expiring memberships and ownerships.
@@ -546,9 +544,6 @@ async def access_expiring_user(
 @notification_hook_impl
 async def access_expiring_owner(
     owner: OktaUser,
-    groups: List[OktaGroup],
-    roles: List[RoleGroup],
-    users: List[OktaUser],
     expiration_datetime: datetime,
     group_user_associations: Optional[List[OktaUserGroupMember]],
     role_group_associations: Optional[List[RoleGroupMap]],
@@ -557,9 +552,6 @@ async def access_expiring_owner(
 
     Args:
         owner (OktaUser): The owner of the group.
-        groups (List[OktaGroup]): The list of groups.
-        roles (List[OktaGroup]): The list of roles.
-        users (List[RoleGroup]): The list of users.
         expiration_datetime (datetime): The expiration date and time.
         group_user_associations (Optional[List[OktaUserGroupMember]]): List of memberships and ownerships expiring.
         role_group_associations (Optional[List[RoleGroupMap]]): List of role memberships and ownerships expiring.
