@@ -180,11 +180,17 @@ class CreateGroup:
         ...
 ```
 
-Plugin hooks fire from inside `execute()`. Side-effecting Okta/notification work is spawned as
+Plugin hooks fire from inside `execute()`. The plugin interface is **async** (see the Plugin
+system section): each hook call returns coroutines that Access awaits via `run_hooks_to_completion`
+in `api/plugins/_async_dispatch.py`, which uses `asyncio.wait` (not `gather`, so one hook failing
+or a cancelled request can't tear down its siblings' in-flight I/O) and logs a failing hook at
+**ERROR** — a plugin's failure is surfaced, not swallowed, yet never breaks the committed
+operation; plugins are expected to catch their own expected/noisy errors. Separately,
+side-effecting Okta/notification work is spawned as
 `asyncio` tasks after the local DB state commits, then drained at the end of `execute()` via
 `drain_fan_out_tasks` in `api/operations/_fan_out.py` — which surfaces task failures (logged at
-WARNING) instead of dropping them, and uses `asyncio.wait` so a cancelled request doesn't tear
-down in-flight Okta calls. These fan-out tasks do network I/O only, never `db.session` access. Operations fall into two broad groups — request
+WARNING) instead of dropping them, and likewise uses `asyncio.wait` so a cancelled request doesn't
+tear down in-flight Okta calls. These fan-out tasks do network I/O only, never `db.session` access. Operations fall into two broad groups — request
 operations (create/approve/reject for access, group, and role requests) and resource operations
 (create/delete/modify for apps, groups, tags, users, and roles). The exact set changes as
 features land, so read `api/operations/` for the current, authoritative list — one class per
@@ -496,6 +502,19 @@ Hook specifications and invocations live in the Access repo (`api/plugins/`); op
 implementations live in that operator's own private repo. Each operator writes their own plugin
 implementations (for notifications, conditional access, etc.); operator-specific behavior
 belongs in one of those plugins, not upstream.
+
+**The plugin interface is async (Access 2.0).** `pluggy` never awaits, so a hook call returns a
+list of coroutines that Access drives to completion via `run_hooks_to_completion`
+(`api/plugins/_async_dispatch.py`). Consequently hook implementations across all four surfaces —
+notifications, conditional access, `metrics_reporter` (`record_*` etc.; `batch_metrics` is an
+async context manager), and the app-group-lifecycle *lifecycle* hooks — must be `async def`, and
+`verify_async_impls` fails fast at hook load if one is registered as a plain `def`. Do blocking
+I/O off the event loop: prefer a native async client (`httpx`, an SDK's async client) and fall
+back to `await asyncio.to_thread(...)` only for sync-only dependencies. App-group-lifecycle hooks
+that mutate state receive an `AsyncSession` (await ORM calls on it; `session.add(...)` is sync);
+the pure metadata/config/status/validation hooks stay **sync**. Plugin-contributed
+`access.commands` CLI commands run as ordinary Click commands and must drive their own
+`asyncio.run(...)`. The README's plugin section documents this in full.
 
 For hook signatures, adding a new plugin type, and implementing an operator override, read the
 hookspecs in `api/plugins/`.
