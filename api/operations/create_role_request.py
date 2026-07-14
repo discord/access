@@ -26,7 +26,7 @@ from api.models.okta_group import get_group_managers
 from api.models.tag import coalesce_constraints
 from api.operations.approve_role_request import ApproveRoleRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins import get_conditional_access_hook, get_notification_hook
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -50,9 +50,6 @@ class CreateRoleRequest:
         self.request_ownership = request_ownership
         self.request_reason = request_reason
         self.request_ending_at = request_ending_at
-
-        self.conditional_access_hook = get_conditional_access_hook()
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> Optional[RoleRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
@@ -184,7 +181,8 @@ class CreateRoleRequest:
             )
         )
 
-        conditional_access_responses = self.conditional_access_hook.role_request_created(
+        conditional_access_responses = await evaluate_conditional_access(
+            ConditionalAccessHook.ROLE_REQUEST_CREATED,
             role_request=role_request,
             role=requester_role,
             group=requested_group,
@@ -211,7 +209,8 @@ class CreateRoleRequest:
 
                 return role_request
 
-        self.notification_hook.access_role_request_created(
+        await send_notification(
+            NotificationHook.ACCESS_ROLE_REQUEST_CREATED,
             role_request=role_request,
             role=requester_role,
             group=requested_group,

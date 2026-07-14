@@ -28,7 +28,7 @@ from api.operations import (
     ModifyRoleGroups,
     RejectAccessRequest,
 )
-from api.plugins import ConditionalAccessResponse, get_conditional_access_hook, get_notification_hook
+from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import AccessRequestFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 from tests.helpers import db_count
@@ -796,10 +796,10 @@ async def test_auto_resolve_create_access_request(
     notification_hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
     request_completed_notification_spy = mocker.patch.object(notification_hook, "access_request_completed")
-    request_hook = get_conditional_access_hook()
-    request_created_conditional_access_spy = mocker.patch.object(
-        request_hook,
-        "access_request_created",
+    # Conditional-access hooks are async; patch the dispatch helper the operation
+    # awaits (mock.patch autospecs it to an AsyncMock since it is a coroutine fn).
+    request_created_conditional_access_spy = mocker.patch(
+        "api.operations.create_access_request.evaluate_conditional_access",
         return_value=[ConditionalAccessResponse(approved=True, reason="Auto-Approved")],
     )
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
@@ -835,9 +835,8 @@ async def test_auto_resolve_create_access_request(
     request_created_conditional_access_spy.reset_mock()
     add_membership_spy.reset_mock()
 
-    request_created_conditional_access_spy = mocker.patch.object(
-        request_hook,
-        "access_request_created",
+    request_created_conditional_access_spy = mocker.patch(
+        "api.operations.create_access_request.evaluate_conditional_access",
         return_value=[ConditionalAccessResponse(approved=False, reason="Auto-Rejected")],
     )
 
@@ -871,8 +870,8 @@ async def test_auto_resolve_create_access_request(
     request_created_conditional_access_spy.reset_mock()
     add_membership_spy.reset_mock()
 
-    request_created_conditional_access_spy = mocker.patch.object(
-        request_hook, "access_request_created", return_value=[None]
+    request_created_conditional_access_spy = mocker.patch(
+        "api.operations.create_access_request.evaluate_conditional_access", return_value=[None]
     )
 
     access_request = await CreateAccessRequest(
@@ -918,10 +917,8 @@ async def test_auto_resolve_create_access_request_with_time_limit_constraint_tag
     notification_hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
     request_completed_notification_spy = mocker.patch.object(notification_hook, "access_request_completed")
-    request_hook = get_conditional_access_hook()
-    request_created_conditional_access_spy = mocker.patch.object(
-        request_hook,
-        "access_request_created",
+    request_created_conditional_access_spy = mocker.patch(
+        "api.operations.create_access_request.evaluate_conditional_access",
         return_value=[
             ConditionalAccessResponse(
                 approved=True,

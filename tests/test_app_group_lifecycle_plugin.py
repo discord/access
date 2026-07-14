@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import settings
 from api.extensions import Db
@@ -161,14 +161,14 @@ class DummyPlugin:
         }
 
     @hookimpl
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        # Read through the session synchronously. The hookspec promises a sync
-        # `Session`; if an operation hands us the raw AsyncSession (a missing
-        # `run_sync` bridge), this raises and the call below is never recorded —
-        # so the recorded-calls assertions in these tests fail loudly.
-        session.scalars(select(AppGroup)).all()
+        # Await a read through the AsyncSession. The hookspec promises an
+        # AsyncSession; if an operation hands us something else (a broken bridge),
+        # this raises and the call below is never recorded — so the recorded-calls
+        # assertions in these tests fail loudly.
+        (await session.scalars(select(AppGroup))).all()
         # A hook may also read group.app, which is lazy="raise_on_sql". The invoking
         # operation must eager-load AppGroup.app (or seed the identity map) so this
         # resolves without emitting SQL; otherwise it raises here and the recorded-
@@ -177,39 +177,39 @@ class DummyPlugin:
         self.group_created_calls.append(group.id)
 
     @hookimpl
-    def group_updated(
-        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    async def group_updated(
+        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        session.scalars(select(AppGroup)).all()  # exercise the sync Session (see group_created)
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         self.group_updated_calls.append((group.id, old_name, old_description))
 
     @hookimpl
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        session.scalars(select(AppGroup)).all()  # exercise the sync Session (see group_created)
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         self.group_deleted_calls.append(group.id)
 
     @hookimpl
-    def group_members_added(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    async def group_members_added(
+        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        session.scalars(select(AppGroup)).all()  # exercise the sync Session (see group_created)
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         self.members_added_calls.append((group.id, [m.id for m in members]))
 
     @hookimpl
-    def group_members_removed(
-        self, session: Session, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    async def group_members_removed(
+        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        session.scalars(select(AppGroup)).all()  # exercise the sync Session (see group_created)
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         self.members_removed_calls.append((group.id, [m.id for m in members]))
 
 

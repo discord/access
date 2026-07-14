@@ -1,8 +1,8 @@
 import logging
 import os
 import threading
-from contextlib import contextmanager
-from typing import Any, ContextManager, Dict, Iterator, List, Optional
+from contextlib import asynccontextmanager
+from typing import Any, AsyncContextManager, AsyncIterator, Dict, List, Optional
 
 import pluggy
 
@@ -76,7 +76,7 @@ class DatadogMetricsReporter:
             return self.batch_depth > 0
 
     @metrics_reporter_hookimpl
-    def record_counter(
+    async def record_counter(
         self, metric_name: str, value: float, tags: Optional[Dict[str, str]], monotonic: bool = True
     ) -> None:
         if not self.client:
@@ -99,7 +99,7 @@ class DatadogMetricsReporter:
             self.client.increment(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def record_gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
+    async def record_gauge(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
         if not self.client:
             return
 
@@ -114,7 +114,7 @@ class DatadogMetricsReporter:
             self.client.gauge(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def record_histogram(
+    async def record_histogram(
         self,
         metric_name: str,
         value: float,
@@ -140,7 +140,7 @@ class DatadogMetricsReporter:
             self.client.histogram(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def record_summary(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
+    async def record_summary(self, metric_name: str, value: float, tags: Optional[Dict[str, str]]) -> None:
         if not self.client:
             return
 
@@ -156,9 +156,9 @@ class DatadogMetricsReporter:
             self.client.distribution(metric_name, value=value, tags=formatted_tags)
 
     @metrics_reporter_hookimpl
-    def batch_metrics(self) -> ContextManager[None]:
-        @contextmanager
-        def _batch_context() -> Iterator[None]:
+    def batch_metrics(self) -> AsyncContextManager[None]:
+        @asynccontextmanager
+        async def _batch_context() -> AsyncIterator[None]:
             with self.batch_lock:
                 self.batch_depth += 1
             try:
@@ -193,12 +193,12 @@ class DatadogMetricsReporter:
         self.batch_buffer.clear()
 
     @metrics_reporter_hookimpl
-    def set_global_tags(self, tags: Dict[str, str]) -> None:
+    async def set_global_tags(self, tags: Dict[str, str]) -> None:
         """Set global tags to be included with all metrics."""
         self.global_tags.update(tags)
 
     @metrics_reporter_hookimpl
-    def flush(self) -> None:
+    async def flush(self) -> None:
         """Force flush any buffered metrics."""
         if not self.client:
             return

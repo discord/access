@@ -126,7 +126,7 @@ def expiring_access_list_role_owner(expiring_access_list: list[RoleGroupMap]) ->
 
 
 @notification_hook_impl
-def access_request_created(
+async def access_request_created(
     access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
 ) -> None:
     """Notify all the approvers of the access request through a notification"""
@@ -145,7 +145,7 @@ def access_request_created(
 
 
 @notification_hook_impl
-def access_request_completed(
+async def access_request_completed(
     access_request: AccessRequest,
     group: OktaGroup,
     requester: OktaUser,
@@ -165,7 +165,7 @@ def access_request_completed(
 
 
 @notification_hook_impl
-def access_role_request_created(
+async def access_role_request_created(
     role_request: RoleRequest, role: RoleGroup, group: OktaGroup, requester: OktaUser, approvers: list[OktaUser]
 ) -> None:
     """Notify all the approvers of the role request through a direct message."""
@@ -183,8 +183,7 @@ def access_role_request_created(
 
 
 @notification_hook_impl
-def access_expiring_user(
-    groups: list[OktaGroup],
+async def access_expiring_user(
     user: OktaUser,
     expiration_datetime: datetime,
     okta_user_group_members: list[OktaUserGroupMember],
@@ -205,11 +204,8 @@ def access_expiring_user(
 
 
 @notification_hook_impl
-def access_expiring_owner(
+async def access_expiring_owner(
     owner: OktaUser,
-    groups: list[OktaGroup],
-    roles: list[RoleGroup],
-    users: list[OktaUser],
     expiration_datetime: datetime,
     group_user_associations: Optional[list[OktaUserGroupMember]],
     role_group_associations: Optional[list[RoleGroupMap]],
@@ -254,7 +250,7 @@ def access_expiring_owner(
 
 
 @notification_hook_impl
-def access_expiring_role_owner(owner: OktaUser, roles: list[RoleGroupMap], expiration_datetime: datetime) -> None:
+async def access_expiring_role_owner(owner: OktaUser, roles: list[RoleGroupMap], expiration_datetime: datetime) -> None:
     expiring_access_url = get_base_url() + "/expiring-roles?role_owner_id=@me"
 
     expiring_access_list = expiring_access_list_role_owner(roles)

@@ -13,7 +13,6 @@ from api.extensions import db
 from api.models import AccessRequest, AccessRequestStatus, AppGroup, OktaGroup, OktaUser, RoleGroup
 from api.operations.constraints import CheckForReason
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.plugins import get_notification_hook
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -37,8 +36,6 @@ class ApproveAccessRequest:
         self.ending_at = ending_at
 
         self.notify = notify
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> AccessRequest:
         # Lock the request row for the duration of the transaction so two
@@ -146,35 +143,5 @@ class ApproveAccessRequest:
                 members_to_add=[access_request.requester_user_id],
                 notify=self.notify,
             ).execute()
-
-        # Now handled inside ModifyGroupUsers
-        # self.access_request.approved_membership_id = (
-        #     db.session.query(OktaUserGroupMember).filter(
-        #         OktaUserGroupMember.user_id == self.access_request.requester_user_id
-        #     )
-        #     .filter(
-        #         OktaUserGroupMember.group_id == self.access_request.requested_group_id
-        #     )
-        #     .filter(OktaUserGroupMember.role_group_map_id.is_(None))
-        #     .filter(
-        #         OktaUserGroupMember.is_owner == self.access_request.request_ownership
-        #     )
-        #     .order_by(OktaUserGroupMember.created_at.desc())
-        #     .first()
-        #     .id
-        # )
-        # db.session.commit()
-
-        # requester = db.session.get(OktaUser, self.access_request.requester_user_id)
-
-        # approvers = get_all_possible_request_approvers(self.access_request)
-
-        # self.notification_hook.access_request_completed(
-        #     access_request=self.access_request,
-        #     group=group,
-        #     requester=requester,
-        #     approvers=approvers,
-        #     notify_requester=True,
-        # )
 
         return access_request

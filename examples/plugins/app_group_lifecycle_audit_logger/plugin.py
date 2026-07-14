@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import models
 from api.models import App, AppGroup, OktaUser
@@ -191,7 +191,7 @@ class AuditLoggerPlugin:
     # Lifecycle hooks
 
     @hookimpl
-    def group_created(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group creation."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -205,8 +205,8 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def group_updated(
-        self, session: Session, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+    async def group_updated(
+        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
     ) -> None:
         """Handle group update."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
@@ -221,7 +221,7 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def group_deleted(self, session: Session, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group deletion."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -235,9 +235,9 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def group_members_added(
+    async def group_members_added(
         self,
-        session: Session,
+        session: AsyncSession,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -256,9 +256,9 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def group_members_removed(
+    async def group_members_removed(
         self,
-        session: Session,
+        session: AsyncSession,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -277,7 +277,7 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    def sync_all_group_membership(self, session: Session, app: App, plugin_id: str | None) -> None:
+    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
         """Perform periodic sync of all group memberships."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -309,8 +309,13 @@ class AuditLoggerPlugin:
             group, "enabled", PLUGIN_ID, True
         )
 
-    def _increment_event_count(self, session: Session, group: AppGroup) -> None:
-        """Increment the event count in the status."""
+    def _increment_event_count(self, session: AsyncSession, group: AppGroup) -> None:
+        """Increment the event count in the status.
+
+        Only synchronous work: ``session.add`` is not a coroutine on
+        ``AsyncSession``, and the get/set status helpers mutate ``plugin_data``
+        in memory, so this stays a plain method the async hooks call directly.
+        """
         # Update group-level status
         current_count = get_status_value(group, "events_logged", PLUGIN_ID) or 0
         set_status_value(group, "events_logged", current_count + 1, PLUGIN_ID)

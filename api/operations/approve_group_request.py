@@ -25,7 +25,7 @@ from api.models.tag import coalesce_ended_at
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.plugins import get_notification_hook
+from api.plugins import NotificationHook, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -47,7 +47,6 @@ class ApproveGroupRequest:
         self.approval_reason = approval_reason
         self.notify = notify
         self.bypass_self_approval = bypass_self_approval
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> Optional[GroupRequest]:
         # Lock the request row for the transaction so concurrent approvers
@@ -278,7 +277,8 @@ class ApproveGroupRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
             approvers = await get_all_possible_request_approvers(group_request)
-            self.notification_hook.access_group_request_completed(
+            await send_notification(
+                NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED,
                 group_request=group_request,
                 group=created_group,
                 requester=requester,

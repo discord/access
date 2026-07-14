@@ -1,14 +1,14 @@
 from __future__ import print_function
 
+import asyncio
 import logging
 import os
 import random
-import time
 from datetime import date, datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 import pluggy
-from slack_sdk import WebClient
+from slack_sdk.web.async_client import AsyncWebClient
 
 from api.models import (
     AccessRequest,
@@ -28,14 +28,14 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def retry_operation(
-    operation_func: Callable[[], T], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
+async def retry_operation(
+    operation_func: Callable[[], Awaitable[T]], max_attempts: int = 3, base_delay: float = 1.0, max_delay: float = 10.0
 ) -> Optional[T]:
     """
-    Execute an operation with retries, without propagating exceptions
+    Await an async operation with retries, without propagating exceptions.
 
     Args:
-        operation_func: Function that performs the operation
+        operation_func: Async function that performs the operation
         max_attempts: Maximum number of retry attempts
         base_delay: Initial delay between retries in seconds
         max_delay: Maximum delay between retries in seconds
@@ -48,7 +48,7 @@ def retry_operation(
 
     while attempt < max_attempts:
         try:
-            return operation_func()
+            return await operation_func()
         except Exception as e:
             attempt += 1
 
@@ -63,15 +63,16 @@ def retry_operation(
                 logger.warning(
                     f"Operation failed (attempt {attempt}/{max_attempts}): {str(e)}. Retrying in {sleep_time:.2f}s"
                 )
-                time.sleep(sleep_time)
+                await asyncio.sleep(sleep_time)
                 delay = min(delay * 2, max_delay)  # Exponential backoff
 
     return None
 
 
-# Initialize Slack client and signature verifier
+# Initialize Slack client. AsyncWebClient is the Slack SDK's native-async client
+# (aiohttp-backed), so its calls are awaited directly on the event loop.
 slack_token = os.environ["SLACK_BOT_TOKEN"]
-client = WebClient(token=slack_token)
+client = AsyncWebClient(token=slack_token)
 alerts_channel = os.environ.get("SLACK_ALERTS_CHANNEL")
 CLIENT_ORIGIN_URL = os.environ.get("CLIENT_ORIGIN_URL")  # e.g. "https://discord-access-instance.com"
 
@@ -238,7 +239,7 @@ def expiring_access_list_role_owner(expiring_access_list: List[RoleGroupMap]) ->
     return out
 
 
-def get_user_id_by_email(email: str) -> Optional[str]:
+async def get_user_id_by_email(email: str) -> Optional[str]:
     """Get Slack user ID by email with retry logic.
 
     Args:
@@ -248,67 +249,74 @@ def get_user_id_by_email(email: str) -> Optional[str]:
         Optional[str]: The Slack user ID if found, otherwise None.
     """
 
-    def lookup_user() -> str:
-        response = client.users_lookupByEmail(email=email)
+    async def lookup_user() -> str:
+        response = await client.users_lookupByEmail(email=email)
         return response["user"]["id"]
 
-    user_id = retry_operation(lookup_user)
+    user_id = await retry_operation(lookup_user)
     if not user_id:
         logger.error(f"Failed to fetch user ID for {email} after multiple attempts")
 
     return user_id
 
 
-def send_slack_dm(user: OktaUser, message: str) -> None:
+async def send_slack_dm(user: OktaUser, message: str) -> None:
     """Send a direct message to a Slack user with retry logic.
+
+    Uses the Slack SDK's native-async ``AsyncWebClient``, so the API calls are
+    awaited directly on the event loop — no thread offload needed (an async
+    client, awaited on the event loop).
 
     Args:
         user (OktaUser): The user to send the message to.
         message (str): The message content.
     """
-    user_id = get_user_id_by_email(user.email)
+    user_id = await get_user_id_by_email(user.email)
     if user_id:
         mention_message = f"<@{user_id}> {message}"
 
-        def send_message() -> Dict[str, Any]:
-            response = client.chat_postMessage(
+        async def send_message() -> Dict[str, Any]:
+            response = await client.chat_postMessage(
                 channel=user_id, text=mention_message, as_user=True, unfurl_links=True, unfurl_media=True
             )
             logger.info(f"Slack DM sent: {response['ts']}")
             return response
 
-        result = retry_operation(send_message)
+        result = await retry_operation(send_message)
         if not result:
             logger.error(f"Failed to send Slack DM to {user.email} after multiple attempts")
 
 
-def send_slack_channel_message(user: OktaUser, message: str) -> None:
+async def send_slack_channel_message(user: OktaUser, message: str) -> None:
     """Send a message to a Slack channel with retry logic.
+
+    See ``send_slack_dm`` — the Slack calls are awaited on the async client.
 
     Args:
         message (str): The message content.
         user (OktaUser): The user to relate the message to.
     """
-    if alerts_channel:
-        user_id = get_user_id_by_email(user.email)
+    if not alerts_channel:
+        return
 
-        if user_id:
-            channel_message = f"{user.email} - {message}"
+    user_id = await get_user_id_by_email(user.email)
+    if user_id:
+        channel_message = f"{user.email} - {message}"
 
-            def send_message() -> Dict[str, Any]:
-                response = client.chat_postMessage(
-                    channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
-                )
-                logger.info(f"Slack channel message sent: {response['ts']}")
-                return response
+        async def send_message() -> Dict[str, Any]:
+            response = await client.chat_postMessage(
+                channel=alerts_channel, text=channel_message, as_user=True, unfurl_links=True, unfurl_media=True
+            )
+            logger.info(f"Slack channel message sent: {response['ts']}")
+            return response
 
-            result = retry_operation(send_message)
-            if not result:
-                logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
+        result = await retry_operation(send_message)
+        if not result:
+            logger.error(f"Failed to send message to channel {alerts_channel} after multiple attempts")
 
 
 @notification_hook_impl
-def access_request_created(
+async def access_request_created(
     access_request: AccessRequest, group: OktaGroup, requester: OktaUser, approvers: List[OktaUser]
 ) -> None:
     """Notify all the approvers of the access request through a notification.
@@ -332,20 +340,20 @@ def access_request_created(
 
     # Send the message to the approvers
     for approver in approvers:
-        send_slack_dm(approver, approver_message)
+        await send_slack_dm(approver, approver_message)
     logger.info(f"Approver message: {approver_message}")
 
     # Send the message to the requester only if they're not already an approver
     if requester.id not in [approver.id for approver in approvers]:
-        send_slack_dm(requester, approver_message)
+        await send_slack_dm(requester, approver_message)
         logger.info("Requester received creation notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester, approver_message)
+    await send_slack_channel_message(requester, approver_message)
 
 
 @notification_hook_impl
-def access_role_request_created(
+async def access_role_request_created(
     role_request: RoleRequest, role: RoleGroup, group: OktaGroup, requester: OktaUser, approvers: List[OktaUser]
 ) -> None:
     """Notify all the approvers of the role request through a notification.
@@ -368,20 +376,22 @@ def access_role_request_created(
 
     # Send the message to the approvers
     for approver in approvers:
-        send_slack_dm(approver, approver_message)
+        await send_slack_dm(approver, approver_message)
     logger.info(f"Approver message: {approver_message}")
 
     # Send the message to the requester only if they're not already an approver
     if requester.id not in [approver.id for approver in approvers]:
-        send_slack_dm(requester, approver_message)
+        await send_slack_dm(requester, approver_message)
         logger.info("Requester received creation notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester, approver_message)
+    await send_slack_channel_message(requester, approver_message)
 
 
 @notification_hook_impl
-def access_group_request_created(group_request: GroupRequest, requester: OktaUser, approvers: List[OktaUser]) -> None:
+async def access_group_request_created(
+    group_request: GroupRequest, requester: OktaUser, approvers: List[OktaUser]
+) -> None:
     """Notify the approvers that a group creation has been requested.
 
     Args:
@@ -406,20 +416,20 @@ def access_group_request_created(group_request: GroupRequest, requester: OktaUse
 
     # Send the message to the approvers
     for approver in approvers:
-        send_slack_dm(approver, approver_message)
+        await send_slack_dm(approver, approver_message)
     logger.info(f"Approver message: {approver_message}")
 
     # Send the message to the requester only if they're not already an approver
     if requester.id not in [approver.id for approver in approvers]:
-        send_slack_dm(requester, approver_message)
+        await send_slack_dm(requester, approver_message)
         logger.info("Requester received group request creation notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester, approver_message)
+    await send_slack_channel_message(requester, approver_message)
 
 
 @notification_hook_impl
-def access_request_completed(
+async def access_request_completed(
     access_request: AccessRequest,
     group: OktaGroup,
     requester: OktaUser,
@@ -442,21 +452,21 @@ def access_request_completed(
     )
 
     # Send the message to the requester
-    send_slack_dm(requester, requester_message)
+    await send_slack_dm(requester, requester_message)
     logger.info(f"Requester message: {requester_message}")
 
     # Send the message to all approvers (except the requester)
     for approver in approvers:
         if approver.id != requester.id:  # Skip if approver is the requester
-            send_slack_dm(approver, requester_message)
+            await send_slack_dm(approver, requester_message)
     logger.info("Approvers received completion notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester, requester_message)
+    await send_slack_channel_message(requester, requester_message)
 
 
 @notification_hook_impl
-def access_group_request_completed(
+async def access_group_request_completed(
     group_request: GroupRequest,
     group: Optional[OktaGroup],
     requester: OktaUser,
@@ -486,22 +496,21 @@ def access_group_request_completed(
 
     # Send the message to the requester
     if notify_requester:
-        send_slack_dm(requester, message)
+        await send_slack_dm(requester, message)
         logger.info(f"Requester message: {message}")
 
     # Send the message to all approvers (except the requester)
     for approver in approvers:
         if approver.id != requester.id:
-            send_slack_dm(approver, message)
+            await send_slack_dm(approver, message)
     logger.info("Approvers received group request completion notification")
 
     # Post to the alerts channel
-    send_slack_channel_message(requester, message)
+    await send_slack_channel_message(requester, message)
 
 
 @notification_hook_impl
-def access_expiring_user(
-    groups: List[OktaGroup],
+async def access_expiring_user(
     user: OktaUser,
     expiration_datetime: datetime,
     okta_user_group_members: List[OktaUserGroupMember],
@@ -509,7 +518,6 @@ def access_expiring_user(
     """Notify individuals that their access to a group is expiring soon.
 
     Args:
-        groups (List[OktaGroup]): The list of groups.
         user (OktaUser): The user whose access is expiring.
         expiration_datetime (datetime): The expiration date and time.
         okta_user_group_members (List[OktaUserGroupMember]): List of expiring memberships and ownerships.
@@ -526,19 +534,16 @@ def access_expiring_user(
     )
 
     # Send the message to the individual user with expiring access
-    send_slack_dm(user, message)
+    await send_slack_dm(user, message)
     logger.info(f"User message: {message}")
 
     # Post to the alerts channel
-    send_slack_channel_message(user, message)
+    await send_slack_channel_message(user, message)
 
 
 @notification_hook_impl
-def access_expiring_owner(
+async def access_expiring_owner(
     owner: OktaUser,
-    groups: List[OktaGroup],
-    roles: List[RoleGroup],
-    users: List[OktaUser],
     expiration_datetime: datetime,
     group_user_associations: Optional[List[OktaUserGroupMember]],
     role_group_associations: Optional[List[RoleGroupMap]],
@@ -547,9 +552,6 @@ def access_expiring_owner(
 
     Args:
         owner (OktaUser): The owner of the group.
-        groups (List[OktaGroup]): The list of groups.
-        roles (List[OktaGroup]): The list of roles.
-        users (List[RoleGroup]): The list of users.
         expiration_datetime (datetime): The expiration date and time.
         group_user_associations (Optional[List[OktaUserGroupMember]]): List of memberships and ownerships expiring.
         role_group_associations (Optional[List[RoleGroupMap]]): List of role memberships and ownerships expiring.
@@ -571,11 +573,11 @@ def access_expiring_owner(
         )
 
         # Send the message to the group owner about the users with expiring access
-        send_slack_dm(owner, message)
+        await send_slack_dm(owner, message)
         logger.info(f"Owner message: {message}")
 
         # Post to the alerts channel
-        send_slack_channel_message(owner, message)
+        await send_slack_channel_message(owner, message)
 
     if role_group_associations is not None and len(role_group_associations) > 0:
         expiring_access_url = get_base_url() + "/expiring-roles?owner_id=@me"
@@ -594,15 +596,15 @@ def access_expiring_owner(
         )
 
         # Send the message to the group owner about the roles with expiring access
-        send_slack_dm(owner, message)
+        await send_slack_dm(owner, message)
         logger.info(f"Owner message: {message}")
 
         # Post to the alerts channel
-        send_slack_channel_message(owner, message)
+        await send_slack_channel_message(owner, message)
 
 
 @notification_hook_impl
-def access_expiring_role_owner(owner: OktaUser, roles: List[RoleGroupMap], expiration_datetime: datetime) -> None:
+async def access_expiring_role_owner(owner: OktaUser, roles: List[RoleGroupMap], expiration_datetime: datetime) -> None:
     """Notify role owners that roles they own will be losing access to groups soon.
 
     Args:
@@ -623,8 +625,8 @@ def access_expiring_role_owner(owner: OktaUser, roles: List[RoleGroupMap], expir
     )
 
     # Send the message to the group owner about the roles with expiring access
-    send_slack_dm(owner, message)
+    await send_slack_dm(owner, message)
     logger.info(f"Role owner message: {message}")
 
     # Post to the alerts channel
-    send_slack_channel_message(owner, message)
+    await send_slack_channel_message(owner, message)

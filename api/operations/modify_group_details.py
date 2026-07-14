@@ -6,7 +6,7 @@ from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
-from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -85,7 +85,10 @@ class ModifyGroupDetails:
         # Fire group_updated hook if name or description changed
         if old_name != self.group.name or old_description != self.group.description:
             await invoke_app_group_lifecycle_hook(
-                "group_updated", group=self.group, old_name=old_name, old_description=old_description
+                AppGroupLifecycleHook.GROUP_UPDATED,
+                group=self.group,
+                old_name=old_name,
+                old_description=old_description,
             )
 
         # Audit logging, only if group name changed

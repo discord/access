@@ -10,7 +10,7 @@ from api.extensions import db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
-from api.plugins import get_notification_hook
+from api.plugins import NotificationHook, send_notification
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -34,8 +34,6 @@ class RejectGroupRequest:
         self.rejection_reason = rejection_reason
         self.notify = notify
         self.notify_requester = notify_requester
-
-        self.notification_hook = get_notification_hook()
 
     async def execute(self) -> GroupRequest:
         # Lock the request row so a reject can't race a concurrent approve/
@@ -126,7 +124,8 @@ class RejectGroupRequest:
 
             approvers = await get_all_possible_request_approvers(group_request)
 
-            self.notification_hook.access_group_request_completed(
+            await send_notification(
+                NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED,
                 group_request=group_request,
                 group=None,
                 requester=requester,

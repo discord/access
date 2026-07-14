@@ -20,7 +20,7 @@ from api.models import (
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
-from api.plugins.app_group_lifecycle import invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -105,7 +105,7 @@ class ModifyGroupType:
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
                 # the linked GitHub team).
-                await invoke_app_group_lifecycle_hook("group_deleted", group=group)
+                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
 
                 # Remove app tag map for this group that is no longer attached to an app
                 await db.session.execute(
@@ -261,7 +261,7 @@ class ModifyGroupType:
             # Invoke group_created hook after converting to an AppGroup (symmetric
             # with group_deleted which fires when converting away from AppGroup).
             if type(self.group_changes) is AppGroup:
-                await invoke_app_group_lifecycle_hook("group_created", group=group)
+                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
 
         # Audit logging if type changed
         if group.type != old_group_type:

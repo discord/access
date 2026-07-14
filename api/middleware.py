@@ -32,6 +32,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from api.config import settings
 from api.context import RequestContext, reset_request_context, set_request_context
 from api.extensions import _session_scope, db
+from api.plugins._async_dispatch import run_hooks_to_completion
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
 
 CSP = (
@@ -187,9 +188,9 @@ class RequestObservabilityMiddleware:
             await self.app(scope, receive, _send)
         finally:
             duration_ms = (time.perf_counter() - start) * 1000.0
-            self._record(scope.get("method", ""), status_code, duration_ms)
+            await self._record(scope.get("method", ""), status_code, duration_ms)
 
-    def _record(self, method: str, status_code: int, duration_ms: float) -> None:
+    async def _record(self, method: str, status_code: int, duration_ms: float) -> None:
         try:
             hook = get_metrics_reporter_hook()
         except Exception:
@@ -197,7 +198,15 @@ class RequestObservabilityMiddleware:
             return
         tags = {"method": method, "status": str(status_code)}
         try:
-            hook.record_counter(metric_name="requests", value=1, tags=tags)
-            hook.record_histogram(metric_name="request.duration", value=duration_ms, tags={**tags, "unit": "ms"})
+            # run_hooks_to_completion uses asyncio.wait (not gather) and logs any
+            # per-plugin failure itself; emit is best-effort and never fails the request.
+            await run_hooks_to_completion(
+                hook.record_counter(metric_name="requests", value=1, tags=tags),
+                context="metrics requests counter",
+            )
+            await run_hooks_to_completion(
+                hook.record_histogram(metric_name="request.duration", value=duration_ms, tags={**tags, "unit": "ms"}),
+                context="metrics request.duration histogram",
+            )
         except Exception:
             self._logger.exception("metrics_reporter emit failed; continuing")

@@ -1,70 +1,93 @@
 from __future__ import annotations
 
-import inspect
-from typing import Any, Callable, Optional
+from typing import Awaitable, Callable, Optional
 from unittest.mock import MagicMock
 
 import pytest
 
 import api.plugins.notifications as notifications_module
 from api.plugins import notifications
+from api.plugins.notifications import NotificationHook
 
-WRAPPERS: list[tuple[str, str, Optional[dict[str, str]]]] = [
-    ("access_request_created", "notifications.access_request_created.sent", None),
-    ("access_request_completed", "notifications.access_request_completed.sent", None),
-    ("access_expiring_user", "notifications.expiring_access.sent", {"kind": "user"}),
-    ("access_expiring_owner", "notifications.expiring_access.sent", {"kind": "owner"}),
-    ("access_expiring_role_owner", "notifications.expiring_access.sent", {"kind": "role_owner"}),
-    ("access_role_request_created", "notifications.role_request_created.sent", None),
-    ("access_role_request_completed", "notifications.role_request_completed.sent", None),
-    ("access_group_request_created", "notifications.group_request_created.sent", None),
-    ("access_group_request_completed", "notifications.group_request_completed.sent", None),
+# hook -> (metric name, tags) — mirrors notifications._SENT_METRICS. The
+# "sent" counter is recorded by send_notification after the async hook fans out
+# successfully (the async replacement for the old @hookimpl(wrapper=True) set).
+HOOKS: list[tuple[NotificationHook, str, Optional[dict[str, str]]]] = [
+    (NotificationHook.ACCESS_REQUEST_CREATED, "notifications.access_request_created.sent", None),
+    (NotificationHook.ACCESS_REQUEST_COMPLETED, "notifications.access_request_completed.sent", None),
+    (NotificationHook.ACCESS_EXPIRING_USER, "notifications.expiring_access.sent", {"kind": "user"}),
+    (NotificationHook.ACCESS_EXPIRING_OWNER, "notifications.expiring_access.sent", {"kind": "owner"}),
+    (NotificationHook.ACCESS_EXPIRING_ROLE_OWNER, "notifications.expiring_access.sent", {"kind": "role_owner"}),
+    (NotificationHook.ACCESS_ROLE_REQUEST_CREATED, "notifications.role_request_created.sent", None),
+    (NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED, "notifications.role_request_completed.sent", None),
+    (NotificationHook.ACCESS_GROUP_REQUEST_CREATED, "notifications.group_request_created.sent", None),
+    (NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED, "notifications.group_request_completed.sent", None),
 ]
 
 
-def _kwargs_for(wrapper_fn: Callable[..., Any]) -> dict[str, Any]:
-    sig = inspect.signature(wrapper_fn)
-    return {name: True if name == "notify_requester" else None for name in sig.parameters}
+class _FakeHook:
+    """Stand-in for pluggy's HookRelay: every hook caller returns a list holding
+    a single freshly-built coroutine, mimicking one registered async hookimpl."""
+
+    def __init__(self, behavior: Callable[[], Awaitable[None]]) -> None:
+        self._behavior = behavior
+
+    def __getattr__(self, name: str) -> Callable[..., list[Awaitable[None]]]:
+        def caller(**kwargs: object) -> list[Awaitable[None]]:
+            return [self._behavior()]
+
+        return caller
 
 
-def _drive_success(wrapper_fn: Callable[..., Any]) -> None:
-    gen = wrapper_fn(**_kwargs_for(wrapper_fn))
-    next(gen)
-    with pytest.raises(StopIteration):
-        gen.send(None)
-
-
-def _drive_failure(wrapper_fn: Callable[..., Any], exc: BaseException) -> None:
-    gen = wrapper_fn(**_kwargs_for(wrapper_fn))
-    next(gen)
-    with pytest.raises(StopIteration):
-        gen.throw(exc)
+def _install_hook(monkeypatch: pytest.MonkeyPatch, behavior: Callable[[], Awaitable[None]]) -> None:
+    monkeypatch.setattr(notifications_module, "get_notification_hook", lambda: _FakeHook(behavior))
 
 
 @pytest.fixture
-def fake_hook(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+def fake_metrics(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     fake = MagicMock()
     monkeypatch.setattr(notifications_module, "get_metrics_reporter_hook", lambda: fake)
     return fake
 
 
-@pytest.mark.parametrize("wrapper_name,metric,tags", WRAPPERS)
-def test_wrapper_emits_counter_on_success(
-    fake_hook: MagicMock, wrapper_name: str, metric: str, tags: Optional[dict[str, str]]
+@pytest.mark.parametrize("hook,metric,tags", HOOKS)
+async def test_send_notification_emits_counter_on_success(
+    fake_metrics: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: NotificationHook,
+    metric: str,
+    tags: Optional[dict[str, str]],
 ) -> None:
-    _drive_success(getattr(notifications, wrapper_name))
-    fake_hook.record_counter.assert_called_once_with(metric_name=metric, value=1, tags=tags)
+    async def ok() -> None:
+        return None
+
+    _install_hook(monkeypatch, ok)
+    await notifications.send_notification(hook)
+    fake_metrics.record_counter.assert_called_once_with(metric_name=metric, value=1, tags=tags)
 
 
-@pytest.mark.parametrize("wrapper_name", [w[0] for w in WRAPPERS])
-def test_wrapper_does_not_emit_counter_on_failure(fake_hook: MagicMock, wrapper_name: str) -> None:
-    _drive_failure(getattr(notifications, wrapper_name), RuntimeError("inner plugin blew up"))
-    fake_hook.record_counter.assert_not_called()
+@pytest.mark.parametrize("hook", [h[0] for h in HOOKS])
+async def test_send_notification_does_not_emit_on_failure(
+    fake_metrics: MagicMock, monkeypatch: pytest.MonkeyPatch, hook: NotificationHook
+) -> None:
+    async def boom() -> None:
+        raise RuntimeError("inner plugin blew up")
+
+    _install_hook(monkeypatch, boom)
+    # The plugin failure is swallowed (logged, not raised) and no counter emitted.
+    await notifications.send_notification(hook)
+    fake_metrics.record_counter.assert_not_called()
 
 
-def test_metric_emit_failure_does_not_break_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
-    def boom() -> Any:
+async def test_metric_emit_failure_does_not_break_send(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom_hook() -> object:
         raise RuntimeError("metrics_reporter unavailable")
 
-    monkeypatch.setattr(notifications_module, "get_metrics_reporter_hook", boom)
-    _drive_success(notifications.access_request_created)
+    monkeypatch.setattr(notifications_module, "get_metrics_reporter_hook", boom_hook)
+
+    async def ok() -> None:
+        return None
+
+    _install_hook(monkeypatch, ok)
+    # A failure recording the metric must not propagate out of send_notification.
+    await notifications.send_notification(NotificationHook.ACCESS_REQUEST_CREATED)
