@@ -4,10 +4,11 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
-from typing import Any, AsyncIterator, Callable, Optional
+from datetime import datetime
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from okta.client import Client as OktaClient
+from okta.errors.okta_api_error import OktaAPIError
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.assign_group_owner_request_body import AssignGroupOwnerRequestBody
 from okta.models.group import Group as OktaGroupType
@@ -21,12 +22,8 @@ from okta.pagination import PaginationHelper
 from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 from api.models import OktaGroup, OktaUser
 
-REQUEST_MAX_RETRIES = 3
-RETRIABLE_STATUS_CODES = [429, 500, 502, 503, 504]
-HTTP_TOO_MANY_REQUESTS = 429
-RATE_LIMIT_RESET_HEADER = "X-Rate-Limit-Reset"
-RETRY_BACKOFF_FACTOR = 0.5
 REQUEST_TIMEOUT = 30
+HTTP_TOO_MANY_REQUESTS = 429
 # Page size for cursor-paginated list endpoints. Okta caps most list endpoints
 # at 200 per page; the facade drives the ``after`` cursor to walk pages.
 LIST_PAGE_LIMIT = 200
@@ -36,24 +33,32 @@ logger = logging.getLogger(__name__)
 
 
 class OktaTimeout(Exception):
-    """Raised when an Okta API request times out after all retries."""
+    """Raised when an Okta API request times out or is rate-limited out.
+
+    Surfaced when the SDK gives up on a request — either its ``requestTimeout``
+    is exceeded or a 429 outlives its rate-limit retries. Callers that can
+    tolerate a slow Okta call (the membership/ownership fan-out) catch this and
+    continue; the syncer reconciles the drift later.
+    """
 
     pass
 
 
-def _header_value(headers: dict[str, Any], name: str) -> Optional[str]:
-    """Case-insensitive lookup of a response header.
+def _is_timeout_or_rate_limited(error: Any) -> bool:
+    """Whether an SDK error means the request timed out or was rate-limited out.
 
-    ``ApiResponse.headers`` is a plain dict built from the aiohttp response, so
-    header casing is not guaranteed.
+    The SDK returns (rather than raises) a request timeout as an
+    ``asyncio.TimeoutError`` (aiohttp socket timeout) or a bare
+    ``Exception("Request Timeout exceeded.")`` (its cumulative deadline), and a
+    429 that survived its retries as an ``OktaAPIError`` with status 429.
     """
-    if headers is None:
-        return None
-    lowered = name.lower()
-    for key, value in headers.items():
-        if key.lower() == lowered:
-            return value
-    return None
+    if error is None:
+        return False
+    if isinstance(error, asyncio.TimeoutError):
+        return True
+    if isinstance(error, OktaAPIError) and getattr(error, "status", None) == HTTP_TOO_MANY_REQUESTS:
+        return True
+    return str(error) == "Request Timeout exceeded."
 
 
 class OktaService:
@@ -80,14 +85,15 @@ class OktaService:
         self.use_group_owners_api = use_group_owners_api
 
     def _build_client(self) -> OktaClient:
+        # The SDK owns retries and timeouts: it retries 429s (honoring the
+        # X-Rate-Limit-Reset header) up to ``rateLimit.maxRetries`` (default 2),
+        # and ``requestTimeout`` bounds each request — an aiohttp per-request
+        # timeout plus a cumulative deadline across those retries.
         return OktaClient(
             {
                 "orgUrl": f"https://{self.okta_domain}",
                 "token": self.okta_api_token,
-                # ``_retry`` is the facade's single retry/backoff layer. Disable
-                # the SDK's own rate-limit retry so its exponential backoff does
-                # not compound on top of ours.
-                "rateLimit": {"maxRetries": 0},
+                "requestTimeout": REQUEST_TIMEOUT,
             }
         )
 
@@ -136,52 +142,21 @@ class OktaService:
         await client.__aexit__(None, None, None)  # type: ignore[no-untyped-call]
 
     @staticmethod
-    async def _retry(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-        """Retry Okta API requests with specific status codes using exponential backoff.
+    async def _call(coro: Awaitable[Any]) -> Any:
+        """Await an Okta SDK call, mapping timeouts and rate-limit exhaustion to OktaTimeout.
 
-        The generated methods return a tuple whose last element is the error
-        (``None`` on success) and whose second-to-last element is the
-        ``ApiResponse`` (data-returning methods yield ``(data, resp, error)``;
-        void methods yield ``(resp, error)``). Errors are returned, not raised.
+        The SDK enforces the request timeout itself (``requestTimeout`` config)
+        and retries 429s internally, returning errors rather than raising them.
+        The two "gave up / took too long" outcomes — a request timeout and a 429
+        that outlived the SDK's rate-limit retries — are surfaced as
+        ``OktaTimeout`` so callers can choose to swallow them; every other error
+        passes through in the returned tuple for the caller to raise.
         """
-        for attempt in range(1 + REQUEST_MAX_RETRIES):
-            try:
-                result = await asyncio.wait_for(func(*args, **kwargs), timeout=REQUEST_TIMEOUT)
-            except asyncio.TimeoutError as e:
-                if attempt == REQUEST_MAX_RETRIES:
-                    raise OktaTimeout(f"Okta request timed out after {1 + REQUEST_MAX_RETRIES} attempts") from e
-                logger.warning("Timeout on Okta request. Retrying...")
-                await asyncio.sleep(RETRY_BACKOFF_FACTOR * (2**attempt))
-                continue
-
-            if not isinstance(result, tuple) or len(result) < 2:
-                raise Exception("Unexpected result structure from Okta client.")
-
-            error = result[-1]
-            response = result[-2]
-
-            if (
-                attempt == REQUEST_MAX_RETRIES
-                or error is None
-                or ((response is not None) and (response.status_code not in RETRIABLE_STATUS_CODES))
-            ):
-                return result
-
-            if response is not None:
-                logger.warning(f"Got {response.status_code} response from Okta, with error: {error}. Retrying...")
-
-            # If rate limit is hit, then wait until the "X-Rate-Limit-Reset" time, else backoff exponentially
-            if (response is not None) and (response.status_code == HTTP_TOO_MANY_REQUESTS):
-                logger.warning("Rate limit hit, waiting until reset...")
-                current_time = datetime.now(UTC).timestamp()
-                reset_header = _header_value(response.headers, RATE_LIMIT_RESET_HEADER)
-                if reset_header is not None:
-                    wait_time = max(float(reset_header) - current_time, 1)  # Ensure wait_time is at least 1 second
-                else:
-                    wait_time = RETRY_BACKOFF_FACTOR * (2**attempt)
-            else:
-                wait_time = RETRY_BACKOFF_FACTOR * (2**attempt)
-            await asyncio.sleep(wait_time)
+        result = await coro
+        error = result[-1] if isinstance(result, tuple) and result else None
+        if _is_timeout_or_rate_limited(error):
+            raise OktaTimeout(str(error) or "Okta request timed out")
+        return result
 
     async def _paginate(self, list_method: Callable[..., Any], *args: Any, **kwargs: Any) -> list[Any]:
         """Drain a cursor-paginated Okta list endpoint into a single list.
@@ -194,7 +169,7 @@ class OktaService:
         results: list[Any] = []
         after: Optional[str] = None
         while True:
-            result = await OktaService._retry(list_method, *args, limit=LIST_PAGE_LIMIT, after=after, **kwargs)
+            result = await OktaService._call(list_method(*args, limit=LIST_PAGE_LIMIT, after=after, **kwargs))
             # List endpoints are data-returning, so the tuple is (data, resp, error).
             page, response, error = result
             if error is not None:
@@ -208,7 +183,7 @@ class OktaService:
 
     async def get_user(self, userId: str) -> User:
         async with self._okta_client() as client:
-            user, _, error = await OktaService._retry(client.get_user, userId)
+            user, _, error = await OktaService._call(client.get_user(userId))
 
         if error is not None:
             raise Exception(error)
@@ -219,7 +194,7 @@ class OktaService:
 
     async def get_user_schema(self, userTypeId: str) -> UserSchema:
         async with self._okta_client() as client:
-            userType, user_type_resp, error = await OktaService._retry(client.get_user_type, userTypeId)
+            userType, user_type_resp, error = await OktaService._call(client.get_user_type(userTypeId))
 
             if error is not None:
                 raise Exception(error)
@@ -231,7 +206,7 @@ class OktaService:
             user_type_body = json.loads(user_type_resp.raw_data)
             schemaId = user_type_body["_links"]["schema"]["href"].rsplit("/", 1).pop()
 
-            schema, _, error = await OktaService._retry(client.get_user_schema, schemaId)
+            schema, _, error = await OktaService._call(client.get_user_schema(schemaId))
 
         if error is not None:
             raise Exception(error)
@@ -246,9 +221,8 @@ class OktaService:
 
     async def create_group(self, name: str, description: str) -> Group:
         async with self._okta_client() as client:
-            group, _, error = await OktaService._retry(
-                client.add_group,
-                AddGroupRequest(profile=OktaUserGroupProfile(name=name, description=description)),
+            group, _, error = await OktaService._call(
+                client.add_group(AddGroupRequest(profile=OktaUserGroupProfile(name=name, description=description)))
             )
 
         if error is not None:
@@ -261,7 +235,7 @@ class OktaService:
     async def update_group(self, groupId: str, name: str, description: str) -> Group:
         async with self._okta_client() as client:
             # Fetch Existing Group Data
-            existing_group_data, _, get_error = await OktaService._retry(client.get_group, groupId)
+            existing_group_data, _, get_error = await OktaService._call(client.get_group(groupId))
             if get_error is not None:
                 logger.error(f"Failed to fetch existing group {groupId} before update: {get_error}")
                 raise Exception(f"Failed to fetch existing group {groupId} before update: {get_error}")
@@ -289,11 +263,7 @@ class OktaService:
             group_payload = AddGroupRequest(profile=OktaUserGroupProfile.from_dict(new_profile))
 
             # Modify the Update Call to use the new payload
-            group, _, error = await OktaService._retry(
-                client.replace_group,
-                groupId,
-                group_payload,
-            )
+            group, _, error = await OktaService._call(client.replace_group(groupId, group_payload))
 
         if error is not None:
             raise Exception(error)
@@ -313,7 +283,7 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._retry(client.assign_user_to_group, groupId, userId)
+                *_, error = await OktaService._call(client.assign_user_to_group(groupId, userId))
 
             if error is not None:
                 raise Exception(error)
@@ -331,7 +301,7 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._retry(client.unassign_user_from_group, groupId, userId)
+                *_, error = await OktaService._call(client.unassign_user_from_group(groupId, userId))
 
             if error is not None:
                 raise Exception(error)
@@ -342,7 +312,7 @@ class OktaService:
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
     async def get_group(self, groupId: str) -> Group:
         async with self._okta_client() as client:
-            group, _, error = await OktaService._retry(client.get_group, groupId)
+            group, _, error = await OktaService._call(client.get_group(groupId))
 
         if error is not None:
             raise Exception(error)
@@ -387,7 +357,7 @@ class OktaService:
 
     async def delete_group(self, groupId: str) -> None:
         async with self._okta_client() as client:
-            *_, error = await OktaService._retry(client.delete_group, groupId)
+            *_, error = await OktaService._call(client.delete_group(groupId))
 
         if error is not None:
             raise Exception(error)
@@ -405,10 +375,8 @@ class OktaService:
 
         try:
             async with self._okta_client() as client:
-                *_, error = await OktaService._retry(
-                    client.assign_group_owner,
-                    groupId,
-                    AssignGroupOwnerRequestBody(id=userId, type=GroupOwnerType.USER),
+                *_, error = await OktaService._call(
+                    client.assign_group_owner(groupId, AssignGroupOwnerRequestBody(id=userId, type=GroupOwnerType.USER))
                 )
 
             # Ignore error if owner is already assigned to group
@@ -433,7 +401,7 @@ class OktaService:
         try:
             async with self._okta_client() as client:
                 # A group owner of type USER is identified by the user's id.
-                *_, error = await OktaService._retry(client.delete_group_owner, groupId, userId)
+                *_, error = await OktaService._call(client.delete_group_owner(groupId, userId))
 
             if error is not None:
                 raise Exception(error)
