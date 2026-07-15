@@ -540,6 +540,95 @@ class OktaService:
         # loose accessor other okta reads return so callers stay uniform.
         return list(map(lambda owner: User(owner), owners))
 
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/createGroupPushMapping
+    async def create_group_push_mapping(self, appId: str, sourceGroupId: str, targetGroupId: str) -> dict[str, Any]:
+        if not appId:
+            raise ValueError("appId is required")
+        if not sourceGroupId:
+            raise ValueError("sourceGroupId is required")
+        if not targetGroupId:
+            raise ValueError("targetGroupId is required")
+
+        async with self._okta_client() as client:
+            request_executor = client.get_request_executor()
+            request, error = await request_executor.create_request(
+                method="POST",
+                url="/api/v1/apps/{appId}/group-push/mappings".format(appId=appId),
+                body={"sourceGroupId": sourceGroupId, "targetGroupId": targetGroupId, "status": "ACTIVE"},
+                headers={},
+                oauth=False,
+            )
+
+            if error is not None:
+                raise Exception(error)
+
+            response, error = await OktaService._call(request_executor.execute(request))
+
+        if error is not None:
+            raise Exception(error)
+        assert response is not None
+        return response.get_body()
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/deleteGroupPushMapping
+    async def delete_group_push_mapping(self, appId: str, mappingId: str, deleteTargetGroup: bool = False) -> None:
+        if not appId:
+            raise ValueError("appId is required")
+        if not mappingId:
+            raise ValueError("mappingId is required")
+
+        async def _request(method: str, url: str, body: dict[str, Any]) -> None:
+            async with self._okta_client() as client:
+                request_executor = client.get_request_executor()
+                request, error = await request_executor.create_request(
+                    method=method, url=url, body=body, headers={}, oauth=False
+                )
+                if error is not None:
+                    raise Exception(error)
+                _, error = await OktaService._call(request_executor.execute(request))
+            if error is not None:
+                # A 404 means the mapping is already gone; deletion is idempotent, so treat it as
+                # success. This makes a retry or replay (e.g. after a partial earlier attempt)
+                # safe instead of failing on the now-absent mapping.
+                if getattr(error, "status", None) == 404:
+                    return
+                raise Exception(error)
+
+        base = f"/api/v1/apps/{appId}/group-push/mappings/{mappingId}"
+        # Deactivate first; Okta rejects deleting an ACTIVE mapping.
+        await _request("PATCH", base, {"status": "INACTIVE"})
+        await _request("DELETE", f"{base}?deleteTargetGroup={str(deleteTargetGroup).lower()}", {})
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/listGroupPushMappings
+    async def list_group_push_mappings(self, appId: str) -> list[dict[str, Any]]:
+        if not appId:
+            raise ValueError("appId is required")
+
+        async with self._okta_client() as client:
+            request_executor = client.get_request_executor()
+            request, error = await request_executor.create_request(
+                method="GET",
+                url="/api/v1/apps/{appId}/group-push/mappings".format(appId=appId),
+                body={},
+                headers={},
+                oauth=False,
+            )
+            if error is not None:
+                raise Exception(error)
+            response, error = await OktaService._call(request_executor.execute(request))
+            if error is not None:
+                raise Exception(error)
+            assert response is not None
+            # The Group Push Mappings endpoint is paginated via Link headers; follow the
+            # `next` link so callers see every mapping, not just the first page. Otherwise
+            # link discovery silently misses any mapping past the first page.
+            mappings = list(response.get_body() or [])
+            while response.has_next():
+                more, error = await OktaService._call(response.next())
+                if error is not None:
+                    raise Exception(error)
+                mappings.extend(more or [])
+        return mappings
+
 
 # Wrapper class for the Okta API user model
 class User:
