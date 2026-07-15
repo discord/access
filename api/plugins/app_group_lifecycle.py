@@ -28,6 +28,7 @@ class AppGroupLifecycleHook(StrEnum):
     GROUP_DELETED = "group_deleted"
     GROUP_MEMBERS_ADDED = "group_members_added"
     GROUP_MEMBERS_REMOVED = "group_members_removed"
+    SYNC_ALL_GROUPS = "sync_all_groups"
     SYNC_ALL_GROUP_MEMBERSHIP = "sync_all_group_membership"
 
 
@@ -67,6 +68,10 @@ class AppGroupLifecyclePluginConfigProperty:
     default_value: Any = None
     required: bool = False
     validation: dict[str, Any] | None = None
+    # When True, the host rejects edits to this field on update (group config only);
+    # the value may be set freely at create time. Enforced in
+    # validate_app_group_lifecycle_plugin_group_config.
+    immutable: bool = False
 
 
 @dataclass
@@ -123,7 +128,7 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_group_config_properties(
-        self, plugin_id: str | None
+        self, plugin_id: str | None, app_config: dict[str, Any]
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """
         Return the schema for app group configuration plugin data, a mapping of property IDs to descriptors.
@@ -131,15 +136,27 @@ class AppGroupLifecyclePluginSpec:
         Args:
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+            app_config: The app-level configuration for this plugin, so the returned schema
+                        can reflect app-specific constraints (e.g. validation patterns).
+                        Empty when no app context is supplied. An implementation that
+                        doesn't need it may omit this parameter from its signature; pluggy
+                        only passes the arguments the implementation declares.
         """
 
     @hookspec
-    def validate_plugin_group_config(self, config: dict[str, Any], plugin_id: str | None) -> dict[str, str] | None:
+    def validate_plugin_group_config(
+        self, config: dict[str, Any], app_config: dict[str, Any], plugin_id: str | None
+    ) -> dict[str, str] | None:
         """
         Validate app group plugin config before saving.
 
         Args:
-            config: The configuration to validate.
+            config: The group configuration to validate.
+            app_config: The app-level configuration for this plugin, for validating the
+                        group config against app-level settings (e.g. an allowed pattern).
+                        An implementation that doesn't need it may omit this parameter from
+                        its signature; pluggy only passes the arguments the implementation
+                        declares.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
 
@@ -248,16 +265,55 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
         """
-        Bulk sync all group memberships for an app. This is invoked periodically by the CLI command `access sync-app-group-memberships`.
+        Bulk reconcile all of an app's groups (membership and any external group state).
+        Invoked periodically by the `access sync-app-groups` CLI command.
 
         Args:
             session: The Access database AsyncSession. Await ORM calls on it.
-            app: The app for which to sync all group membership.
+            app: The app for which to sync all groups.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
+
+    @hookspec
+    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+        """
+        Deprecated alias for ``sync_all_groups``, retained so plugins implementing the
+        older, narrower hook name keep being invoked. New plugins should implement
+        ``sync_all_groups`` instead; a plugin should implement only one of the two.
+
+        Args:
+            session: The Access database AsyncSession. Await ORM calls on it.
+            app: The app for which to sync all groups.
+            plugin_id: If provided, only the plugin matching this ID should respond.
+                       If None, all plugins may respond.
+        """
+
+
+async def invoke_sync_all_groups(
+    session: AsyncSession, app: App, plugin_id: str | None
+) -> tuple[list[Any], list[BaseException]]:
+    """Invoke the bulk-sync hook for an app, honoring both the current ``sync_all_groups``
+    name and the deprecated ``sync_all_group_membership`` alias. A plugin should implement
+    only one of the two, so this dispatches to each exactly once, awaiting both to completion.
+
+    Both dispatches share ``run_hooks_to_completion`` (asyncio.wait, not gather): one plugin
+    failing never cancels its siblings. Returns the aggregated ``(results, exceptions)`` so the
+    caller can decide whether to commit or roll back.
+    """
+    hook = get_app_group_lifecycle_hook()
+    results: list[Any] = []
+    exceptions: list[BaseException] = []
+    for hook_name in (AppGroupLifecycleHook.SYNC_ALL_GROUPS, AppGroupLifecycleHook.SYNC_ALL_GROUP_MEMBERSHIP):
+        r, e = await run_hooks_to_completion(
+            getattr(hook, hook_name)(session=session, app=app, plugin_id=plugin_id),
+            context=f"{hook_name} for app '{getattr(app, 'name', None)}'",
+        )
+        results.extend(r)
+        exceptions.extend(e)
+    return results, exceptions
 
 
 def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
@@ -466,6 +522,43 @@ def set_status_value(app_or_group: App | AppGroup, status_property_name: str, va
     app_or_group.plugin_data[plugin_id] = asdict(data)
 
 
+def set_config_value(app_or_group: App | AppGroup, config_property_name: str, value: Any, plugin_id: str) -> None:
+    """
+    Set a configuration value for a particular app group lifecycle plugin.
+    Should only be called by the plugin itself (e.g. to backfill config inferred
+    from an external system during reconciliation).
+
+    Args:
+        app_or_group: The app or group to set the configuration value for.
+        config_property_name: The name of the configuration property to set.
+        value: The value to set.
+        plugin_id: The ID of the plugin.
+    """
+    data = _get_data_for_plugin(app_or_group.plugin_data, plugin_id)
+    data.configuration[config_property_name] = value
+    app_or_group.plugin_data[plugin_id] = asdict(data)
+
+
+def is_plugin_config_changed(old_plugin_data: dict[str, Any], new_plugin_data: dict[str, Any], plugin_id: str) -> bool:
+    """
+    Determine whether a particular app group lifecycle plugin's configuration differs
+    between two plugin_data payloads. Only the plugin's configuration is compared; status
+    differences are ignored (plugins write their own status, and treating those writes as
+    a change would re-trigger configuration-driven reconciliation in a loop).
+
+    Args:
+        old_plugin_data: The existing plugin_data.
+        new_plugin_data: The candidate plugin_data.
+        plugin_id: The ID of the plugin whose configuration to compare.
+
+    Returns:
+        True if the plugin's configuration differs between the two payloads.
+    """
+    old_config = _get_data_for_plugin(old_plugin_data, plugin_id).configuration
+    new_config = _get_data_for_plugin(new_plugin_data, plugin_id).configuration
+    return old_config != new_config
+
+
 def merge_app_lifecycle_plugin_data(app_or_group: App | AppGroup, old_plugin_data: dict[str, Any]) -> None:
     """
     Update the app lifecycle plugin data on the new app or group object by merging with the plugin data from the existing object.
@@ -528,19 +621,22 @@ def get_app_group_lifecycle_plugin_app_config_properties(
 
 
 def get_app_group_lifecycle_plugin_group_config_properties(
-    plugin_id: str,
+    plugin_id: str, app_plugin_data: dict[str, Any] | None = None
 ) -> dict[str, AppGroupLifecyclePluginConfigProperty]:
     """
     Get the group-level configuration properties for a particular app group lifecycle plugin.
 
     Args:
         plugin_id: The ID of the plugin which should respond.
+        app_plugin_data: The owning app's plugin data, so the schema can reflect app-level
+                         settings (e.g. validation patterns). Defaults to empty (no app context).
 
     Returns:
         A dictionary mapping configuration property names to schemas.
     """
+    app_configuration = _get_data_for_plugin(app_plugin_data or {}, plugin_id).configuration
     hook = get_app_group_lifecycle_hook()
-    return _get_hook_call_response(hook.get_plugin_group_config_properties, plugin_id)
+    return _get_hook_call_response(hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration)
 
 
 def validate_app_group_lifecycle_plugin_app_config(plugin_data: dict[str, Any], plugin_id: str) -> dict[str, str]:
@@ -559,20 +655,54 @@ def validate_app_group_lifecycle_plugin_app_config(plugin_data: dict[str, Any], 
     return _get_hook_call_response(hook.validate_plugin_app_config, plugin_id, config=configuration)
 
 
-def validate_app_group_lifecycle_plugin_group_config(plugin_data: dict[str, Any], plugin_id: str) -> dict[str, str]:
+def validate_app_group_lifecycle_plugin_group_config(
+    plugin_data: dict[str, Any],
+    plugin_id: str,
+    app_plugin_data: dict[str, Any] | None = None,
+    old_plugin_data: dict[str, Any] | None = None,
+) -> dict[str, str]:
     """
     Validate the group-level configuration data for a particular app group lifecycle plugin.
 
     Args:
         plugin_data: The group's plugin data property.
         plugin_id: The ID of the plugin which should respond.
+        app_plugin_data: The owning app's plugin data, so the plugin can validate the group
+                         config against app-level settings. Defaults to empty (no app context).
+        old_plugin_data: The group's existing plugin data, supplied on update so the host can
+                         reject edits to immutable config properties. Omitted on create.
 
     Returns:
         A dictionary mapping any invalid fields to error messages.
     """
     configuration = _get_data_for_plugin(plugin_data, plugin_id).configuration
+    app_configuration = _get_data_for_plugin(app_plugin_data or {}, plugin_id).configuration
     hook = get_app_group_lifecycle_hook()
-    return _get_hook_call_response(hook.validate_plugin_group_config, plugin_id, config=configuration)
+    errors = dict(
+        _get_hook_call_response(
+            hook.validate_plugin_group_config, plugin_id, config=configuration, app_config=app_configuration
+        )
+    )
+
+    # On update, apply immutable-field semantics generically (plugins only declare
+    # `immutable=True`): a changed immutable field is rejected, while a plugin error for an
+    # *unchanged* immutable field is suppressed -- the user can't action it on this update
+    # (the field is locked), and it was acceptable at creation or was adopted/grandfathered
+    # from external state, so it must not block the rest of the update.
+    if old_plugin_data is not None:
+        old_configuration = _get_data_for_plugin(old_plugin_data, plugin_id).configuration
+        properties = _get_hook_call_response(
+            hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration
+        )
+        for name, prop in properties.items():
+            if not getattr(prop, "immutable", False):
+                continue
+            if old_configuration.get(name) != configuration.get(name):
+                errors.setdefault(name, f"The '{name}' field cannot be changed after creation")
+            else:
+                errors.pop(name, None)
+
+    return errors
 
 
 def get_app_group_lifecycle_plugin_app_status_properties(
