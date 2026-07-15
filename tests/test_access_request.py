@@ -334,6 +334,9 @@ async def test_put_access_request_by_non_owner(
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
 
+    # Re-fetch: the reject's deferred completion notification expunged the
+    # request from the shared session (a plain attribute read would fail).
+    access_request_by_non_owner = await db.session.get(AccessRequest, access_request_by_non_owner.id)
     data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requested_group"]["name"] == okta_group.name

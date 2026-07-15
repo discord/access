@@ -538,17 +538,20 @@ the pure metadata/config/status/validation hooks stay **sync**. Plugin-contribut
 `access.commands` CLI commands run as ordinary Click commands and must drive their own
 `asyncio.run(...)`. The README's plugin section documents this in full.
 
-**Notification completion hooks receive read-only, detached ORM snapshots.**
-`access_request_completed` / `access_role_request_completed` fire from the post-response fan-out
-drain — after the request session has committed and been torn down — so the operations
-(`ModifyGroupUsers` / `ModifyRoleGroups`) `expunge` the payload (the request, its `group`, the
-`requester`, the `approvers`) from the session *before* deferring, leaving their already-loaded
+**Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification
+raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group
+requests — is dispatched through `defer_notification` (`api/operations/_fan_out.py`), which spawns
+`send_notification` and hands it to the post-response drain, so it fires *after* the request session
+has committed and been torn down. `defer_notification` `expunge`s the payload (the request, its
+`group`/`role`, the `requester`, the `approvers`) *before* deferring, leaving their already-loaded
 attributes readable. A hook may therefore read only what the operation eager-loaded; touching an
 unloaded relationship or otherwise triggering a lazy load raises (`lazy="raise_on_sql"` /
 `DetachedInstanceError`), and the failure is logged then swallowed — silently dropping that
 notification. So if a notifier needs a wider object graph, the operation must eager-load it before
-dispatch (don't reach for a lazy load in the hook). This contract is documented for plugin authors
-in `NotificationPluginSpec` and the README.
+dispatch (don't reach for a lazy load in the hook). New request-path operations that notify should
+call `defer_notification`, never `send_notification` directly. (The syncer's `access_expiring_*`
+hooks are the exception — a batch CLI job, so they run inline.) Documented for plugin authors in
+`NotificationPluginSpec` and the README.
 
 For hook signatures, adding a new plugin type, and implementing an operator override, read the
 hookspecs in `api/plugins/`.
