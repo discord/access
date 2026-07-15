@@ -22,7 +22,8 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.tag import coalesce_ended_at
 from api.operations.approve_group_request import ApproveGroupRequest
 from api.operations.reject_group_request import RejectGroupRequest
-from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
+from api.operations._fan_out import defer_notification
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -203,9 +204,11 @@ class CreateGroupRequest:
 
                 return group_request
 
-        # Send notification to approvers
-        await send_notification(
+        # Send notification to approvers (deferred to after the response)
+        await defer_notification(
+            db.session,
             NotificationHook.ACCESS_GROUP_REQUEST_CREATED,
+            detach=[group_request, requester, *approvers],
             group_request=group_request,
             requester=requester,
             approvers=approvers,

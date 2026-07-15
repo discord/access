@@ -31,9 +31,12 @@ import asyncio
 import contextvars
 import logging
 from collections.abc import Iterable
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from api.plugins import NotificationHook
 
 logger = logging.getLogger("api")
 
@@ -123,6 +126,38 @@ async def run_deferred_fan_out(collected: _Collected) -> None:
     after the response has been sent (and the request session torn down)."""
     for tasks, context in collected:
         await drain_fan_out_tasks(tasks, context)
+
+
+async def defer_notification(
+    session: AsyncSession,
+    hook_name: "NotificationHook",
+    *,
+    detach: Iterable[Any] = (),
+    **kwargs: Any,
+) -> None:
+    """Dispatch a notification hook, deferred to the post-response `BackgroundTask`
+    when the request opted into deferral (via the `defer_fan_out` router
+    dependency), else drained inline (CLI/syncer/direct-`execute()`).
+
+    All request-path notifications route through here so the HTTP response
+    returns as soon as the local DB state commits, rather than blocking on the
+    notification's network I/O.
+
+    `detach` names the ORM objects the hook will read; they are expunged (only
+    when deferring) so the async hook can read their already-loaded attributes
+    after the request session has been expired (the router's `db.expire_all()`)
+    and torn down — see `detach_for_deferred_fan_out` and the read-only detached
+    contract on `NotificationPluginSpec`. Resolve everything the hook needs
+    before calling this (the spawned task must not touch `db.session`).
+    """
+    # Local import: `send_notification` lives in `api.plugins`, which the
+    # operations layer imports — importing it at module scope here would risk a
+    # cycle, and it isn't needed until dispatch.
+    from api.plugins import send_notification
+
+    detach_for_deferred_fan_out(session, detach)
+    task = asyncio.create_task(send_notification(hook_name, **kwargs))
+    await defer_or_drain_fan_out([task], f"notification {hook_name}")
 
 
 def detach_for_deferred_fan_out(session: AsyncSession, objects: Iterable[Any]) -> None:

@@ -25,7 +25,8 @@ from api.models.tag import coalesce_ended_at
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.plugins import NotificationHook, send_notification
+from api.operations._fan_out import defer_notification
+from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -277,8 +278,10 @@ class ApproveGroupRequest:
         if self.notify:
             requester = await db.session.get(OktaUser, group_request.requester_user_id)
             approvers = await get_all_possible_request_approvers(group_request)
-            await send_notification(
+            await defer_notification(
+                db.session,
                 NotificationHook.ACCESS_GROUP_REQUEST_COMPLETED,
+                detach=[group_request, created_group, requester, *approvers],
                 group_request=group_request,
                 group=created_group,
                 requester=requester,

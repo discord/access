@@ -23,7 +23,8 @@ from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
 from api.operations.approve_access_request import ApproveAccessRequest
 from api.operations.reject_access_request import RejectAccessRequest
-from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access, send_notification
+from api.operations._fan_out import defer_notification
+from api.plugins import ConditionalAccessHook, NotificationHook, evaluate_conditional_access
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -154,8 +155,10 @@ class CreateAccessRequest:
 
                 return access_request
 
-        await send_notification(
+        await defer_notification(
+            db.session,
             NotificationHook.ACCESS_REQUEST_CREATED,
+            detach=[access_request, group, requester, *approvers],
             access_request=access_request,
             group=group,
             requester=requester,

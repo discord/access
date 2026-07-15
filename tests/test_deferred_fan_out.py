@@ -275,3 +275,49 @@ async def test_deferred_notification_reads_orm_after_router_expire_all(
     # approvers is a (possibly empty) list of detached OktaUser snapshots; the
     # reads above must not raise regardless of how many there are.
     assert isinstance(payload["approver_emails"], list)
+
+
+async def test_deferred_notification_on_reject_reads_orm_after_expire_all(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_request: AccessRequest,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Rejecting over HTTP also defers its completion notification — reject used
+    to dispatch it inline (blocking the response). The hook must still read the
+    expunged payload after the router's `db.expire_all()`/teardown."""
+    db.session.add(user)
+    db.session.add(okta_group)
+    await db.session.commit()
+    access_request.requested_group_id = okta_group.id
+    access_request.requester_user_id = user.id
+    db.session.add(access_request)
+    await db.session.commit()
+
+    seen: list[dict[str, Any]] = []
+    hook = get_notification_hook()
+
+    def _completed(**kwargs: Any) -> list[Any]:
+        async def _impl() -> None:
+            ar = kwargs["access_request"]
+            grp = kwargs["group"]
+            req = kwargs["requester"]
+            seen.append({"status": ar.status, "group_name": grp.name, "requester_email": req.email})
+
+        return [_impl()]
+
+    mocker.patch.object(hook, "access_request_completed", side_effect=_completed)
+
+    url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
+    # Default current user (an access admin) rejects the request.
+    rep = await client.put(url, json={"approved": False, "reason": "not needed"})
+
+    assert rep.status_code == 200
+    assert len(seen) == 1
+    assert seen[0]["status"] == AccessRequestStatus.REJECTED
+    assert seen[0]["group_name"] == okta_group.name
+    assert seen[0]["requester_email"] == user.email

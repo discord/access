@@ -402,6 +402,9 @@ async def test_put_role_request_by_non_owner(
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 200
 
+    # Re-fetch: the reject's deferred completion notification expunged the
+    # request from the shared session (a plain attribute read would fail).
+    role_request_by_non_owner = await db.session.get(RoleRequest, role_request_by_non_owner.id)
     data = rep.json()
     assert data["requester"]["email"] == user.email
     assert data["requester_role"]["name"] == role_group.name

@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 
 import logging
 
@@ -9,7 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
-from api.operations._fan_out import defer_or_drain_fan_out, detach_for_deferred_fan_out
+from api.operations._fan_out import defer_notification, defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -25,7 +25,7 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.plugins import NotificationHook, send_notification
+from api.plugins import NotificationHook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
@@ -741,7 +741,6 @@ class ModifyGroupUsers:
         # never db.session access (a session cannot be used concurrently, and
         # under async SQLAlchemy that raises rather than interleaving).
         if self.notify:
-            notification_payload: list[object] = []
             for access_request in approved_access_requests:
                 group = access_request.requested_group
                 # `resolved_at` was assigned func.now() and expired at flush;
@@ -749,16 +748,19 @@ class ModifyGroupUsers:
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
                 approvers = await get_all_possible_request_approvers(access_request)
-                notification_payload.extend([access_request, group, requester, *approvers])
-                async_tasks.append(
-                    asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
+                # Deferred to the post-response drain; `defer_notification` expunges
+                # the payload so the async hook can read it after the router's
+                # `db.expire_all()` and session teardown.
+                await defer_notification(
+                    db.session,
+                    NotificationHook.ACCESS_REQUEST_COMPLETED,
+                    detach=[access_request, group, requester, *approvers],
+                    access_request=access_request,
+                    group=group,
+                    requester=requester,
+                    approvers=approvers,
+                    notify_requester=True,
                 )
-            # The fan-out (incl. these notify tasks) is drained after the response,
-            # once the router's db.expire_all() and session teardown have run.
-            # Detach the payload so the async hooks read already-loaded attributes
-            # rather than refreshing on a dead session. Done after the loop so the
-            # per-request queries above still run against the live session.
-            detach_for_deferred_fan_out(db.session, notification_payload)
 
         await defer_or_drain_fan_out(async_tasks, f"ModifyGroupUsers for group {self.group_id}")
 
@@ -775,19 +777,3 @@ class ModifyGroupUsers:
         access_request.approved_membership_id = added_okta_user_group_member.id
 
         return access_request
-
-    async def _notify_access_request(
-        self,
-        access_request: AccessRequest,
-        group: OktaGroup,
-        requester: Optional[OktaUser],
-        approvers: Set[OktaUser],
-    ) -> None:
-        await send_notification(
-            NotificationHook.ACCESS_REQUEST_COMPLETED,
-            access_request=access_request,
-            group=group,
-            requester=requester,
-            approvers=approvers,
-            notify_requester=True,
-        )

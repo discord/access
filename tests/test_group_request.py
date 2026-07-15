@@ -2278,7 +2278,9 @@ async def test_put_group_request_ignores_legacy_resolution_reason_alias_via_http
     rep = await client.put(resolve_url, json={"approved": False, "resolution_reason": "should be dropped"})
     assert rep.status_code == 200
 
-    await db.session.refresh(group_request)
+    # Re-fetch: the resolve's deferred completion notification expunged the
+    # request from the shared session (a plain refresh would fail — detached).
+    group_request = await db.session.get(GroupRequest, group_request.id)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolution_reason == ""
 
@@ -2305,7 +2307,9 @@ async def test_put_group_request_persists_reason_via_http(
     rep = await client.put(resolve_url, json={"approved": False, "reason": "duplicate work"})
     assert rep.status_code == 200
 
-    await db.session.refresh(group_request)
+    # Re-fetch: the resolve's deferred completion notification expunged the
+    # request from the shared session (a plain refresh would fail — detached).
+    group_request = await db.session.get(GroupRequest, group_request.id)
     assert group_request.status == AccessRequestStatus.REJECTED
     assert group_request.resolution_reason == "duplicate work"
 
@@ -2595,9 +2599,9 @@ async def test_approve_app_group_request_with_non_conforming_resolved_name_is_re
     )
     assert rep.status_code == 200
 
-    await db.session.refresh(group_request)
-    # Re-fetch instead of reusing `group_request` — mypy narrows `status` to
-    # PENDING after the assert above and doesn't know refresh() mutates it.
+    # Re-fetch instead of reusing `group_request` — the approve's deferred
+    # completion notification expunged it from the session (so a refresh would
+    # fail), and mypy also narrows `status` to PENDING from the assert above.
     approved_request = await db.session.get(GroupRequest, group_request.id)
     assert approved_request is not None
     assert approved_request.status == AccessRequestStatus.APPROVED
