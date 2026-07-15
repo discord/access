@@ -361,11 +361,13 @@ function GroupDialog(props: GroupDialogProps) {
             <AppGroupLifecyclePluginConfigurationForm
               entityType="group"
               selectedPluginId={appGroupLifecyclePluginId}
+              appId={(props.app ?? (props.group as AppGroupDetail)?.app)?.id}
               currentConfig={
                 appGroupLifecyclePluginId && (props.group as any)?.plugin_data
                   ? (props.group as any).plugin_data[appGroupLifecyclePluginId]?.configuration || {}
                   : {}
               }
+              isExistingEntity={props.group != null}
             />
           )}
         </DialogContent>
