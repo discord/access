@@ -14,7 +14,7 @@ def health_command() -> None:
     Plugin-contributed commands are registered on the CLI group as-is, so
     they drive their own event loop: the command body is an ``async def``
     executed with one ``asyncio.run`` per invocation, mirroring the
-    ``_with_app_context`` pattern in ``api/manage.py``.
+    ``_with_app_context`` pattern in ``api/cli.py``.
     """
     from api.config import settings
     from api.database import build_async_engine

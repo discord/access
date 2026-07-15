@@ -242,9 +242,9 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
-        docs_url="/api/docs" if settings.DEBUG else None,
+        docs_url="/api/docs" if settings.expose_api_docs else None,
         redoc_url=None,
-        openapi_url="/api/openapi.json" if settings.DEBUG else None,
+        openapi_url="/api/openapi.json" if settings.expose_api_docs else None,
         # Defense-in-depth: every endpoint goes through the auth gate.
         # `require_authenticated` short-circuits for the small allowlist
         # (health, OIDC login). Endpoints still declare `CurrentUserId`

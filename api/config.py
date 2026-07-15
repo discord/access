@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     def TESTING(self) -> bool:
         return self.ENV == "test"
 
+    @property
+    def expose_api_docs(self) -> bool:
+        """Whether to mount `/api/docs` and `/api/openapi.json`.
+
+        Always on in development; otherwise gated behind `ENABLE_API_DOCS`."""
+        return self.DEBUG or self.ENABLE_API_DOCS
+
     CLIENT_ORIGIN_URL: Optional[str] = None
 
     # Comma-separated Host header allowlist for TrustedHostMiddleware
@@ -156,6 +163,15 @@ class Settings(BaseSettings):
 
     # Behavior toggles
     REQUIRE_DESCRIPTIONS: bool = False
+
+    # Expose the auto-generated OpenAPI docs (`/api/docs`) and schema
+    # (`/api/openapi.json`) outside development. These are always served in
+    # development (`DEBUG`); flipping this on additionally exposes them in
+    # staging/production. Off by default so deployments don't publish their
+    # API surface unless an operator opts in. Both routes stay behind the
+    # app-wide `require_authenticated` gate regardless, so enabling this
+    # exposes the docs to authenticated users only, not the public internet.
+    ENABLE_API_DOCS: bool = False
 
     # MCP server. Off-by-default; flipping this to True mounts the FastMCP
     # server at /mcp and activates the MCP auth middleware. Most operators

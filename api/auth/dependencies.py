@@ -134,8 +134,9 @@ AUTH_ALLOWLIST_PREFIXES = ("/api/healthz", "/oidc/")
 async def require_authenticated(request: Request, db: DbSession) -> None:
     """Enforce authentication on every request except `/api/healthz` and
     the OIDC login endpoints. `/api/docs` and `/api/openapi.json` are
-    intentionally inside the gate even though they're DEBUG-only, as is
-    the catch-all SPA route."""
+    intentionally inside the gate — they're served in development and,
+    when `ENABLE_API_DOCS` is set, in staging/production, but always to
+    authenticated users only, as is the catch-all SPA route."""
     path = request.url.path
     if any(path == p.rstrip("/") or path.startswith(p) for p in AUTH_ALLOWLIST_PREFIXES):
         return

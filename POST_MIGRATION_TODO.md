@@ -26,30 +26,6 @@ with the schema. 281/281 tests green.
 
 ---
 
-## Auth
-
-### 9. Cache JWKS lookups smarter
-
-Today: `cachetools.TTLCache(maxsize=1, ttl=3600)` per process. Production
-scale may want:
-- Redis-backed cache shared across replicas, or
-- A sidecar that pre-fetches and refreshes
-- Move CF / OIDC verification entirely into middleware so dependencies don't
-  re-verify on each call
-
----
-
-## Background Work / Long-Running Operations
-
-(Note: the previous "Replace the in-process syncer.py loop with a
-proper task runner" entry was removed — the syncer already runs as a
-Kubernetes CronJob via `examples/kubernetes/cron-job-syncer.yaml`,
-invoking `access sync` every 15 minutes. The Dockerfile's default
-`gunicorn` CMD is overridable in the K8s manifest. README.md §
-Kubernetes Deployment and CronJobs already documents this pattern.)
-
----
-
 ## Tooling
 
 ### 14. Strict type checking on routers + schemas
@@ -75,16 +51,6 @@ Either:
   generates fixtures from Pydantic models — keeps test data and request
   schemas in sync automatically.
 
-### 17. Golden-file response snapshots
-
-Add snapshot tests for the major endpoints (`GET /api/groups`,
-`GET /api/groups/{id}`, `GET /api/users/{id}`, `GET /api/requests`,
-`GET /api/audit/users`). Lets future changes to schemas surface as
-diffable test failures rather than runtime regressions for clients.
-
-Recommend `syrupy` for the snapshot framework — JSON-aware diffs and
-clean `--snapshot-update` ergonomics.
-
 ---
 
 ## Security follow-ups (out of scope for the migration PR)
@@ -96,14 +62,3 @@ Drop `'unsafe-inline'` from `script-src` and `style-src` in
 `SecurityHeadersMiddleware` and thread it through `build/index.html`
 + the React build pipeline so every inline `<script>` / `<style>`
 carries the nonce. Touches the frontend; not a same-PR fix.
-
-### 21. Trust proxy `X-Forwarded-*` only from an allowlist
-
-`api/middleware.py:_client_ip` reads `X-Forwarded-For` / `X-Real-IP`
-from any caller, so an attacker that can reach the FastAPI service
-directly can forge `RequestContext.ip` (audit-log only — no
-auth/rate-limit decision uses it). Configure
-`uvicorn --forwarded-allow-ips=<LB CIDR>` in the production
-deployment (or use Starlette's `ProxyHeadersMiddleware` with an
-explicit `TRUSTED_PROXIES`). Document the setting in the K8s example
-manifests.
