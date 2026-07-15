@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from fastapi import APIRouter
-
+from sqlalchemy import select
 
 from api.auth.dependencies import CurrentUserId
+from api.database import DbSession
+from api.models import App
 from api.plugins.app_group_lifecycle import (
     PluginNotFoundError,
     get_app_group_lifecycle_plugin_app_config_properties,
@@ -60,12 +62,22 @@ async def app_config_props(plugin_id: str, current_user_id: CurrentUserId) -> Ap
     "/app-group-lifecycle/{plugin_id}/group-config-props",
     name="app_group_lifecycle_plugin_group_config_props",
 )
-async def group_config_props(plugin_id: str, current_user_id: CurrentUserId) -> AppGroupLifecyclePluginGroupConfig:
+async def group_config_props(
+    plugin_id: str, current_user_id: CurrentUserId, db: DbSession, app_id: str | None = None
+) -> AppGroupLifecyclePluginGroupConfig:
     _ensure_plugin(plugin_id)
+    # When an app_id is supplied, pass its plugin config so the schema can reflect
+    # app-level constraints.
+    app_plugin_data = None
+    if app_id is not None:
+        app = (await db.scalars(select(App).where(App.id == app_id).where(App.deleted_at.is_(None)))).first()
+        app_plugin_data = app.plugin_data if app is not None else None
     return AppGroupLifecyclePluginGroupConfig.model_validate(
         {
             name: asdict(schema)
-            for name, schema in get_app_group_lifecycle_plugin_group_config_properties(plugin_id).items()
+            for name, schema in get_app_group_lifecycle_plugin_group_config_properties(
+                plugin_id, app_plugin_data
+            ).items()
         }
     )
 

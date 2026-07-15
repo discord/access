@@ -34,6 +34,7 @@ from api.operations import (
     CreateGroup,
     DeleteGroup,
     ModifyGroupDetails,
+    ModifyGroupPluginData,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
@@ -42,7 +43,6 @@ from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
-from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
     bind_role_group_map_own_groups,
     group_tag_map_options,
@@ -107,6 +107,34 @@ async def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | 
     if group is not None:
         bind_role_group_map_own_groups(group)
     return group
+
+
+def _validate_group_plugin_config(
+    plugin_data: dict[str, Any],
+    app_plugin_data: dict[str, Any],
+    plugin_id: str | None,
+    old_plugin_data: dict[str, Any] | None = None,
+) -> None:
+    """Validate group-level plugin_data against the configured plugin's schema, raising
+    HTTP 400 on invalid config. No-op when the app has no app group lifecycle plugin.
+
+    Callers resolve the plugin id and the owning app's plugin_data themselves, since
+    group-create and group-update obtain them differently (a freshly-built group can't
+    lazy-load its app). On update, callers also pass the existing group's plugin_data as
+    `old_plugin_data` so the host can reject changes to immutable config fields."""
+    if plugin_id is None:
+        return
+
+    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+    try:
+        errors = validate_app_group_lifecycle_plugin_group_config(
+            plugin_data, plugin_id, app_plugin_data, old_plugin_data=old_plugin_data
+        )
+    except ValueError as e:
+        raise HTTPException(400, f"plugin_data: {e}") from e
+    if errors:
+        raise HTTPException(400, f"plugin_data: {errors}")
 
 
 @router.get("", name="groups")
@@ -201,6 +229,14 @@ async def post_group(
             400, "App owner groups cannot be created directly. They are created automatically when an app is created."
         )
 
+    if isinstance(group, AppGroup) and group.plugin_data:
+        # group.app uses lazy="raise_on_sql" and the group isn't in the session yet,
+        # so load the App directly to resolve the plugin id (mirrors put_group's pattern).
+        _app = (await db.scalars(select(App).where(App.id == group.app_id).where(App.deleted_at.is_(None)))).first()
+        plugin_id = _app.app_group_lifecycle_plugin if _app is not None else None
+        app_plugin_data = _app.plugin_data if _app is not None else {}
+        _validate_group_plugin_config(group.plugin_data, app_plugin_data, plugin_id)
+
     try:
         created = await CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
     except ValueError as e:
@@ -217,10 +253,7 @@ async def put_group(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> GroupDetail:
-    from api.plugins.app_group_lifecycle import (
-        get_app_group_lifecycle_plugin_to_invoke,
-        validate_app_group_lifecycle_plugin_group_config,
-    )
+    from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugin_to_invoke
 
     fields_set = body.model_fields_set
     group = await _load_group_with_options(db, group_id)
@@ -231,16 +264,16 @@ async def put_group(
     # `null`) to an empty string for ModifyGroupDetails.
     description = (body.description or "") if "description" in fields_set else None
 
-    # Validate plugin_data for app groups against the configured plugin's schema.
+    # Validate plugin_data for app groups against the configured plugin's schema. The
+    # group is loaded with its app (joinedload), so the app's plugin config is available.
     if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set and isinstance(group, AppGroup):
-        plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-        if plugin_id is not None:
-            try:
-                errors = validate_app_group_lifecycle_plugin_group_config(body.plugin_data or {}, plugin_id)
-            except ValueError as e:
-                raise HTTPException(400, f"plugin_data: {e}") from e
-            if errors:
-                raise HTTPException(400, f"plugin_data: {errors}")
+        app_plugin_data = group.app.plugin_data if group.app is not None else {}
+        _validate_group_plugin_config(
+            body.plugin_data,
+            app_plugin_data,
+            get_app_group_lifecycle_plugin_to_invoke(group),
+            old_plugin_data=group.plugin_data or {},
+        )
 
     if not await _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
@@ -390,16 +423,13 @@ async def put_group(
             raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
-    old_plugin_data = group.plugin_data
     if new_plugin_data is not None:
-        group.plugin_data = new_plugin_data
-        if old_plugin_data and group.plugin_data != old_plugin_data:
-            for key in old_plugin_data:
-                if key not in group.plugin_data:
-                    group.plugin_data[key] = old_plugin_data[key]
-            if type(group) is AppGroup:
-                merge_app_lifecycle_plugin_data(group, old_plugin_data)
-    await db.commit()
+        # ModifyGroupPluginData owns the merge (preserving omitted plugin entries and
+        # per-plugin status) and fires group_updated only when the plugin's configuration
+        # actually changes. It commits internally.
+        await ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+    else:
+        await db.commit()
 
     await ModifyGroupTags(
         group=group,
