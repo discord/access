@@ -448,7 +448,7 @@ async def test_create_app(
     await db.session.commit()
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
@@ -496,7 +496,7 @@ async def test_create_app_with_initial_owners(
     await db.session.commit()
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
@@ -591,7 +591,9 @@ async def test_create_app_with_additional_groups(
     assert rep.status_code == 400
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
@@ -657,7 +659,7 @@ async def test_create_app_with_name_collision(
     await db.session.commit()
 
     create_group_spy = mocker.patch.object(
-        okta, "create_group", return_value=Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
@@ -700,7 +702,9 @@ async def test_create_app_additional_group_collision_converts_correct_group(
     # group leaves existing_owner_group == None, so ModifyGroupType(group=None) raises
     # AttributeError and the request 500s.
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -793,7 +797,9 @@ async def test_create_app_with_and_without_description(
     require_descriptions = settings.REQUIRE_DESCRIPTIONS
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -910,7 +916,9 @@ async def test_create_app_fails_when_preexisting_owner_group_is_occupied(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -942,7 +950,9 @@ async def test_create_app_succeeds_with_empty_preexisting_owner_group(
     url_for: Any,
 ) -> None:
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
@@ -978,7 +988,9 @@ async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     await db.session.commit()
 
     mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group({"id": cast(FakerWithPyStr, faker).pystr()})
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")

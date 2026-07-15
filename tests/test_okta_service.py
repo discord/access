@@ -2,11 +2,24 @@ import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from okta.models.add_group_request import AddGroupRequest
+from okta.models.group import Group as OktaGroupType
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
-from okta.request_executor import RequestExecutor
 
 from api.services.okta_service import OktaService, is_managed_group
 from tests.factories import UserFactory
+
+
+def _okta_group(allow_discord_access: Any = "unset") -> OktaGroupType:
+    """Build a real Okta Group whose profile optionally carries the custom
+    ``allow_discord_access`` attribute (which lives in the profile's
+    additional_properties)."""
+    profile: dict[str, Any] = {"name": "n", "description": "d"}
+    if allow_discord_access != "unset":
+        profile["allow_discord_access"] = allow_discord_access
+    group = OktaGroupType.from_dict({"id": "123456789", "type": "OKTA_GROUP", "profile": profile})
+    assert group is not None
+    return group
 
 
 def test_is_managed_group_with_allow_discord_access_false() -> None:
@@ -14,13 +27,7 @@ def test_is_managed_group_with_allow_discord_access_false() -> None:
     with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_discord_access"):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        # Create a mock of the Group class
-        group = MagicMock()
-        group.profile = MagicMock()
-        group.profile.allow_discord_access = False  # Set the profile attribute to False
-        group.type = "OKTA_GROUP"
-        group.id = "123456789"  # Example group ID
-
+        group = _okta_group(allow_discord_access=False)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -33,13 +40,7 @@ def test_is_managed_group_with_allow_discord_access_true() -> None:
     with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", "allow_discord_access"):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        # Create a mock of the Group class
-        group = MagicMock()
-        group.profile = MagicMock()
-        group.profile.allow_discord_access = True  # Set the profile attribute to True
-        group.type = "OKTA_GROUP"
-        group.id = "123456789"  # Example group ID
-
+        group = _okta_group(allow_discord_access=True)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -52,13 +53,7 @@ def test_is_managed_group_with_allow_discord_access_undefined() -> None:
     with patch("api.config.OKTA_GROUP_PROFILE_CUSTOM_ATTR", None):
         from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 
-        # Create a mock of the Group class
-        group = MagicMock()
-        group.profile = MagicMock()
-        group.profile.allow_discord_access = False  # Set the profile attribute to False
-        group.type = "OKTA_GROUP"
-        group.id = "123456789"  # Example group ID
-
+        group = _okta_group(allow_discord_access=False)
         group_ids_with_group_rules: dict[str, list[OktaGroupRuleType]] = {}  # Empty dictionary for group rules
 
         # Call the function and assert the expected result
@@ -70,21 +65,22 @@ async def test_update_group_preserves_custom_attributes() -> None:
     """Test that update_group preserves custom attributes when updating a group."""
     service = OktaService()
 
-    # Set up the mocks for the existing group and the update call
     group_id = "test-group-id"
 
-    # Create a mock group with a profile that has the custom attribute
-    existing_group = MagicMock()
-    # Instead of setting __dict__ directly, configure the mock properly
-    existing_group.profile = MagicMock()
-    existing_group.profile.name = "Old Name"
-    existing_group.profile.description = "Old Description"
-    existing_group.profile.allow_discord_access = True
+    # An existing group whose profile carries a custom attribute
+    # (``allow_discord_access`` lives in the profile's additional_properties).
+    existing_group = OktaGroupType.from_dict(
+        {
+            "id": group_id,
+            "type": "OKTA_GROUP",
+            "profile": {"name": "Old Name", "description": "Old Description", "allow_discord_access": True},
+        }
+    )
 
-    # Mock the per-call Okta client's get_group and update_group methods
+    # Mock the per-call Okta client's get_group and replace_group methods
     mock_client = MagicMock()
     mock_client.get_group = AsyncMock(return_value=(existing_group, None, None))
-    mock_client.update_group = AsyncMock(return_value=(MagicMock(), None, None))
+    mock_client.replace_group = AsyncMock(return_value=(existing_group, None, None))
 
     # Mock the _okta_client async context manager to yield the mock client
     class MockOktaClientContext:
@@ -102,44 +98,44 @@ async def test_update_group_preserves_custom_attributes() -> None:
         # Call update_group
         await service.update_group(group_id, "New Name", "New Description")
 
-        # Verify update_group was called with a payload that preserved the custom attribute
-        args, _ = mock_client.update_group.call_args
-        assert len(args) == 2
-        assert args[0] == group_id
+    # Verify replace_group was called with a payload that preserved the custom attribute
+    args, _ = mock_client.replace_group.call_args
+    assert len(args) == 2
+    assert args[0] == group_id
 
-        # Check that the payload contains both the updated fields and the preserved custom attribute
-        updated_payload = args[1]
-        assert updated_payload.profile.name == "New Name"
-        assert updated_payload.profile.description == "New Description"
-        assert updated_payload.profile.allow_discord_access is True
+    # Check that the payload contains both the updated fields and the preserved custom attribute
+    updated_payload = args[1]
+    assert isinstance(updated_payload, AddGroupRequest)
+    assert updated_payload.profile.name == "New Name"
+    assert updated_payload.profile.description == "New Description"
+    assert updated_payload.profile.to_dict()["allow_discord_access"] is True
 
 
-async def test_concurrent_calls_use_isolated_request_executors() -> None:
-    """Concurrent Okta calls must each get their own client, executor, and session.
+async def test_concurrent_calls_use_isolated_clients() -> None:
+    """Concurrent Okta calls must each get their own client (and aiohttp session).
 
-    ``_okta_client()`` builds a fresh SDK client per call. A previous design
-    shared one ``self.okta_client`` (and its request executor) across all
-    calls, so concurrent ``set_session()`` calls clobbered each other and a
-    session created by one call could be torn down under another. With a
-    fresh client per call, each call binds its own pooled session to its own
-    executor, so concurrent calls on the service share nothing to race on.
+    Off the server loop, ``_okta_client()`` builds a fresh SDK client per call
+    so nothing is shared across concurrent calls. A previous design shared one
+    client (and its request executor/session) across all calls, so concurrent
+    session setup/teardown could race. This asserts the per-call isolation
+    directly: N concurrent calls build N distinct clients.
     """
     service = OktaService()
     service.initialize("fake.domain", "fake.token")
 
-    executors: list[Any] = []
+    clients: list[Any] = []
+    real_build_client = service._build_client
 
-    real_set_session = RequestExecutor.set_session
-
-    def tracking_set_session(executor: Any, session: Any) -> None:
-        real_set_session(executor, session)
-        executors.append(executor)
+    def tracking_build_client() -> Any:
+        client = real_build_client()
+        clients.append(client)
+        return client
 
     call_count = 16
-    success = (UserFactory(), MagicMock(), None)
+    success = (UserFactory(), MagicMock(status_code=200, headers={}), None)
 
     with (
-        patch.object(RequestExecutor, "set_session", tracking_set_session),
+        patch.object(service, "_build_client", side_effect=tracking_build_client),
         patch("okta.client.Client.get_user", return_value=success),
     ):
         users = await asyncio.gather(*(service.get_user("okta_id") for _ in range(call_count)))
@@ -147,6 +143,6 @@ async def test_concurrent_calls_use_isolated_request_executors() -> None:
     # No call raised (gather re-raises), and every call returned a user.
     assert len(users) == call_count
     assert all(user is not None for user in users)
-    # Each concurrent call got its own client/request executor; nothing shared.
-    assert len(executors) == call_count
-    assert len({id(executor) for executor in executors}) == call_count
+    # Each concurrent call built its own client; nothing shared.
+    assert len(clients) == call_count
+    assert len({id(client) for client in clients}) == call_count
