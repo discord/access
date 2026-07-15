@@ -75,9 +75,10 @@ class NotificationPluginSpec:
     `*_completed` hooks for access, role, and group requests — is dispatched from
     a post-response background task, i.e. *after* the request's DB session has
     been committed and torn down, so Access `expunge`s the objects it hands them
-    (the request, its `group`/`role`, the `requester`, and the `approvers`) so
-    their already-loaded attributes stay readable. A hook may therefore read only
-    attributes Access already loaded — those objects and their column attributes.
+    (the request, its `group`/`role`, a group request's `requested_app`, the
+    `requester`, and the `approvers`) so their already-loaded attributes stay
+    readable. A hook may therefore read only attributes Access already loaded —
+    those objects and their column attributes.
     Do **not** access an unloaded relationship or otherwise trigger a lazy load /
     re-query (there is no live session behind these objects; `lazy="raise_on_sql"`
     forbids it regardless), and do not mutate them expecting it to persist. Treat

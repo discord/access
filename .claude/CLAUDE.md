@@ -543,8 +543,9 @@ raised from an HTTP request — the `*_created` and `*_completed` hooks for acce
 requests — is dispatched through `defer_notification` (`api/operations/_fan_out.py`), which spawns
 `send_notification` and hands it to the post-response drain, so it fires *after* the request session
 has committed and been torn down. `defer_notification` `expunge`s the payload (the request, its
-`group`/`role`, the `requester`, the `approvers`) *before* deferring, leaving their already-loaded
-attributes readable. A hook may therefore read only what the operation eager-loaded; touching an
+`group`/`role`, a group request's `requested_app`, the `requester`, the `approvers`) *before*
+deferring, leaving their already-loaded attributes readable. A hook may therefore read only what
+the operation eager-loaded; touching an
 unloaded relationship or otherwise triggering a lazy load raises (`lazy="raise_on_sql"` /
 `DetachedInstanceError`), and the failure is logged then swallowed — silently dropping that
 notification. So if a notifier needs a wider object graph, the operation must eager-load it before
