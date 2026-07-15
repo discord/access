@@ -88,6 +88,13 @@ access for temporary needs and keep the time-bounded grant path intact.
 **Don't mix access models.** Features should not make it easier to bypass the role model or
 grant access in ways that circumvent ownership and routing.
 
+**Transparency by default.** Company-wide read visibility is a deliberate design decision, not
+a leak: any authenticated user may read the full state of the system — membership and ownership
+history, request/justification text, and all listings — across both the API and UI. This
+openness serves the RBAC model. It applies to **reads only**; mutations and approvals remain
+gated by the tiers below. See "Read visibility is intentionally open to all authenticated
+users" under Authorization.
+
 ## Backend structure
 
 ```
@@ -254,7 +261,9 @@ relationships on the model you're querying. Many relationships already exist wit
 eager loading strategy and active-record filters baked in (e.g. `active_group_memberships`,
 `active_group_ownerships`, `active_role_associated_group_mappings`). Using a pre-defined
 relationship via `joinedload` or `selectinload` is almost always preferable to writing a
-separate query.
+separate query. Prefer `joinedload` for many-to-one / one-to-one relationships and
+`selectinload` for one-to-many / many-to-many — `joinedload` on a to-many collection multiplies
+rows via the JOIN, while `selectinload` fetches the collection in a separate `IN` query.
 
 **Before writing auth or permission logic**, check these files for existing helpers:
 
@@ -294,6 +303,9 @@ the constants as the single source of truth; never re-type the literals inline:
 
 When querying polymorphically, always use `with_polymorphic` or `selectin_polymorphic` to
 eager-load the subtype. Without this, subtype fields will be missing or lazy load will raise.
+The same to-one/to-many split applies here: `with_polymorphic` for many-to-one / one-to-one
+relationships (a single JOIN), `selectin_polymorphic` for one-to-many / many-to-many (a separate
+query per subtype) — for query efficiency.
 
 **`App`** is a logical grouping in Access's DB only — apps do not correspond to Okta apps and
 are not Okta groups.
@@ -337,6 +349,10 @@ Use the plain `role_group_map_options()` everywhere else.
   `ended_at`. Active records: `ended_at.is_(None) OR ended_at > now()`.
 
 Never query these tables without both filters. Missing one silently returns stale data.
+Exception: views whose intent is to show historical data — e.g. audit pages, or pages that
+list past/expired access alongside current — deliberately omit these filters, since surfacing
+ended or superseded records is the point there. Outside that history-oriented case, always
+apply both filters.
 
 Every membership and ownership change has `created_actor_id`, `ended_actor_id`, and
 `created_reason` fields for audit purposes. These are not enforced — `created_actor_id` and
