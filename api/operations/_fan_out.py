@@ -128,6 +128,35 @@ async def run_deferred_fan_out(collected: _Collected) -> None:
         await drain_fan_out_tasks(tasks, context)
 
 
+def prepare_notification_task(
+    session: AsyncSession,
+    hook_name: "NotificationHook",
+    *,
+    detach: Iterable[Any] = (),
+    **kwargs: Any,
+) -> "asyncio.Task[None]":
+    """Expunge the hook payload (when deferring) and spawn `send_notification`
+    as a task, returning it **without draining**.
+
+    Use this when emitting several notifications in a loop: append the returned
+    tasks to one fan-out batch and drain it once (via `defer_or_drain_fan_out`),
+    so on the inline path (CLI/syncer/direct-`execute()`) they run concurrently
+    rather than each being awaited to completion before the next is spawned.
+    Single-site callers should use `defer_notification`, which prepares and
+    drains one task.
+
+    `detach` and the read-only detached-snapshot contract are as documented on
+    `defer_notification` / `detach_for_deferred_fan_out`.
+    """
+    # Local import: `send_notification` lives in `api.plugins`, which the
+    # operations layer imports — importing it at module scope here would risk a
+    # cycle, and it isn't needed until dispatch.
+    from api.plugins import send_notification
+
+    detach_for_deferred_fan_out(session, detach)
+    return asyncio.create_task(send_notification(hook_name, **kwargs))
+
+
 async def defer_notification(
     session: AsyncSession,
     hook_name: "NotificationHook",
@@ -135,13 +164,13 @@ async def defer_notification(
     detach: Iterable[Any] = (),
     **kwargs: Any,
 ) -> None:
-    """Dispatch a notification hook, deferred to the post-response `BackgroundTask`
-    when the request opted into deferral (via the `defer_fan_out` router
-    dependency), else drained inline (CLI/syncer/direct-`execute()`).
+    """Dispatch a single notification hook, deferred to the post-response
+    `BackgroundTask` when the request opted into deferral (via the `defer_fan_out`
+    router dependency), else drained inline (CLI/syncer/direct-`execute()`).
 
-    All request-path notifications route through here so the HTTP response
-    returns as soon as the local DB state commits, rather than blocking on the
-    notification's network I/O.
+    All request-path notifications route through here (or `prepare_notification_task`
+    for the loop callers) so the HTTP response returns as soon as the local DB
+    state commits, rather than blocking on the notification's network I/O.
 
     `detach` names the ORM objects the hook will read; they are expunged (only
     when deferring) so the async hook can read their already-loaded attributes
@@ -150,13 +179,7 @@ async def defer_notification(
     contract on `NotificationPluginSpec`. Resolve everything the hook needs
     before calling this (the spawned task must not touch `db.session`).
     """
-    # Local import: `send_notification` lives in `api.plugins`, which the
-    # operations layer imports — importing it at module scope here would risk a
-    # cycle, and it isn't needed until dispatch.
-    from api.plugins import send_notification
-
-    detach_for_deferred_fan_out(session, detach)
-    task = asyncio.create_task(send_notification(hook_name, **kwargs))
+    task = prepare_notification_task(session, hook_name, detach=detach, **kwargs)
     await defer_or_drain_fan_out([task], f"notification {hook_name}")
 
 

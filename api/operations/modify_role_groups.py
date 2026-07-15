@@ -9,7 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
-from api.operations._fan_out import defer_notification, defer_or_drain_fan_out
+from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -621,17 +621,21 @@ class ModifyRoleGroups:
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
                 approvers = await get_all_possible_request_approvers(access_request)
-                # `defer_notification` expunges the payload so the deferred async
-                # hook can read it after the router's db.expire_all()/teardown.
-                await defer_notification(
-                    db.session,
-                    NotificationHook.ACCESS_REQUEST_COMPLETED,
-                    detach=[access_request, group, requester, *approvers],
-                    access_request=access_request,
-                    group=group,
-                    requester=requester,
-                    approvers=approvers,
-                    notify_requester=True,
+                # Spawn + drain in one batch with the Okta tasks below, so on the
+                # inline path notifications run concurrently. prepare_notification_task
+                # expunges the payload so the async hook can read it after the
+                # router's db.expire_all()/teardown.
+                async_tasks.append(
+                    prepare_notification_task(
+                        db.session,
+                        NotificationHook.ACCESS_REQUEST_COMPLETED,
+                        detach=[access_request, group, requester, *approvers],
+                        access_request=access_request,
+                        group=group,
+                        requester=requester,
+                        approvers=approvers,
+                        notify_requester=True,
+                    )
                 )
 
             for role_request in approved_role_requests:
@@ -640,16 +644,18 @@ class ModifyRoleGroups:
                 await db.session.refresh(role_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, role_request.requester_user_id)
                 approvers = await get_all_possible_request_approvers(role_request)
-                await defer_notification(
-                    db.session,
-                    NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED,
-                    detach=[role_request, role, group, requester, *approvers],
-                    role_request=role_request,
-                    role=role,
-                    group=group,
-                    requester=requester,
-                    approvers=approvers,
-                    notify_requester=True,
+                async_tasks.append(
+                    prepare_notification_task(
+                        db.session,
+                        NotificationHook.ACCESS_ROLE_REQUEST_COMPLETED,
+                        detach=[role_request, role, group, requester, *approvers],
+                        role_request=role_request,
+                        role=role,
+                        group=group,
+                        requester=requester,
+                        approvers=approvers,
+                        notify_requester=True,
+                    )
                 )
 
         await defer_or_drain_fan_out(async_tasks, f"ModifyRoleGroups for role {self.role.id}")
