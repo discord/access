@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from fastapi.responses import RedirectResponse
 from pydantic import TypeAdapter
@@ -22,6 +22,7 @@ from api.operations import ModifyRoleGroups
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
+from api.routers._fan_out import defer_fan_out
 from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     RoleGroupListItem,
@@ -31,7 +32,7 @@ from api.schemas import (
 )
 from api.schemas.requests_schemas import RoleMember
 
-router = APIRouter(prefix="/api/roles", tags=["roles"])
+router = APIRouter(prefix="/api/roles", tags=["roles"], dependencies=[Depends(defer_fan_out)])
 # `GroupDetail` is a discriminated union — see the same comment in
 # `api/routers/groups.py`.
 _role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)

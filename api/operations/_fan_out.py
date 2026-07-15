@@ -1,37 +1,66 @@
-"""Draining helper for the Okta/notification task fan-out in operations.
+"""Draining + deferral helpers for the Okta/notification task fan-out.
 
 The fan-out operations (`ModifyGroupUsers`, `ModifyRoleGroups`, `DeleteUser`,
-`DeleteGroup`) spawn Okta API calls and notification dispatch with
-`asyncio.create_task` and drain them here after the local DB state has
-committed. A failed task therefore must not fail the request — the
-authoritative state change already happened — but it must not vanish either:
-the previous idiom (`asyncio.wait(tasks)` whose result was discarded) dropped
-task exceptions on the floor, which made partial Okta failures during
-membership changes invisible.
+`DeleteGroup`) commit their local DB state and then spawn Okta API calls and
+notification dispatch with `asyncio.create_task`. Those tasks must not fail the
+request — the authoritative state change already happened — but they must not
+vanish either: the original idiom (`asyncio.wait(tasks)` whose result was
+discarded) dropped task exceptions on the floor, which made partial Okta
+failures during membership changes invisible.
+
+`drain_fan_out_tasks` awaits a batch and logs each failure. Operations don't call
+it directly; they call `defer_or_drain_fan_out`, which either:
+
+- **defers** the batch to a request-scoped collector when a `BackgroundTask`
+  drainer is registered for the current request (the HTTP request path, via the
+  `defer_fan_out` dependency), so the response returns as soon as the DB commits
+  and the Okta/notification tail runs *after* the response is sent; or
+- **drains inline** when no collector is set — CLI, syncer, MCP, and tests that
+  call `execute()` directly — preserving the await-to-completion behavior there.
 
 Per the concurrency rule in `api/extensions.py`, these tasks only perform
-network I/O (Okta calls, notification hooks) — never `db.session` access.
+network I/O (Okta calls, async notification hooks), never `db.session` access.
+Because the deferred drain runs after the request session is torn down, notify
+tasks must carry ORM objects the session has already `expunge`d (detached, with
+their attributes loaded), so the hooks read them without touching the session.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
-from typing import Any
+from collections.abc import Iterable
+from typing import Any, Optional
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("api")
 
+# Batches handed to a request's deferred drain: (tasks, context) tuples, drained
+# by `run_deferred_fan_out` from a FastAPI `BackgroundTask` after the response.
+_Collected = list[tuple[list["asyncio.Task[Any]"], str]]
 
-async def drain_fan_out_tasks(tasks: list[asyncio.Task[Any]], context: str) -> None:
+# Set per request by the `defer_fan_out` dependency; `None` outside an opted-in
+# request (CLI/syncer/MCP/direct-execute), where `defer_or_drain_fan_out` drains
+# inline instead.
+_deferred_fan_out: contextvars.ContextVar[Optional[_Collected]] = contextvars.ContextVar(
+    "access_deferred_fan_out", default=None
+)
+
+
+async def drain_fan_out_tasks(tasks: list["asyncio.Task[Any]"], context: str) -> None:
     """Await every fan-out task and log each failure with its context.
 
-    Failures are logged at WARNING (with the traceback) and swallowed: the
-    DB commit these tasks trail behind has already happened, so raising
-    would turn an Okta/notification straggler into a misleading request
-    failure. These are best-effort, on-demand Okta calls and the syncer
-    cronjob reconciles any resulting drift on its next run, so they're a
-    WARNING rather than an ERROR — an ERROR here is just Sentry noise for a
-    condition the system already recovers from eventually.
+    Failures are logged at ERROR (with the traceback) and swallowed: Access
+    surfaces the errors its Okta calls and notification hooks raise rather than
+    quietly downgrading them (mirroring the plugin-hook dispatch in
+    ``api/plugins/_async_dispatch.py``). The failure never propagates — the DB
+    commit these tasks trail behind has already happened, so raising would turn a
+    straggler into a misleading request failure, and the syncer cronjob
+    reconciles any resulting Okta drift on its next run — but a component that
+    expects noisy failures (e.g. Okta connection timeouts) should catch them
+    itself rather than rely on the drain downgrading them.
 
     Drains with ``asyncio.wait`` (not ``asyncio.gather``) so that a
     cancellation of the awaiting request — client disconnect, request timeout,
@@ -47,9 +76,76 @@ async def drain_fan_out_tasks(tasks: list[asyncio.Task[Any]], context: str) -> N
     for task in done:
         exc = task.exception()
         if exc is not None:
-            logger.warning(
+            logger.error(
                 "Okta/notification task failed during %s; local DB state is already committed, "
                 "the syncer will reconcile",
                 context,
                 exc_info=exc,
             )
+
+
+def begin_deferred_fan_out() -> tuple[_Collected, "contextvars.Token[Optional[_Collected]]"]:
+    """Open a request-scoped fan-out collector and bind it to the ContextVar.
+
+    Returns the (empty) collector list and the reset token. The same list object
+    is what operations append to via the ContextVar, so a caller that also holds
+    the returned reference (the `BackgroundTask`) sees whatever was appended.
+    """
+    collected: _Collected = []
+    token = _deferred_fan_out.set(collected)
+    return collected, token
+
+
+def end_deferred_fan_out(token: "contextvars.Token[Optional[_Collected]]") -> None:
+    """Unbind the collector opened by `begin_deferred_fan_out`."""
+    _deferred_fan_out.reset(token)
+
+
+async def defer_or_drain_fan_out(tasks: list["asyncio.Task[Any]"], context: str) -> None:
+    """Hand a fan-out batch to the request's deferred drain, or drain it inline.
+
+    If a collector is bound for the current request, append the batch and return
+    immediately — the response is not held on the Okta/notification tail. Outside
+    such a request (CLI/syncer/MCP/direct-`execute()`), drain inline so the
+    caller still awaits completion.
+    """
+    if not tasks:
+        return
+    collected = _deferred_fan_out.get()
+    if collected is None:
+        await drain_fan_out_tasks(tasks, context)
+    else:
+        collected.append((tasks, context))
+
+
+async def run_deferred_fan_out(collected: _Collected) -> None:
+    """Drain every batch deferred during a request. Runs from a `BackgroundTask`
+    after the response has been sent (and the request session torn down)."""
+    for tasks, context in collected:
+        await drain_fan_out_tasks(tasks, context)
+
+
+def detach_for_deferred_fan_out(session: AsyncSession, objects: Iterable[Any]) -> None:
+    """Expunge already-loaded ORM objects so a *deferred* notification task can
+    read their attributes after the request session is expired (the router's
+    `db.expire_all()`) and torn down (`db.remove()`).
+
+    A deferred notify task holds ORM objects the notification hook reads; the
+    hook accesses attributes synchronously, so an expired/detached-then-reloaded
+    read would raise `MissingGreenlet`/`DetachedInstanceError` on the dead
+    session. Expunging here (before the router expires the session) detaches them
+    with their loaded state intact, so the hook reads plain values without any
+    session round trip. Only objects still in the session are expunged
+    (re-expunging raises); the default relationship cascade is `save-update,
+    merge`, which excludes `expunge`, so this detaches exactly the objects passed
+    — not their relationship graph.
+
+    No-op when the fan-out is NOT being deferred (CLI/syncer/direct-`execute()`):
+    there the drain runs inline against the live session, so detaching would
+    needlessly leave the caller holding detached ORM objects it may still mutate.
+    """
+    if _deferred_fan_out.get() is None:
+        return
+    for obj in objects:
+        if obj is not None and obj in session:
+            session.expunge(obj)

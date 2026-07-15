@@ -9,7 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
-from api.operations._fan_out import drain_fan_out_tasks
+from api.operations._fan_out import defer_or_drain_fan_out, detach_for_deferred_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -741,6 +741,7 @@ class ModifyGroupUsers:
         # never db.session access (a session cannot be used concurrently, and
         # under async SQLAlchemy that raises rather than interleaving).
         if self.notify:
+            notification_payload: list[object] = []
             for access_request in approved_access_requests:
                 group = access_request.requested_group
                 # `resolved_at` was assigned func.now() and expired at flush;
@@ -748,11 +749,18 @@ class ModifyGroupUsers:
                 await db.session.refresh(access_request, attribute_names=["resolved_at"])
                 requester = await db.session.get(OktaUser, access_request.requester_user_id)
                 approvers = await get_all_possible_request_approvers(access_request)
+                notification_payload.extend([access_request, group, requester, *approvers])
                 async_tasks.append(
                     asyncio.create_task(self._notify_access_request(access_request, group, requester, approvers))
                 )
+            # The fan-out (incl. these notify tasks) is drained after the response,
+            # once the router's db.expire_all() and session teardown have run.
+            # Detach the payload so the async hooks read already-loaded attributes
+            # rather than refreshing on a dead session. Done after the loop so the
+            # per-request queries above still run against the live session.
+            detach_for_deferred_fan_out(db.session, notification_payload)
 
-        await drain_fan_out_tasks(async_tasks, f"ModifyGroupUsers for group {self.group_id}")
+        await defer_or_drain_fan_out(async_tasks, f"ModifyGroupUsers for group {self.group_id}")
 
         return group
 

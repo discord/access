@@ -27,6 +27,7 @@ from api.models import (
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import AppGroupsPage, Page, validated
+from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     AppSummary,
     AppDetail,
@@ -46,7 +47,7 @@ APP_LOAD_OPTIONS = (
 )
 
 
-router = APIRouter(prefix="/api/apps", tags=["apps"])
+router = APIRouter(prefix="/api/apps", tags=["apps"], dependencies=[Depends(defer_fan_out)])
 
 
 @router.get("", name="apps")

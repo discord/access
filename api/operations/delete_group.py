@@ -8,7 +8,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
-from api.operations._fan_out import drain_fan_out_tasks
+from api.operations._fan_out import defer_or_drain_fan_out
 from api.models import (
     AccessRequest,
     AccessRequestStatus,
@@ -315,4 +315,4 @@ class DeleteGroup:
         # Invoke app group lifecycle plugin hook, if configured
         await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
 
-        await drain_fan_out_tasks(okta_tasks, f"DeleteGroup for group {self.group_id}")
+        await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")

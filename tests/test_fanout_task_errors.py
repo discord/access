@@ -5,6 +5,12 @@ The fan-out operations drain their `asyncio.create_task` lists through
 with operation context instead of dropping the exception (the old
 `asyncio.wait` idiom) — and never fails the request, because the local DB
 state is committed before the tasks are awaited.
+
+Failures log at ERROR (Access surfaces them rather than swallowing as warnings,
+mirroring the plugin-hook dispatch); the drain never propagates them and the
+syncer reconciles any Okta drift. The HTTP request path additionally defers the
+drain to a post-response `BackgroundTask` (TODO 10); see
+`tests/test_deferred_fan_out.py` for that behavior.
 """
 
 import asyncio
@@ -35,21 +41,21 @@ async def test_drain_logs_failures_and_awaits_all_tasks(caplog: pytest.LogCaptur
         raise RuntimeError("fan-out task exploded")
 
     tasks = [asyncio.create_task(_boom()), asyncio.create_task(_ok())]
-    with caplog.at_level(logging.WARNING, logger="api"):
+    with caplog.at_level(logging.ERROR, logger="api"):
         await drain_fan_out_tasks(tasks, "UnitTestOp for thing thing-1")
 
     # The failure neither propagated nor cancelled the sibling task.
     assert completed == ["ok"]
     failures = [r for r in caplog.records if "UnitTestOp for thing thing-1" in r.getMessage()]
     assert len(failures) == 1
-    # WARNING, not ERROR: the syncer reconciles these, so they must not surface as Sentry noise.
-    assert failures[0].levelno == logging.WARNING
+    # ERROR, not WARNING: Access surfaces fan-out failures rather than swallowing them.
+    assert failures[0].levelno == logging.ERROR
     assert failures[0].exc_info is not None
     assert "fan-out task exploded" in str(failures[0].exc_info[1])
 
 
 async def test_drain_no_tasks_is_a_noop(caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.WARNING, logger="api"):
+    with caplog.at_level(logging.ERROR, logger="api"):
         await drain_fan_out_tasks([], "UnitTestOp for nothing")
     assert not [r for r in caplog.records if "UnitTestOp" in r.getMessage()]
 
@@ -106,7 +112,10 @@ async def test_failing_okta_call_is_logged_and_does_not_fail_request(
         "owners_to_remove": [],
     }
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
-    with caplog.at_level(logging.WARNING, logger="api"):
+    # The HTTP path defers the drain to a post-response BackgroundTask. Under
+    # httpx the background task completes within the awaited request, so the
+    # ERROR record is captured here.
+    with caplog.at_level(logging.ERROR, logger="api"):
         rep = await client.put(group_url, json=data)
 
     # The Okta failure does not fail the request - the membership committed.
@@ -126,7 +135,7 @@ async def test_failing_okta_call_is_logged_and_does_not_fail_request(
 
     failures = [r for r in caplog.records if f"ModifyGroupUsers for group {okta_group.id}" in r.getMessage()]
     assert len(failures) == 1
-    assert failures[0].levelno == logging.WARNING
+    assert failures[0].levelno == logging.ERROR
     assert failures[0].exc_info is not None
     assert "okta add blew up" in str(failures[0].exc_info[1])
 
@@ -145,7 +154,7 @@ async def test_failing_okta_delete_is_logged_and_group_still_deleted(
     mocker.patch.object(okta, "remove_user_from_group")
     mocker.patch.object(okta, "remove_owner_from_group")
 
-    with caplog.at_level(logging.WARNING, logger="api"):
+    with caplog.at_level(logging.ERROR, logger="api"):
         await DeleteGroup(group=group_id).execute()
 
     # The local soft-delete committed despite the Okta failure.
@@ -156,6 +165,6 @@ async def test_failing_okta_delete_is_logged_and_group_still_deleted(
 
     failures = [r for r in caplog.records if f"DeleteGroup for group {group_id}" in r.getMessage()]
     assert len(failures) == 1
-    assert failures[0].levelno == logging.WARNING
+    assert failures[0].levelno == logging.ERROR
     assert failures[0].exc_info is not None
     assert "okta delete blew up" in str(failures[0].exc_info[1])
