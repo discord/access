@@ -934,6 +934,10 @@ export type PluginConfigProp = {
   validation?: {
     [key: string]: any;
   } | null;
+  /**
+   * @default false
+   */
+  immutable?: boolean;
 };
 
 /**
