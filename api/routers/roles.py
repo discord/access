@@ -60,10 +60,10 @@ async def list_roles(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRoleQuery, Query()],
 ) -> Page[RoleGroupListItem]:
-    # Flask `RoleList.get()` `only=(id, type, name, description, created_at,
-    # updated_at)` — `RoleGroupListItem` matches that shape exactly. The list
-    # shape exposes none of the eager-loaded relationships, so we attach no
-    # load options here at all (each would be an extra round trip discarded).
+    # `RoleGroupListItem` is the list shape — id, type, name, description,
+    # created_at, updated_at — and exposes none of the eager-loaded
+    # relationships, so we attach no load options here at all (each would be an
+    # extra round trip discarded).
     stmt = select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
 
     # Filter to roles owned by `owner_id` (id or email; supports `@me`).
