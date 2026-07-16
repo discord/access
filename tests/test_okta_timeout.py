@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
+from okta.errors.http_error import HTTPError
 from okta.errors.okta_api_error import OktaAPIError
 from pytest_mock import MockerFixture
 
@@ -26,6 +27,13 @@ def _rate_limit_error() -> OktaAPIError:
     )
 
 
+def _http_error(status: int) -> HTTPError:
+    """An error shaped like what the SDK returns for a non-JSON HTTP failure —
+    e.g. a 502 Bad Gateway whose body is an HTML page rather than an Okta error."""
+    response_details = MagicMock(status=status, headers={})
+    return HTTPError("https://fake.domain/api/v1/users/okta_id", response_details, f"<html>{status}</html>")
+
+
 async def test_socket_timeout_surfaces_as_okta_timeout(mocker: MockerFixture, okta_service: OktaService) -> None:
     """The SDK returns an aiohttp/asyncio timeout as an error; the facade raises OktaTimeout."""
     mocker.patch("okta.client.Client.get_user", return_value=(None, None, asyncio.TimeoutError()))
@@ -47,6 +55,25 @@ async def test_rate_limit_exhaustion_surfaces_as_okta_timeout(mocker: MockerFixt
     mocker.patch("okta.client.Client.get_user", return_value=(None, MagicMock(), _rate_limit_error()))
     with pytest.raises(OktaTimeout):
         await okta_service.get_user("okta_id")
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+async def test_transient_5xx_surfaces_as_okta_timeout(
+    mocker: MockerFixture, okta_service: OktaService, status: int
+) -> None:
+    """A transient 5xx (e.g. a 502 Bad Gateway from the load balancer) is surfaced
+    as OktaTimeout so the syncer/fan-out swallow it instead of logging an ERROR."""
+    mocker.patch("okta.client.Client.get_user", return_value=(None, MagicMock(), _http_error(status)))
+    with pytest.raises(OktaTimeout):
+        await okta_service.get_user("okta_id")
+
+
+async def test_non_transient_http_error_not_mapped(mocker: MockerFixture, okta_service: OktaService) -> None:
+    """A non-transient HTTP error (e.g. 404) passes through and is not mapped to OktaTimeout."""
+    mocker.patch("okta.client.Client.get_user", return_value=(None, MagicMock(), _http_error(404)))
+    with pytest.raises(Exception) as exc_info:
+        await okta_service.get_user("okta_id")
+    assert not isinstance(exc_info.value, OktaTimeout)
 
 
 async def test_swallowable_call_site_absorbs_timeout(mocker: MockerFixture, okta_service: OktaService) -> None:
