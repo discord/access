@@ -335,7 +335,7 @@ class OktaService:
             if error is not None:
                 raise Exception(error)
         except OktaTimeout:
-            logger.warning(f"Timed out adding user {userId} to group {groupId}")
+            logger.warning(f"Transient Okta error adding user {userId} to group {groupId}")
 
     async def remove_user_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
@@ -353,7 +353,7 @@ class OktaService:
             if error is not None:
                 raise Exception(error)
         except OktaTimeout:
-            logger.warning(f"Timed out removing user {userId} from group {groupId}")
+            logger.warning(f"Transient Okta error removing user {userId} from group {groupId}")
 
     # TODO: Implement fetching group membership count for fast syncing
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
@@ -430,7 +430,7 @@ class OktaService:
             if error is not None and "already assigned to this group" not in str(error):
                 raise Exception(error)
         except OktaTimeout:
-            logger.warning(f"Timed out adding owner {userId} to group {groupId}")
+            logger.warning(f"Transient Okta error adding owner {userId} to group {groupId}")
 
         return
 
@@ -453,7 +453,7 @@ class OktaService:
             if error is not None:
                 raise Exception(error)
         except OktaTimeout:
-            logger.warning(f"Timed out removing owner {userId} from group {groupId}")
+            logger.warning(f"Transient Okta error removing owner {userId} from group {groupId}")
 
         return
 

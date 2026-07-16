@@ -270,7 +270,7 @@ async def sync_group_memberships(act_as_authority: bool) -> None:
 
             await db.session.commit()
         except OktaTimeout:
-            logger.warning(f"Timed out syncing memberships for group {group.id}, skipping.", exc_info=True)
+            logger.warning(f"Transient Okta error syncing memberships for group {group.id}, skipping.", exc_info=True)
             await db.session.rollback()
             continue
         except Exception:
@@ -389,7 +389,7 @@ async def sync_group_ownerships(act_as_authority: bool) -> None:
 
             await db.session.commit()
         except OktaTimeout:
-            logger.warning(f"Timed out syncing ownerships for group {group.id}, skipping.", exc_info=True)
+            logger.warning(f"Transient Okta error syncing ownerships for group {group.id}, skipping.", exc_info=True)
             await db.session.rollback()
             continue
         except Exception:
