@@ -48,7 +48,7 @@ _unique_field.metadata = []
 UserSchemaAttribute.model_rebuild(force=True)
 
 
-class OktaTimeout(Exception):
+class OktaTransientError(Exception):
     """Raised when an Okta request times out or hits a transient failure.
 
     Surfaced when the SDK gives up on a request: its ``requestTimeout`` is
@@ -84,10 +84,11 @@ class _WrapperClient:
     """Proxy over an Okta client that routes every async API call through ``OktaService._call``.
 
     Attribute access returns the underlying client's coroutine methods wrapped
-    so their timeout / rate-limit outcomes become ``OktaTimeout``. Applying the
-    mapping here — rather than at each call site — makes it uniform and
-    impossible to forget when a new facade method is added. Non-coroutine
-    attributes (e.g. ``get_request_executor``) pass through unchanged.
+    so their transient failures (timeout, rate limit, 5xx) surface as
+    ``OktaTransientError``. Applying the mapping here — rather than at each call
+    site — makes it uniform and impossible to forget when a new facade method is
+    added. Non-coroutine attributes (e.g. ``get_request_executor``) pass through
+    unchanged.
     """
 
     def __init__(self, client: OktaClient) -> None:
@@ -188,19 +189,19 @@ class OktaService:
 
     @staticmethod
     async def _call(coro: Awaitable[Any]) -> Any:
-        """Await an Okta SDK call, mapping timeouts and rate-limit exhaustion to OktaTimeout.
+        """Await an Okta SDK call, mapping transient failures to OktaTransientError.
 
         The SDK enforces the request timeout itself (``requestTimeout`` config)
         and retries 429s internally, returning errors rather than raising them.
-        The two "gave up / took too long" outcomes — a request timeout and a 429
-        that outlived the SDK's rate-limit retries — are surfaced as
-        ``OktaTimeout`` so callers can choose to swallow them; every other error
-        passes through in the returned tuple for the caller to raise.
+        A transient outcome — a request timeout, a 429 that outlived the SDK's
+        rate-limit retries, or a 5xx upstream/gateway error — is surfaced as
+        ``OktaTransientError`` so callers can choose to swallow it; every other
+        error passes through in the returned tuple for the caller to raise.
         """
         result = await coro
         error = result[-1] if isinstance(result, tuple) and result else None
         if _is_transient_okta_error(error):
-            raise OktaTimeout(str(error) or "Okta request timed out")
+            raise OktaTransientError(str(error) or "Okta request timed out")
         return result
 
     async def _paginate(self, list_method: Callable[..., Any], *args: Any, **kwargs: Any) -> list[Any]:
@@ -334,7 +335,7 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
+        except OktaTransientError:
             logger.warning(f"Transient Okta error adding user {userId} to group {groupId}")
 
     async def remove_user_from_group(self, groupId: str, userId: str) -> None:
@@ -352,7 +353,7 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
+        except OktaTransientError:
             logger.warning(f"Transient Okta error removing user {userId} from group {groupId}")
 
     # TODO: Implement fetching group membership count for fast syncing
@@ -429,7 +430,7 @@ class OktaService:
             # Ignore error if owner is already assigned to group
             if error is not None and "already assigned to this group" not in str(error):
                 raise Exception(error)
-        except OktaTimeout:
+        except OktaTransientError:
             logger.warning(f"Transient Okta error adding owner {userId} to group {groupId}")
 
         return
@@ -452,7 +453,7 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
+        except OktaTransientError:
             logger.warning(f"Transient Okta error removing owner {userId} from group {groupId}")
 
         return
