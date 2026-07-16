@@ -76,6 +76,29 @@ async def test_non_transient_http_error_not_mapped(mocker: MockerFixture, okta_s
     assert not isinstance(exc_info.value, OktaTransientError)
 
 
+async def test_none_response_attributeerror_surfaces_as_transient(
+    mocker: MockerFixture, okta_service: OktaService
+) -> None:
+    """A gateway blip (e.g. a 502) can leave the SDK with a ``None`` response that it
+    dereferences (``response.status``) before checking the error, raising AttributeError
+    from inside the coroutine rather than returning it in the tuple. Surface it as
+    OktaTransientError so the syncer fan-out swallows it instead of logging an ERROR."""
+    mocker.patch(
+        "okta.client.Client.get_user",
+        side_effect=AttributeError("'NoneType' object has no attribute 'status'"),
+    )
+    with pytest.raises(OktaTransientError):
+        await okta_service.get_user("okta_id")
+
+
+async def test_unrelated_attributeerror_not_mapped(mocker: MockerFixture, okta_service: OktaService) -> None:
+    """An AttributeError unrelated to the SDK's None-response bug must propagate, not be
+    misclassified as transient, so genuine bugs stay visible."""
+    mocker.patch("okta.client.Client.get_user", side_effect=AttributeError("'Foo' object has no attribute 'bar'"))
+    with pytest.raises(AttributeError):
+        await okta_service.get_user("okta_id")
+
+
 async def test_swallowable_call_site_absorbs_timeout(mocker: MockerFixture, okta_service: OktaService) -> None:
     """Membership mutations catch OktaTransientError and continue instead of propagating."""
     mocker.patch("okta.client.Client.assign_user_to_group", return_value=(None, asyncio.TimeoutError()))
