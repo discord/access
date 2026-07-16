@@ -118,12 +118,6 @@ class Settings(BaseSettings):
     USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None
     MAX_ACCESS_REQUEST_AGE_SECONDS: int = 7 * 24 * 60 * 60
 
-    # Number of groups whose Okta membership/ownership lists the syncer fetches
-    # concurrently per batch before reconciling them against the DB. Higher values
-    # shorten a sync run but raise the concurrent load placed on Okta's rate
-    # limits. Overridable per run via the sync command's --group-batch-size flag.
-    SYNC_GROUP_BATCH_SIZE: int = Field(default=10, ge=1)
-
     # Cloudflare Access
     CLOUDFLARE_APPLICATION_AUDIENCE: Optional[str] = None
     CLOUDFLARE_TEAM_DOMAIN: Optional[str] = None

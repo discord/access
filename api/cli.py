@@ -248,14 +248,15 @@ async def _init_builtin_apps(admin_okta_user_email: str) -> None:
 @click.option(
     "--group-batch-size",
     type=click.IntRange(min=1),
-    default=None,
-    help="Groups whose Okta memberships/ownerships are fetched concurrently per batch (default: SYNC_GROUP_BATCH_SIZE).",
+    default=10,
+    show_default=True,
+    help="Groups whose Okta memberships/ownerships are fetched concurrently per batch.",
 )
 @_with_app_context
 async def sync(
     sync_groups_authoritatively: bool,
     sync_group_memberships_authoritatively: bool,
-    group_batch_size: int | None,
+    group_batch_size: int,
 ) -> None:
     """Sync users/groups/memberships from Okta to Access and expire stale requests."""
     from sentry_sdk import start_transaction
@@ -269,10 +270,6 @@ async def sync(
         sync_groups,
         sync_users,
     )
-
-    # The --group-batch-size flag overrides the SYNC_GROUP_BATCH_SIZE setting
-    # when provided; resolve it once and pass the concrete size down.
-    batch_size = group_batch_size if group_batch_size is not None else settings.SYNC_GROUP_BATCH_SIZE
 
     # Pool one Okta client (and its aiohttp connector) for the whole run so the
     # concurrent per-group membership/ownership fan-out reuses connections.
@@ -300,14 +297,14 @@ async def sync(
                 act_as_authority=sync_group_memberships_authoritatively,
                 groups=groups,
                 group_ids_with_group_rules=group_ids_with_group_rules,
-                batch_size=batch_size,
+                batch_size=group_batch_size,
             )
             if settings.OKTA_USE_GROUP_OWNERS_API:
                 await sync_group_ownerships(
                     act_as_authority=sync_group_memberships_authoritatively,
                     groups=groups,
                     group_ids_with_group_rules=group_ids_with_group_rules,
-                    batch_size=batch_size,
+                    batch_size=group_batch_size,
                 )
             await expire_access_requests()
     finally:
