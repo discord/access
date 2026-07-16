@@ -37,6 +37,7 @@ from api.operations._fan_out import (
 from api.plugins.notifications import get_notification_hook
 from api.routers._fan_out import defer_fan_out
 from api.services import okta
+from tests.factories import AppFactory
 
 
 # --- defer_or_drain_fan_out: defer vs. drain-inline vs. no-op -----------------
@@ -321,3 +322,56 @@ async def test_deferred_notification_on_reject_reads_orm_after_expire_all(
     assert seen[0]["status"] == AccessRequestStatus.REJECTED
     assert seen[0]["group_name"] == okta_group.name
     assert seen[0]["requester_email"] == user.email
+
+
+async def test_deferred_group_request_created_notification_reads_requested_app(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    user: OktaUser,
+    mock_user: Any,
+    url_for: Any,
+) -> None:
+    """A deferred `access_group_request_created` hook may read the group
+    request's `requested_app`, so the App must be expunged with the rest of the
+    payload — left attached, `db.expire_all()` expires it and the read raises."""
+    app_obj = AppFactory.create()
+    db.session.add(user)
+    db.session.add(app_obj)
+    await db.session.commit()
+    # The requester must not be an app manager, or the request auto-approves
+    # and no `access_group_request_created` notification fires.
+    mock_user(user.id)
+
+    seen: list[dict[str, Any]] = []
+    hook = get_notification_hook()
+
+    def _created(**kwargs: Any) -> list[Any]:
+        async def _impl() -> None:
+            gr = kwargs["group_request"]
+            seen.append(
+                {
+                    "group_name": gr.requested_group_name,
+                    "app_name": gr.requested_app.name if gr.requested_app is not None else None,
+                }
+            )
+
+        return [_impl()]
+
+    mocker.patch.object(hook, "access_group_request_created", side_effect=_created)
+
+    rep = await client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_name": f"App-{app_obj.name}-NewTeam",
+            "requested_group_description": "x",
+            "requested_group_type": "app_group",
+            "requested_app_id": app_obj.id,
+        },
+    )
+
+    assert rep.status_code == 201
+    assert len(seen) == 1
+    assert seen[0]["group_name"] == f"App-{app_obj.name}-NewTeam"
+    assert seen[0]["app_name"] == app_obj.name

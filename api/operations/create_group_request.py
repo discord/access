@@ -208,7 +208,8 @@ class CreateGroupRequest:
         await defer_notification(
             db.session,
             NotificationHook.ACCESS_GROUP_REQUEST_CREATED,
-            detach=[group_request, requester, *approvers],
+            # `app` too: hooks may read it via group_request.requested_app
+            detach=[group_request, app, requester, *approvers],
             group_request=group_request,
             requester=requester,
             approvers=approvers,
