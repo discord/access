@@ -114,24 +114,22 @@ unresolved-import = "ignore"
 
 # Relaxed modules. These surfaces lean on runtime invariants ty can't prove
 # statically:
-#   - the SQLAlchemy-heavy operations layer and the tests dereference
-#     Optional query results as non-None;
-#   - the Okta service wrappers touch SDK models that type every field
-#     Optional and use custom data descriptors;
+#   - the SQLAlchemy-heavy operations layer and the tests dereference Optional
+#     query results as non-None, and touch Okta SDK models that type every
+#     field Optional / use custom data descriptors;
 #   - the exception handlers and MCP tools reuse the same Pydantic + query
 #     patterns.
-# ty resolves the real types and flags these, so downgrade the affected
-# rules here. The core (api/models, api/schemas, api/database, api/config,
-# api/pagination, and — since POST_MIGRATION_TODO item 14 — api/routers) stays
-# strict, so `ty check .` in CI fails the build on any new router/schema
-# violation.
+# ty resolves the real types and flags these, so downgrade the affected rules
+# here. The core (api/models, api/schemas, api/database, api/config,
+# api/pagination, api/services, and — since POST_MIGRATION_TODO item 14 —
+# api/routers) stays strict, so `ty check .` in CI fails the build on any new
+# violation there.
 [[tool.ty.overrides]]
 include = [
     "tests/**",
     "examples/**",
     "migrations/**",
     "api/operations/**",
-    "api/services/**",
     "api/auth/**",
     "api/mcp/**",
     "api/exception_handlers.py",
