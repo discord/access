@@ -411,7 +411,7 @@ async def run_sync(
 
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
 
-        await sync_group_ownerships(act_as_authority)
+        await sync_group_ownerships(act_as_authority, batch_size=10)
 
         return list((await session.scalars(select(OktaUserGroupMember))).all())
 

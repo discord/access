@@ -245,12 +245,24 @@ async def _init_builtin_apps(admin_okta_user_email: str) -> None:
     default=False,
     help="Sync group memberships from Access to Okta",
 )
+@click.option(
+    "--group-batch-size",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Groups whose Okta memberships/ownerships are fetched concurrently per batch.",
+)
 @_with_app_context
-async def sync(sync_groups_authoritatively: bool, sync_group_memberships_authoritatively: bool) -> None:
+async def sync(
+    sync_groups_authoritatively: bool,
+    sync_group_memberships_authoritatively: bool,
+    group_batch_size: int,
+) -> None:
     """Sync users/groups/memberships from Okta to Access and expire stale requests."""
     from sentry_sdk import start_transaction
 
     from api.config import settings
+    from api.services import okta
     from api.syncer import (
         expire_access_requests,
         sync_group_memberships,
@@ -259,13 +271,44 @@ async def sync(sync_groups_authoritatively: bool, sync_group_memberships_authori
         sync_users,
     )
 
-    with start_transaction(op="sync"):
-        await sync_users()
-        await sync_groups(act_as_authority=sync_groups_authoritatively)
-        await sync_group_memberships(act_as_authority=sync_group_memberships_authoritatively)
-        if settings.OKTA_USE_GROUP_OWNERS_API:
-            await sync_group_ownerships(act_as_authority=sync_group_memberships_authoritatively)
-        await expire_access_requests()
+    # Pool one Okta client (and its aiohttp connector) for the whole run so the
+    # concurrent per-group membership/ownership fan-out reuses connections.
+    # No-op when Okta isn't configured (dev/test).
+    await okta.start_pooled_client()
+    try:
+        with start_transaction(op="sync"):
+            await sync_users()
+
+            # Fetch the active group rules once and reuse them across every pass
+            # — group rules don't change over the course of a sync run.
+            group_ids_with_group_rules = await okta.list_groups_with_active_rules()
+
+            await sync_groups(
+                act_as_authority=sync_groups_authoritatively,
+                group_ids_with_group_rules=group_ids_with_group_rules,
+            )
+
+            # Re-list groups once after sync_groups (which can create or delete
+            # groups in authoritative mode) and reuse the snapshot for both the
+            # membership and ownership passes — neither mutates the group set.
+            groups = await okta.list_groups()
+
+            await sync_group_memberships(
+                act_as_authority=sync_group_memberships_authoritatively,
+                groups=groups,
+                group_ids_with_group_rules=group_ids_with_group_rules,
+                batch_size=group_batch_size,
+            )
+            if settings.OKTA_USE_GROUP_OWNERS_API:
+                await sync_group_ownerships(
+                    act_as_authority=sync_group_memberships_authoritatively,
+                    groups=groups,
+                    group_ids_with_group_rules=group_ids_with_group_rules,
+                    batch_size=group_batch_size,
+                )
+            await expire_access_requests()
+    finally:
+        await okta.stop_pooled_client()
 
 
 @cli.command("fix-unmanaged-groups")
