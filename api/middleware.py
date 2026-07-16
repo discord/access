@@ -40,12 +40,12 @@ from api.plugins.metrics_reporter import get_metrics_reporter_hook
 def build_csp(nonce: str) -> str:
     """Production CSP for the SPA.
 
-    `'unsafe-inline'` is gone from `script-src`/`style-src`; a per-response
-    nonce (see `SecurityHeadersMiddleware`, threaded into the served
-    `index.html` by `api.app.serve_spa`) authorizes the inline bootstrap
-    `<script>` and styled-components' runtime `<style>` injections instead.
-    External same-origin bundles/stylesheets are still covered by `'self'`,
-    and Google Fonts by its host allowance.
+    `script-src`/`style-src` allow `'self'` plus a per-response nonce (see
+    `SecurityHeadersMiddleware`, threaded into the served `index.html` by
+    `api.app.serve_spa`): the nonce authorizes the inline bootstrap `<script>`
+    and styled-components' runtime `<style>` injections, while same-origin
+    bundles/stylesheets are covered by `'self'` and Google Fonts by its host
+    allowance.
     """
     return (
         "default-src 'self'; "

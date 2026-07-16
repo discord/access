@@ -43,8 +43,8 @@ _SCRIPT_OR_STYLE_OPEN = re.compile(r"<(script|style)(?![^>]*\bnonce=)", re.IGNOR
 def _inject_csp_nonce(html: str, nonce: str) -> str:
     """Stamp the request's CSP nonce into the SPA shell.
 
-    With `'unsafe-inline'` dropped from `script-src`/`style-src` (see
-    `api.middleware.build_csp`), every inline `<script>`/`<style>` the build
+    `script-src`/`style-src` authorize inline content by nonce (see
+    `api.middleware.build_csp`), so every inline `<script>`/`<style>` the build
     emitted (e.g. Vite's module-preload polyfill) must carry the nonce, and
     styled-components' runtime `<style>` injections are authorized by seeding
     `window.__webpack_nonce__` before the app bundle runs. External same-origin
