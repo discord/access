@@ -41,7 +41,9 @@ async def is_app_owner_group_owner(
     db: AsyncSession,
     current_user_id: str,
     *,
-    app_group: Optional[AppGroup] = None,
+    # Any group may be passed (callers hold an `OktaGroup`); the `type(...) is
+    # AppGroup` guard below returns False for non-app groups.
+    app_group: Optional[OktaGroup] = None,
     app: Optional[App] = None,
 ) -> bool:
     if app is not None:

@@ -202,12 +202,16 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 def install(app: FastAPI) -> None:
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(RequestValidationError, request_validation_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(ValidationError, pydantic_validation_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(OIDCRedirectRequired, oidc_redirect_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(PluginNotFoundError, plugin_not_found_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(AccessException, access_exception_handler)  # type: ignore[arg-type]
-    app.add_exception_handler(OktaTransientError, okta_transient_error_handler)  # type: ignore[arg-type]
+    # Starlette types the handler param as `(Request, Exception) -> Response`;
+    # each handler below narrows to its specific exception subtype (and returns
+    # a concrete Response), which is correct at runtime but not assignable to
+    # that broad signature — hence the per-line ignores.
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(HTTPException, http_exception_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(RequestValidationError, request_validation_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(ValidationError, pydantic_validation_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(OIDCRedirectRequired, oidc_redirect_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(PluginNotFoundError, plugin_not_found_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(AccessException, access_exception_handler)  # ty: ignore[invalid-argument-type]
+    app.add_exception_handler(OktaTransientError, okta_transient_error_handler)  # ty: ignore[invalid-argument-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)

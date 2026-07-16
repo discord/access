@@ -10,10 +10,11 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import httpx
 import jwt
+import jwt.algorithms
 from cachetools import TTLCache, cached
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey, RSAPublicKey
 from fastapi import HTTPException
@@ -88,7 +89,9 @@ def verify_cloudflare_token(token: str) -> Dict[str, Any]:
     try:
         return jwt.decode(
             token,
-            key=keys[kid],
+            # A public JWKS cert always yields a public key; `from_jwk`'s stub
+            # widens the return to the private/public union.
+            key=cast(RSAPublicKey, keys[kid]),
             audience=settings.CLOUDFLARE_APPLICATION_AUDIENCE,
             algorithms=["RS256"],
         )
