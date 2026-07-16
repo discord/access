@@ -116,7 +116,7 @@ unresolved-import = "ignore"
 # relaxed: they dereference Optional query results as non-None and touch Okta
 # SDK models that type every field Optional / use custom data descriptors —
 # runtime invariants ty can't prove statically, so it flags them and we
-# downgrade the affected rules here. The entire `api/` package is now strictly
+# downgrade the affected rules here. The entire `api/` package is strictly
 # type-checked, so `ty check .` in CI fails the build on any new violation in it.
 [[tool.ty.overrides]]
 include = [
