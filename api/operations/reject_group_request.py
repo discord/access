@@ -45,6 +45,7 @@ class RejectGroupRequest:
                 select(GroupRequest).where(GroupRequest.id == self.group_request_id).with_for_update()
             )
         ).first()
+        assert group_request is not None
 
         if self.current_user_id is None:
             rejecter_id = None

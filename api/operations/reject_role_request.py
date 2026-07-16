@@ -54,6 +54,7 @@ class RejectRoleRequest:
                 .with_for_update(of=RoleRequest)
             )
         ).first()
+        assert role_request is not None
 
         if self.current_user_id is None:
             rejecter_id = None

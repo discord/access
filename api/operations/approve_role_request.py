@@ -50,12 +50,14 @@ class ApproveRoleRequest:
                 .with_for_update(of=RoleRequest)
             )
         ).first()
+        assert role_request is not None
 
         if self.approver_user_id is None:
             approver_id = None
             approver_email = None
         else:
             approver = await db.session.get(OktaUser, self.approver_user_id)
+            assert approver is not None
             approver_id = approver.id
             approver_email = approver.email
 
@@ -119,9 +121,13 @@ class ApproveRoleRequest:
             )
         )
 
+        # A role request's requester role is always a RoleGroup (validated above).
+        requester_role = role_request.requester_role
+        assert isinstance(requester_role, RoleGroup)
+
         if role_request.request_ownership:
             await ModifyRoleGroups(
-                role_group=role_request.requester_role,
+                role_group=requester_role,
                 groups_added_ended_at=self.ending_at,
                 owner_groups_to_add=[role_request.requested_group_id],
                 current_user_id=approver_id,
@@ -130,7 +136,7 @@ class ApproveRoleRequest:
             ).execute()
         else:
             await ModifyRoleGroups(
-                role_group=role_request.requester_role,
+                role_group=requester_role,
                 groups_added_ended_at=self.ending_at,
                 groups_to_add=[role_request.requested_group_id],
                 current_user_id=approver_id,

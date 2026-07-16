@@ -77,6 +77,7 @@ class ModifyGroupUsers:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         # Determine the minimum time allowed for group membership and ownership by current group tags
         tags = [tag_map.active_tag for tag_map in group.active_group_tags]
@@ -95,63 +96,79 @@ class ModifyGroupUsers:
 
         members_to_add: list[OktaUser] = []
         if len(self.member_ids_to_add) > 0:
-            members_to_add = (
-                await db.session.scalars(
-                    select(OktaUser).where(OktaUser.id.in_(self.member_ids_to_add)).where(OktaUser.deleted_at.is_(None))
-                )
-            ).all()
+            members_to_add = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUser)
+                        .where(OktaUser.id.in_(self.member_ids_to_add))
+                        .where(OktaUser.deleted_at.is_(None))
+                    )
+                ).all()
+            )
 
         owners_to_add: list[OktaUser] = []
         if len(self.owner_ids_to_add) > 0:
-            owners_to_add = (
-                await db.session.scalars(
-                    select(OktaUser).where(OktaUser.id.in_(self.owner_ids_to_add)).where(OktaUser.deleted_at.is_(None))
-                )
-            ).all()
+            owners_to_add = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUser)
+                        .where(OktaUser.id.in_(self.owner_ids_to_add))
+                        .where(OktaUser.deleted_at.is_(None))
+                    )
+                ).all()
+            )
 
         members_should_expire: list[OktaUserGroupMember] = []
         if len(self.member_should_expire_ids) > 0:
-            members_should_expire = (
-                await db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .where(OktaUserGroupMember.id.in_(self.member_should_expire_ids))
-                    .where(OktaUserGroupMember.group_id == group.id)
-                    .where(OktaUserGroupMember.ended_at > func.now())
-                    .where(OktaUserGroupMember.is_owner.is_(False))
-                )
-            ).all()
+            members_should_expire = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .where(OktaUserGroupMember.id.in_(self.member_should_expire_ids))
+                        .where(OktaUserGroupMember.group_id == group.id)
+                        .where(OktaUserGroupMember.ended_at > func.now())
+                        .where(OktaUserGroupMember.is_owner.is_(False))
+                    )
+                ).all()
+            )
 
         owners_should_expire: list[OktaUserGroupMember] = []
         if len(self.owner_should_expire_ids) > 0:
-            owners_should_expire = (
-                await db.session.scalars(
-                    select(OktaUserGroupMember)
-                    .where(OktaUserGroupMember.id.in_(self.owner_should_expire_ids))
-                    .where(OktaUserGroupMember.group_id == group.id)
-                    .where(OktaUserGroupMember.ended_at > func.now())
-                    .where(OktaUserGroupMember.is_owner.is_(True))
-                )
-            ).all()
+            owners_should_expire = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUserGroupMember)
+                        .where(OktaUserGroupMember.id.in_(self.owner_should_expire_ids))
+                        .where(OktaUserGroupMember.group_id == group.id)
+                        .where(OktaUserGroupMember.ended_at > func.now())
+                        .where(OktaUserGroupMember.is_owner.is_(True))
+                    )
+                ).all()
+            )
 
         members_to_remove: list[OktaUser] = []
         if len(self.member_ids_to_remove) > 0:
-            members_to_remove = (
-                await db.session.scalars(
-                    select(OktaUser)
-                    .where(OktaUser.id.in_(self.member_ids_to_remove))
-                    .where(OktaUser.deleted_at.is_(None))
-                )
-            ).all()
+            members_to_remove = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUser)
+                        .where(OktaUser.id.in_(self.member_ids_to_remove))
+                        .where(OktaUser.deleted_at.is_(None))
+                    )
+                ).all()
+            )
 
         owners_to_remove: list[OktaUser] = []
         if len(self.owner_ids_to_remove) > 0:
-            owners_to_remove = (
-                await db.session.scalars(
-                    select(OktaUser)
-                    .where(OktaUser.id.in_(self.owner_ids_to_remove))
-                    .where(OktaUser.deleted_at.is_(None))
-                )
-            ).all()
+            owners_to_remove = list(
+                (
+                    await db.session.scalars(
+                        select(OktaUser)
+                        .where(OktaUser.id.in_(self.owner_ids_to_remove))
+                        .where(OktaUser.deleted_at.is_(None))
+                    )
+                ).all()
+            )
 
         self.current_user_id = getattr(
             (

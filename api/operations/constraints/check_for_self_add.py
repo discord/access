@@ -17,8 +17,8 @@ class CheckForSelfAdd:
         self,
         group: OktaGroup | str,
         current_user: Optional[OktaUser | str],
-        members_to_add: list[str] = [],
-        owners_to_add: list[str] = [],
+        members_to_add: list[str] | list[OktaUser] = [],
+        owners_to_add: list[str] | list[OktaUser] = [],
     ):
         self.group_id = group if isinstance(group, str) else group.id
         self.current_user_id = (
@@ -48,6 +48,7 @@ class CheckForSelfAdd:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         if self.current_user_id is None:
             current_user = None

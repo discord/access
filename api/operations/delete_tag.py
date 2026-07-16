@@ -17,6 +17,7 @@ class DeleteTag:
 
     async def execute(self) -> None:
         tag = (await db.session.scalars(select(Tag).where(Tag.id == self.tag_id))).first()
+        assert tag is not None
         current_user_id = getattr(
             (
                 await db.session.scalars(

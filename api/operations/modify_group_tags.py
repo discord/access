@@ -35,6 +35,7 @@ class ModifyGroupTags:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         tags_to_add = (
             await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add)))

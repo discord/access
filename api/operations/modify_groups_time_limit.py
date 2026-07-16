@@ -30,9 +30,11 @@ class ModifyGroupsTimeLimit:
             )
         ).all()
 
-        tags = (
-            await db.session.scalars(select(Tag).where(Tag.id.in_(self.tag_ids)).where(Tag.deleted_at.is_(None)))
-        ).all()
+        tags = list(
+            (
+                await db.session.scalars(select(Tag).where(Tag.id.in_(self.tag_ids)).where(Tag.deleted_at.is_(None)))
+            ).all()
+        )
 
         if len(groups) == 0:
             return

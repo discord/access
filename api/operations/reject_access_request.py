@@ -45,6 +45,7 @@ class RejectAccessRequest:
                 select(AccessRequest).where(AccessRequest.id == self.access_request_id).with_for_update()
             )
         ).first()
+        assert access_request is not None
 
         if self.current_user_id is None:
             rejecter_id = None

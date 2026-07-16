@@ -51,12 +51,14 @@ class ApproveAccessRequest:
                 .with_for_update(of=AccessRequest)
             )
         ).first()
+        assert access_request is not None
 
         if self.approver_user_id is None:
             approver_id = None
             approver_email = None
         else:
             approver = await db.session.get(OktaUser, self.approver_user_id)
+            assert approver is not None
             approver_id = approver.id
             approver_email = approver.email
 

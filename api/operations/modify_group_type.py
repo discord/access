@@ -1,9 +1,9 @@
-from typing import Optional
+from typing import Optional, cast
 
 import logging
 
 from api.context import get_request_context
-from sqlalchemy import delete, func, insert, or_, select, update
+from sqlalchemy import Table, delete, func, insert, or_, select, update
 from sqlalchemy.orm import joinedload, selectin_polymorphic
 
 from api.extensions import db
@@ -40,6 +40,7 @@ class ModifyGroupType:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         current_user_id = getattr(
             (
@@ -88,7 +89,9 @@ class ModifyGroupType:
                 ).execute()
                 await db.session.commit()
 
-                await db.session.execute(delete(RoleGroup.__table__).where(RoleGroup.__table__.c.id == group_id))
+                await db.session.execute(
+                    delete(cast(Table, RoleGroup.__table__)).where(RoleGroup.__table__.c.id == group_id)
+                )
             elif type(group) is AppGroup:
                 # Bail if this is the owner group for the app
                 # which cannot have its type changed
@@ -123,7 +126,9 @@ class ModifyGroupType:
                 )
                 await db.session.commit()
 
-                await db.session.execute(delete(AppGroup.__table__).where(AppGroup.__table__.c.id == group_id))
+                await db.session.execute(
+                    delete(cast(Table, AppGroup.__table__)).where(AppGroup.__table__.c.id == group_id)
+                )
             # Expunge the session so the changed object is flushed from the ORM
             # See https://stackoverflow.com/a/21792969
             db.session.expunge_all()
@@ -138,6 +143,7 @@ class ModifyGroupType:
                     select(OktaGroup).where(OktaGroup.deleted_at.is_(None)).where(OktaGroup.id == group_id)
                 )
             ).first()
+            assert group is not None
 
             # Create new child table row
             if type(self.group_changes) is RoleGroup:
@@ -200,10 +206,10 @@ class ModifyGroupType:
                             groups_to_remove=[role_group_map.group_id],
                         ).execute()
 
-                await db.session.execute(insert(RoleGroup.__table__).values(id=group_id))
+                await db.session.execute(insert(cast(Table, RoleGroup.__table__)).values(id=group_id))
             elif type(self.group_changes) is AppGroup:
                 await db.session.execute(
-                    insert(AppGroup.__table__).values(
+                    insert(cast(Table, AppGroup.__table__)).values(
                         id=group_id,
                         app_id=self.group_changes.app_id,
                     )
@@ -257,6 +263,7 @@ class ModifyGroupType:
                     .where(OktaGroup.id == group_id)
                 )
             ).first()
+            assert group is not None
 
             # Invoke group_created hook after converting to an AppGroup (symmetric
             # with group_deleted which fires when converting away from AppGroup).

@@ -29,6 +29,7 @@ class ModifyAppTags:
         app = (
             await db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id))
         ).first()
+        assert app is not None
 
         tags_to_add = (
             await db.session.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.id.in_(self.tag_ids_to_add)))
