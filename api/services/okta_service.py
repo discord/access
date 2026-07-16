@@ -10,7 +10,6 @@ from datetime import datetime
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from okta.client import Client as OktaClient
-from okta.errors.okta_api_error import OktaAPIError
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.assign_group_owner_request_body import AssignGroupOwnerRequestBody
 from okta.models.group import Group as OktaGroupType
@@ -26,7 +25,10 @@ from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
 from api.models import OktaGroup, OktaUser
 
 REQUEST_TIMEOUT = 30
-HTTP_TOO_MANY_REQUESTS = 429
+# HTTP statuses the SDK reports as errors that we treat as transient: a caller
+# may swallow them and let the next reconcile retry. Covers rate limiting (429)
+# and upstream/gateway blips (5xx, e.g. a 502 Bad Gateway from the load balancer).
+TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 # Page size for cursor-paginated list endpoints. Okta caps most list endpoints
 # at 200 per page; the facade drives the ``after`` cursor to walk pages.
 LIST_PAGE_LIMIT = 200
@@ -46,31 +48,34 @@ _unique_field.metadata = []
 UserSchemaAttribute.model_rebuild(force=True)
 
 
-class OktaTimeout(Exception):
-    """Raised when an Okta API request times out or is rate-limited out.
+class OktaTransientError(Exception):
+    """Raised when an Okta request times out or hits a transient failure.
 
-    Surfaced when the SDK gives up on a request — either its ``requestTimeout``
-    is exceeded or a 429 outlives its rate-limit retries. Callers that can
-    tolerate a slow Okta call (the membership/ownership fan-out) catch this and
-    continue; the syncer reconciles the drift later.
+    Surfaced when the SDK gives up on a request: its ``requestTimeout`` is
+    exceeded, a 429 outlives its rate-limit retries, or the response is a
+    transient upstream/gateway error (5xx). Callers that can tolerate a slow or
+    flaky Okta call (the membership/ownership fan-out) catch this and continue;
+    the syncer reconciles the drift later.
     """
 
     pass
 
 
-def _is_timeout_or_rate_limited(error: Any) -> bool:
-    """Whether an SDK error means the request timed out or was rate-limited out.
+def _is_transient_okta_error(error: Any) -> bool:
+    """Whether an SDK error is a transient failure a caller may swallow.
 
-    The SDK returns (rather than raises) a request timeout as an
-    ``asyncio.TimeoutError`` (aiohttp socket timeout) or a bare
-    ``Exception("Request Timeout exceeded.")`` (its cumulative deadline), and a
-    429 that survived its retries as an ``OktaAPIError`` with status 429.
+    The SDK returns (rather than raises) errors. Treat as transient: a request
+    timeout — an ``asyncio.TimeoutError`` (aiohttp socket timeout) or the bare
+    ``Exception("Request Timeout exceeded.")`` cumulative deadline — and any
+    response carrying a transient HTTP ``status`` (429, or a 5xx gateway error).
+    Both ``OktaAPIError`` (JSON error bodies) and ``HTTPError`` (non-JSON, e.g. a
+    502 HTML page) expose ``.status``.
     """
     if error is None:
         return False
     if isinstance(error, asyncio.TimeoutError):
         return True
-    if isinstance(error, OktaAPIError) and getattr(error, "status", None) == HTTP_TOO_MANY_REQUESTS:
+    if getattr(error, "status", None) in TRANSIENT_STATUS_CODES:
         return True
     return str(error) == "Request Timeout exceeded."
 
@@ -79,10 +84,11 @@ class _WrapperClient:
     """Proxy over an Okta client that routes every async API call through ``OktaService._call``.
 
     Attribute access returns the underlying client's coroutine methods wrapped
-    so their timeout / rate-limit outcomes become ``OktaTimeout``. Applying the
-    mapping here — rather than at each call site — makes it uniform and
-    impossible to forget when a new facade method is added. Non-coroutine
-    attributes (e.g. ``get_request_executor``) pass through unchanged.
+    so their transient failures (timeout, rate limit, 5xx) surface as
+    ``OktaTransientError``. Applying the mapping here — rather than at each call
+    site — makes it uniform and impossible to forget when a new facade method is
+    added. Non-coroutine attributes (e.g. ``get_request_executor``) pass through
+    unchanged.
     """
 
     def __init__(self, client: OktaClient) -> None:
@@ -183,19 +189,19 @@ class OktaService:
 
     @staticmethod
     async def _call(coro: Awaitable[Any]) -> Any:
-        """Await an Okta SDK call, mapping timeouts and rate-limit exhaustion to OktaTimeout.
+        """Await an Okta SDK call, mapping transient failures to OktaTransientError.
 
         The SDK enforces the request timeout itself (``requestTimeout`` config)
         and retries 429s internally, returning errors rather than raising them.
-        The two "gave up / took too long" outcomes — a request timeout and a 429
-        that outlived the SDK's rate-limit retries — are surfaced as
-        ``OktaTimeout`` so callers can choose to swallow them; every other error
-        passes through in the returned tuple for the caller to raise.
+        A transient outcome — a request timeout, a 429 that outlived the SDK's
+        rate-limit retries, or a 5xx upstream/gateway error — is surfaced as
+        ``OktaTransientError`` so callers can choose to swallow it; every other
+        error passes through in the returned tuple for the caller to raise.
         """
         result = await coro
         error = result[-1] if isinstance(result, tuple) and result else None
-        if _is_timeout_or_rate_limited(error):
-            raise OktaTimeout(str(error) or "Okta request timed out")
+        if _is_transient_okta_error(error):
+            raise OktaTransientError(str(error) or "Okta request timed out")
         return result
 
     async def _paginate(self, list_method: Callable[..., Any], *args: Any, **kwargs: Any) -> list[Any]:
@@ -329,8 +335,8 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
-            logger.warning(f"Timed out adding user {userId} to group {groupId}")
+        except OktaTransientError:
+            logger.warning(f"Transient Okta error adding user {userId} to group {groupId}")
 
     async def remove_user_from_group(self, groupId: str, userId: str) -> None:
         if groupId is None or groupId == "":
@@ -347,8 +353,8 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
-            logger.warning(f"Timed out removing user {userId} from group {groupId}")
+        except OktaTransientError:
+            logger.warning(f"Transient Okta error removing user {userId} from group {groupId}")
 
     # TODO: Implement fetching group membership count for fast syncing
     # GET https://{yourOktaDomain}.com/api/v1/groups/<group_id>?expand=app,stats
@@ -424,8 +430,8 @@ class OktaService:
             # Ignore error if owner is already assigned to group
             if error is not None and "already assigned to this group" not in str(error):
                 raise Exception(error)
-        except OktaTimeout:
-            logger.warning(f"Timed out adding owner {userId} to group {groupId}")
+        except OktaTransientError:
+            logger.warning(f"Transient Okta error adding owner {userId} to group {groupId}")
 
         return
 
@@ -447,8 +453,8 @@ class OktaService:
 
             if error is not None:
                 raise Exception(error)
-        except OktaTimeout:
-            logger.warning(f"Timed out removing owner {userId} from group {groupId}")
+        except OktaTransientError:
+            logger.warning(f"Transient Okta error removing owner {userId} from group {groupId}")
 
         return
 
