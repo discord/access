@@ -225,7 +225,8 @@ async def sync_group_memberships(
     act_as_authority: bool,
     groups: list[Group] | None = None,
     group_ids_with_group_rules: _GroupRulesByGroupId | None = None,
-    batch_size: int | None = None,
+    *,
+    batch_size: int,
 ) -> None:
     logger.info("Membership sync started.")
     if groups is None:
@@ -237,9 +238,6 @@ async def sync_group_memberships(
 
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
-
-    if batch_size is None:
-        batch_size = settings.SYNC_GROUP_BATCH_SIZE
 
     async for group, members in _prefetch_group_okta_lists(groups, okta.list_users_for_group, batch_size):
         if isinstance(members, OktaTransientError):
@@ -336,7 +334,8 @@ async def sync_group_ownerships(
     act_as_authority: bool,
     groups: list[Group] | None = None,
     group_ids_with_group_rules: _GroupRulesByGroupId | None = None,
-    batch_size: int | None = None,
+    *,
+    batch_size: int,
 ) -> None:
     logger.info("Ownership sync started.")
     if groups is None:
@@ -344,9 +343,6 @@ async def sync_group_ownerships(
 
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
-
-    if batch_size is None:
-        batch_size = settings.SYNC_GROUP_BATCH_SIZE
 
     async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, batch_size):
         if isinstance(owners, OktaTransientError):

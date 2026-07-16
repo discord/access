@@ -6,6 +6,7 @@ from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.config import settings
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember
 from api.extensions import Db
 from api.services import okta
@@ -356,7 +357,7 @@ async def run_sync(
 
         mocker.patch.object(okta, "list_groups_with_active_rules", return_value=groups_with_rules)
 
-        await sync_group_memberships(act_as_authority)
+        await sync_group_memberships(act_as_authority, batch_size=settings.SYNC_GROUP_BATCH_SIZE)
 
         return list((await session.scalars(select(OktaUserGroupMember))).all())
 

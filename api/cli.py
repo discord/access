@@ -270,6 +270,10 @@ async def sync(
         sync_users,
     )
 
+    # The --group-batch-size flag overrides the SYNC_GROUP_BATCH_SIZE setting
+    # when provided; resolve it once and pass the concrete size down.
+    batch_size = group_batch_size if group_batch_size is not None else settings.SYNC_GROUP_BATCH_SIZE
+
     # Pool one Okta client (and its aiohttp connector) for the whole run so the
     # concurrent per-group membership/ownership fan-out reuses connections.
     # No-op when Okta isn't configured (dev/test).
@@ -296,14 +300,14 @@ async def sync(
                 act_as_authority=sync_group_memberships_authoritatively,
                 groups=groups,
                 group_ids_with_group_rules=group_ids_with_group_rules,
-                batch_size=group_batch_size,
+                batch_size=batch_size,
             )
             if settings.OKTA_USE_GROUP_OWNERS_API:
                 await sync_group_ownerships(
                     act_as_authority=sync_group_memberships_authoritatively,
                     groups=groups,
                     group_ids_with_group_rules=group_ids_with_group_rules,
-                    batch_size=group_batch_size,
+                    batch_size=batch_size,
                 )
             await expire_access_requests()
     finally:
