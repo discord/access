@@ -1,24 +1,22 @@
 """Test data factories.
 
-**ORM model factories** are `polyfactory` `SQLAlchemyFactory` subclasses
-(POST_MIGRATION_TODO #16 — replaces the old `factory_boy` factories). polyfactory
-otherwise populates *every* column with random data; these factories instead
-whitelist just the columns each one sets (via `should_set_field_value` +
+**ORM model factories** are `polyfactory` `SQLAlchemyFactory` subclasses.
+polyfactory otherwise populates *every* column with random data; these factories
+instead whitelist just the columns each one sets (via `should_set_field_value` +
 `__set_foreign_keys__` / `__set_relationships__` off) and leave the rest — soft
-deletes, timestamps, discriminators, FKs, JSON config — to the model/DB defaults,
-mirroring what the old factories did. Explicit `build(...)`/`create(...)` kwargs
-still override any column (managed or not), which the fixtures and tests rely on.
+deletes, timestamps, discriminators, FKs, JSON config — to the model/DB defaults.
+Explicit `build(...)`/`create(...)` kwargs still override any column (managed or
+not), which the fixtures and tests rely on.
 
 The `factory_boy`-style method names (`create`, `create_batch`, `build_batch`)
-are kept as thin aliases over polyfactory's `build`/`batch` so the existing call
-sites are untouched; on a plain `factory.Factory` `create()` never persisted
-either, so the semantics match.
+are thin aliases over polyfactory's `build`/`batch`, so test call sites use them
+directly; none persist (they just build instances).
 
 **Okta SDK model factories** (`Group`/`User`/`UserSchema`) build the
 openapi-generated SDK Pydantic models through `from_dict` (camelCase aliases, the
-`anyOf` `profile` union). polyfactory's generic generation can't reproduce that
-shape, and these mock external Okta responses rather than our own schemas, so
-they stay hand-rolled builders — just no longer via `factory_boy`.
+`anyOf` `profile` union), which polyfactory's generic generation can't reproduce.
+They mock external Okta responses rather than our own schemas, so they stay
+hand-rolled builders.
 """
 
 from __future__ import annotations
@@ -88,7 +86,7 @@ class _ORMFactory(SQLAlchemyFactory):
         # `build(email=...)` overrides win over generation.
         return field_meta.name in cls._managed and super().should_set_field_value(field_meta, **kwargs)
 
-    # --- factory_boy-compatible aliases (no persistence) ---------------------
+    # --- factory_boy-style aliases over build/batch (no persistence) ---------
     @classmethod
     def create(cls, **kwargs: Any) -> Any:
         return cls.build(**kwargs)
@@ -142,7 +140,7 @@ class RoleGroupFactory(_ORMFactory):
 
 class AppGroupFactory(_ORMFactory):
     __model__ = AppGroup
-    # `app_id` / `is_owner` are supplied by the caller (as in the old factory).
+    # `app_id` / `is_owner` are supplied by the caller.
     _managed = {"id", "name", "type"}
 
     id = Use(_okta_id)
@@ -193,8 +191,8 @@ class GroupFactory:
 
     @staticmethod
     def build(config: dict[str, Any] | None = None, **overrides: Any) -> Group:
-        # A caller-supplied `config` replaces the default wholesale (matching the
-        # old factory_boy `config` attribute); any other kwargs merge on top.
+        # A caller-supplied `config` replaces the default wholesale; any other
+        # kwargs merge on top.
         if config is None:
             config = {
                 "id": _faker.pystr(),
@@ -211,7 +209,7 @@ class GroupFactory:
     def build_batch(size: int, **overrides: Any) -> list[Group]:
         return [GroupFactory.build(**overrides) for _ in range(size)]
 
-    # factory_boy-compatible aliases (these SDK models are never persisted).
+    # factory_boy-style aliases (these SDK models are never persisted).
     create = build
     create_batch = build_batch
 

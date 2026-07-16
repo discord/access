@@ -44,9 +44,8 @@ from tests.factories import (
 )
 
 
-# Instance fixtures mirroring the names the old `pytest_factoryboy.register(...)`
-# calls exposed. Each returns a freshly built (unpersisted) model, matching the
-# old behavior — tests add it to the session themselves.
+# Instance fixtures for the common models. Each returns a freshly built
+# (unpersisted) model; tests add it to the session themselves.
 @pytest.fixture
 def user() -> Any:
     return OktaUserFactory.build()
