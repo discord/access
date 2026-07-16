@@ -196,8 +196,8 @@ class ModifyGroupUsers:
         valid, _ = await CheckForSelfAdd(
             group=group,
             current_user=self.current_user_id,
-            members_to_add=members_to_add,
-            owners_to_add=owners_to_add,
+            members_to_add=[u.id for u in members_to_add],
+            owners_to_add=[u.id for u in owners_to_add],
         ).execute_for_group()
         if not valid:
             return group
@@ -206,8 +206,8 @@ class ModifyGroupUsers:
         valid, _ = await CheckForReason(
             group=group,
             reason=self.created_reason,
-            members_to_add=members_to_add,
-            owners_to_add=owners_to_add,
+            members_to_add=[u.id for u in members_to_add],
+            owners_to_add=[u.id for u in owners_to_add],
         ).execute_for_group()
         if not valid:
             return group

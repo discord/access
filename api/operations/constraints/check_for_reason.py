@@ -7,7 +7,7 @@ from sqlalchemy.orm import (
 )
 
 from api.extensions import db
-from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, RoleGroupMap, Tag
+from api.models import AppGroup, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import coalesce_constraints
 
 
@@ -16,9 +16,12 @@ class CheckForReason:
         self,
         group: OktaGroup | str,
         reason: Optional[str],
-        members_to_add: list[str] | list[OktaUser] = [],
-        owners_to_add: list[str] | list[OktaUser] = [],
+        members_to_add: list[str] = [],
+        owners_to_add: list[str] = [],
     ):
+        # `members_to_add` / `owners_to_add` are id lists: OktaUser ids for the
+        # direct group path (execute_for_group), or the group ids a role is
+        # added to for the role path (execute_for_role).
         self.group_id = group if isinstance(group, str) else group.id
 
         self.reason = reason
