@@ -61,21 +61,33 @@ class OktaTransientError(Exception):
     pass
 
 
+# On a gateway failure that yields no response object, the SDK returns
+# ``(None, None, error)`` from the request executor, then dereferences
+# ``response.status`` before checking the error on its list/get endpoints. That
+# raises this AttributeError from inside the coroutine instead of returning the
+# error in the tuple, so it must be recognised as transient here too.
+_NONE_RESPONSE_ATTRIBUTE_ERROR = "'NoneType' object has no attribute 'status'"
+
+
 def _is_transient_okta_error(error: Any) -> bool:
     """Whether an SDK error is a transient failure a caller may swallow.
 
-    The SDK returns (rather than raises) errors. Treat as transient: a request
+    The SDK usually returns (rather than raises) errors. Treat as transient: a request
     timeout — an ``asyncio.TimeoutError`` (aiohttp socket timeout) or the bare
     ``Exception("Request Timeout exceeded.")`` cumulative deadline — and any
     response carrying a transient HTTP ``status`` (429, or a 5xx gateway error).
     Both ``OktaAPIError`` (JSON error bodies) and ``HTTPError`` (non-JSON, e.g. a
-    502 HTML page) expose ``.status``.
+    502 HTML page) expose ``.status``. A gateway blip can also leave the SDK with
+    a ``None`` response that it dereferences, *raising* an ``AttributeError``; that
+    is transient too. ``_call`` routes both returned and raised errors through here.
     """
     if error is None:
         return False
     if isinstance(error, asyncio.TimeoutError):
         return True
     if getattr(error, "status", None) in TRANSIENT_STATUS_CODES:
+        return True
+    if isinstance(error, AttributeError) and str(error) == _NONE_RESPONSE_ATTRIBUTE_ERROR:
         return True
     return str(error) == "Request Timeout exceeded."
 
@@ -196,9 +208,16 @@ class OktaService:
         A transient outcome — a request timeout, a 429 that outlived the SDK's
         rate-limit retries, or a 5xx upstream/gateway error — is surfaced as
         ``OktaTransientError`` so callers can choose to swallow it; every other
-        error passes through in the returned tuple for the caller to raise.
+        error passes through in the returned tuple for the caller to raise. A
+        gateway blip can also make the SDK *raise* (rather than return) a transient
+        failure, so raised exceptions are routed through the same check.
         """
-        result = await coro
+        try:
+            result = await coro
+        except Exception as exc:
+            if _is_transient_okta_error(exc):
+                raise OktaTransientError(str(exc) or "Okta request timed out") from exc
+            raise
         error = result[-1] if isinstance(result, tuple) and result else None
         if _is_transient_okta_error(error):
             raise OktaTransientError(str(error) or "Okta request timed out")
