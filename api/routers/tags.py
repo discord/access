@@ -202,8 +202,8 @@ async def put_tag(
 async def delete_tag(
     tag_id: str,
     db: DbSession,
+    current_user_id: CurrentUserId,
     _admin: str = Depends(require_access_admin),
-    current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> DeleteMessage:
     tag = (
         await db.scalars(select(Tag).where(Tag.deleted_at.is_(None)).where(or_(Tag.id == tag_id, Tag.name == tag_id)))

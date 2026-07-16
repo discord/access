@@ -167,6 +167,7 @@ async def post_app(
 ) -> AppDetail:
     from api.models import AppGroup as _AppGroup, OktaUser, RoleGroup
     from api.operations import CreateApp
+    from api.operations.create_group import GroupDict
 
     description = body.description if body.description is not None else ""
 
@@ -244,8 +245,10 @@ async def post_app(
             f" {owner_group_name} to be able to proceed.",
         )
 
-    initial_additional_app_groups: list[dict[str, Any]] = [
-        ig.model_dump(exclude_none=True) for ig in (body.initial_additional_app_groups or [])
+    # CreateApp only reads `name`/`description` off each entry, so build the
+    # GroupDict it expects directly rather than a loose `model_dump()` dict.
+    initial_additional_app_groups: list[GroupDict] = [
+        {"name": ig.name, "description": ig.description or ""} for ig in (body.initial_additional_app_groups or [])
     ]
 
     app_obj = App(name=name, description=description)
@@ -298,7 +301,7 @@ async def put_app(
     )
     if "plugin_data" in fields_set and new_plugin_id is not None:
         try:
-            errors = validate_app_group_lifecycle_plugin_app_config(body.plugin_data, new_plugin_id)
+            errors = validate_app_group_lifecycle_plugin_app_config(body.plugin_data or {}, new_plugin_id)
         except ValueError as e:
             raise HTTPException(400, f"plugin_data: {e}") from e
         if errors:
@@ -400,6 +403,8 @@ async def put_app(
     app_id = app_obj.id
     db.expire_all()
     refreshed = (await db.scalars(select(App).options(*APP_LOAD_OPTIONS).where(App.id == app_id))).first()
+    # The app was just modified/committed above, so re-loading it by id always resolves.
+    assert refreshed is not None
 
     # Audit logging — both name renames and plugin assignment/configuration
     # changes.
@@ -455,8 +460,8 @@ async def put_app(
 async def delete_app(
     app_id: str,
     db: DbSession,
+    current_user_id: CurrentUserId,
     app_obj=Depends(require_app_owner_or_access_admin_for_app),
-    current_user_id: CurrentUserId = None,  # type: ignore[assignment]
 ) -> DeleteMessage:
     from api.operations import DeleteApp
 

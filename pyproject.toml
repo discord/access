@@ -118,17 +118,18 @@ unresolved-import = "ignore"
 #     Optional query results as non-None;
 #   - the Okta service wrappers touch SDK models that type every field
 #     Optional and use custom data descriptors;
-#   - the FastAPI routers/exception handlers and MCP tools reuse the same
-#     Pydantic + query patterns.
+#   - the exception handlers and MCP tools reuse the same Pydantic + query
+#     patterns.
 # ty resolves the real types and flags these, so downgrade the affected
-# rules here. The core (api/models, api/schemas, api/database, api/config, …)
-# stays strict.
+# rules here. The core (api/models, api/schemas, api/database, api/config,
+# api/pagination, and — since POST_MIGRATION_TODO item 14 — api/routers) stays
+# strict, so `ty check .` in CI fails the build on any new router/schema
+# violation.
 [[tool.ty.overrides]]
 include = [
     "tests/**",
     "examples/**",
     "migrations/**",
-    "api/routers/**",
     "api/operations/**",
     "api/services/**",
     "api/auth/**",

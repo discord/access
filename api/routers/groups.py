@@ -236,7 +236,7 @@ async def put_group(
         plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
         if plugin_id is not None:
             try:
-                errors = validate_app_group_lifecycle_plugin_group_config(body.plugin_data, plugin_id)
+                errors = validate_app_group_lifecycle_plugin_group_config(body.plugin_data or {}, plugin_id)
             except ValueError as e:
                 raise HTTPException(400, f"plugin_data: {e}") from e
             if errors:
@@ -288,7 +288,10 @@ async def put_group(
                 403, "Current user is not an app owner of the target app and not allowed to reassign this group"
             )
         if body.type == group.type:
-            group.app_id = body.app_id
+            # target_app was fetched by `App.id == body.app_id`, so its id is
+            # the same non-null value — assigning it keeps `app_id: Mapped[str]`
+            # non-optional.
+            group.app_id = target_app.id
 
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
@@ -372,7 +375,12 @@ async def put_group(
         for k in ("name", "description", "is_managed"):
             setattr(new_group, k, getattr(group, k, None))
         if isinstance(new_group, AppGroup) and isinstance(body, _AppGroupUpdateBody):
-            new_group.app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
+            resolved_app_id = body.app_id if "app_id" in fields_set else getattr(group, "app_id", None)
+            # `app_id` is a non-nullable Mapped[str]; leave it unset (equivalently
+            # None on the transient object) when unresolved rather than assigning
+            # None, and let ModifyGroupType / the DB reject a missing app_id.
+            if resolved_app_id is not None:
+                new_group.app_id = resolved_app_id
             new_group.is_owner = False
         try:
             group = await ModifyGroupType(
@@ -401,6 +409,8 @@ async def put_group(
     ).execute()
 
     refreshed = await _load_group_with_options(db, group.id)
+    # The group was just committed above, so re-loading it by id always resolves.
+    assert refreshed is not None
 
     # Audit log — plugin configuration changes at the group level
     if old_plugin_data_for_audit != (refreshed.plugin_data or {}):

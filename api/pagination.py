@@ -53,11 +53,11 @@ AppGroupsPage = CustomizedPage[
 
 
 @lru_cache(maxsize=None)
-def _adapter(model: type) -> TypeAdapter[Any]:
+def _adapter(model: Any) -> TypeAdapter[Any]:
     return TypeAdapter(model)
 
 
-def validated(model: type) -> Callable[[Sequence[Any]], list[Any]]:
+def validated(model: Any) -> Callable[[Sequence[Any]], list[Any]]:
     """Build a `fastapi-pagination` `transformer=` that validates each ORM row
     through `model` with `from_attributes=True`.
 
