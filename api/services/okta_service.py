@@ -32,6 +32,14 @@ TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 # Page size for cursor-paginated list endpoints. Okta caps most list endpoints
 # at 200 per page; the facade drives the ``after`` cursor to walk pages.
 LIST_PAGE_LIMIT = 200
+# Extra attempts for a call that raises ``OktaTransientError``. Transient Okta
+# failures (a 429/5xx or timeout, and — via the reclassification in ``_call`` — a
+# pooled keep-alive connection Okta dropped server-side, which the SDK surfaces as
+# a None-response error) are worth one immediate retry: it gets a fresh connection
+# and usually succeeds, recovering within the run instead of skipping the resource
+# until the next reconcile. Kept at 1 so a genuinely-degraded endpoint, or a
+# lingering 429, still gives up quickly rather than amplifying load.
+OKTA_TRANSIENT_RETRIES = 1
 
 
 logger = logging.getLogger(__name__)
@@ -113,7 +121,17 @@ class _WrapperClient:
 
         @functools.wraps(attr)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            return await OktaService._call(attr(*args, **kwargs))
+            # Rebuild the coroutine each attempt — a spent coroutine can't be
+            # re-awaited — and retry a bounded number of times on a transient
+            # failure, so a stale pooled connection is recovered within the run
+            # rather than deferred to the next reconcile.
+            for attempt in range(OKTA_TRANSIENT_RETRIES + 1):
+                try:
+                    return await OktaService._call(attr(*args, **kwargs))
+                except OktaTransientError:
+                    if attempt == OKTA_TRANSIENT_RETRIES:
+                        raise
+            raise AssertionError("unreachable")  # pragma: no cover
 
         return wrapper
 
