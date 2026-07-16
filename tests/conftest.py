@@ -24,7 +24,6 @@ from urllib.parse import urlencode
 import httpx
 import pytest
 from fastapi import FastAPI
-from pytest_factoryboy import register
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -44,14 +43,48 @@ from tests.factories import (
     TagFactory,
 )
 
-register(OktaUserFactory, "user")
-register(OktaGroupFactory, "okta_group")
-register(RoleGroupFactory, "role_group")
-register(AppGroupFactory, "app_group")
-register(AppFactory, "access_app")
-register(AccessRequestFactory, "access_request")
-register(RoleRequestFactory, "role_request")
-register(TagFactory, "tag")
+
+# Instance fixtures mirroring the names the old `pytest_factoryboy.register(...)`
+# calls exposed. Each returns a freshly built (unpersisted) model, matching the
+# old behavior — tests add it to the session themselves.
+@pytest.fixture
+def user() -> Any:
+    return OktaUserFactory.build()
+
+
+@pytest.fixture
+def okta_group() -> Any:
+    return OktaGroupFactory.build()
+
+
+@pytest.fixture
+def role_group() -> Any:
+    return RoleGroupFactory.build()
+
+
+@pytest.fixture
+def app_group() -> Any:
+    return AppGroupFactory.build()
+
+
+@pytest.fixture
+def access_app() -> Any:
+    return AppFactory.build()
+
+
+@pytest.fixture
+def access_request() -> Any:
+    return AccessRequestFactory.build()
+
+
+@pytest.fixture
+def role_request() -> Any:
+    return RoleRequestFactory.build()
+
+
+@pytest.fixture
+def tag() -> Any:
+    return TagFactory.build()
 
 
 def _async_test_uri() -> str:

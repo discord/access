@@ -3,7 +3,7 @@ from typing import Any, Dict, Protocol, cast
 from unittest.mock import Mock
 
 import pytest
-from factory import Faker
+from faker import Faker
 from httpx import AsyncClient
 from okta.models.group import Group
 from pytest_mock import MockerFixture
