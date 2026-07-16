@@ -66,8 +66,10 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName, minTagTime} from '../../helpers';
 
+import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
+import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -222,6 +224,9 @@ export default function ReadGroupRequest() {
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
+  // The lifecycle plugin configured on the target app (null if none).
+  const requestPluginId = pluginIdForApp(requestedAppData);
+
   const [appSeeded, setAppSeeded] = React.useState(false);
   React.useEffect(() => {
     if (!appSeeded && requestedAppData?.name) {
@@ -470,6 +475,10 @@ export default function ReadGroupRequest() {
       resolved_group_tags: selectedTags.map((t) => t.id),
       reason: responseForm.reason ?? '',
     };
+
+    if (responseForm.resolved_group_type === 'app_group' && requestPluginId) {
+      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm as any);
+    }
 
     switch (responseForm.resolved_ownership_ending_at) {
       case 'indefinite':
@@ -916,6 +925,15 @@ export default function ReadGroupRequest() {
                                     </Grid>
                                   ) : null}
                                 </Grid>
+                                {requestPluginId && (
+                                  <AppGroupLifecyclePluginConfigurationForm
+                                    entityType="group"
+                                    selectedPluginId={requestPluginId}
+                                    currentConfig={
+                                      groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                                    }
+                                  />
+                                )}
                                 <Divider sx={{my: 2}} />
                               </>
                             )}
