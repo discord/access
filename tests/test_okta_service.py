@@ -3,12 +3,20 @@ import json
 from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
-from api.services.okta_service import OktaService, UserSchema, is_managed_group
+from api.services.okta_service import (
+    OKTA_TRANSIENT_RETRIES,
+    OktaService,
+    OktaTransientError,
+    UserSchema,
+    is_managed_group,
+)
 from tests.factories import UserFactory
 
 
@@ -215,3 +223,40 @@ async def test_concurrent_calls_use_isolated_clients() -> None:
     # Each concurrent call built its own client; nothing shared.
     assert len(clients) == call_count
     assert len({id(client) for client in clients}) == call_count
+
+
+async def test_transient_error_is_retried_then_succeeds() -> None:
+    """A transient Okta failure is retried within the same call and can recover.
+
+    The SDK surfaces a transient outcome (here a 503) that ``_call`` turns into an
+    ``OktaTransientError``; ``_WrapperClient`` retries it, and the next attempt —
+    on a fresh connection in production — succeeds.
+    """
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    transient = (None, MagicMock(status_code=503, headers={}), MagicMock(status=503))
+    success = (UserFactory(), MagicMock(status_code=200, headers={}), None)
+    get_user = AsyncMock(side_effect=[transient, success])
+
+    with patch("okta.client.Client.get_user", get_user):
+        user = await service.get_user("okta_id")
+
+    assert user is not None
+    # One transient failure, retried once, then success.
+    assert get_user.call_count == 2
+
+
+async def test_transient_error_gives_up_after_bounded_retries() -> None:
+    """A persistently transient endpoint stops after the bounded retries."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    transient = (None, MagicMock(status_code=503, headers={}), MagicMock(status=503))
+    get_user = AsyncMock(return_value=transient)
+
+    with patch("okta.client.Client.get_user", get_user):
+        with pytest.raises(OktaTransientError):
+            await service.get_user("okta_id")
+
+    assert get_user.call_count == OKTA_TRANSIENT_RETRIES + 1
