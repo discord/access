@@ -19,6 +19,7 @@ from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.okta_user_group_profile import OktaUserGroupProfile
 from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
+from okta.models.user_schema_attribute import UserSchemaAttribute
 from okta.pagination import PaginationHelper
 
 from api.config import OKTA_GROUP_PROFILE_CUSTOM_ATTR
@@ -32,6 +33,17 @@ LIST_PAGE_LIMIT = 200
 
 
 logger = logging.getLogger(__name__)
+
+
+# Okta's user-schema API returns an attribute's ``unique`` property as a string
+# enum (``UNIQUE_VALIDATED`` / ``NOT_UNIQUE``) — the default base ``login``,
+# ``email``, and ``secondEmail`` attributes are ``UNIQUE_VALIDATED`` — but the
+# SDK models the field as a strict bool, so deserializing any user schema raises
+# a pydantic ``ValidationError``. Relax the field to match Okta's real payload.
+_unique_field = UserSchemaAttribute.model_fields["unique"]
+_unique_field.annotation = Optional[str]
+_unique_field.metadata = []
+UserSchemaAttribute.model_rebuild(force=True)
 
 
 class OktaTimeout(Exception):
