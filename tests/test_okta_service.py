@@ -1,13 +1,29 @@
 import asyncio
-from typing import Any
+import json
+from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
+from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
-from api.services.okta_service import OktaService, is_managed_group
+from api.services.okta_service import OktaService, UserSchema, is_managed_group
 from tests.factories import UserFactory
+
+
+def _user_schema(base_properties: dict[str, Any], custom_properties: Optional[dict[str, Any]] = None) -> Any:
+    """Build a real Okta ``UserSchema`` model from a raw schema payload."""
+    schema = OktaUserSchemaType.from_dict(
+        {
+            "definitions": {
+                "base": {"id": "#base", "type": "object", "properties": base_properties},
+                "custom": {"id": "#custom", "type": "object", "properties": custom_properties or {}},
+            }
+        }
+    )
+    assert schema is not None
+    return schema
 
 
 def _okta_group(allow_discord_access: Any = "unset") -> OktaGroupType:
@@ -109,6 +125,59 @@ async def test_update_group_preserves_custom_attributes() -> None:
     assert updated_payload.profile.name == "New Name"
     assert updated_payload.profile.description == "New Description"
     assert updated_payload.profile.to_dict()["allow_discord_access"] is True
+
+
+def test_user_schema_parses_okta_string_unique_enum() -> None:
+    """Okta returns a schema attribute's ``unique`` property as a string enum
+    (``UNIQUE_VALIDATED`` / ``NOT_UNIQUE``) — the default base ``login`` and
+    ``email`` attributes are ``UNIQUE_VALIDATED`` — but the okta SDK models the
+    field as a strict bool. Parsing such a schema must not raise, and titles
+    must remain extractable for base and custom attributes alike."""
+    schema = _user_schema(
+        {
+            "login": {"title": "Login", "unique": "UNIQUE_VALIDATED"},
+            "email": {"title": "Email", "unique": "UNIQUE_VALIDATED"},
+            "firstName": {"title": "First Name", "unique": "NOT_UNIQUE"},
+        },
+        {"employeeNumber": {"title": "Employee Number", "unique": "UNIQUE_VALIDATED"}},
+    )
+
+    titles = UserSchema(schema).user_attrs_to_titles()
+
+    assert titles["login"] == "Login"
+    assert titles["email"] == "Email"
+    assert titles["firstName"] == "First Name"
+    assert titles["employeeNumber"] == "Employee Number"
+
+
+async def test_get_user_schema_resolves_schema_with_unique_attributes() -> None:
+    """End-to-end: ``get_user_schema`` recovers the schema href from the user
+    type and returns a usable schema even when attributes carry Okta's string
+    ``unique`` enum (the shape that crashed the sync cron under okta 3.4.4)."""
+    service = OktaService()
+
+    user_type_resp = MagicMock()
+    user_type_resp.raw_data = json.dumps(
+        {"_links": {"schema": {"href": "https://example.okta.com/api/v1/meta/schemas/user/osc123"}}}
+    )
+    schema_model = _user_schema({"login": {"title": "Login", "unique": "UNIQUE_VALIDATED"}})
+
+    mock_client = MagicMock()
+    mock_client.get_user_type = AsyncMock(return_value=(MagicMock(), user_type_resp, None))
+    mock_client.get_user_schema = AsyncMock(return_value=(schema_model, None, None))
+
+    class MockOktaClientContext:
+        async def __aenter__(self) -> MagicMock:
+            return mock_client
+
+        async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+            return None
+
+    with patch.object(service, "_okta_client", return_value=MockOktaClientContext()):
+        result = await service.get_user_schema("default")
+
+    assert result.user_attrs_to_titles()["login"] == "Login"
+    mock_client.get_user_schema.assert_awaited_once_with("osc123")
 
 
 async def test_concurrent_calls_use_isolated_clients() -> None:
