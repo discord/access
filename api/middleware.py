@@ -20,6 +20,7 @@ FastAPI route, which also runs through the app-wide dependency.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 import uuid
 from typing import Awaitable, Callable
@@ -35,18 +36,32 @@ from api.extensions import _session_scope, db
 from api.plugins._async_dispatch import run_hooks_to_completion
 from api.plugins.metrics_reporter import get_metrics_reporter_hook
 
-CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-    "font-src 'self' https://fonts.gstatic.com; "
-    "connect-src 'self' *.ingest.sentry.io; "
-    "worker-src 'self' blob:; "
-    "frame-ancestors 'none'"
-)
 
-# Relaxed CSP for development: allow Swagger UI assets served from CDN by
-# FastAPI's auto-generated `/api/docs` page.
+def build_csp(nonce: str) -> str:
+    """Production CSP for the SPA.
+
+    `'unsafe-inline'` is gone from `script-src`/`style-src`; a per-response
+    nonce (see `SecurityHeadersMiddleware`, threaded into the served
+    `index.html` by `api.app.serve_spa`) authorizes the inline bootstrap
+    `<script>` and styled-components' runtime `<style>` injections instead.
+    External same-origin bundles/stylesheets are still covered by `'self'`,
+    and Google Fonts by its host allowance.
+    """
+    return (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        f"style-src 'self' 'nonce-{nonce}' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "connect-src 'self' *.ingest.sentry.io; "
+        "worker-src 'self' blob:; "
+        "frame-ancestors 'none'"
+    )
+
+
+# Relaxed CSP for development and the (optional) API docs: FastAPI's
+# auto-generated `/api/docs` page loads Swagger UI assets from a CDN and
+# bootstraps with an inline `<script>` that can't carry our per-response nonce,
+# so those paths keep `'unsafe-inline'` + the CDN allowance.
 DEBUG_CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -132,10 +147,20 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    # Docs endpoints whose inline Swagger bootstrap / CDN assets can't carry the
+    # per-response nonce; they keep the relaxed `DEBUG_CSP` even in production
+    # (API docs are optionally exposed there — see `settings.expose_api_docs`).
+    _DOCS_PATHS = ("/api/docs", "/api/openapi.json")
+
     async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        # Generate the CSP nonce before the route runs so the SPA catch-all
+        # (`api.app.serve_spa`) can stamp the *same* value into the served
+        # `index.html` (and `window.__webpack_nonce__`) that we emit in the
+        # header below.
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
         response = await call_next(request)
-        csp = DEBUG_CSP if settings.DEBUG else CSP
-        response.headers.setdefault("Content-Security-Policy", csp)
+        response.headers.setdefault("Content-Security-Policy", self._csp_for(request, nonce))
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -145,6 +170,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "max-age=31536000; includeSubDomains",
             )
         return response
+
+    def _csp_for(self, request: Request, nonce: str) -> str:
+        path = request.url.path
+        if settings.DEBUG or path in self._DOCS_PATHS or path.startswith("/api/swagger-ui"):
+            return DEBUG_CSP
+        return build_csp(nonce)
 
 
 class CacheControlMiddleware(BaseHTTPMiddleware):
