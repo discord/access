@@ -66,8 +66,11 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName, minTagTime} from '../../helpers';
 
+import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
+import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import PluginConfigDisplay from './PluginConfigDisplay';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -222,6 +225,9 @@ export default function ReadGroupRequest() {
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
+  // The lifecycle plugin configured on the target app (null if none).
+  const requestPluginId = pluginIdForApp(requestedAppData);
+
   const [appSeeded, setAppSeeded] = React.useState(false);
   React.useEffect(() => {
     if (!appSeeded && requestedAppData?.name) {
@@ -471,6 +477,10 @@ export default function ReadGroupRequest() {
       reason: responseForm.reason ?? '',
     };
 
+    if (responseForm.resolved_group_type === 'app_group' && requestPluginId) {
+      resolveRequest.resolved_plugin_data = extractRequestedPluginData(responseForm as any);
+    }
+
     switch (responseForm.resolved_ownership_ending_at) {
       case 'indefinite':
       case undefined:
@@ -692,6 +702,15 @@ export default function ReadGroupRequest() {
                               <Chip key={tag.id} label={tag.name} size="small" />
                             ))}
                           </Stack>
+                        </Grid>
+                      )}
+                      {requestPluginId && (
+                        <Grid item xs={12}>
+                          <PluginConfigDisplay
+                            label="Plugin Configuration"
+                            pluginId={requestPluginId}
+                            configuration={groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}}
+                          />
                         </Grid>
                       )}
                     </Grid>
@@ -916,6 +935,15 @@ export default function ReadGroupRequest() {
                                     </Grid>
                                   ) : null}
                                 </Grid>
+                                {requestPluginId && (
+                                  <AppGroupLifecyclePluginConfigurationForm
+                                    entityType="group"
+                                    selectedPluginId={requestPluginId}
+                                    currentConfig={
+                                      groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                                    }
+                                  />
+                                )}
                                 <Divider sx={{my: 2}} />
                               </>
                             )}
@@ -1067,6 +1095,22 @@ export default function ReadGroupRequest() {
                               );
                             })}
                           </Grid>
+                        </Box>
+                      )}
+                      {groupRequest.status === 'APPROVED' && requestPluginId && (
+                        <Box sx={{mt: 1}}>
+                          <PluginConfigDisplay
+                            label="Plugin Configuration"
+                            pluginId={requestPluginId}
+                            configuration={
+                              groupRequest.resolved_plugin_data?.[requestPluginId]?.configuration ??
+                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ??
+                              {}
+                            }
+                            previousConfiguration={
+                              groupRequest.requested_plugin_data?.[requestPluginId]?.configuration ?? {}
+                            }
+                          />
                         </Box>
                       )}
                     </Paper>

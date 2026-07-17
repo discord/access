@@ -23,6 +23,12 @@ import {
 } from '../api/apiComponents';
 import {PluginConfigProp, PluginInfo} from '../api/apiSchemas';
 
+// Whether a plugin declares any config properties to render. Group-level config
+// with none of these should render nothing rather than an empty header.
+export function groupConfigHasFields(configProperties: Record<string, unknown> | null | undefined): boolean {
+  return !!configProperties && Object.keys(configProperties).length > 0;
+}
+
 type PluginConfiguration = {
   [propertyId: string]: any;
 };
@@ -141,6 +147,15 @@ export default function AppGroupLifecyclePluginConfigurationForm({
   }
 
   if (!plugins || plugins.length === 0) {
+    return null;
+  }
+
+  const hasConfigFields = groupConfigHasFields(configProperties);
+
+  // For a group, there is nothing to configure unless the plugin declares group
+  // config properties. Render nothing rather than an empty "Configure…" header.
+  // (App-level always renders so the plugin can be selected/changed.)
+  if (entityType === 'group' && !hasConfigFields) {
     return null;
   }
 
