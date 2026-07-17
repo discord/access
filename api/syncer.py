@@ -57,18 +57,17 @@ async def _prefetch_group_okta_lists(
     A bounded sliding window: ``batch_size`` fetches are started up front, and each
     time one finishes its result is yielded and a fetch for the next group is
     started to refill the window. This overlaps the Okta round trips with the
-    caller's (sequential) DB reconciliation and avoids head-of-line blocking — a
-    slow group no longer holds up the rest of a batch — while still bounding both
-    the load on Okta's rate limits and the peak memory held (at most ``batch_size``
-    in-flight lists). Pairs are yielded in completion order, not input order; each
-    group is reconciled independently, so order does not matter.
+    caller's (sequential) DB reconciliation and keeps each fetch independent, so a
+    slow group does not hold up the others, while bounding both the load on Okta's
+    rate limits and the peak memory held (at most ``batch_size`` in-flight lists).
+    Pairs are yielded in completion order; each group is reconciled independently,
+    so order does not matter.
 
-    A failing fetch yields its exception as the paired value (mirroring
-    ``asyncio.gather(return_exceptions=True)``) instead of aborting the rest, so
-    the caller inspects each value and skips the failures. These fetch coroutines
-    do network I/O only and must never touch ``db.session`` (the concurrency rule
-    in ``api/extensions.py``); the caller reconciles each yielded pair against the
-    DB on its own sequential code path.
+    A failing fetch yields its exception as the paired value, so the caller
+    inspects each value and skips the failures without the failure affecting the
+    other groups. These fetch coroutines do network I/O only and must never touch
+    ``db.session`` (the concurrency rule in ``api/extensions.py``); the caller
+    reconciles each yielded pair against the DB on its own sequential code path.
     """
     remaining = iter(groups)
     in_flight: dict[asyncio.Task[list[User]], Group] = {}
