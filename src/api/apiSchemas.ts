@@ -517,6 +517,12 @@ export type GroupRequestDetail = {
   resolution_reason?: string | null;
   resolved_at?: string | null;
   approved_group_id?: string | null;
+  requested_plugin_data?: {
+    [key: string]: any;
+  };
+  resolved_plugin_data?: {
+    [key: string]: any;
+  };
   created_at: string | null;
   updated_at: string | null;
   requester?: OktaUserSummary | null;
@@ -1012,6 +1018,9 @@ export type ResolveGroupRequestBody = {
   resolved_app_id?: string | null;
   resolved_group_tags?: string[] | null;
   resolved_ownership_ending_at?: string | null;
+  resolved_plugin_data?: {
+    [key: string]: any;
+  } | null;
 };
 
 export type ResolveRoleRequestBody = {
@@ -1568,6 +1577,9 @@ export type AppGroupRequestBody = {
   request_reason?: string | null;
   requested_group_type: string;
   requested_app_id: string;
+  requested_plugin_data?: {
+    [key: string]: any;
+  };
 };
 
 export type AppGroupUpdateBody = {
