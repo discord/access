@@ -50,25 +50,59 @@ _GroupRulesByGroupId = dict[str, list[OktaGroupRuleType]]
 async def _prefetch_group_okta_lists(
     groups: list[Group],
     fetch: Callable[[str], Awaitable[list[User]]],
-    batch_size: int,
-) -> AsyncIterator[tuple[Group, list[User] | BaseException]]:
-    """Yield ``(group, okta_list)`` pairs, fetching each batch's Okta lists concurrently.
+    concurrency: int,
+) -> AsyncIterator[tuple[Group, list[User] | Exception]]:
+    """Yield ``(group, okta_list)`` pairs, keeping up to ``concurrency`` Okta fetches in flight.
 
-    Batches ``batch_size`` calls through ``asyncio.gather`` to overlap the round
-    trips while bounding both Okta rate-limit pressure and the peak memory held
-    (one batch of lists at a time). ``return_exceptions=True`` means one group's
-    Okta timeout surfaces as its paired value instead of cancelling the batch, so
-    the caller inspects each value and skips the failures.
+    A bounded sliding window: ``concurrency`` fetches are started up front, and each
+    time one finishes its result is yielded and a fetch for the next group is
+    started to refill the window. This overlaps the Okta round trips with the
+    caller's (sequential) DB reconciliation and keeps each fetch independent, so a
+    slow group does not hold up the others, while bounding both the load on Okta's
+    rate limits and the peak memory held (at most ``concurrency`` in-flight lists).
+    Pairs are yielded in completion order; each group is reconciled independently,
+    so order does not matter.
 
-    These fetch coroutines do network I/O only and must never touch ``db.session``
-    (the concurrency rule in ``api/extensions.py``); the caller reconciles each
-    yielded pair against the DB on its own sequential code path.
+    A failing fetch yields its exception as the paired value, so the caller
+    inspects each value and skips the failures without the failure affecting the
+    other groups. These fetch coroutines do network I/O only and must never touch
+    ``db.session`` (the concurrency rule in ``api/extensions.py``); the caller
+    reconciles each yielded pair against the DB on its own sequential code path.
     """
-    for start in range(0, len(groups), batch_size):
-        batch = groups[start : start + batch_size]
-        results = await asyncio.gather(*(fetch(group.id) for group in batch), return_exceptions=True)
-        for group, result in zip(batch, results, strict=True):
-            yield group, result
+    remaining = iter(groups)
+    in_flight: dict[asyncio.Task[list[User]], Group] = {}
+
+    def _start_next() -> None:
+        group = next(remaining, None)
+        if group is not None:
+            in_flight[asyncio.ensure_future(fetch(group.id))] = group
+
+    try:
+        for _ in range(concurrency):
+            _start_next()
+
+        while in_flight:
+            done, _ = await asyncio.wait(set(in_flight), return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                group = in_flight.pop(task)
+                try:
+                    # Capture an Exception as the paired value so the caller can
+                    # skip just this group; a CancelledError (shutdown) is not an
+                    # Exception, so it propagates and stops the run rather than
+                    # being swallowed.
+                    result: list[User] | Exception = task.result()
+                except Exception as exc:
+                    result = exc
+                # Refill the window before yielding so the replacement fetch
+                # overlaps the caller's reconciliation of this result.
+                _start_next()
+                yield group, result
+    finally:
+        # Cancel any still-in-flight fetches if the caller stops early.
+        for task in in_flight:
+            task.cancel()
+        if in_flight:
+            await asyncio.gather(*in_flight, return_exceptions=True)
 
 
 async def sync_users() -> None:
@@ -226,7 +260,7 @@ async def sync_group_memberships(
     groups: list[Group] | None = None,
     group_ids_with_group_rules: _GroupRulesByGroupId | None = None,
     *,
-    batch_size: int,
+    concurrency: int,
 ) -> None:
     logger.info("Membership sync started.")
     if groups is None:
@@ -239,11 +273,11 @@ async def sync_group_memberships(
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
 
-    async for group, members in _prefetch_group_okta_lists(groups, okta.list_users_for_group, batch_size):
+    async for group, members in _prefetch_group_okta_lists(groups, okta.list_users_for_group, concurrency):
         if isinstance(members, OktaTransientError):
             logger.warning(f"Transient Okta error listing members for group {group.id}, skipping.", exc_info=members)
             continue
-        if isinstance(members, BaseException):
+        if isinstance(members, Exception):
             logger.error(f"Failed to list members for group {group.id}, skipping.", exc_info=members)
             continue
 
@@ -335,7 +369,7 @@ async def sync_group_ownerships(
     groups: list[Group] | None = None,
     group_ids_with_group_rules: _GroupRulesByGroupId | None = None,
     *,
-    batch_size: int,
+    concurrency: int,
 ) -> None:
     logger.info("Ownership sync started.")
     if groups is None:
@@ -344,11 +378,11 @@ async def sync_group_ownerships(
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
 
-    async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, batch_size):
+    async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, concurrency):
         if isinstance(owners, OktaTransientError):
             logger.warning(f"Transient Okta error listing owners for group {group.id}, skipping.", exc_info=owners)
             continue
-        if isinstance(owners, BaseException):
+        if isinstance(owners, Exception):
             logger.error(f"Failed to list owners for group {group.id}, skipping.", exc_info=owners)
             continue
 
