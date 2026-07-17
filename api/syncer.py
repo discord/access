@@ -46,6 +46,13 @@ logger = logging.getLogger(__name__)
 # ``okta.list_groups_with_active_rules`` and consumed by ``is_managed_group``.
 _GroupRulesByGroupId = dict[str, list[OktaGroupRuleType]]
 
+# The membership/ownership reconcile loops read the DB per group but only write
+# for non-authoritative drift; authoritative sync pushes to Okta, not the DB, so
+# committing per group is a wasted round trip. They commit after a group that
+# wrote, plus once every this many groups to release the read snapshot the
+# per-group SELECTs hold so a long run doesn't pin a single transaction open.
+_RECONCILE_COMMIT_EVERY = 100
+
 
 async def _prefetch_group_okta_lists(
     groups: list[Group],
@@ -273,6 +280,7 @@ async def sync_group_memberships(
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
 
+    reconciled = 0
     async for group, members in _prefetch_group_okta_lists(groups, okta.list_users_for_group, concurrency):
         if isinstance(members, OktaTransientError):
             logger.warning(f"Transient Okta error listing members for group {group.id}, skipping.", exc_info=members)
@@ -282,6 +290,7 @@ async def sync_group_memberships(
             continue
 
         try:
+            wrote_to_db = False
             is_managed = is_managed_group(group, group_ids_with_group_rules)
 
             act_authoritatively = act_as_authority and is_managed
@@ -325,6 +334,7 @@ async def sync_group_memberships(
                             members_to_add=[member.id],
                             created_reason=reason,
                         ).execute()
+                        wrote_to_db = True
 
                 # User is a member in okta and an entry exists in our DB
                 else:
@@ -348,10 +358,16 @@ async def sync_group_memberships(
                     # Remove the direct group memberships to this group in our DB
                     # This will not affect group memberships that are via other group roles
                     await ModifyGroupUsers(group=group.id, members_to_remove=list(distinct_member_ids)).execute()
+                    wrote_to_db = True
 
             logger.info("Members in DB synced to Okta.")
 
-            await db.session.commit()
+            reconciled += 1
+            # Only commit when this group wrote to the DB (authoritative sync
+            # writes to Okta, not the DB); commit every _RECONCILE_COMMIT_EVERY
+            # groups regardless to release the read snapshot the SELECTs hold.
+            if wrote_to_db or reconciled % _RECONCILE_COMMIT_EVERY == 0:
+                await db.session.commit()
         except OktaTransientError:
             logger.warning(f"Transient Okta error syncing memberships for group {group.id}, skipping.", exc_info=True)
             await db.session.rollback()
@@ -361,6 +377,8 @@ async def sync_group_memberships(
             await db.session.rollback()
             continue
 
+    # Release the read transaction from the final (partial) commit interval.
+    await db.session.commit()
     logger.info("Membership sync finished.")
 
 
@@ -378,6 +396,7 @@ async def sync_group_ownerships(
     if group_ids_with_group_rules is None:
         group_ids_with_group_rules = await okta.list_groups_with_active_rules()
 
+    reconciled = 0
     async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, concurrency):
         if isinstance(owners, OktaTransientError):
             logger.warning(f"Transient Okta error listing owners for group {group.id}, skipping.", exc_info=owners)
@@ -387,6 +406,7 @@ async def sync_group_ownerships(
             continue
 
         try:
+            wrote_to_db = False
             is_managed = is_managed_group(group, group_ids_with_group_rules)
 
             act_authoritatively = act_as_authority and is_managed
@@ -461,6 +481,7 @@ async def sync_group_ownerships(
                             owners_to_add=[owner.id],
                             created_reason=reason,
                         ).execute()
+                        wrote_to_db = True
 
                 # User is a owner in okta and an entry exists in our DB
                 else:
@@ -482,8 +503,14 @@ async def sync_group_ownerships(
                     # Remove the direct group ownerships to this group in our DB
                     # This will not affect group ownerships that are via other group roles
                     await ModifyGroupUsers(group=group.id, owners_to_remove=list(distinct_owner_ids)).execute()
+                    wrote_to_db = True
 
-            await db.session.commit()
+            reconciled += 1
+            # Only commit when this group wrote to the DB (authoritative sync
+            # writes to Okta, not the DB); commit every _RECONCILE_COMMIT_EVERY
+            # groups regardless to release the read snapshot the SELECTs hold.
+            if wrote_to_db or reconciled % _RECONCILE_COMMIT_EVERY == 0:
+                await db.session.commit()
         except OktaTransientError:
             logger.warning(f"Transient Okta error syncing ownerships for group {group.id}, skipping.", exc_info=True)
             await db.session.rollback()
@@ -493,6 +520,8 @@ async def sync_group_ownerships(
             await db.session.rollback()
             continue
 
+    # Release the read transaction from the final (partial) commit interval.
+    await db.session.commit()
     logger.info("Ownership sync finished.")
 
 
