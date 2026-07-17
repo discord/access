@@ -30,8 +30,7 @@ async def test_prefetch_bounds_concurrency_and_yields_all() -> None:
 
     assert len(out) == 25
     assert all(out[f"g{i}"] == [f"g{i}"] for i in range(25))
-    # Never exceeds the window, and the window actually fills (real concurrency).
-    assert peak <= 10
+    # The window fills to the limit and never exceeds it (real concurrency).
     assert peak == 10
 
 

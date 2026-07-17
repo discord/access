@@ -51,7 +51,7 @@ async def _prefetch_group_okta_lists(
     groups: list[Group],
     fetch: Callable[[str], Awaitable[list[User]]],
     concurrency: int,
-) -> AsyncIterator[tuple[Group, list[User] | BaseException]]:
+) -> AsyncIterator[tuple[Group, list[User] | Exception]]:
     """Yield ``(group, okta_list)`` pairs, keeping up to ``concurrency`` Okta fetches in flight.
 
     A bounded sliding window: ``concurrency`` fetches are started up front, and each
@@ -86,7 +86,11 @@ async def _prefetch_group_okta_lists(
             for task in done:
                 group = in_flight.pop(task)
                 try:
-                    result: list[User] | BaseException = task.result()
+                    # Capture an Exception as the paired value so the caller can
+                    # skip just this group; a CancelledError (shutdown) is not an
+                    # Exception, so it propagates and stops the run rather than
+                    # being swallowed.
+                    result: list[User] | Exception = task.result()
                 except Exception as exc:
                     result = exc
                 # Refill the window before yielding so the replacement fetch
@@ -273,7 +277,7 @@ async def sync_group_memberships(
         if isinstance(members, OktaTransientError):
             logger.warning(f"Transient Okta error listing members for group {group.id}, skipping.", exc_info=members)
             continue
-        if isinstance(members, BaseException):
+        if isinstance(members, Exception):
             logger.error(f"Failed to list members for group {group.id}, skipping.", exc_info=members)
             continue
 
@@ -378,7 +382,7 @@ async def sync_group_ownerships(
         if isinstance(owners, OktaTransientError):
             logger.warning(f"Transient Okta error listing owners for group {group.id}, skipping.", exc_info=owners)
             continue
-        if isinstance(owners, BaseException):
+        if isinstance(owners, Exception):
             logger.error(f"Failed to list owners for group {group.id}, skipping.", exc_info=owners)
             continue
 
