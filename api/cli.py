@@ -246,7 +246,7 @@ async def _init_builtin_apps(admin_okta_user_email: str) -> None:
     help="Sync group memberships from Access to Okta",
 )
 @click.option(
-    "--group-batch-size",
+    "--group-fetch-concurrency",
     type=click.IntRange(min=1),
     default=10,
     show_default=True,
@@ -256,7 +256,7 @@ async def _init_builtin_apps(admin_okta_user_email: str) -> None:
 async def sync(
     sync_groups_authoritatively: bool,
     sync_group_memberships_authoritatively: bool,
-    group_batch_size: int,
+    group_fetch_concurrency: int,
 ) -> None:
     """Sync users/groups/memberships from Okta to Access and expire stale requests."""
     from sentry_sdk import start_transaction
@@ -297,14 +297,14 @@ async def sync(
                 act_as_authority=sync_group_memberships_authoritatively,
                 groups=groups,
                 group_ids_with_group_rules=group_ids_with_group_rules,
-                batch_size=group_batch_size,
+                concurrency=group_fetch_concurrency,
             )
             if settings.OKTA_USE_GROUP_OWNERS_API:
                 await sync_group_ownerships(
                     act_as_authority=sync_group_memberships_authoritatively,
                     groups=groups,
                     group_ids_with_group_rules=group_ids_with_group_rules,
-                    batch_size=group_batch_size,
+                    concurrency=group_fetch_concurrency,
                 )
             await expire_access_requests()
     finally:

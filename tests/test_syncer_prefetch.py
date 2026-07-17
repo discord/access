@@ -10,7 +10,7 @@ def _groups(n: int) -> list[Any]:
 
 
 async def test_prefetch_bounds_concurrency_and_yields_all() -> None:
-    """The window holds at most ``batch_size`` fetches in flight, fills to it, and
+    """The window holds at most ``concurrency`` fetches in flight, fills to it, and
     every group is fetched exactly once and paired with its own result."""
     groups = _groups(25)
     active = 0
