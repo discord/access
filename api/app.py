@@ -118,12 +118,12 @@ def _drop_wrapped_validation_errors(event: dict, hint: dict) -> Optional[dict]:
     from pydantic import ValidationError
 
     exc = (hint or {}).get("exc_info", (None, None, None))[1]
-    depth = 0
-    while exc is not None and depth < 20:
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
         if isinstance(exc, ValidationError):
             return None
+        seen.add(id(exc))
         exc = exc.__cause__
-        depth += 1
     return event
 
 
