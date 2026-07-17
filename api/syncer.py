@@ -52,23 +52,54 @@ async def _prefetch_group_okta_lists(
     fetch: Callable[[str], Awaitable[list[User]]],
     batch_size: int,
 ) -> AsyncIterator[tuple[Group, list[User] | BaseException]]:
-    """Yield ``(group, okta_list)`` pairs, fetching each batch's Okta lists concurrently.
+    """Yield ``(group, okta_list)`` pairs, keeping up to ``batch_size`` Okta fetches in flight.
 
-    Batches ``batch_size`` calls through ``asyncio.gather`` to overlap the round
-    trips while bounding both Okta rate-limit pressure and the peak memory held
-    (one batch of lists at a time). ``return_exceptions=True`` means one group's
-    Okta timeout surfaces as its paired value instead of cancelling the batch, so
-    the caller inspects each value and skips the failures.
+    A bounded sliding window: ``batch_size`` fetches are started up front, and each
+    time one finishes its result is yielded and a fetch for the next group is
+    started to refill the window. This overlaps the Okta round trips with the
+    caller's (sequential) DB reconciliation and avoids head-of-line blocking — a
+    slow group no longer holds up the rest of a batch — while still bounding both
+    the load on Okta's rate limits and the peak memory held (at most ``batch_size``
+    in-flight lists). Pairs are yielded in completion order, not input order; each
+    group is reconciled independently, so order does not matter.
 
-    These fetch coroutines do network I/O only and must never touch ``db.session``
-    (the concurrency rule in ``api/extensions.py``); the caller reconciles each
-    yielded pair against the DB on its own sequential code path.
+    A failing fetch yields its exception as the paired value (mirroring
+    ``asyncio.gather(return_exceptions=True)``) instead of aborting the rest, so
+    the caller inspects each value and skips the failures. These fetch coroutines
+    do network I/O only and must never touch ``db.session`` (the concurrency rule
+    in ``api/extensions.py``); the caller reconciles each yielded pair against the
+    DB on its own sequential code path.
     """
-    for start in range(0, len(groups), batch_size):
-        batch = groups[start : start + batch_size]
-        results = await asyncio.gather(*(fetch(group.id) for group in batch), return_exceptions=True)
-        for group, result in zip(batch, results, strict=True):
-            yield group, result
+    remaining = iter(groups)
+    in_flight: dict[asyncio.Task[list[User]], Group] = {}
+
+    def _start_next() -> None:
+        group = next(remaining, None)
+        if group is not None:
+            in_flight[asyncio.ensure_future(fetch(group.id))] = group
+
+    try:
+        for _ in range(batch_size):
+            _start_next()
+
+        while in_flight:
+            done, _ = await asyncio.wait(set(in_flight), return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                group = in_flight.pop(task)
+                try:
+                    result: list[User] | BaseException = task.result()
+                except Exception as exc:
+                    result = exc
+                # Refill the window before yielding so the replacement fetch
+                # overlaps the caller's reconciliation of this result.
+                _start_next()
+                yield group, result
+    finally:
+        # Cancel any still-in-flight fetches if the caller stops early.
+        for task in in_flight:
+            task.cancel()
+        if in_flight:
+            await asyncio.gather(*in_flight, return_exceptions=True)
 
 
 async def sync_users() -> None:

@@ -250,7 +250,7 @@ async def _init_builtin_apps(admin_okta_user_email: str) -> None:
     type=click.IntRange(min=1),
     default=10,
     show_default=True,
-    help="Groups whose Okta memberships/ownerships are fetched concurrently per batch.",
+    help="Maximum number of groups whose Okta memberships/ownerships are fetched from Okta concurrently.",
 )
 @_with_app_context
 async def sync(
