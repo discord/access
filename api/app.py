@@ -105,6 +105,28 @@ def _configure_logging() -> None:
     logging.root.addFilter(token_filter)
 
 
+def _drop_wrapped_validation_errors(event: dict, hint: dict) -> Optional[dict]:
+    """Sentry before_send: drop events whose root cause is a pydantic ValidationError.
+
+    ``ignore_errors`` only matches the top-level exception type. The MCP server
+    re-raises tool argument-validation failures as a ToolError via
+    ``raise ToolError(...) from e``, so a client passing a bad tool argument
+    surfaces as ToolError (not ignored) wrapping the ValidationError we do want
+    to ignore. Walk the explicit cause chain and drop the event when a
+    ValidationError is its root.
+    """
+    from pydantic import ValidationError
+
+    exc = (hint or {}).get("exc_info", (None, None, None))[1]
+    depth = 0
+    while exc is not None and depth < 20:
+        if isinstance(exc, ValidationError):
+            return None
+        exc = exc.__cause__
+        depth += 1
+    return event
+
+
 def _configure_sentry() -> None:
     if settings.ENV in ("development", "test"):
         return
@@ -140,6 +162,7 @@ def _configure_sentry() -> None:
             ValidationError,
             OIDCRedirectRequired,
         ],
+        before_send=_drop_wrapped_validation_errors,
     )
 
 
