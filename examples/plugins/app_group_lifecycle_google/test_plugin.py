@@ -512,6 +512,55 @@ async def test_reconcile_enforces_config_onto_existing_group(
     assert patch.call_args.kwargs == {"display_name": "New Name", "description": "New desc"}
 
 
+async def test_reconcile_clears_description_on_existing_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
+    # Emptying the Access description of an Access-owned group must clear it in Google rather
+    # than being backfilled straight back from Google's stale value.
+    group = _group(
+        mocker,
+        group_config={"email": "new-prefix", "display_name": "New Name"},
+        status={"google_group_id": "ggid-1", "push_mapping_id": "map-1"},
+        description="",
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "new-prefix",
+            "display_name": "New Name",
+            "email_pattern": None,
+        }.get(key, default),
+    )
+    mocker.patch(
+        "plugin.get_status_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "google_group_id": "ggid-1",
+            "push_mapping_id": "map-1",
+        }.get(key, default),
+    )
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "new-prefix@test-company.com"},
+            "displayName": "New Name",
+            "description": "Old desc",
+        },
+    )
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+    update_group = mocker.patch("plugin.okta.update_group")
+    mocker.patch("plugin.set_status_value")
+
+    await plugin_instance._reconcile(session_mock, group)
+
+    # The clear is pushed to Google (empty description), and Access is not backfilled from it.
+    assert patch.call_args.kwargs["description"] == ""
+    assert group.description == ""
+    update_group.assert_not_called()
+
+
 async def test_reconcile_adopts_missing_config_from_live_group(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
 ) -> None:

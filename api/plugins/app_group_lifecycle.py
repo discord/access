@@ -29,7 +29,6 @@ class AppGroupLifecycleHook(StrEnum):
     GROUP_MEMBERS_ADDED = "group_members_added"
     GROUP_MEMBERS_REMOVED = "group_members_removed"
     SYNC_ALL_GROUPS = "sync_all_groups"
-    SYNC_ALL_GROUP_MEMBERSHIP = "sync_all_group_membership"
 
 
 class PluginNotFoundError(Exception):
@@ -276,44 +275,6 @@ class AppGroupLifecyclePluginSpec:
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
-
-    @hookspec
-    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
-        """
-        Deprecated alias for ``sync_all_groups``, retained so plugins implementing the
-        older, narrower hook name keep being invoked. New plugins should implement
-        ``sync_all_groups`` instead; a plugin should implement only one of the two.
-
-        Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
-            app: The app for which to sync all groups.
-            plugin_id: If provided, only the plugin matching this ID should respond.
-                       If None, all plugins may respond.
-        """
-
-
-async def invoke_sync_all_groups(
-    session: AsyncSession, app: App, plugin_id: str | None
-) -> tuple[list[Any], list[BaseException]]:
-    """Invoke the bulk-sync hook for an app, honoring both the current ``sync_all_groups``
-    name and the deprecated ``sync_all_group_membership`` alias. A plugin should implement
-    only one of the two, so this dispatches to each exactly once, awaiting both to completion.
-
-    Both dispatches share ``run_hooks_to_completion`` (asyncio.wait, not gather): one plugin
-    failing never cancels its siblings. Returns the aggregated ``(results, exceptions)`` so the
-    caller can decide whether to commit or roll back.
-    """
-    hook = get_app_group_lifecycle_hook()
-    results: list[Any] = []
-    exceptions: list[BaseException] = []
-    for hook_name in (AppGroupLifecycleHook.SYNC_ALL_GROUPS, AppGroupLifecycleHook.SYNC_ALL_GROUP_MEMBERSHIP):
-        r, e = await run_hooks_to_completion(
-            getattr(hook, hook_name)(session=session, app=app, plugin_id=plugin_id),
-            context=f"{hook_name} for app '{getattr(app, 'name', None)}'",
-        )
-        results.extend(r)
-        exceptions.extend(e)
-    return results, exceptions
 
 
 def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
@@ -697,7 +658,10 @@ def validate_app_group_lifecycle_plugin_group_config(
         for name, prop in properties.items():
             if not getattr(prop, "immutable", False):
                 continue
-            if old_configuration.get(name) != configuration.get(name):
+            # Only treat an immutable field as edited when it's actually present in the
+            # (possibly partial) patch: an omission isn't a change, while an explicit value
+            # -- even null -- still is.
+            if name in configuration and old_configuration.get(name) != configuration.get(name):
                 errors.setdefault(name, f"The '{name}' field cannot be changed after creation")
             else:
                 errors.pop(name, None)
