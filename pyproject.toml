@@ -72,7 +72,19 @@ dev = [
     "types-python-dateutil==2.9.0.20260518",
     "types-cachetools==7.0.0.20260713",
     { include-group = "test" },
+    # In-repo example plugin, installed editable (see [tool.uv.sources]) so
+    # local dev via `make run-backend` exercises the app-group-lifecycle plugin
+    # system. Dev-group only, so it is excluded from the production image
+    # (`uv sync --no-dev`).
+    "app_group_lifecycle_audit_logger",
 ]
+
+# ----------------------------------------------------------------------
+# uv sources — resolve the in-repo example plugin from its local path
+# (editable) rather than PyPI. Only referenced by the dev group above.
+# ----------------------------------------------------------------------
+[tool.uv.sources]
+app_group_lifecycle_audit_logger = { path = "examples/plugins/app_group_lifecycle_audit_logger", editable = true }
 
 # ----------------------------------------------------------------------
 # Packaging — bundle api/config/migrations, exclude tests, and ship
