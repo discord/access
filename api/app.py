@@ -105,22 +105,37 @@ def _configure_logging() -> None:
     logging.root.addFilter(token_filter)
 
 
-def _drop_wrapped_validation_errors(event: dict, hint: dict) -> Optional[dict]:
-    """Sentry before_send: drop events whose root cause is a pydantic ValidationError.
+def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
+    """Sentry before_send: drop events whose cause chain contains a type we
+    already list in ``ignore_errors``.
 
-    ``ignore_errors`` only matches the top-level exception type. The MCP server
-    re-raises tool argument-validation failures as a ToolError via
-    ``raise ToolError(...) from e``, so a client passing a bad tool argument
-    surfaces as ToolError (not ignored) wrapping the ValidationError we do want
-    to ignore. Walk the explicit cause chain and drop the event when a
-    ValidationError is its root.
+    ``ignore_errors`` only matches the top-level exception type, but the MCP
+    server wraps every exception a tool raises in a ToolError via
+    ``raise ToolError(...) from e`` — so an ignored error raised inside a tool
+    (today: a pydantic ValidationError from argument validation) surfaces as a
+    non-ignored ToolError and leaks through. Walk the explicit ``__cause__``
+    chain — not implicit ``__context__`` — so a genuine failure that merely ran
+    while handling an ignored error still alerts. Keep this set in sync with
+    ``_configure_sentry``'s ``ignore_errors``.
     """
+    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
     from pydantic import ValidationError
+    from starlette.exceptions import HTTPException as StarletteHTTPException
 
+    from api.auth.dependencies import OIDCRedirectRequired
+
+    ignored = (
+        HTTPException,
+        StarletteHTTPException,
+        RequestValidationError,
+        ValidationError,
+        OIDCRedirectRequired,
+    )
     exc = (hint or {}).get("exc_info", (None, None, None))[1]
     seen: set[int] = set()
     while exc is not None and id(exc) not in seen:
-        if isinstance(exc, ValidationError):
+        if isinstance(exc, ignored):
             return None
         seen.add(id(exc))
         exc = exc.__cause__
@@ -162,7 +177,7 @@ def _configure_sentry() -> None:
             ValidationError,
             OIDCRedirectRequired,
         ],
-        before_send=_drop_wrapped_validation_errors,
+        before_send=_drop_wrapped_ignored_errors,
     )
 
 

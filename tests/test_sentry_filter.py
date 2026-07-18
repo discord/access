@@ -1,17 +1,19 @@
 """Tests for the Sentry `before_send` filter in `api.app`.
 
-The MCP server re-raises tool argument-validation failures as a
-`ToolError` wrapping a pydantic `ValidationError`. `ignore_errors` only
-matches the top-level type, so those client-error events leak to Sentry.
-`_drop_wrapped_validation_errors` closes that gap by walking the cause chain.
+The MCP server wraps every exception a tool raises in a `ToolError`, so an
+ignored error raised inside a tool (e.g. a pydantic `ValidationError` from
+argument validation) surfaces as a non-ignored `ToolError` and would leak to
+Sentry. `_drop_wrapped_ignored_errors` closes that gap by walking the cause
+chain for any type we already list in `ignore_errors`.
 """
 
 from __future__ import annotations
 
+from fastapi import HTTPException
 from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ValidationError
 
-from api.app import _drop_wrapped_validation_errors
+from api.app import _drop_wrapped_ignored_errors
 
 
 class _Args(BaseModel):
@@ -35,16 +37,25 @@ def test_drops_tool_error_wrapping_validation_error() -> None:
     try:
         raise ToolError("Error executing tool get_group") from _validation_error()
     except ToolError as exc:
-        assert _drop_wrapped_validation_errors({"event": True}, _hint(exc)) is None
+        assert _drop_wrapped_ignored_errors({"event": True}, _hint(exc)) is None
 
 
-def test_drops_bare_validation_error() -> None:
-    assert _drop_wrapped_validation_errors({"event": True}, _hint(_validation_error())) is None
+def test_drops_tool_error_wrapping_other_ignored_error() -> None:
+    """Any ignored type is dropped when wrapped, not just ValidationError."""
+    try:
+        raise ToolError("Error executing tool") from HTTPException(status_code=403)
+    except ToolError as exc:
+        assert _drop_wrapped_ignored_errors({"event": True}, _hint(exc)) is None
+
+
+def test_drops_bare_ignored_errors() -> None:
+    assert _drop_wrapped_ignored_errors({"event": True}, _hint(_validation_error())) is None
+    assert _drop_wrapped_ignored_errors({"event": True}, _hint(HTTPException(status_code=404))) is None
 
 
 def test_keeps_generic_exception() -> None:
     event = {"event": True}
-    assert _drop_wrapped_validation_errors(event, _hint(RuntimeError("boom"))) is event
+    assert _drop_wrapped_ignored_errors(event, _hint(RuntimeError("boom"))) is event
 
 
 def test_keeps_tool_error_wrapping_real_bug() -> None:
@@ -53,13 +64,13 @@ def test_keeps_tool_error_wrapping_real_bug() -> None:
     try:
         raise ToolError("Error executing tool get_group") from RuntimeError("db down")
     except ToolError as exc:
-        assert _drop_wrapped_validation_errors(event, _hint(exc)) is event
+        assert _drop_wrapped_ignored_errors(event, _hint(exc)) is event
 
 
 def test_keeps_event_when_no_exc_info() -> None:
     event = {"event": True}
-    assert _drop_wrapped_validation_errors(event, {}) is event
-    assert _drop_wrapped_validation_errors(event, None) is event  # type: ignore[arg-type]
+    assert _drop_wrapped_ignored_errors(event, {}) is event
+    assert _drop_wrapped_ignored_errors(event, None) is event  # type: ignore[arg-type]
 
 
 def test_cause_cycle_terminates() -> None:
@@ -68,4 +79,4 @@ def test_cause_cycle_terminates() -> None:
     a.__cause__ = b
     b.__cause__ = a
     event = {"event": True}
-    assert _drop_wrapped_validation_errors(event, _hint(a)) is event
+    assert _drop_wrapped_ignored_errors(event, _hint(a)) is event
