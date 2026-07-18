@@ -26,9 +26,15 @@ class ModifyGroupPluginData:
     a loop -- and only after the merge, so the hook observes the fully-merged plugin_data.
     """
 
-    def __init__(self, *, group: OktaGroup, plugin_data: dict[str, Any]):
+    def __init__(self, *, group: OktaGroup, plugin_data: dict[str, Any], fire_lifecycle_hook: bool = True):
         self.group = group
         self.plugin_data = plugin_data
+        # put_group sets this False when it also changed the name/description, so a single
+        # group_updated fire covers both changes instead of reconciling twice. The merge still
+        # runs; only the hook call is gated. `config_changed` is exposed so that caller can
+        # decide whether to fire the consolidated hook itself.
+        self.fire_lifecycle_hook = fire_lifecycle_hook
+        self.config_changed = False
 
     async def execute(self) -> OktaGroup:
         old_plugin_data = self.group.plugin_data or {}
@@ -51,6 +57,7 @@ class ModifyGroupPluginData:
         config_changed = plugin_id is not None and is_plugin_config_changed(
             old_plugin_data, merged_plugin_data, plugin_id
         )
+        self.config_changed = config_changed
 
         self.group.plugin_data = merged_plugin_data
 
@@ -63,8 +70,9 @@ class ModifyGroupPluginData:
 
         # invoke_app_group_lifecycle_hook drives the async hook via run_hooks_to_completion
         # (asyncio.wait) and commits on success / rolls back on error, never propagating a
-        # plugin failure. Fire it only on a real configuration change (checked above).
-        if config_changed:
+        # plugin failure. Fire it only on a real configuration change (checked above), and
+        # only when the caller hasn't opted to fire a consolidated hook itself.
+        if config_changed and self.fire_lifecycle_hook:
             await invoke_app_group_lifecycle_hook(
                 AppGroupLifecycleHook.GROUP_UPDATED,
                 group=self.group,

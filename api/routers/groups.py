@@ -253,12 +253,21 @@ async def put_group(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> GroupDetail:
-    from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugin_to_invoke
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecycleHook,
+        get_app_group_lifecycle_plugin_to_invoke,
+        invoke_app_group_lifecycle_hook,
+    )
 
     fields_set = body.model_fields_set
     group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
+
+    # Capture the pre-update name/description so the single, consolidated group_updated fire
+    # (below) can report them.
+    old_name = group.name
+    old_description = group.description or ""
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
     # just normalises a `None` (only possible when the client explicitly sent
     # `null`) to an empty string for ModifyGroupDetails.
@@ -395,6 +404,9 @@ async def put_group(
             # A type conversion legitimately renames away from the App- prefix;
             # the final-state name rules are enforced above and by ModifyGroupType.
             validate_app_group_prefix=body.type == group.type,
+            # Suppress the per-operation fire; put_group fires a single consolidated
+            # group_updated below so a combined name + config change reconciles once.
+            fire_lifecycle_hook=False,
         ).execute()
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
@@ -423,13 +435,29 @@ async def put_group(
             raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
+    config_changed = False
     if new_plugin_data is not None:
         # ModifyGroupPluginData owns the merge (preserving omitted plugin entries and
-        # per-plugin status) and fires group_updated only when the plugin's configuration
-        # actually changes. It commits internally.
-        await ModifyGroupPluginData(group=group, plugin_data=new_plugin_data).execute()
+        # per-plugin status). We suppress its per-operation group_updated fire and fire once
+        # below instead, so a PUT changing both name and config reconciles once, not twice.
+        plugin_op = ModifyGroupPluginData(group=group, plugin_data=new_plugin_data, fire_lifecycle_hook=False)
+        await plugin_op.execute()
+        config_changed = plugin_op.config_changed
     else:
         await db.commit()
+
+    # Fire group_updated exactly once, covering the name/description change (ModifyGroupDetails)
+    # and/or the config change (ModifyGroupPluginData), whose per-operation fires were suppressed
+    # above. A type conversion emits its own group_created/group_deleted via ModifyGroupType; this
+    # fire simply no-ops when no lifecycle plugin applies to the group's final type.
+    name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
+    if name_or_desc_changed or config_changed:
+        await invoke_app_group_lifecycle_hook(
+            AppGroupLifecycleHook.GROUP_UPDATED,
+            group=group,
+            old_name=old_name,
+            old_description=old_description,
+        )
 
     await ModifyGroupTags(
         group=group,

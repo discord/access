@@ -34,7 +34,6 @@ from api.plugins.app_group_lifecycle import (
     get_config_value,
     get_status_value,
     hookimpl,
-    invoke_sync_all_groups,
     is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
     set_config_value,
@@ -683,25 +682,6 @@ class TestPluginHelperFunctions:
 
         # Missing plugin entries are treated as empty configuration.
         assert is_plugin_config_changed({}, {}, DummyPlugin.ID) is False
-
-    async def test_invoke_sync_all_groups_dispatches_current_and_deprecated_names(self, mocker: MockerFixture) -> None:
-        """The wrapper invokes both the current `sync_all_groups` hook and the deprecated
-        `sync_all_group_membership` alias once each, so plugins on either name still run."""
-        hook = mocker.Mock()
-        # pluggy returns a list of coroutines; the mock hooks return no impls (empty list)
-        # so run_hooks_to_completion short-circuits.
-        hook.sync_all_groups.return_value = []
-        hook.sync_all_group_membership.return_value = []
-        mocker.patch("api.plugins.app_group_lifecycle.get_app_group_lifecycle_hook", return_value=hook)
-
-        await invoke_sync_all_groups(session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1")
-
-        hook.sync_all_groups.assert_called_once_with(
-            session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1"
-        )
-        hook.sync_all_group_membership.assert_called_once_with(
-            session=mocker.sentinel.session, app=mocker.sentinel.app, plugin_id="p1"
-        )
 
 
 class TestPluginValidation:
@@ -2443,6 +2423,49 @@ class TestModifyGroupPluginData:
         assert any(call[0] == group.id for call in test_plugin.group_updated_calls)
         assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
 
+    async def test_put_group_name_and_config_change_fires_group_updated_once(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        # A single PUT that changes both the name and the plugin config must fire group_updated
+        # exactly once (one reconcile), not once per operation.
+        mocker.patch.object(okta, "update_group")
+        mocker.patch.object(okta, "create_group")
+        a = AppFactory.build()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        group = AppGroupFactory.build(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            description="Old description",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-old"}, "status": {}}},
+        )
+        db.session.add(a)
+        db.session.add(group)
+        await db.session.commit()
+
+        old_name = group.name
+        new_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Platform"
+        url = url_for("api-groups.group_by_id_put", group_id=group.id)
+        response = await client.put(
+            url,
+            json={
+                "type": "app_group",
+                "name": new_name,
+                "description": "New description",
+                "app_id": a.id,
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g-new"}, "status": {}}},
+            },
+        )
+        assert response.status_code == 200
+
+        fires = [call for call in test_plugin.group_updated_calls if call[0] == group.id]
+        assert len(fires) == 1
+        # The single fire reports the original pre-update name/description.
+        _, hook_old_name, hook_old_desc = fires[0]
+        assert hook_old_name == old_name
+        assert hook_old_desc == "Old description"
+        assert response.json()["plugin_data"][DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
+
 
 class TestPostGroupPluginValidation:
     async def test_post_group_rejects_invalid_group_config(
@@ -2522,6 +2545,16 @@ def test_validate_group_config_enforces_immutable_field_on_create(test_plugin: D
     new = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "legacy"}}}
     errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID)
     assert "region" in errors
+
+
+def test_validate_group_config_allows_partial_patch_omitting_immutable_field(test_plugin: DummyPlugin) -> None:
+    # A partial patch that omits the immutable field entirely is not an edit to it, so it must
+    # not be rejected -- otherwise an API PUT of only the mutable fields would 400 on the
+    # untouched immutable one.
+    old = {DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}}}
+    new = {DummyPlugin.ID: {"configuration": {"group_id": "g2"}}}
+    errors = validate_app_group_lifecycle_plugin_group_config(new, DummyPlugin.ID, old_plugin_data=old)
+    assert "region" not in errors
 
 
 def test_validate_group_config_suppresses_unchanged_immutable_field_error_on_update(test_plugin: DummyPlugin) -> None:

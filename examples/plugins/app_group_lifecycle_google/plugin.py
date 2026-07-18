@@ -648,6 +648,7 @@ class GoogleGroupManagerPlugin:
         an error string or None."""
         config = self._group_config(group)
         live_email = (live.get("groupKey") or {}).get("id", "") or ""
+        google_desc = live.get("description", "") or ""
 
         if config is None:
             logger.info(f"Backfilling group properties from Google to Access for {group.name}...")
@@ -656,26 +657,21 @@ class GoogleGroupManagerPlugin:
                 return f"Live Google group email '{live_email}' is not in domain {self._domain}"
             set_config_value(group, CONFIG_EMAIL, inferred_prefix, PLUGIN_ID)
             set_config_value(group, CONFIG_DISPLAY_NAME, live.get("displayName", "") or "", PLUGIN_ID)
+            # Adoption is the only time we backfill a missing description from Google.
+            if not (group.description or "") and google_desc:
+                logger.info(f"Backfilling group description from Google to Access for {group.name}...")
+                group.description = google_desc
+                session.add(group)
+                await okta.update_group(group.id, group.name, google_desc)
         else:
             logger.debug(f"Pushing Access group config to Google for {group.name}...")
             _, display_name = config
             patch_display_name = display_name if (live.get("displayName") or "") != display_name else None
-            # Description is handled below for both directions; only push it here when Access
-            # has a (differing) non-empty description.
             access_desc = group.description or ""
-            patch_description = access_desc if access_desc and (live.get("description") or "") != access_desc else None
+            patch_description = access_desc if google_desc != access_desc else None
             await self._patch_google_group(
                 google_group_id, display_name=patch_display_name, description=patch_description
             )
-
-        # Description sync (both directions): clobber if Access has one, else backfill.
-        access_desc = group.description or ""
-        google_desc = live.get("description", "") or ""
-        if not access_desc and google_desc:
-            logger.info(f"Backfilling group description from Google to Access for {group.name}...")
-            group.description = google_desc
-            session.add(group)
-            await okta.update_group(group.id, group.name, google_desc)
         return None
 
     # ---- Lifecycle hooks ----
