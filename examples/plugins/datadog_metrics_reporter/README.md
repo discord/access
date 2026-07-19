@@ -4,13 +4,13 @@ This plugin integrates Discord access metrics with Datadog, allowing users to tr
 
 ## Installation
 
-Update the Dockerfile used to build the App container includes the following section for installing the metrics plugin before starting gunicorn:
+Update the Dockerfile used to build the App container to include the following section for installing the metrics plugin before starting gunicorn. The Access image is built with `uv` and its virtualenv lives at `/app/.venv` (which has no `pip`), so install with `uv pip install` — plain `pip` would install into the system interpreter, where the running app won't find the plugin:
 
 ```dockerfile
 # Add the specific plugins and install metrics
 WORKDIR /app/plugins
 ADD ./examples/plugins/metrics_reporter ./metrics_reporter
-RUN pip install -r ./metrics_reporter/requirements.txt && pip install ./metrics_reporter
+RUN uv pip install -r ./metrics_reporter/requirements.txt && uv pip install ./metrics_reporter
 
 # Reset working directory
 WORKDIR /app

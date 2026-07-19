@@ -38,23 +38,26 @@ The plugin doesn't integrate with any external systems—it simply logs events, 
 
 ## Installation
 
-To install the plugin, add these lines to the App container Dockerfile:
+To bake the plugin into an operator's App container image, add these lines to
+the Dockerfile. The Access image is built with `uv` and its virtualenv lives at
+`/app/.venv` (which has no `pip`), so install with `uv pip install` — plain
+`pip` would install into the system interpreter, where the running app won't
+find the plugin:
 
 ```dockerfile
 # Install the audit logger plugin
 WORKDIR /app/plugins
 ADD ./examples/plugins/app_group_lifecycle_audit_logger ./app_group_lifecycle_audit_logger
-RUN pip install ./app_group_lifecycle_audit_logger
+RUN uv pip install ./app_group_lifecycle_audit_logger
 
 # Reset working directory
 WORKDIR /app
 ```
 
-Alternatively, for local development, install it with pip:
-
-```bash
-pip install -e examples/plugins/app_group_lifecycle_audit_logger
-```
+For local development in this repo, this plugin is already wired into the `dev`
+dependency group (see `pyproject.toml` and `[tool.uv.sources]`), so `uv sync`
+and `make run-backend` install and register it automatically — no manual step
+needed.
 
 ## Usage
 
@@ -122,9 +125,8 @@ You can use this plugin as a template for creating your own app group lifecycle 
 
 To test the plugin locally:
 
-1. Install the plugin in development mode: `pip install -e examples/plugins/app_group_lifecycle_audit_logger`
-2. Start the Access application
-3. Create/modify/delete groups and observe the logs
+1. Run `make run-backend` — the plugin is installed via the `dev` dependency group and registered automatically (you'll see `Registered 1 app group lifecycle plugin(s): ['audit_logger']` in the startup logs)
+2. Create/modify/delete groups and observe the logs
 
 You should see log messages like:
 

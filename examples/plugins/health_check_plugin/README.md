@@ -11,12 +11,15 @@ The plugin consists of the following files:
 
 ## Installation
 
-To install the plugin, add the following to the App container Dockerfile:
+To install the plugin, add the following to the App container Dockerfile. The
+Access image is built with `uv` and its virtualenv lives at `/app/.venv` (which
+has no `pip`), so install the plugin with `uv pip install` — plain `pip` would
+install into the system interpreter, where the running app won't find it:
 
 ```
 WORKDIR /app/plugins
 ADD ./examples/plugins/health_check_plugin ./health_check_plugin
-RUN pip install ./health_check_plugin
+RUN uv pip install ./health_check_plugin
 
 # Reset working directory
 WORKDIR /app
