@@ -14,7 +14,6 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -30,7 +29,13 @@ from api.operations import (
 )
 from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
-from tests.factories import AccessRequestFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
+from tests.factories import (
+    AccessRequestFactory,
+    AppGroupFactory,
+    OktaGroupFactory,
+    OktaGroupTagMapFactory,
+    OktaUserFactory,
+)
 from tests.helpers import db_count
 from tests.request_factories import CreateAccessRequestBodyFactory, ResolveAccessRequestBodyFactory
 
@@ -796,8 +801,7 @@ async def test_auto_resolve_create_access_request(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     notification_hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
@@ -917,8 +921,7 @@ async def test_auto_resolve_create_access_request_with_time_limit_constraint_tag
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     notification_hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(notification_hook, "access_request_created")
@@ -1194,8 +1197,7 @@ async def test_get_access_request_detail_requested_group_for_app_group(
     db.session.add(app_group)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id)
 
     ar = await CreateAccessRequest(
         requester_user=user,

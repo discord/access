@@ -36,6 +36,7 @@ from tests.factories import (
     AccessRequestFactory,
     AppFactory,
     AppGroupFactory,
+    GroupRequestFactory,
     OktaGroupFactory,
     OktaUserFactory,
     RoleGroupFactory,
@@ -79,6 +80,11 @@ def access_request() -> Any:
 @pytest.fixture
 def role_request() -> Any:
     return RoleRequestFactory.build()
+
+
+@pytest.fixture
+def group_request() -> Any:
+    return GroupRequestFactory.build()
 
 
 @pytest.fixture

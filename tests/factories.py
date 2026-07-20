@@ -9,8 +9,16 @@ Explicit `build(...)`/`create(...)` kwargs still override any column (managed or
 not), which the fixtures and tests rely on.
 
 The `factory_boy`-style method names (`create`, `create_batch`, `build_batch`)
-are thin aliases over polyfactory's `build`/`batch`, so test call sites use them
-directly; none persist (they just build instances).
+are thin aliases over polyfactory's `build`/`batch` — they build detached
+instances without touching the DB, so a call site that wants them persisted still
+does its own `db.session.add(...)` + `await db.session.commit()`.
+
+`await Factory.create_async(...)` (and `create_batch_async`) instead persist:
+`__async_session__` points at the active request-scoped `db.session`, so
+polyfactory adds, commits, and refreshes the built instance. That collapses the
+build/add/commit triad into one call — reach for it when a test just needs a row
+in the DB, and keep `build`/`create` for the cases that assemble an instance
+without persisting.
 
 **Okta SDK model factories** (`Group`/`User`/`UserSchema`) build the
 openapi-generated SDK Pydantic models through `from_dict` (camelCase aliases, the
@@ -41,9 +49,14 @@ from api.models import (
     AccessRequestStatus,
     App,
     AppGroup,
+    AppTagMap,
+    GroupRequest,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
+    OktaUserGroupMember,
     RoleGroup,
+    RoleGroupMap,
     RoleRequest,
     Tag,
 )
@@ -75,6 +88,12 @@ class _ORMFactory(SQLAlchemyFactory):
     __is_base_factory__ = True
     __set_relationships__ = False
     __set_foreign_keys__ = False
+
+    # Resolve the session lazily: the scope (and thus the bound AsyncSession)
+    # changes per test, so `create_async` must read `db.session` at call time,
+    # not at class-definition time. Only `create_async`/`create_batch_async`
+    # use it; `build`/`create` never touch the DB.
+    __async_session__ = staticmethod(lambda: db.session)
 
     # Columns this factory is responsible for generating. Anything not listed
     # (and not passed explicitly by the caller) is left unset.
@@ -178,6 +197,48 @@ class RoleRequestFactory(_ORMFactory):
     id = Use(_okta_id)
     status = AccessRequestStatus.PENDING
     request_reason = Use(lambda: _faker.paragraph(nb_sentences=5))
+
+
+class GroupRequestFactory(_ORMFactory):
+    __model__ = GroupRequest
+    # `requester_user_id` is a caller-supplied FK; the rest either generate here
+    # or fall back to their column defaults. `requested_group_name` /
+    # `requested_group_type` are NOT NULL without a default, so generate them
+    # too (an okta_group by default) to keep `create()`/`create_async()`
+    # persistable with just a requester.
+    _managed = {"id", "status", "request_reason", "requested_group_name", "requested_group_type"}
+
+    id = Use(_okta_id)
+    status = AccessRequestStatus.PENDING
+    request_reason = Use(lambda: _faker.paragraph(nb_sentences=5))
+    requested_group_name = Use(lambda: random.choice(string.ascii_uppercase) + _rand())
+    requested_group_type = "okta_group"
+
+
+# --- Membership / mapping rows ---------------------------------------------
+#
+# These association tables default every non-FK column (`is_owner` False,
+# timestamps to now, `ended_at` null → active, reason ""), and the FKs are
+# always caller-supplied, so there is nothing to generate — `_managed` is empty.
+# The factories exist for the `create_async` persistence path: `await
+# OktaUserGroupMemberFactory.create_async(user_id=u.id, group_id=g.id)` replaces
+# the add/commit triad. Pass `ended_at=...` to build an already-expired row.
+
+
+class OktaUserGroupMemberFactory(_ORMFactory):
+    __model__ = OktaUserGroupMember
+
+
+class RoleGroupMapFactory(_ORMFactory):
+    __model__ = RoleGroupMap
+
+
+class OktaGroupTagMapFactory(_ORMFactory):
+    __model__ = OktaGroupTagMap
+
+
+class AppTagMapFactory(_ORMFactory):
+    __model__ = AppTagMap
 
 
 # ---------------------------------------------------------------------------

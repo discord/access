@@ -16,7 +16,7 @@ from api.models import (
 )
 from api.extensions import Db
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
-from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import OktaGroupFactory, OktaGroupTagMapFactory, OktaUserFactory, RoleGroupFactory
 from typing import Any
 
 
@@ -108,8 +108,7 @@ async def test_user_audit_row_includes_group_active_group_tags(
     db.session.add(okta_group)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
     await ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})

@@ -23,7 +23,14 @@ from api.models import (
 )
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
+from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
+    AppTagMapFactory,
+    OktaGroupFactory,
+    OktaUserFactory,
+    OktaUserGroupMemberFactory,
+)
 from tests.helpers import db_count
 from tests.request_factories import CreateAppBodyFactory, UpdateAppBodyFactory
 
@@ -377,9 +384,7 @@ async def test_delete_app(
     db.session.add(tag)
     await db.session.commit()
 
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
     for app_group in app_groups:
         db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
     await db.session.commit()
@@ -928,11 +933,8 @@ async def test_create_app_fails_when_preexisting_owner_group_is_occupied(
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    squatted_group = OktaGroupFactory.create(name=owner_group_name)
-    db.session.add(squatted_group)
-    await db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=squatted_group.id, is_owner=True))
-    await db.session.commit()
+    squatted_group = await OktaGroupFactory.create_async(name=owner_group_name)
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=squatted_group.id, is_owner=True)
 
     apps_url = url_for("api-apps.apps")
     rep = await client.post(apps_url, json={"name": "Payments"})
@@ -1000,11 +1002,8 @@ async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    group_with_members = OktaGroupFactory.create(name=owner_group_name)
-    db.session.add(group_with_members)
-    await db.session.commit()
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=group_with_members.id, is_owner=False))
-    await db.session.commit()
+    group_with_members = await OktaGroupFactory.create_async(name=owner_group_name)
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=group_with_members.id, is_owner=False)
 
     apps_url = url_for("api-apps.apps")
     rep = await client.post(apps_url, json={"name": "Payments"})
