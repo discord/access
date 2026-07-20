@@ -13,7 +13,6 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -31,7 +30,14 @@ from api.operations import (
 )
 from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
-from tests.factories import AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory, RoleRequestFactory
+from tests.factories import (
+    AppGroupFactory,
+    OktaGroupFactory,
+    OktaGroupTagMapFactory,
+    OktaUserFactory,
+    RoleGroupFactory,
+    RoleRequestFactory,
+)
 from tests.helpers import db_count
 from tests.request_factories import CreateRoleRequestBodyFactory, ResolveRoleRequestBodyFactory
 
@@ -55,12 +61,11 @@ async def test_get_role_request(
     rep = await client.get(role_request_url)
     assert rep.status_code == 404
 
-    role_group2 = RoleGroupFactory.create()
+    role_group2 = await RoleGroupFactory.create_async()
 
     db.session.add(user)
     db.session.add(okta_group)
     db.session.add(role_group)
-    db.session.add(role_group2)
     await db.session.commit()
 
     await ModifyGroupUsers(
@@ -151,10 +156,9 @@ async def test_get_role_request_includes_nested_role_and_group_data(
     tag: Tag,
     url_for: Any,
 ) -> None:
-    role_member = OktaUserFactory.create()
+    role_member = await OktaUserFactory.create_async()
 
     db.session.add(user)
-    db.session.add(role_member)
     db.session.add(okta_group)
     db.session.add(role_group)
     db.session.add(tag)
@@ -167,8 +171,7 @@ async def test_get_role_request_includes_nested_role_and_group_data(
         sync_to_okta=False,
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     role_request = await CreateRoleRequest(
         requester_user=user,
@@ -617,14 +620,13 @@ async def test_create_app_role_request_notification(
     mocker: MockerFixture,
 ) -> None:
     # test bad data
-    app_owner_user = OktaUserFactory.create()
+    app_owner_user = await OktaUserFactory.create_async()
     app_owner_group = AppGroupFactory.create()
 
     # Add App
     db.session.add(access_app)
 
     # Add Users
-    db.session.add(app_owner_user)
     db.session.add(user)
 
     await db.session.commit()
@@ -748,11 +750,9 @@ async def test_role_request_approvers_tagged(
     tag: Tag,
     mocker: MockerFixture,
 ) -> None:
-    user2 = OktaUserFactory.create()
-    user3 = OktaUserFactory.create()
+    user2 = await OktaUserFactory.create_async()
+    user3 = await OktaUserFactory.create_async()
     db.session.add(user)
-    db.session.add(user2)
-    db.session.add(user3)
     db.session.add(okta_group)
     await db.session.commit()
 
@@ -772,8 +772,7 @@ async def test_role_request_approvers_tagged(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     # drop identity-map state staled by the ops above (expire_on_commit=False)
     db.session.expire_all()
@@ -936,8 +935,7 @@ async def test_auto_resolve_create_role_request(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     await ModifyGroupUsers(
         group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
@@ -1073,8 +1071,7 @@ async def test_auto_resolve_create_role_request_with_time_limit_constraint_tag(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     await ModifyGroupUsers(
         group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
@@ -1167,8 +1164,7 @@ async def test_time_limit_constraint_tag(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id)
 
     hook = get_notification_hook()
     request_created_notification_spy = mocker.patch.object(hook, "access_role_request_created")
@@ -1225,9 +1221,8 @@ async def test_owner_cant_add_self_constraint_tag(
     db.session.add(access_app)
 
     # Add Users
-    user2 = OktaUserFactory.create()
+    user2 = await OktaUserFactory.create_async()
     db.session.add(user)
-    db.session.add(user2)
     await db.session.commit()
 
     # Add app group that no one owns
@@ -1253,8 +1248,7 @@ async def test_owner_cant_add_self_constraint_tag(
     db.session.add(tag)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id)
 
     db.session.expire_all()
     # ... then reload the objects the operations below read in this task context.
@@ -1319,12 +1313,11 @@ async def test_role_request_approval_via_direct_add(
     mocker: MockerFixture,
     url_for: Any,
 ) -> None:
-    okta_group2 = OktaGroupFactory.create()
+    okta_group2 = await OktaGroupFactory.create_async()
 
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(okta_group2)
     await db.session.commit()
 
     await ModifyGroupUsers(
@@ -1502,8 +1495,7 @@ async def test_get_role_request_detail_requested_group_for_app_group(
     db.session.add(app_group)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id)
     await ModifyGroupUsers(
         group=role_group,
         members_to_add=[user.id],

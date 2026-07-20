@@ -8,9 +8,7 @@ from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
-    AppTagMap,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -19,7 +17,7 @@ from api.models import (
 )
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import TagFactory
+from tests.factories import AppTagMapFactory, OktaGroupTagMapFactory, TagFactory
 from tests.helpers import db_count
 
 
@@ -87,17 +85,13 @@ async def test_require_reason_modify_group_users(
         sync_to_okta=False,
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     # Store IDs before requests — constraint-rejection (400) paths roll the
     # shared session back, expiring instances; expired attributes cannot
@@ -602,17 +596,13 @@ async def test_require_reason_modify_role_groups(
 
     await ModifyGroupUsers(group=role_group, members_to_add=[user.id], owners_to_add=[], sync_to_okta=False).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     # Store IDs before requests — constraint-rejection (400) paths roll the
     # shared session back, expiring instances; expired attributes cannot
@@ -1286,17 +1276,13 @@ async def test_require_reason_approve_access_request(
         sync_to_okta=False,
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")

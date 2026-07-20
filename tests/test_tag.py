@@ -10,8 +10,8 @@ from fastapi import FastAPI
 
 from api.config import settings
 from api.extensions import Db
-from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Tag
-from tests.factories import TagFactory
+from api.models import App, AppGroup, OktaGroup, Tag
+from tests.factories import AppTagMapFactory, OktaGroupTagMapFactory, TagFactory
 from tests.request_factories import CreateTagBodyFactory, UpdateTagBodyFactory
 
 
@@ -31,12 +31,9 @@ async def test_get_tag(
     db.session.add(app_group)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id)
 
     # test get tag
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
@@ -64,12 +61,9 @@ async def test_put_tag(
     db.session.add(app_group)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id)
 
     data = UpdateTagBodyFactory.json(
         name="Updated",
@@ -134,12 +128,9 @@ async def test_delete_tag(
     db.session.add(app_group)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id)
 
     tag_id = tag.id
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag_id)
@@ -188,9 +179,7 @@ async def test_create_tag(client: AsyncClient, db: Db, mocker: MockerFixture, ur
 async def test_get_all_tag(client: AsyncClient, db: Db, url_for: Any) -> None:
     tags_url = url_for("api-tags.tags")
 
-    tags = TagFactory.create_batch(3)
-    db.session.add_all(tags)
-    await db.session.commit()
+    tags = await TagFactory.create_batch_async(3)
 
     rep = await client.get(tags_url)
     assert rep.status_code == 200
@@ -354,10 +343,8 @@ async def test_post_tag_duplicate_name_blocked(client: AsyncClient, db: Db, url_
 
 async def test_put_tag_rename_collision_blocked(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Renaming a tag onto another tag's name is rejected with 400."""
-    tag_a = TagFactory.create(name="OneTag")
-    tag_b = TagFactory.create(name="OtherTag")
-    db.session.add_all([tag_a, tag_b])
-    await db.session.commit()
+    await TagFactory.create_async(name="OneTag")
+    tag_b = await TagFactory.create_async(name="OtherTag")
 
     put_url = url_for("api-tags.tag_by_id_put", tag_id=tag_b.id)
     rep = await client.put(put_url, json={"name": "onetag"})  # case-insensitive
@@ -367,8 +354,8 @@ async def test_put_tag_rename_collision_blocked(client: AsyncClient, db: Db, url
 
 async def test_get_tags_q_via_http(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Q — `q` query param honored on /api/tags."""
-    db.session.add_all([TagFactory.create(name="ZelaTagOne"), TagFactory.create(name="OtherTag")])
-    await db.session.commit()
+    await TagFactory.create_async(name="ZelaTagOne")
+    await TagFactory.create_async(name="OtherTag")
     tags_url = url_for("api-tags.tags")
     rep = await client.get(tags_url, params={"q": "ZelaTag"})
     assert rep.status_code == 200
@@ -435,10 +422,8 @@ async def test_put_tag_emits_tag_modify_audit_log(
 
 async def test_list_tags_search_matches_description(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`q` matches against Tag.description as well as Tag.name."""
-    name_only = TagFactory.create(name="HaystackTag", description="generic")
-    desc_only = TagFactory.create(name="OtherName", description="contains needle here")
-    db.session.add_all([name_only, desc_only])
-    await db.session.commit()
+    name_only = await TagFactory.create_async(name="HaystackTag", description="generic")
+    desc_only = await TagFactory.create_async(name="OtherName", description="contains needle here")
 
     tags_url = url_for("api-tags.tags")
     rep = await client.get(tags_url, params={"q": "needle"})
@@ -459,8 +444,7 @@ async def test_list_tags_response_is_summary_shape(
     db.session.add(tag)
     db.session.add(okta_group)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     tags_url = url_for("api-tags.tags")
     rep = await client.get(tags_url)
@@ -522,9 +506,7 @@ async def test_get_tag_detail_includes_active_app_tags(
     db.session.add(tag)
     db.session.add(access_app)
     await db.session.commit()
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
+    await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
 
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
     rep = await client.get(tag_url)
@@ -548,8 +530,7 @@ async def test_get_tag_detail_active_group_tags_carries_group_description(
     db.session.add(okta_group)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
     rep = await client.get(tag_url)

@@ -583,14 +583,13 @@ async def test_create_app_access_request_notification(
     app: FastAPI, db: Db, access_app: App, app_group: AppGroup, user: OktaUser, mocker: MockerFixture
 ) -> None:
     # test bad data
-    app_owner_user = OktaUserFactory.create()
+    app_owner_user = await OktaUserFactory.create_async()
     app_owner_group = AppGroupFactory.create()
 
     # Add App
     db.session.add(access_app)
 
     # Add Users
-    db.session.add(app_owner_user)
     db.session.add(user)
 
     await db.session.commit()
@@ -1038,8 +1037,7 @@ async def test_post_access_request_403_for_deleted_user(
     soft-deleted user."""
     from datetime import datetime, timezone
 
-    deleted_user = OktaUserFactory.create(deleted_at=datetime.now(timezone.utc))
-    db.session.add(deleted_user)
+    deleted_user = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
     db.session.add(okta_group)
     await db.session.commit()
     mock_user(deleted_user.id)
@@ -1063,11 +1061,8 @@ async def test_post_access_request_for_role_group_with_associated_groups(
     from api.operations import ModifyRoleGroups
     from tests.factories import AppFactory, AppGroupFactory, RoleGroupFactory
 
-    role = RoleGroupFactory.create(name="Role-WithAssociations")
-    test_app = AppFactory.create(name="AssocTestApp")
-    db.session.add(role)
-    db.session.add(test_app)
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async(name="Role-WithAssociations")
+    test_app = await AppFactory.create_async(name="AssocTestApp")
 
     associated_app_groups = [
         AppGroupFactory.create(
@@ -1127,11 +1122,8 @@ async def test_get_access_request_detail_requested_group_for_role_group(
 
     # Wire the role to one member-group and one owner-group so both
     # association arrays have content.
-    member_group = OktaGroupFactory.create()
-    owner_group = OktaGroupFactory.create()
-    db.session.add(member_group)
-    db.session.add(owner_group)
-    await db.session.commit()
+    member_group = await OktaGroupFactory.create_async()
+    owner_group = await OktaGroupFactory.create_async()
     await ModifyRoleGroups(
         role_group=role_group,
         groups_to_add=[member_group.id],

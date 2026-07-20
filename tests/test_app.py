@@ -28,6 +28,7 @@ from tests.factories import (
     AppGroupFactory,
     AppTagMapFactory,
     OktaGroupFactory,
+    OktaGroupTagMapFactory,
     OktaUserFactory,
     OktaUserGroupMemberFactory,
 )
@@ -129,17 +130,14 @@ async def test_get_app_groups_paginated(client: AsyncClient, db: Db, user: OktaU
     to 10 per page. Members are NOT inlined — each item carries member_count /
     owner_count, and the UI fetches members per-group from the paginated
     member-details endpoint — so a single huge group can't bloat the response."""
-    app = AppFactory.create()
-    db.session.add(app)
+    app = await AppFactory.create_async()
     db.session.add(user)
     await db.session.commit()
 
     groups = []
     for _ in range(25):
-        ag = AppGroupFactory.create(app_id=app.id)
-        db.session.add(ag)
+        ag = await AppGroupFactory.create_async(app_id=app.id)
         groups.append(ag)
-    await db.session.commit()
 
     await ModifyGroupUsers(group=groups[0], members_to_add=[user.id], sync_to_okta=False).execute()
 
@@ -175,16 +173,11 @@ async def test_get_app_groups_paginated(client: AsyncClient, db: Db, user: OktaU
 async def test_get_app_groups_search_by_user(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`?q=` returns only the app's groups containing a member matching the
     query by name/email, computed server-side (the app page's user search)."""
-    app = AppFactory.create()
-    db.session.add(app)
-    await db.session.commit()
-    group_a = AppGroupFactory.create(app_id=app.id)
-    group_b = AppGroupFactory.create(app_id=app.id)
-    db.session.add_all([group_a, group_b])
-    alice = OktaUserFactory.create(first_name="Alice", last_name="Xeno", email="alice.xeno@example.com")
-    bob = OktaUserFactory.create(first_name="Bob", last_name="Yon", email="bob.yon@example.com")
-    db.session.add_all([alice, bob])
-    await db.session.commit()
+    app = await AppFactory.create_async()
+    group_a = await AppGroupFactory.create_async(app_id=app.id)
+    group_b = await AppGroupFactory.create_async(app_id=app.id)
+    alice = await OktaUserFactory.create_async(first_name="Alice", last_name="Xeno", email="alice.xeno@example.com")
+    bob = await OktaUserFactory.create_async(first_name="Bob", last_name="Yon", email="bob.yon@example.com")
     await ModifyGroupUsers(group=group_a, members_to_add=[alice.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=group_b, members_to_add=[bob.id], sync_to_okta=False).execute()
 
@@ -206,13 +199,9 @@ async def test_get_app_groups_search_by_group_name(client: AsyncClient, db: Db, 
     """`?q=` also matches an app group's own name (not just its members), so the
     app page's search box can find a specific group or a subset of groups by
     name via a case-insensitive substring."""
-    app = AppFactory.create()
-    db.session.add(app)
-    await db.session.commit()
-    prd_group = AppGroupFactory.create(app_id=app.id, name="App-Github-Prd")
-    stg_group = AppGroupFactory.create(app_id=app.id, name="App-Github-Stg")
-    db.session.add_all([prd_group, stg_group])
-    await db.session.commit()
+    app = await AppFactory.create_async()
+    prd_group = await AppGroupFactory.create_async(app_id=app.id, name="App-Github-Prd")
+    await AppGroupFactory.create_async(app_id=app.id, name="App-Github-Stg")
 
     app_id = app.id
     prd_group_id = prd_group.id
@@ -230,9 +219,7 @@ async def test_get_app_groups_search_by_group_name(client: AsyncClient, db: Db, 
 
 async def test_get_app_groups_size_capped_at_10(client: AsyncClient, db: Db, url_for: Any) -> None:
     """Requesting more than 10 per page is rejected so the bound can't be opted out of."""
-    app = AppFactory.create()
-    db.session.add(app)
-    await db.session.commit()
+    app = await AppFactory.create_async()
     app_id = app.id
     db.session.expunge_all()
 
@@ -386,8 +373,7 @@ async def test_delete_app(
 
     app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
     for app_group in app_groups:
-        db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+        await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id)
 
     app_id = access_app.id
     app_group_id = app_groups[0].id
@@ -722,19 +708,13 @@ async def test_create_app_additional_group_collision_converts_correct_group(
     # A pre-existing plain OktaGroup whose name collides with a requested additional
     # app group. No App-Payments-Owners group pre-exists, so with the bug
     # existing_owner_group is None.
-    plain_group = OktaGroupFactory.create(name=legacy_name)
-    db.session.add(plain_group)
-    await db.session.commit()
+    plain_group = await OktaGroupFactory.create_async(name=legacy_name)
     plain_group_id = plain_group.id
 
     # A pre-existing AppGroup attached to a *different* app that also collides — it
     # should be reattached to the new app.
-    other_app = AppFactory.create()
-    db.session.add(other_app)
-    await db.session.commit()
-    other_app_group = AppGroupFactory.create(app_id=other_app.id, name=shared_name, is_owner=False)
-    db.session.add(other_app_group)
-    await db.session.commit()
+    other_app = await AppFactory.create_async()
+    other_app_group = await AppGroupFactory.create_async(app_id=other_app.id, name=shared_name, is_owner=False)
     other_app_group_id = other_app_group.id
 
     apps_url = url_for("api-apps.apps")
@@ -964,9 +944,7 @@ async def test_create_app_succeeds_with_empty_preexisting_owner_group(
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    empty_group = OktaGroupFactory.create(name=owner_group_name)
-    db.session.add(empty_group)
-    await db.session.commit()
+    await OktaGroupFactory.create_async(name=owner_group_name)
 
     apps_url = url_for("api-apps.apps")
     rep = await client.post(apps_url, json={"name": "Payments"})
@@ -1092,10 +1070,8 @@ async def test_post_app_require_descriptions_enforced_via_http(
 
 async def test_get_apps_q_via_http(client: AsyncClient, db: Db, url_for: Any) -> None:
     """`q` is honored end-to-end on /api/apps."""
-    a1 = AppFactory.create(name="ZelaPaymentsApp", description="Handles money flows")
-    a2 = AppFactory.create(name="LoggingApp", description="Stores logs")
-    db.session.add_all([a1, a2])
-    await db.session.commit()
+    await AppFactory.create_async(name="ZelaPaymentsApp", description="Handles money flows")
+    await AppFactory.create_async(name="LoggingApp", description="Stores logs")
 
     apps_url = url_for("api-apps.apps")
     rep = await client.get(apps_url, params={"q": "ZelaPayments"})

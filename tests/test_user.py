@@ -151,10 +151,7 @@ async def test_create_user(client: AsyncClient, db: Db, user: OktaUser, url_for:
 
 async def test_get_all_user(client: AsyncClient, db: Db, url_for: Any) -> None:
     users_url = url_for("api-users.users")
-    users = OktaUserFactory.create_batch(10)
-
-    db.session.add_all(users)
-    await db.session.commit()
+    users = await OktaUserFactory.create_batch_async(10)
 
     rep = await client.get(users_url)
     assert rep.status_code == 200
