@@ -32,13 +32,13 @@ TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 # Page size for cursor-paginated list endpoints. Okta caps most list endpoints
 # at 200 per page; the facade drives the ``after`` cursor to walk pages.
 LIST_PAGE_LIMIT = 200
-# Extra attempts for a call that raises ``OktaTransientError``. Transient Okta
-# failures (a 429/5xx or timeout, and — via the reclassification in ``_call`` — a
-# pooled keep-alive connection Okta dropped server-side, which the SDK surfaces as
-# a None-response error) are worth one immediate retry: it gets a fresh connection
-# and usually succeeds, recovering within the run instead of skipping the resource
-# until the next reconcile. Kept at 1 so a genuinely-degraded endpoint, or a
-# lingering 429, still gives up quickly rather than amplifying load.
+# Extra attempts for a *connection-level* ``OktaTransientError`` — chiefly a
+# pooled keep-alive connection Okta dropped server-side, which the SDK surfaces
+# as a None-response error. One immediate retry gets a fresh connection and
+# usually succeeds, recovering within the run instead of skipping the resource
+# until the next reconcile. A 429/5xx or timeout is *not* retried (see
+# ``_is_retryable_okta_error``): the SDK already spent its budget, so re-issuing
+# into an active rate-limit storm only amplifies load and latency.
 OKTA_TRANSIENT_RETRIES = 1
 
 
@@ -57,16 +57,22 @@ UserSchemaAttribute.model_rebuild(force=True)
 
 
 class OktaTransientError(Exception):
-    """Raised when an Okta request times out or hits a transient failure.
+    """Raised when an Okta request hits a transient failure.
 
     Surfaced when the SDK gives up on a request: its ``requestTimeout`` is
-    exceeded, a 429 outlives its rate-limit retries, or the response is a
-    transient upstream/gateway error (5xx). Callers that can tolerate a slow or
-    flaky Okta call (the membership/ownership fan-out) catch this and continue;
-    the syncer reconciles the drift later.
+    exceeded, a 429 outlives its rate-limit retries, the response is a transient
+    upstream/gateway error (5xx), or a pooled connection was dropped. Callers
+    that can tolerate a slow or flaky Okta call (the membership/ownership
+    fan-out) catch this and continue; the syncer reconciles the drift later, and
+    request handlers surface it as a 503.
+
+    ``retryable`` marks a connection-level failure a fresh connection could fix
+    (see ``_is_retryable_okta_error``); ``_WrapperClient`` retries only those.
     """
 
-    pass
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 # On a gateway failure that yields no response object, the SDK returns
@@ -100,6 +106,27 @@ def _is_transient_okta_error(error: Any) -> bool:
     return str(error) == "Request Timeout exceeded."
 
 
+def _is_retryable_okta_error(error: Any) -> bool:
+    """Whether a transient failure is worth one immediate in-run retry.
+
+    Only a *connection-level* blip benefits — chiefly a pooled keep-alive
+    connection Okta dropped server-side, which the SDK surfaces as the
+    None-response ``AttributeError`` above; a retry gets a fresh connection and
+    usually succeeds. A definitive rate-limit/gateway HTTP status (429 or a 5xx)
+    or an exhausted request timeout is *not* retried: the SDK already spent its
+    retry/timeout budget, so re-issuing into an active storm only amplifies load
+    and latency. Those still raise ``OktaTransientError`` — just without the
+    extra attempt. Assumes ``error`` was already classified transient.
+    """
+    if getattr(error, "status", None) in TRANSIENT_STATUS_CODES:
+        return False
+    if isinstance(error, asyncio.TimeoutError):
+        return False
+    if str(error) == "Request Timeout exceeded.":
+        return False
+    return True
+
+
 class _WrapperClient:
     """Proxy over an Okta client that routes every async API call through ``OktaService._call``.
 
@@ -122,14 +149,15 @@ class _WrapperClient:
         @functools.wraps(attr)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Rebuild the coroutine each attempt — a spent coroutine can't be
-            # re-awaited — and retry a bounded number of times on a transient
-            # failure, so a stale pooled connection is recovered within the run
-            # rather than deferred to the next reconcile.
+            # re-awaited — and retry only a connection-level transient failure (a
+            # dropped pooled connection), which recovers on a fresh connection
+            # within the run. A 429/5xx or timeout is surfaced immediately: the
+            # SDK already spent its budget, so re-issuing only amplifies load.
             for attempt in range(OKTA_TRANSIENT_RETRIES + 1):
                 try:
                     return await OktaService._call(attr(*args, **kwargs))
-                except OktaTransientError:
-                    if attempt == OKTA_TRANSIENT_RETRIES:
+                except OktaTransientError as exc:
+                    if not exc.retryable or attempt == OKTA_TRANSIENT_RETRIES:
                         raise
             raise AssertionError("unreachable")  # pragma: no cover
 
@@ -234,11 +262,13 @@ class OktaService:
             result = await coro
         except Exception as exc:
             if _is_transient_okta_error(exc):
-                raise OktaTransientError(str(exc) or "Okta request timed out") from exc
+                raise OktaTransientError(
+                    str(exc) or "Okta request timed out", retryable=_is_retryable_okta_error(exc)
+                ) from exc
             raise
         error = result[-1] if isinstance(result, tuple) and result else None
         if _is_transient_okta_error(error):
-            raise OktaTransientError(str(error) or "Okta request timed out")
+            raise OktaTransientError(str(error) or "Okta request timed out", retryable=_is_retryable_okta_error(error))
         return result
 
     async def _paginate(self, list_method: Callable[..., Any], *args: Any, **kwargs: Any) -> list[Any]:
