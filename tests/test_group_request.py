@@ -33,6 +33,11 @@ from tests.factories import (
     RoleGroupFactory,
     TagFactory,
 )
+from tests.request_factories import (
+    AppGroupRequestBodyFactory,
+    OktaGroupRequestBodyFactory,
+    ResolveGroupRequestBodyFactory,
+)
 
 
 # Define a Protocol that includes the pystr method
@@ -2218,7 +2223,9 @@ async def test_post_group_request_validation_via_http(
     assert "tags not found" in rep.text
 
     # (c) app_group missing requested_app_id → 400 (Pydantic discriminator
-    # rejects the missing required field on _AppGroupRequestBody).
+    # rejects the missing required field on _AppGroupRequestBody). Kept as a
+    # literal dict: AppGroupRequestBodyFactory would supply the very field
+    # this case omits.
     rep = await client.post(
         create_url,
         json={
@@ -2241,12 +2248,9 @@ async def test_post_group_request_app_id_must_exist_unknown(
     mock_user(user.id)
     rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
-        json={
-            "requested_group_name": "Foo",
-            "requested_group_description": "x",
-            "requested_group_type": "app_group",
-            "requested_app_id": "nonexistent-app-id",
-        },
+        json=AppGroupRequestBodyFactory.json(
+            requested_group_name="Foo", requested_group_description="x", requested_app_id="nonexistent-app-id"
+        ),
     )
     assert rep.status_code == 404
     assert "App not found" in rep.text
@@ -2264,12 +2268,9 @@ async def test_post_group_request_app_id_must_exist_deleted(
     mock_user(user.id)
     rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
-        json={
-            "requested_group_name": "Foo",
-            "requested_group_description": "x",
-            "requested_group_type": "app_group",
-            "requested_app_id": deleted_app.id,
-        },
+        json=AppGroupRequestBodyFactory.json(
+            requested_group_name="Foo", requested_group_description="x", requested_app_id=deleted_app.id
+        ),
     )
     assert rep.status_code == 404
     assert "App not found" in rep.text
@@ -2290,12 +2291,9 @@ async def test_post_group_request_tag_ids_must_be_undeleted(
     mock_user(user.id)
     rep = await client.post(
         url_for("api-group-requests.group_requests_create"),
-        json={
-            "requested_group_name": "Foo",
-            "requested_group_description": "x",
-            "requested_group_type": "okta_group",
-            "requested_group_tags": [deleted_tag.id],
-        },
+        json=OktaGroupRequestBodyFactory.json(
+            requested_group_name="Foo", requested_group_description="x", requested_group_tags=[deleted_tag.id]
+        ),
     )
     assert rep.status_code == 400
     assert "tags not found" in rep.text
@@ -2636,7 +2634,10 @@ async def test_approve_app_group_request_with_non_conforming_resolved_name_is_re
     assert group_request is not None
 
     resolve_url = url_for("api-group-requests.group_request_by_id_put", group_request_id=group_request.id)
-    rep = await client.put(resolve_url, json={"approved": True, "reason": "ok", "resolved_group_name": "Whatever"})
+    rep = await client.put(
+        resolve_url,
+        json=ResolveGroupRequestBodyFactory.json(approved=True, reason="ok", resolved_group_name="Whatever"),
+    )
     assert rep.status_code == 400
     assert rep.json()["detail"] == (
         f'App Group name "Whatever" should be prefixed with App name. For example: "App-{app_name}-"'
@@ -2649,7 +2650,9 @@ async def test_approve_app_group_request_with_non_conforming_resolved_name_is_re
     # A conforming resolved name approves cleanly
     rep = await client.put(
         resolve_url,
-        json={"approved": True, "reason": "ok", "resolved_group_name": f"App-{app_name}-RenamedGroup"},
+        json=ResolveGroupRequestBodyFactory.json(
+            approved=True, reason="ok", resolved_group_name=f"App-{app_name}-RenamedGroup"
+        ),
     )
     assert rep.status_code == 200
 

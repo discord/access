@@ -12,6 +12,7 @@ from api.config import settings
 from api.extensions import Db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, Tag
 from tests.factories import TagFactory
+from tests.request_factories import CreateTagBodyFactory, UpdateTagBodyFactory
 
 
 async def test_get_tag(
@@ -70,12 +71,12 @@ async def test_put_tag(
     db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
     await db.session.commit()
 
-    data = {
-        "name": "Updated",
-        "description": "new description",
-        "enabled": False,
-        "constraints": {Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 9999},
-    }
+    data = UpdateTagBodyFactory.json(
+        name="Updated",
+        description="new description",
+        enabled=False,
+        constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 9999},
+    )
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
     rep = await client.put(tag_url, json=data)
     assert rep.status_code == 200
@@ -87,12 +88,12 @@ async def test_put_tag(
     assert data["constraints"] == {Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 9999}
     assert data["id"] == tag.id
 
-    data = {
-        "name": "Updated-again",
-        "description": "new description",
-        "enabled": True,
-        "constraints": {},
-    }
+    data = UpdateTagBodyFactory.json(
+        name="Updated-again",
+        description="new description",
+        enabled=True,
+        constraints={},
+    )
     tag_url = url_for("api-tags.tag_by_id", tag_id=tag.id)
     rep = await client.put(tag_url, json=data)
     assert rep.status_code == 200
@@ -157,7 +158,7 @@ async def test_create_tag(client: AsyncClient, db: Db, mocker: MockerFixture, ur
     rep = await client.post(tags_url, json=data)
     assert rep.status_code == 400
 
-    data = {"name": "Created", "description": ""}
+    data = CreateTagBodyFactory.json(name="Created", description="")
 
     rep = await client.post(tags_url, json=data)
     assert rep.status_code == 201
@@ -170,7 +171,7 @@ async def test_create_tag(client: AsyncClient, db: Db, mocker: MockerFixture, ur
     assert tag.enabled is True
     assert tag.constraints == {}
 
-    data = {"name": "Created2", "description": "", "enabled": False, "constraints": {}}
+    data = CreateTagBodyFactory.json(name="Created2", description="", enabled=False, constraints={})
 
     rep = await client.post(tags_url, json=data)
     assert rep.status_code == 201
