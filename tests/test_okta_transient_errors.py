@@ -1,11 +1,15 @@
 import asyncio
+import logging
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from okta.errors.http_error import HTTPError
 from okta.errors.okta_api_error import OktaAPIError
 from pytest_mock import MockerFixture
 
+from api import exception_handlers
 from api.services.okta_service import OktaService, OktaTransientError
 from tests.factories import UserFactory
 
@@ -123,3 +127,28 @@ async def test_facade_adds_no_retry(mocker: MockerFixture, okta_service: OktaSer
 
     assert user is not None
     assert mocked_request.call_count == 1
+
+
+def test_okta_transient_error_surfaces_as_503(caplog: pytest.LogCaptureFixture) -> None:
+    """An ``OktaTransientError`` that reaches a request handler is rendered as a
+    503 problem-detail (the retryable signal the caller should see) and logged at
+    WARNING — not the ERROR traceback the unhandled-exception catch-all emits."""
+    app = FastAPI()
+    exception_handlers.install(app)
+
+    @app.get("/boom")
+    async def boom() -> None:
+        raise OktaTransientError("Okta unavailable")
+
+    client = TestClient(app, raise_server_exceptions=False)
+    with caplog.at_level(logging.WARNING):
+        response = client.get("/boom")
+
+    assert response.status_code == 503
+    assert response.headers["content-type"] == "application/problem+json"
+    body = response.json()
+    assert body["status"] == 503
+    assert "retry" in body["detail"].lower()
+    # The dedicated handler wins over the catch-all: a WARNING, not an ERROR traceback.
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)

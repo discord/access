@@ -31,6 +31,7 @@ from starlette.requests import Request
 from api.auth.dependencies import OIDCRedirectRequired
 from api.exceptions import AccessException
 from api.plugins.app_group_lifecycle import PluginNotFoundError
+from api.services.okta_service import OktaTransientError
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,20 @@ async def access_exception_handler(request: Request, exc: AccessException) -> JS
     return _problem(status_code=exc.status_code, detail=exc.detail)
 
 
+async def okta_transient_error_handler(request: Request, exc: OktaTransientError) -> JSONResponse:
+    # A transient Okta failure (timeout, rate-limit exhaustion, 5xx gateway
+    # error, or a dropped connection) reached a request handler. It's expected
+    # and retryable — upstream weather, not an application bug — so surface a 503
+    # the caller can retry and log at WARNING, keeping it out of the
+    # unhandled-exception path that logs a full ERROR traceback and would
+    # otherwise page.
+    logger.warning("Transient Okta error on %s %s: %s", request.method, request.url.path, exc)
+    return _problem(
+        status_code=503,
+        detail="Okta is temporarily unavailable. Please retry.",
+    )
+
+
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse | HTMLResponse:
     logger.exception("Unhandled exception", exc_info=exc)
     if _is_api(request):
@@ -194,4 +209,5 @@ def install(app: FastAPI) -> None:
     app.add_exception_handler(OIDCRedirectRequired, oidc_redirect_handler)  # type: ignore[arg-type]
     app.add_exception_handler(PluginNotFoundError, plugin_not_found_handler)  # type: ignore[arg-type]
     app.add_exception_handler(AccessException, access_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(OktaTransientError, okta_transient_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)

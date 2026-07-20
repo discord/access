@@ -225,38 +225,70 @@ async def test_concurrent_calls_use_isolated_clients() -> None:
     assert len({id(client) for client in clients}) == call_count
 
 
-async def test_transient_error_is_retried_then_succeeds() -> None:
-    """A transient Okta failure is retried within the same call and can recover.
+async def test_connection_level_error_is_retried_then_succeeds() -> None:
+    """A dropped pooled connection is retried within the same call and recovers.
 
-    The SDK surfaces a transient outcome (here a 503) that ``_call`` turns into an
-    ``OktaTransientError``; ``_WrapperClient`` retries it, and the next attempt —
+    A stale keep-alive connection Okta closed server-side surfaces as the SDK's
+    None-response ``AttributeError``; ``_call`` maps it to a *retryable*
+    ``OktaTransientError``, ``_WrapperClient`` retries it, and the next attempt —
     on a fresh connection in production — succeeds.
     """
     service = OktaService()
     service.initialize("fake.domain", "fake.token")
 
-    transient = (None, MagicMock(status_code=503, headers={}), MagicMock(status=503))
+    dropped = AttributeError("'NoneType' object has no attribute 'status'")
     success = (UserFactory(), MagicMock(status_code=200, headers={}), None)
-    get_user = AsyncMock(side_effect=[transient, success])
+    get_user = AsyncMock(side_effect=[dropped, success])
 
     with patch("okta.client.Client.get_user", get_user):
         user = await service.get_user("okta_id")
 
     assert user is not None
-    # One transient failure, retried once, then success.
+    # One connection-level failure, retried once, then success.
     assert get_user.call_count == 2
 
 
-async def test_transient_error_gives_up_after_bounded_retries() -> None:
-    """A persistently transient endpoint stops after the bounded retries."""
+async def test_connection_level_error_gives_up_after_bounded_retries() -> None:
+    """A persistently dropped connection stops after the bounded retries."""
     service = OktaService()
     service.initialize("fake.domain", "fake.token")
 
-    transient = (None, MagicMock(status_code=503, headers={}), MagicMock(status=503))
-    get_user = AsyncMock(return_value=transient)
+    get_user = AsyncMock(side_effect=AttributeError("'NoneType' object has no attribute 'status'"))
 
     with patch("okta.client.Client.get_user", get_user):
         with pytest.raises(OktaTransientError):
             await service.get_user("okta_id")
 
     assert get_user.call_count == OKTA_TRANSIENT_RETRIES + 1
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 504])
+async def test_definitive_transient_status_is_not_retried(status: int) -> None:
+    """A 429 or 5xx is transient but *not* retried — the SDK already spent its
+    rate-limit/timeout budget, so re-issuing into an active storm would only
+    amplify load. It surfaces as ``OktaTransientError`` on the first attempt."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    transient = (None, MagicMock(status_code=status, headers={}), MagicMock(status=status))
+    get_user = AsyncMock(return_value=transient)
+
+    with patch("okta.client.Client.get_user", get_user):
+        with pytest.raises(OktaTransientError):
+            await service.get_user("okta_id")
+
+    assert get_user.call_count == 1
+
+
+async def test_request_timeout_deadline_is_not_retried() -> None:
+    """An exhausted request-timeout deadline is transient but not retried."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    get_user = AsyncMock(return_value=(None, None, Exception("Request Timeout exceeded.")))
+
+    with patch("okta.client.Client.get_user", get_user):
+        with pytest.raises(OktaTransientError):
+            await service.get_user("okta_id")
+
+    assert get_user.call_count == 1
