@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from functools import lru_cache
-from typing import Any, TypeVar
+from typing import Any, TypeVar, overload
 
 from fastapi import Query
 from fastapi_pagination import Page as _BasePage
 from fastapi_pagination.customization import CustomizedPage, UseParams, UseParamsFields
 from fastapi_pagination.default import Params as _DefaultParams
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 DEFAULT_SIZE = 50
 MAX_SIZE = 1000
@@ -52,14 +52,30 @@ AppGroupsPage = CustomizedPage[
 ]
 
 
+M = TypeVar("M", bound=BaseModel)
+
+
 @lru_cache(maxsize=None)
-def _adapter(model: Any) -> TypeAdapter[Any]:
+def _adapter(model: type[M]) -> TypeAdapter[M]:
     return TypeAdapter(model)
+
+
+@overload
+def validated(model: type[M]) -> Callable[[Sequence[Any]], list[M]]: ...
+
+
+@overload
+def validated(model: Any) -> Callable[[Sequence[Any]], list[Any]]: ...
 
 
 def validated(model: Any) -> Callable[[Sequence[Any]], list[Any]]:
     """Build a `fastapi-pagination` `transformer=` that validates each ORM row
     through `model` with `from_attributes=True`.
+
+    Typed so `validated(OktaUserGroupMemberDetail)` yields
+    `list[OktaUserGroupMemberDetail]`; the fallback overload covers the
+    discriminated-union `TypeAliasType` shapes (e.g. `GroupSummary`), which
+    aren't a `type[BaseModel]` and resolve to `list[Any]`.
 
     This reproduces the eager-load safety net the hand-rolled `paginate()` had:
     validation runs here in the handler (session open), so an un-eager-loaded
