@@ -16,15 +16,3 @@ Either:
 - Replace with [`polyfactory`](https://polyfactory.litestar.dev/) which
   generates fixtures from Pydantic models — keeps test data and request
   schemas in sync automatically.
-
----
-
-## Security follow-ups (out of scope for the migration PR)
-
-### 20. Nonce-based CSP
-
-Drop `'unsafe-inline'` from `script-src` and `style-src` in
-`api/middleware.py`. Generate a per-response nonce in
-`SecurityHeadersMiddleware` and thread it through `build/index.html`
-+ the React build pipeline so every inline `<script>` / `<style>`
-carries the nonce. Touches the frontend; not a same-PR fix.

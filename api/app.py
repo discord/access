@@ -8,7 +8,9 @@ present.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import sys
 from contextlib import asynccontextmanager
 from os import environ
@@ -18,6 +20,8 @@ from typing import Any, AsyncIterator, Optional
 from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 from api import exception_handlers, middleware
 from api.config import settings
@@ -30,6 +34,26 @@ from api.services import okta
 logger = logging.getLogger(__name__)
 
 BUILD_DIR = Path(__file__).resolve().parent.parent / "build"
+
+# Matches the opening of any inline `<script>`/`<style>` that isn't already
+# carrying a nonce, so `_inject_csp_nonce` can stamp one on.
+_SCRIPT_OR_STYLE_OPEN = re.compile(r"<(script|style)(?![^>]*\bnonce=)", re.IGNORECASE)
+
+
+def _inject_csp_nonce(html: str, nonce: str) -> str:
+    """Stamp the request's CSP nonce into the SPA shell.
+
+    `script-src`/`style-src` authorize inline content by nonce (see
+    `api.middleware.build_csp`), so every inline `<script>`/`<style>` the build
+    emitted (e.g. Vite's module-preload polyfill) must carry the nonce, and
+    styled-components' runtime `<style>` injections are authorized by seeding
+    `window.__webpack_nonce__` before the app bundle runs. External same-origin
+    bundles and `<link>` stylesheets need no nonce (they're covered by `'self'`
+    / the font-host allowance), so this only touches inline tags.
+    """
+    html = _SCRIPT_OR_STYLE_OPEN.sub(lambda m: f'<{m.group(1)} nonce="{nonce}"', html)
+    setter = f'<script nonce="{nonce}">window.__webpack_nonce__={json.dumps(nonce)}</script>'
+    return re.sub(r"(<head[^>]*>)", lambda m: m.group(1) + setter, html, count=1)
 
 
 def _operation_id_from_route_name(route: APIRoute) -> str:
@@ -443,12 +467,12 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     # above match first.
     if BUILD_DIR.exists():
         from fastapi import HTTPException
-        from fastapi.responses import FileResponse
+        from fastapi.responses import FileResponse, HTMLResponse
 
         build_dir_resolved = BUILD_DIR.resolve()
 
         @app.get("/{spa_path:path}", include_in_schema=False, name="spa")
-        def serve_spa(spa_path: str) -> FileResponse:
+        def serve_spa(spa_path: str, request: Request) -> Response:
             # Unmapped /api/* paths fall through to here; return a real 404
             # rather than the SPA index.
             if spa_path == "api" or spa_path.startswith("api/"):
@@ -481,7 +505,14 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
             # handle the path on the client. This response must never be
             # cached: it's the only thing that says which asset hashes are
             # currently valid, and a cached copy could keep pointing at
-            # hashes a future deploy has already removed.
-            return FileResponse(BUILD_DIR / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
+            # hashes a future deploy has already removed. Because it's served
+            # dynamically (never cached), we can safely inject the per-response
+            # CSP nonce that SecurityHeadersMiddleware set on request.state.
+            headers = {"Cache-Control": "no-cache, must-revalidate"}
+            nonce = getattr(request.state, "csp_nonce", None)
+            if nonce:
+                html = (BUILD_DIR / "index.html").read_text(encoding="utf-8")
+                return HTMLResponse(content=_inject_csp_nonce(html, nonce), headers=headers)
+            return FileResponse(BUILD_DIR / "index.html", headers=headers)
 
     return app
