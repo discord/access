@@ -31,6 +31,7 @@ class DeleteUser:
 
     async def execute(self) -> None:
         user = (await db.session.scalars(select(OktaUser).where(OktaUser.id == self.user_id))).first()
+        assert user is not None
 
         current_user_id = getattr(
             (

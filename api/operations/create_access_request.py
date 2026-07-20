@@ -51,6 +51,7 @@ class CreateAccessRequest:
 
     async def execute(self) -> Optional[AccessRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
+        assert requester is not None
 
         requested_group = (
             await db.session.scalars(
@@ -60,6 +61,7 @@ class CreateAccessRequest:
                 .where(OktaGroup.id == self.requested_group_id)
             )
         ).first()
+        assert requested_group is not None
 
         # Don't allow creating a request for an unmanaged group
         if not requested_group.is_managed:
@@ -109,6 +111,7 @@ class CreateAccessRequest:
                 .where(OktaGroup.id == requested_group.id)
             )
         ).first()
+        assert group is not None
 
         # Audit logging
         _ctx = get_request_context()

@@ -54,6 +54,7 @@ class CreateGroupRequest:
 
     async def execute(self) -> Optional[GroupRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
+        assert requester is not None
 
         # Don't allow creating groups with -Owners suffix (reserved for app owner groups)
         if self.requested_group_name.endswith(f"-{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"):
@@ -98,11 +99,13 @@ class CreateGroupRequest:
         # Validate tags exist and load them
         tags = []
         if self.requested_group_tags:
-            tags = (
-                await db.session.scalars(
-                    select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
-                )
-            ).all()
+            tags = list(
+                (
+                    await db.session.scalars(
+                        select(Tag).where(Tag.id.in_(self.requested_group_tags)).where(Tag.deleted_at.is_(None))
+                    )
+                ).all()
+            )
             if len(tags) != len(self.requested_group_tags):
                 return None
 

@@ -36,6 +36,7 @@ class UnmanageGroup:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         current_user_id = getattr(
             (

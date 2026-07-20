@@ -20,6 +20,9 @@ class CheckForSelfAdd:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
+        # `members_to_add` / `owners_to_add` are id lists: OktaUser ids for the
+        # direct group path (execute_for_group), or the group ids a role is
+        # added to for the role path (execute_for_role).
         self.group_id = group if isinstance(group, str) else group.id
         self.current_user_id = (
             current_user.id if current_user is not None and not isinstance(current_user, str) else current_user
@@ -48,6 +51,7 @@ class CheckForSelfAdd:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         if self.current_user_id is None:
             current_user = None

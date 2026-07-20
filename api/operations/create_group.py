@@ -1,4 +1,4 @@
-from typing import Optional, TypedDict, TypeVar
+from typing import Optional, TypedDict, TypeVar, cast
 
 import logging
 
@@ -23,9 +23,10 @@ class GroupDict(TypedDict):
 class CreateGroup:
     def __init__(self, *, group: T | GroupDict, tags: list[str] = [], current_user_id: Optional[str] = None):
         if isinstance(group, dict):
-            self.group = OktaGroup(name=group["name"], description=group["description"])
+            group_dict = cast(GroupDict, group)
+            self.group = cast(T, OktaGroup(name=group_dict["name"], description=group_dict["description"]))
         else:
-            self.group = group
+            self.group = cast(T, group)
 
         self.tag_ids = tags
         self.current_user_id = current_user_id
@@ -54,7 +55,7 @@ class CreateGroup:
             )
         ).first()
         if existing_group is not None:
-            return existing_group
+            return cast(T, existing_group)
 
         # Make sure the app exists if we're creating an app group, and that the
         # group name carries the "App-{app name}-" prefix. The prefix convention
@@ -151,4 +152,4 @@ class CreateGroup:
             )
         )
 
-        return self.group
+        return cast(T, self.group)

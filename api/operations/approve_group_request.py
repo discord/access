@@ -68,6 +68,7 @@ class ApproveGroupRequest:
             approver_email = None
         else:
             approver = await db.session.get(OktaUser, self.approver_user_id)
+            assert approver is not None
             approver_id = approver.id
             approver_email = approver.email
 
@@ -229,6 +230,7 @@ class ApproveGroupRequest:
                 .where(OktaGroup.deleted_at.is_(None))
             )
         ).first()
+        assert created_group_with_tags is not None
 
         tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
 

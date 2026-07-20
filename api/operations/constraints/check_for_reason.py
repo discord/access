@@ -19,6 +19,9 @@ class CheckForReason:
         members_to_add: list[str] = [],
         owners_to_add: list[str] = [],
     ):
+        # `members_to_add` / `owners_to_add` are id lists: OktaUser ids for the
+        # direct group path (execute_for_group), or the group ids a role is
+        # added to for the role path (execute_for_role).
         self.group_id = group if isinstance(group, str) else group.id
 
         self.reason = reason
@@ -50,6 +53,7 @@ class CheckForReason:
                 .where(OktaGroup.id == self.group_id)
             )
         ).first()
+        assert group is not None
 
         if self.invalid_reason(self.reason):
             tags = [tag_map.active_tag for tag_map in group.active_group_tags]

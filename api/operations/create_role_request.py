@@ -54,12 +54,14 @@ class CreateRoleRequest:
 
     async def execute(self) -> Optional[RoleRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
+        assert requester is not None
 
         requester_role = (
             await db.session.scalars(
                 select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).where(RoleGroup.id == self.requester_role_id)
             )
         ).first()
+        assert requester_role is not None
 
         requested_group = (
             await db.session.scalars(
@@ -73,6 +75,7 @@ class CreateRoleRequest:
                 .where(OktaGroup.id == self.requested_group_id)
             )
         ).first()
+        assert requested_group is not None
 
         # Don't allow creating a request for an unmanaged group
         if not requested_group.is_managed:
@@ -162,6 +165,7 @@ class CreateRoleRequest:
                 .where(OktaGroup.id == requested_group.id)
             )
         ).first()
+        assert group is not None
 
         # Audit logging
         _ctx = get_request_context()

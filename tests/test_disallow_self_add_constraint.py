@@ -2455,3 +2455,53 @@ async def test_disallow_self_add_admin_modify_role_groups(
         )
         == 4
     )
+
+
+async def test_disallow_self_add_membership_blocks_direct_modify_group_users(
+    db: Db,
+    mocker: MockerFixture,
+    okta_group: OktaGroup,
+) -> None:
+    """Operation-level guard: a non-admin self-adding as a member via
+    `ModifyGroupUsers(...).execute()` on a group tagged
+    `DISALLOW_SELF_ADD_MEMBERSHIP` is blocked, with nothing added. The router
+    path is covered above; this drives the operation directly, which is where
+    the membership id list feeds `CheckForSelfAdd`."""
+    current_user = OktaUserFactory.create()
+    tag = TagFactory.create(
+        constraints={
+            Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
+            Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
+        },
+    )
+    db.session.add_all([okta_group, current_user, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
+    await db.session.commit()
+
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+
+    group_id = okta_group.id
+    user_id = current_user.id
+    db.session.expire_all()
+
+    # Non-admin current_user attempts to add themself as a member.
+    await ModifyGroupUsers(
+        group=group_id,
+        members_to_add=[user_id],
+        current_user_id=user_id,
+        sync_to_okta=False,
+    ).execute()
+
+    # The constraint blocked it: no active membership was created.
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == group_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+            .where(OktaUserGroupMember.ended_at.is_(None)),
+        )
+        == 0
+    )

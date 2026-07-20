@@ -20,6 +20,7 @@ class DeleteApp:
         app = (
             await db.session.scalars(select(App).where(App.deleted_at.is_(None)).where(App.id == self.app_id))
         ).first()
+        assert app is not None
 
         current_user_id = getattr(
             (

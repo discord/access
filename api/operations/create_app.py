@@ -1,6 +1,6 @@
 import random
 import string
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, cast
 
 import logging
 
@@ -36,10 +36,12 @@ class CreateApp:
     ):
         id = self.__generate_id()
         if isinstance(app, dict):
-            self.app = App(id=id, name=app["name"], description=app["description"])
+            app_dict = cast(AppDict, app)
+            self.app = App(id=id, name=app_dict["name"], description=app_dict["description"])
         else:
-            app.id = id
-            self.app = app
+            app_model = cast(App, app)
+            app_model.id = id
+            self.app = app_model
 
         self.tag_ids = tags
         self.owner_id = owner_id
@@ -55,11 +57,13 @@ class CreateApp:
                 name = ""
                 description = ""
                 if isinstance(group, dict):
-                    name = group["name"]
-                    description = group.get("description", "")
+                    group_dict = cast(GroupDict, group)
+                    name = group_dict["name"]
+                    description = group_dict.get("description", "")
                 else:
-                    name = group.name
-                    description = group.description
+                    group_model = cast(AppGroup, group)
+                    name = group_model.name
+                    description = group_model.description
                 if not name.startswith(self.app_group_prefix):
                     name = f"{self.app_group_prefix}{name}"
                 if name == self.owner_group_name:
@@ -163,6 +167,7 @@ class CreateApp:
                     current_user_id=current_user_id,
                 ).execute()
             owner_app_group = (await db.session.scalars(select(AppGroup).where(AppGroup.id == group_id))).first()
+            assert owner_app_group is not None
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             await db.session.commit()
@@ -230,6 +235,7 @@ class CreateApp:
                             current_user_id=current_user_id,
                         ).execute()
                     app_group = (await db.session.scalars(select(AppGroup).where(AppGroup.id == group_id))).first()
+                    assert app_group is not None
                     app_group.app_id = app_id
                     app_group.is_owner = False
                     await db.session.commit()
@@ -274,7 +280,9 @@ class CreateApp:
                     )
             await db.session.commit()
 
-        return await db.session.get(App, app_id)
+        app = await db.session.get(App, app_id)
+        assert app is not None
+        return app
 
     # Generate a 20 character alphanumeric ID similar to Okta IDs for users and groups
     def __generate_id(self) -> str:
