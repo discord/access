@@ -46,6 +46,23 @@ def build_csp(nonce: str) -> str:
     and styled-components' runtime `<style>` injections, while same-origin
     bundles/stylesheets are covered by `'self'` and Google Fonts by its host
     allowance.
+
+    Two classes of *benign* console warnings are expected under this policy and
+    are intentionally not accommodated — silencing either would weaken the
+    policy for no functional gain:
+
+    - `style-src` violations from Sentry Session Replay (rrweb). rrweb diffs
+      style changes by calling `setAttribute("style", ...)` on detached nodes.
+      A nonce cannot authorize a `style=""` *attribute* (nonces only cover
+      `<style>`/`<script>` *elements*), and `'unsafe-inline'` is ignored by the
+      browser whenever a nonce is present. The writes are on nodes that never
+      render, so there is no visual impact. The app's own inline styles are
+      unaffected because React/MUI set them via CSSOM (`element.style.x = ...`),
+      which CSP does not govern — only the string `setAttribute` form is.
+    - a single `script-src` `eval` violation from `@mui/x-data-grid`, which
+      feature-detects `eval` inside a `try/catch` to pick a fast filter path.
+      The probe is caught and the grid falls back to an interpreted path;
+      allowing it would require `'unsafe-eval'`.
     """
     return (
         "default-src 'self'; "
