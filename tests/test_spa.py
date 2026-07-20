@@ -100,6 +100,8 @@ async def test_spa_shell_injects_per_request_csp_nonce(spa_client: httpx.AsyncCl
     match = re.search(r'window\.__webpack_nonce__="([^"]+)"', body)
     assert match is not None, body
     nonce = match.group(1)
+    # CSP header must authorize the exact nonce stamped into the shell.
+    assert f"'nonce-{nonce}'" in resp.headers["content-security-policy"]
     # The module script the build emitted carries the nonce...
     assert f'<script nonce="{nonce}" type="module" crossorigin src="/assets/index-abc.js">' in body
     # ...and the webpack-nonce setter is the first thing inside <head>.
