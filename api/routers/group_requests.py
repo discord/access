@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import String, and_, cast, or_, select
+from sqlalchemy import String, and_, cast, false, or_, select
 from sqlalchemy.orm import aliased, joinedload
 from starlette.requests import Request
 
@@ -98,10 +98,10 @@ async def list_group_requests(
                         )
                     )
                 else:
-                    stmt = stmt.where(False)
+                    stmt = stmt.where(false())
             stmt = stmt.where(GroupRequest.requester_user_id != assignee_user.id)
         else:
-            stmt = stmt.where(False)
+            stmt = stmt.where(false())
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":

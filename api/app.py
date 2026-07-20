@@ -177,7 +177,9 @@ def _configure_sentry() -> None:
             ValidationError,
             OIDCRedirectRequired,
         ],
-        before_send=_drop_wrapped_ignored_errors,
+        # sentry types before_send against its `Event` TypedDict; the hook works
+        # on plain event dicts, which is correct at runtime but not assignable.
+        before_send=_drop_wrapped_ignored_errors,  # ty: ignore[invalid-argument-type]
     )
 
 
@@ -432,7 +434,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         _flatten_query_param_models(schema)
         return schema
 
-    app.openapi = _patched_openapi  # type: ignore[method-assign]
+    app.openapi = _patched_openapi  # ty: ignore[invalid-assignment] (intentional openapi override)
 
     # SPA: serve `build/` from a catch-all FastAPI route so static assets
     # go through the app-wide `require_authenticated` dependency (an

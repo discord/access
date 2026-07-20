@@ -20,7 +20,7 @@ import contextvars
 import functools
 import json
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Optional, TypeVar, cast
 
 # Scope strings used by the v1 tool surface. Tools declare a required
 # scope via ``@require_scope(MCP_SCOPE_READ_ALL)`` etc.; the
@@ -171,7 +171,7 @@ def requires_scope(scope: str) -> Callable[[F], F]:
             async with tool_session_scope():
                 return await fn(*args, **kwargs)
 
-        return wrapper  # type: ignore[return-value]
+        return cast(F, wrapper)
 
     return decorator
 

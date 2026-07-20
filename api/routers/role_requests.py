@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import String, and_, cast, not_, or_, select
+from sqlalchemy import String, and_, cast, false, not_, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
 
@@ -147,7 +147,6 @@ async def list_role_requests(
                 .join(OktaGroup.active_user_ownerships)
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaUserGroupMember.user_id == assignee_user.id)
-                .subquery()
             )
             owner_app_group_alias = aliased(AppGroup)
             app_groups_owned_subquery = (
@@ -162,7 +161,6 @@ async def list_role_requests(
                 .join(owner_app_group_alias.active_user_ownerships)
                 .where(AppGroup.deleted_at.is_(None))
                 .where(OktaUserGroupMember.user_id == assignee_user.id)
-                .subquery()
             )
 
             if await is_access_admin(db, assignee_user.id):
@@ -315,7 +313,7 @@ async def list_role_requests(
             # Whether admin or not, never include the assignee's own requests.
             stmt = stmt.where(RoleRequest.requester_user_id != assignee_user.id)
         else:
-            stmt = stmt.where(False)
+            stmt = stmt.where(false())
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":
@@ -432,6 +430,10 @@ async def post_role_request(
         request_reason=body.reason or "",
         request_ending_at=body.ending_at,
     ).execute()
+    # CreateRoleRequest.execute() returns None only for an unmanaged or role
+    # target group; both are rejected upstream in this handler, so a request
+    # is always created here.
+    assert rr is not None
     # Drop cached ORM state so the response reflects what the operation
     # committed (expire_on_commit=False keeps pre-operation state otherwise).
     rr_id = rr.id

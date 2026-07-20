@@ -6,20 +6,6 @@ Items grouped roughly by surface area; ordering within each group is rough prior
 
 ---
 
-## Tooling
-
-### 14. Strict type checking on routers + schemas
-
-Tighten `ty` on `api/routers/`. It is currently listed in the relaxed
-`[[tool.ty.overrides]]` block in [`pyproject.toml`](pyproject.toml); remove
-it from the `include` list and resolve the resulting diagnostics.
-(`api/schemas/` is already checked strictly — it's not in the override.)
-Operations can stay loose initially since it's inherited from the Flask
-era. Add a CI check that fails the build on new violations in those
-directories.
-
----
-
 ## Test Ergonomics
 
 ### 16. Replace `factory_boy` with Pydantic-based builders

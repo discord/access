@@ -112,30 +112,20 @@ python-version = "3.13"
 # them; keep unresolved imports non-fatal.
 unresolved-import = "ignore"
 
-# Relaxed modules. These surfaces lean on runtime invariants ty can't prove
-# statically:
-#   - the SQLAlchemy-heavy operations layer and the tests dereference
-#     Optional query results as non-None;
-#   - the Okta service wrappers touch SDK models that type every field
-#     Optional and use custom data descriptors;
-#   - the FastAPI routers/exception handlers and MCP tools reuse the same
-#     Pydantic + query patterns.
-# ty resolves the real types and flags these, so downgrade the affected
-# rules here. The core (api/models, api/schemas, api/database, api/config, …)
-# stays strict.
+# Relaxed modules. The SQLAlchemy-heavy operations layer (plus the tests,
+# examples, and migrations) dereferences Optional query results as non-None and
+# touches Okta SDK models that type every field Optional / use custom data
+# descriptors — runtime invariants ty can't prove statically, so it flags them
+# and we downgrade the affected rules here. Everything else stays strict —
+# api/models, api/schemas, api/database, api/config, api/pagination, api/routers,
+# api/services, api/auth, api/mcp, api/exception_handlers.py, api/cli.py, and
+# api/app.py — so `ty check .` in CI fails the build on any new violation there.
 [[tool.ty.overrides]]
 include = [
     "tests/**",
     "examples/**",
     "migrations/**",
-    "api/routers/**",
     "api/operations/**",
-    "api/services/**",
-    "api/auth/**",
-    "api/mcp/**",
-    "api/exception_handlers.py",
-    "api/cli.py",
-    "api/app.py",
 ]
 
 [tool.ty.overrides.rules]

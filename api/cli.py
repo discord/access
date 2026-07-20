@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import uuid
-from typing import Any, Callable, List, TypeVar
+from typing import Any, Callable, List, TypeVar, cast
 
 import click
 from sqlalchemy import func, or_, select
@@ -82,7 +82,7 @@ def _with_app_context(func: F) -> F:
 
         return asyncio.run(_run())
 
-    return wrapper  # type: ignore[return-value]
+    return cast(F, wrapper)
 
 
 @click.group()
@@ -103,8 +103,9 @@ def _load_plugin_commands() -> None:
     try:
         eps = entry_points(group="access.commands")
     except TypeError:
-        # Older importlib.metadata returns a dict
-        eps = entry_points().get("access.commands", [])
+        # Older importlib.metadata returns a dict keyed by group; `EntryPoints`
+        # (3.12+) has no `.get`, hence the ignore on this back-compat branch.
+        eps = entry_points().get("access.commands", [])  # ty: ignore[unresolved-attribute]
     for ep in eps:
         try:
             command = ep.load()

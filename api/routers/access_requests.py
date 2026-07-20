@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, false, or_, select
 from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
@@ -142,7 +142,6 @@ async def list_access_requests(
                 .join(OktaGroup.active_user_ownerships)
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaUserGroupMember.user_id == assignee_user.id)
-                .subquery()
             )
             owner_app_group_alias = aliased(AppGroup)
             app_groups_owned_subquery = (
@@ -157,7 +156,6 @@ async def list_access_requests(
                 .join(owner_app_group_alias.active_user_ownerships)
                 .where(AppGroup.deleted_at.is_(None))
                 .where(OktaUserGroupMember.user_id == assignee_user.id)
-                .subquery()
             )
             stmt = stmt.join(AccessRequest.requested_group).where(
                 or_(
@@ -166,7 +164,7 @@ async def list_access_requests(
                 )
             )
         else:
-            stmt = stmt.where(False)
+            stmt = stmt.where(false())
 
     if q_args.resolver_user_id:
         if q_args.resolver_user_id == "@me":

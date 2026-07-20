@@ -632,18 +632,14 @@ async def groups_and_roles(
         # those are the roles only an admin can resolve expiring access for.
         unowned_admin_role_ids: list[str] = []
         if await is_access_admin(db, role_owner.id):
-            owners_subquery = (
-                select(OktaUserGroupMember.group_id)
-                .where(
-                    and_(
-                        OktaUserGroupMember.is_owner.is_(True),
-                        or_(
-                            OktaUserGroupMember.ended_at.is_(None),
-                            OktaUserGroupMember.ended_at > func.now(),
-                        ),
-                    )
+            owners_subquery = select(OktaUserGroupMember.group_id).where(
+                and_(
+                    OktaUserGroupMember.is_owner.is_(True),
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > func.now(),
+                    ),
                 )
-                .subquery()
             )
             unowned_admin_role_ids = [
                 rg.id
