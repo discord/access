@@ -21,9 +21,11 @@ from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, Role
 from api.operations import ModifyRoleGroups
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
+from sqlalchemy.orm import selectinload
+
 from api.pagination import Page, validated
+from api.routers._eager import group_tag_map_options, role_group_map_options
 from api.routers._fan_out import defer_fan_out
-from api.routers.groups import DEFAULT_LOAD_OPTIONS as _GROUP_LOAD_OPTIONS
 from api.schemas import (
     RoleGroupListItem,
     GroupDetail,
@@ -37,6 +39,19 @@ router = APIRouter(prefix="/api/roles", tags=["roles"], dependencies=[Depends(de
 # `api/routers/groups.py`.
 _role_adapter: TypeAdapter[Any] = TypeAdapter(GroupDetail)
 
+# `get_role` fetches `select(RoleGroup)` and serializes it as `RoleGroupDetail`,
+# which exposes only `active_group_tags` and the role→group *association*
+# mappings. Reusing groups' polymorphic `DEFAULT_LOAD_OPTIONS` here also
+# selectin-loaded the own-group `active_role_member/owner_mappings` — which are
+# structurally empty for a role (a role can't be the target of a RoleGroupMap),
+# so two wasted round-trips per fetch — plus AppGroup-only loaders that never
+# apply to a role row. Load exactly what the schema emits instead.
+_ROLE_LOAD_OPTIONS = (
+    selectinload(RoleGroup.active_group_tags).options(*group_tag_map_options()),
+    selectinload(RoleGroup.active_role_associated_group_member_mappings).options(*role_group_map_options()),
+    selectinload(RoleGroup.active_role_associated_group_owner_mappings).options(*role_group_map_options()),
+)
+
 
 @router.get("", name="roles")
 async def list_roles(
@@ -45,11 +60,10 @@ async def list_roles(
     current_user_id: CurrentUserId,
     q_args: Annotated[SearchRoleQuery, Query()],
 ) -> Page[RoleGroupListItem]:
-    # Flask `RoleList.get()` `only=(id, type, name, description, created_at,
-    # updated_at)` — `RoleGroupListItem` matches that shape exactly. We
-    # deliberately don't reuse `_GROUP_LOAD_OPTIONS` here: those eager-loads
-    # populate fields the list shape doesn't expose, so each call would
-    # issue extra round trips for data that gets discarded.
+    # `RoleGroupListItem` is the list shape — id, type, name, description,
+    # created_at, updated_at — and exposes none of the eager-loaded
+    # relationships, so we attach no load options here at all (each would be an
+    # extra round trip discarded).
     stmt = select(RoleGroup).where(RoleGroup.deleted_at.is_(None)).order_by(func.lower(RoleGroup.name))
 
     # Filter to roles owned by `owner_id` (id or email; supports `@me`).
@@ -90,7 +104,7 @@ async def get_role(role_id: str, db: DbSession, current_user_id: CurrentUserId) 
     role = (
         await db.scalars(
             select(RoleGroup)
-            .options(*_GROUP_LOAD_OPTIONS)
+            .options(*_ROLE_LOAD_OPTIONS)
             .where(or_(RoleGroup.id == role_id, RoleGroup.name == role_id))
             .order_by(nullsfirst(RoleGroup.deleted_at.desc()))
         )

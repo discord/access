@@ -6,26 +6,6 @@ Items grouped roughly by surface area; ordering within each group is rough prior
 
 ---
 
-## Database / SQLAlchemy
-
-### 4. Eager-loading hygiene
-
-**Strict serialization landed.** `api/schemas/_serialize.py` exposes
-`dump_orm`, which runs each adapter with `from_attributes=True` and lets
-`InvalidRequestError` on unloaded relationships surface to the test
-suite. The eager-load topology covering every field on
-`OktaUserGroupMemberDetail`, `RoleGroupMapDetail`,
-`OktaGroupTagMapDetail` is centralized in `api/routers/_eager.py` and
-re-used across `apps.py`, `groups.py`, `tags.py`, `users.py`,
-`role_requests.py`, and `audit.py`, so the loader stays in lockstep
-with the schema. 281/281 tests green.
-
-**Still to do under this item:**
-- Per-route `DEFAULT_LOAD_OPTIONS` for redundant joins; some routes
-  pre-load more than they emit.
-
----
-
 ## Tooling
 
 ### 14. Strict type checking on routers + schemas

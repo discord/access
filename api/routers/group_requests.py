@@ -28,12 +28,15 @@ router = APIRouter(prefix="/api/group-requests", tags=["group-requests"], depend
 
 
 def _load_options() -> tuple:
+    # `GroupRequestDetail` — the response schema for every route below (list
+    # included) — serializes only `requester` / `resolver` and the
+    # `approved_group_id` *column*. It exposes neither `active_requester`,
+    # `active_resolver`, nor the `approved_group` relationship, and no handler
+    # reads them (the approve/resolve operations re-query their own graph), so
+    # eager-loading them just adds dead JOINs to every row of every page.
     return (
         joinedload(GroupRequest.requester),
-        joinedload(GroupRequest.active_requester),
         joinedload(GroupRequest.resolver),
-        joinedload(GroupRequest.active_resolver),
-        joinedload(GroupRequest.approved_group),
     )
 
 
