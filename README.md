@@ -486,18 +486,7 @@ As of Access 2.0 the plugin hooks are **async** — Access is an async applicati
 
 ### Installing a Plugin in the Docker Container
 
-Below is an example Dockerfile that would install the example notification plugin into the Access Docker container, which was built above using the top-level application [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). The plugin is copied into the `/app/plugins` directory and installed with `uv` into the application virtualenv at `/app/.venv` (the environment gunicorn and the `access` CLI run from).
-
-```Dockerfile
-FROM access:latest
-
-WORKDIR /app/plugins
-ADD ./examples/plugins/ ./
-
-RUN uv pip install --python /app/.venv/bin/python ./notifications
-
-WORKDIR /app
-```
+See [Installing into a built image](https://github.com/discord/access/blob/main/examples/plugins/README.md#installing-a-plugin-in-the-docker-container) in the example plugins guide. It covers enabling a bundled example via its default-`false` `--build-arg`, and baking a plugin of your own into an image that builds `FROM` the Access [Dockerfile](https://github.com/discord/access/blob/main/Dockerfile). Installs go into the application virtualenv at `/app/.venv` (the environment gunicorn and the `access` CLI run from) with `uv pip install`.
 
 ## License
 

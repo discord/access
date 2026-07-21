@@ -38,23 +38,23 @@ The plugin doesn't integrate with any external systems—it simply logs events, 
 
 ## Installation
 
-To bake the plugin into an operator's App container image, add these lines to
-the Dockerfile. The Access image is built with `uv` and its virtualenv lives at
-`/app/.venv` (which has no `pip`), so install with `uv pip install` — plain
-`pip` would install into the system interpreter, where the running app won't
-find the plugin:
+This plugin's source ships in the Access build context under
+`examples/plugins/`, but the default image does **not** install it. Enable it at
+build time with its build arg (default `false`):
 
-```dockerfile
-# Install the audit logger plugin
-WORKDIR /app/plugins
-ADD ./examples/plugins/app_group_lifecycle_audit_logger ./app_group_lifecycle_audit_logger
-RUN uv pip install ./app_group_lifecycle_audit_logger
-
-# Reset working directory
-WORKDIR /app
+```bash
+docker build --build-arg INSTALL_AUDIT_LOGGER_PLUGIN=true .
+# or, with docker compose:
+docker compose build --build-arg INSTALL_AUDIT_LOGGER_PLUGIN=true
 ```
 
-For local development in this repo, this plugin is already wired into the `dev`
+The image installs the plugin into its `uv` virtualenv (`/app/.venv`) with
+`uv pip install` — the venv has no `pip`, and plain `pip` would install into the
+system interpreter where the running app won't find it. See
+[the plugins README](../README.md) for every plugin's build arg and for baking
+in a plugin of your own.
+
+For local development in this repo, this plugin is also wired into the `dev`
 dependency group (see `pyproject.toml` and `[tool.uv.sources]`), so `uv sync`
 and `make run-backend` install and register it automatically — no manual step
 needed.

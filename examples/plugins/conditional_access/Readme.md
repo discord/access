@@ -4,18 +4,21 @@ This plugin will allow you to automatically approve or deny access requests base
 
 ## Installation
 
-Add the below to your Dockerfile to install the plugin. You can put it before the ENV section at the bottom of the file.
-```
-# Add the specific plugins and install conditional access plugin
-WORKDIR /app/plugins
-ADD ./examples/plugins/conditional_access ./conditional_access
-RUN pip install -r ./conditional_access/requirements.txt && pip install ./conditional_access
+This plugin's source ships in the Access build context under
+`examples/plugins/`, but the default image does **not** install it. Enable it at
+build time with its build arg (default `false`):
 
-# Reset working directory
-WORKDIR /app
+```bash
+docker build --build-arg INSTALL_CONDITIONAL_ACCESS_PLUGIN=true .
+# or, with docker compose:
+docker compose build --build-arg INSTALL_CONDITIONAL_ACCESS_PLUGIN=true
 ```
 
-Build and run your docker container as normal.
+The image installs the plugin into its `uv` virtualenv (`/app/.venv`) with
+`uv pip install` — the venv has no `pip`, and plain `pip` would install into the
+system interpreter where the running app won't find it. See
+[the plugins README](../README.md) for every plugin's build arg and for baking
+in a plugin of your own.
 
 
 ## Configuration

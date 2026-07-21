@@ -11,19 +11,21 @@ The plugin consists of the following files:
 
 ## Installation
 
-To install the plugin, add the following to the App container Dockerfile. The
-Access image is built with `uv` and its virtualenv lives at `/app/.venv` (which
-has no `pip`), so install the plugin with `uv pip install` — plain `pip` would
-install into the system interpreter, where the running app won't find it:
+This plugin's source ships in the Access build context under
+`examples/plugins/`, but the default image does **not** install it. Enable it at
+build time with its build arg (default `false`):
 
+```bash
+docker build --build-arg INSTALL_HEALTH_CHECK_PLUGIN=true .
+# or, with docker compose:
+docker compose build --build-arg INSTALL_HEALTH_CHECK_PLUGIN=true
 ```
-WORKDIR /app/plugins
-ADD ./examples/plugins/health_check_plugin ./health_check_plugin
-RUN uv pip install ./health_check_plugin
 
-# Reset working directory
-WORKDIR /app
-```
+The image installs the plugin into its `uv` virtualenv (`/app/.venv`) with
+`uv pip install` — the venv has no `pip`, and plain `pip` would install into the
+system interpreter where the running app won't find it. See
+[the plugins README](../README.md) for every plugin's build arg and for baking
+in a plugin of your own.
 
 ## Usage
 
