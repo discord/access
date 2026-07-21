@@ -109,7 +109,7 @@ class OktaUserGroupMember(Base):
     )
     active_group: Mapped["OktaGroup"] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == OktaUserGroupMember.group_id, OktaGroup.deleted_at.is_(None))",
         back_populates="active_user_memberships_and_ownerships",
         viewonly=True,
         lazy="raise_on_sql",
@@ -124,7 +124,7 @@ class OktaUserGroupMember(Base):
     )
     active_user: Mapped["OktaUser"] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == OktaUserGroupMember.user_id, OktaUser.deleted_at.is_(None))",
         back_populates="active_group_memberships_and_ownerships",
         viewonly=True,
         lazy="raise_on_sql",
@@ -542,7 +542,7 @@ class RoleGroupMap(Base):
     )
     active_role_group: Mapped["RoleGroup"] = relationship(
         "RoleGroup",
-        primaryjoin="and_(remote(OktaGroup.id) == RoleGroupMap.role_group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(remote(OktaGroup.id) == RoleGroupMap.role_group_id, OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_associated_group_mappings",
         foreign_keys=[role_group_id],
         viewonly=True,
@@ -558,7 +558,7 @@ class RoleGroupMap(Base):
     )
     active_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == RoleGroupMap.group_id, OktaGroup.deleted_at.is_(None))",
         back_populates="active_role_mappings",
         foreign_keys=[group_id],
         viewonly=True,
@@ -714,7 +714,7 @@ class App(Base):
 
     active_owner_app_groups: Mapped[List[AppGroup]] = relationship(
         "AppGroup",
-        primaryjoin="and_(App.id == AppGroup.app_id, " "AppGroup.deleted_at.is_(None), " "AppGroup.is_owner.is_(True))",
+        primaryjoin="and_(App.id == AppGroup.app_id, AppGroup.deleted_at.is_(None), AppGroup.is_owner.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -723,9 +723,7 @@ class App(Base):
 
     active_non_owner_app_groups: Mapped[List[AppGroup]] = relationship(
         "AppGroup",
-        primaryjoin="and_(App.id == AppGroup.app_id, "
-        "AppGroup.deleted_at.is_(None), "
-        "AppGroup.is_owner.is_(False))",
+        primaryjoin="and_(App.id == AppGroup.app_id, AppGroup.deleted_at.is_(None), AppGroup.is_owner.is_(False))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -796,7 +794,7 @@ class AccessRequest(Base):
 
     active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == AccessRequest.requester_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -811,7 +809,7 @@ class AccessRequest(Base):
 
     active_requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == AccessRequest.requested_group_id, OktaGroup.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -826,7 +824,7 @@ class AccessRequest(Base):
 
     active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == AccessRequest.resolver_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -884,7 +882,7 @@ class RoleRequest(Base):
 
     active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == RoleRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == RoleRequest.requester_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -899,7 +897,7 @@ class RoleRequest(Base):
 
     active_requester_role: Mapped[OktaGroup] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, OktaGroup.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -914,7 +912,7 @@ class RoleRequest(Base):
 
     active_requested_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == RoleRequest.requested_group_id, OktaGroup.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -929,7 +927,7 @@ class RoleRequest(Base):
 
     active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == RoleRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == RoleRequest.resolver_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -1014,7 +1012,7 @@ class GroupRequest(Base):
 
     active_requester: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == GroupRequest.requester_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == GroupRequest.requester_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -1029,7 +1027,7 @@ class GroupRequest(Base):
 
     active_resolver: Mapped[OktaUser] = relationship(
         "OktaUser",
-        primaryjoin="and_(OktaUser.id == GroupRequest.resolver_user_id, " "OktaUser.deleted_at.is_(None))",
+        primaryjoin="and_(OktaUser.id == GroupRequest.resolver_user_id, OktaUser.deleted_at.is_(None))",
         viewonly=True,
         lazy="raise_on_sql",
     )
@@ -1196,7 +1194,7 @@ class OktaGroupTagMap(Base):
     )
     active_tag: Mapped[Tag] = relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None))",
+        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, Tag.deleted_at.is_(None))",
         back_populates="active_group_tags",
         viewonly=True,
         lazy="raise_on_sql",
@@ -1204,7 +1202,7 @@ class OktaGroupTagMap(Base):
     )
     enabled_active_tag: Mapped[Tag] = relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
+        primaryjoin="and_(Tag.id == OktaGroupTagMap.tag_id, Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -1217,7 +1215,7 @@ class OktaGroupTagMap(Base):
     )
     active_group: Mapped[OktaGroup] = relationship(
         "OktaGroup",
-        primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, " "OktaGroup.deleted_at.is_(None))",
+        primaryjoin="and_(OktaGroup.id == OktaGroupTagMap.group_id, OktaGroup.deleted_at.is_(None))",
         back_populates="active_group_tags",
         viewonly=True,
         lazy="raise_on_sql",
@@ -1265,7 +1263,7 @@ class AppTagMap(Base):
     )
     active_tag: Mapped[Tag] = relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None))",
+        primaryjoin="and_(Tag.id == AppTagMap.tag_id, Tag.deleted_at.is_(None))",
         back_populates="active_app_tags",
         viewonly=True,
         lazy="raise_on_sql",
@@ -1273,7 +1271,7 @@ class AppTagMap(Base):
     )
     enabled_active_tag: Mapped[Tag] = relationship(
         "Tag",
-        primaryjoin="and_(Tag.id == AppTagMap.tag_id, " "Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
+        primaryjoin="and_(Tag.id == AppTagMap.tag_id, Tag.deleted_at.is_(None), Tag.enabled.is_(True))",
         viewonly=True,
         lazy="raise_on_sql",
         innerjoin=True,
@@ -1286,7 +1284,7 @@ class AppTagMap(Base):
     )
     active_app: Mapped[App] = relationship(
         "App",
-        primaryjoin="and_(App.id == AppTagMap.app_id, " "App.deleted_at.is_(None))",
+        primaryjoin="and_(App.id == AppTagMap.app_id, App.deleted_at.is_(None))",
         back_populates="active_app_tags",
         viewonly=True,
         lazy="raise_on_sql",

@@ -619,9 +619,9 @@ async def test_users_audit_includes_role_associated_group_mappings_when_unfilter
     sample = role_rows[0]["group"]
     assert "active_role_associated_group_member_mappings" in sample
     member_maps = sample["active_role_associated_group_member_mappings"]
-    assert any(
-        (mm or {}).get("active_group", {}).get("id") == associated.id for mm in member_maps
-    ), f"associated group missing from member mappings: {member_maps}"
+    assert any((mm or {}).get("active_group", {}).get("id") == associated.id for mm in member_maps), (
+        f"associated group missing from member mappings: {member_maps}"
+    )
 
 
 async def test_users_audit_omits_role_associated_group_mappings_when_user_filter(

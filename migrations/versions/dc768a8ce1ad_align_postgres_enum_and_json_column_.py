@@ -42,7 +42,5 @@ def downgrade():
 
     op.execute("CREATE TYPE accessrequeststate AS ENUM ('PENDING', 'APPROVED', 'REJECTED')")
     op.execute(
-        "ALTER TABLE access_request "
-        "ALTER COLUMN status TYPE accessrequeststate "
-        "USING status::text::accessrequeststate"
+        "ALTER TABLE access_request ALTER COLUMN status TYPE accessrequeststate USING status::text::accessrequeststate"
     )

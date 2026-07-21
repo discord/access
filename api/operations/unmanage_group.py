@@ -127,7 +127,7 @@ class UnmanageGroup:
         ).all()
         for obsolete_access_request in obsolete_access_requests:
             logger.info(
-                f"Rejecting obsolete access request {obsolete_access_request.id} " f"for unmanaged group {group.id}"
+                f"Rejecting obsolete access request {obsolete_access_request.id} for unmanaged group {group.id}"
             )
             if not dry_run:
                 await RejectAccessRequest(

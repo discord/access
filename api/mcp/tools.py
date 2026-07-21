@@ -1033,7 +1033,7 @@ def _register_group_request_tools(mcp: "FastMCP") -> None:
     @mcp.tool(
         name="get_group_request",
         title="Get group request",
-        description=("Get detail for a single group request by id. Requires the " "'read_all' scope."),
+        description=("Get detail for a single group request by id. Requires the 'read_all' scope."),
         annotations=_READ_ANNOTATIONS,
     )
     @requires_scope(MCP_SCOPE_READ_ALL)
