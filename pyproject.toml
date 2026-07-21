@@ -10,31 +10,31 @@ version = "2.0"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI
-    "fastapi==0.136.1",
-    "fastapi-pagination==0.15.13",
-    "uvicorn[standard]==0.46.0",
+    "fastapi==0.139.0",
+    "fastapi-pagination==0.15.15",
+    "uvicorn[standard]==0.51.0",
     "gunicorn==26.0.0",
     "itsdangerous==2.2.0",
-    "click==8.1.7",
+    "click==8.4.2",
     "python-dateutil==2.9.0.post0",
     # Pydantic
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.6,<3",
     # Database
     "SQLAlchemy[asyncio]==2.0.50",
-    "alembic==1.18.4",
+    "alembic==1.18.5",
     "sqlalchemy-json==0.7.0",
     "asyncpg==0.31.0",
     "aiosqlite==0.22.1",
-    "cloud-sql-python-connector[asyncpg]==1.20.3",
+    "cloud-sql-python-connector[asyncpg]==1.20.4",
     # HTTP
     "httpx==0.28.1",
     # Security / auth
     "PyJWT[crypto]==2.13.0",
-    "cachetools==7.1.1",
+    "cachetools==7.1.4",
     "authlib==1.7.2",
     # Error Reporting
-    "sentry-sdk[starlette,fastapi]==2.59.0",
+    "sentry-sdk[starlette,fastapi]==2.65.0",
     # Okta
     "okta==3.4.4",
     # Plugins
@@ -42,7 +42,7 @@ dependencies = [
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
     # Bumping the major (2.x) will break imports — FastMCP's API has
     # historically reshaped between majors.
-    "mcp[cli]==1.27.0",
+    "mcp[cli]==1.28.1",
 ]
 
 [project.scripts]
@@ -54,21 +54,21 @@ access = "api.cli:cli"
 # ----------------------------------------------------------------------
 [dependency-groups]
 test = [
-    "pytest==9.0.3",
+    "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pytest-runner==6.0.1",
-    "pytest-mock==3.14.0",
+    "pytest-mock==3.15.1",
     # polyfactory drives the ORM-model factories in tests/factories.py; `faker`
     # (its dependency, but imported directly by the factories + a few tests, so
     # declared explicitly) provides the built-in `faker` pytest fixture too.
     "polyfactory==3.3.0",
-    "faker==40.28.1",
+    "faker==40.31.0",
 ]
 dev = [
     # Lint / format
-    "ruff==0.8.0",
+    "ruff==0.15.21",
     # Typing
-    "ty==0.0.56",
+    "ty==0.0.59",
     "types-python-dateutil==2.9.0.20260518",
     "types-cachetools==7.0.0.20260518",
     { include-group = "test" },

@@ -145,11 +145,13 @@ class AppGroupFactory(_ORMFactory):
 
     id = Use(_okta_id)
     name = Use(
-        lambda: AppGroup.APP_GROUP_NAME_PREFIX
-        + random.choice(string.ascii_uppercase)
-        + AppGroup.APP_NAME_GROUP_NAME_SEPARATOR
-        + random.choice(string.ascii_uppercase)
-        + _rand()
+        lambda: (
+            AppGroup.APP_GROUP_NAME_PREFIX
+            + random.choice(string.ascii_uppercase)
+            + AppGroup.APP_NAME_GROUP_NAME_SEPARATOR
+            + random.choice(string.ascii_uppercase)
+            + _rand()
+        )
     )
     type = "app_group"
 

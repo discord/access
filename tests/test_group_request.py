@@ -1533,9 +1533,9 @@ async def test_app_owner_cannot_hijack_cross_app_group_via_resolved_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name collides with a pre-existing group"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing group"
+    )
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1609,9 +1609,9 @@ async def test_app_owner_cannot_hijack_okta_group_via_resolved_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing OktaGroup"
+    )
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1685,9 +1685,9 @@ async def test_app_owner_cannot_hijack_role_group_via_resolved_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name collides with a pre-existing RoleGroup"
+    )
     assert group_request.resolved_at is None
 
     hijacked_ownership = (
@@ -1835,9 +1835,9 @@ async def test_cannot_approve_okta_group_with_reserved_app_owners_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
+    )
     assert group_request.resolved_at is None
 
     assert (
@@ -1903,9 +1903,9 @@ async def test_cannot_approve_role_group_with_reserved_app_owners_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name uses the reserved App- prefix for a non-app_group type"
+    )
     assert group_request.resolved_at is None
 
     assert (
@@ -1972,9 +1972,9 @@ async def test_cannot_approve_okta_group_with_any_reserved_app_prefix(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked for any non-app_group resolved_group_name that starts with the App- prefix"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked for any non-app_group resolved_group_name that starts with the App- prefix"
+    )
     assert group_request.resolved_at is None
 
     assert (
@@ -2044,9 +2044,9 @@ async def test_cannot_approve_app_group_request_with_owners_group_name(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked when resolved_group_name matches the App-*-Owners pattern even for app_group type"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked when resolved_group_name matches the App-*-Owners pattern even for app_group type"
+    )
     assert group_request.resolved_at is None
 
     assert (
@@ -2107,9 +2107,9 @@ async def test_cannot_approve_non_role_group_request_with_role_prefix(
     ).execute()
 
     await db.session.refresh(group_request)
-    assert (
-        group_request.status == AccessRequestStatus.PENDING
-    ), "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
+    assert group_request.status == AccessRequestStatus.PENDING, (
+        "approval must be blocked for any non-role_group resolved_group_name that starts with the Role- prefix"
+    )
     assert group_request.resolved_at is None
 
 

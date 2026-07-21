@@ -18,7 +18,7 @@ from api.config import settings
 
 _REAL_DSN = "https://abc@o12345.ingest.sentry.io/777"
 _PLACEHOLDER_DSN = "https://user@example.ingest.sentry.io/1234567"
-_ENVELOPE = f'{{"event_id":"abc","dsn":"{_PLACEHOLDER_DSN}"}}\n' '{{"type":"event"}}\n' '{{"message":"hi"}}\n'
+_ENVELOPE = f'{{"event_id":"abc","dsn":"{_PLACEHOLDER_DSN}"}}\n{{{{"type":"event"}}}}\n{{{{"message":"hi"}}}}\n'
 
 
 @pytest.fixture
