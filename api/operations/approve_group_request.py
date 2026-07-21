@@ -1,11 +1,11 @@
+import copy
+import logging
 from typing import Optional
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import (
@@ -23,12 +23,14 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
+from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
+
+logger = logging.getLogger(__name__)
 
 
 class ApproveGroupRequest:
@@ -228,7 +230,17 @@ class ApproveGroupRequest:
                     )
                     if plugin_errors:
                         raise ValueError(f"plugin_data: {plugin_errors}")
-                    new_group.plugin_data = resolved_plugin_data
+                    # Deep-copy so the created group and the persisted request
+                    # don't share nested plugin_data objects: the group_created
+                    # hook may mutate the group's copy (e.g. writing status),
+                    # which must not leak back into the immutable request record.
+                    new_group.plugin_data = copy.deepcopy(resolved_plugin_data)
+                else:
+                    logger.warning(
+                        f"Group request {group_request.id} carried plugin_data, "
+                        f"but app {resolved_app_id} has no app_group_lifecycle_plugin; "
+                        "dropping the supplied config."
+                    )
         else:
             new_group = OktaGroup(
                 name=resolved_name,
