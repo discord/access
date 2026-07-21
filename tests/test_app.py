@@ -1,7 +1,7 @@
 from typing import Any, Protocol, cast
 
 import pytest
-from factory import Faker
+from faker import Faker
 from httpx import AsyncClient
 from sqlalchemy import select
 from okta.models.group import Group

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast, Protocol
 
-from factory import Faker
+from faker import Faker
 from httpx import AsyncClient
 from okta.models import Group
 from pytest_mock import MockerFixture

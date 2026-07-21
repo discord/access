@@ -57,10 +57,12 @@ test = [
     "pytest==9.0.3",
     "pytest-asyncio==1.4.0",
     "pytest-runner==6.0.1",
-    "pytest-factoryboy==2.8.1",
     "pytest-mock==3.14.0",
-    "factory_boy==3.3.3",
-    "types-factory-boy==0.4.1",
+    # polyfactory drives the ORM-model factories in tests/factories.py; `faker`
+    # (its dependency, but imported directly by the factories + a few tests, so
+    # declared explicitly) provides the built-in `faker` pytest fixture too.
+    "polyfactory==3.3.0",
+    "faker==40.28.1",
 ]
 dev = [
     # Lint / format
