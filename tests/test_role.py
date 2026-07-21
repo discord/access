@@ -24,6 +24,7 @@ from api.plugins import get_notification_hook
 from api.services import okta
 from tests.factories import OktaUserFactory, RoleGroupFactory
 from tests.helpers import db_count
+from tests.request_factories import RoleMemberFactory
 
 
 async def test_get_role(
@@ -224,12 +225,7 @@ async def test_put_role_members(
     remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
     # test put role group members
-    data: dict[str, Any] = {
-        "groups_to_add": [],
-        "owner_groups_to_add": [],
-        "groups_to_remove": [],
-        "owner_groups_to_remove": [],
-    }
+    data: dict[str, Any] = RoleMemberFactory.json()
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
@@ -250,12 +246,7 @@ async def test_put_role_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "groups_to_add": [okta_group.id],
-        "owner_groups_to_add": [],
-        "groups_to_remove": [],
-        "owner_groups_to_remove": [],
-    }
+    data = RoleMemberFactory.json(groups_to_add=[okta_group.id])
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
@@ -279,12 +270,7 @@ async def test_put_role_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "groups_to_add": [],
-        "owner_groups_to_add": [okta_group.id],
-        "groups_to_remove": [],
-        "owner_groups_to_remove": [],
-    }
+    data = RoleMemberFactory.json(owner_groups_to_add=[okta_group.id])
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
@@ -307,12 +293,7 @@ async def test_put_role_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "groups_to_add": [],
-        "owner_groups_to_add": [],
-        "groups_to_remove": [okta_group.id],
-        "owner_groups_to_remove": [],
-    }
+    data = RoleMemberFactory.json(groups_to_remove=[okta_group.id])
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.put(role_url, json=data)
     assert rep.status_code == 200
@@ -334,12 +315,7 @@ async def test_put_role_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "groups_to_add": [],
-        "owner_groups_to_add": [],
-        "groups_to_remove": [],
-        "owner_groups_to_remove": [okta_group.id],
-    }
+    data = RoleMemberFactory.json(owner_groups_to_remove=[okta_group.id])
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.put(role_url, json=data)
     assert rep.status_code == 200

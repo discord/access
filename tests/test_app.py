@@ -25,6 +25,7 @@ from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 from tests.helpers import db_count
+from tests.request_factories import CreateAppBodyFactory, UpdateAppBodyFactory
 
 
 async def test_get_app_omits_inline_groups(client: AsyncClient, db: Db, url_for: Any) -> None:
@@ -255,7 +256,7 @@ async def test_put_app(
     # test update app
     update_group_spy = mocker.patch.object(okta, "update_group")
 
-    data = {"name": "Updated", "description": "new description", "tags_to_add": [tag.id]}
+    data = UpdateAppBodyFactory.json(name="Updated", description="new description", tags_to_add=[tag.id])
 
     app_url = url_for("api-apps.app_by_id", app_id=access_app.id)
     rep = await client.put(app_url, json=data)
@@ -274,7 +275,7 @@ async def test_put_app(
 
     update_group_spy.reset_mock()
 
-    data = {"name": "Updated", "tags_to_add": [tag.id], "tags_to_remove": []}
+    data = UpdateAppBodyFactory.json(name="Updated", tags_to_add=[tag.id], tags_to_remove=[])
     rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
@@ -288,7 +289,7 @@ async def test_put_app(
 
     update_group_spy.reset_mock()
 
-    data = {"name": "Updated", "tags_to_remove": [tag.id]}
+    data = UpdateAppBodyFactory.json(name="Updated", tags_to_remove=[tag.id])
     rep = await client.put(app_url, json=data)
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
@@ -453,7 +454,7 @@ async def test_create_app(
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    data = {"name": "Created", "tags_to_add": [tag.id]}
+    data = CreateAppBodyFactory.json(name="Created", tags_to_add=[tag.id])
 
     rep = await client.post(apps_url, json=data)
     assert rep.status_code == 201
@@ -501,7 +502,7 @@ async def test_create_app_with_initial_owners(
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    data = {"name": "Created", "initial_owner_id": user.id, "initial_owner_role_ids": [role_group.id]}
+    data = CreateAppBodyFactory.json(name="Created", initial_owner_id=user.id, initial_owner_role_ids=[role_group.id])
 
     apps_url = url_for("api-apps.apps")
     rep = await client.post(apps_url, json=data)

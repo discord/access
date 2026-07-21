@@ -30,6 +30,12 @@ from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGrou
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
 from tests.helpers import db_count
+from tests.request_factories import (
+    AppGroupCreateBodyFactory,
+    GroupMemberFactory,
+    OktaGroupCreateBodyFactory,
+    OktaGroupUpdateBodyFactory,
+)
 
 
 # Define a Protocol that includes the pystr method
@@ -308,11 +314,7 @@ async def test_put_group(
     ).first()
     update_group_spy.reset_mock()
 
-    data: dict[str, Any] = {
-        "type": "okta_group",
-        "name": "Updated",
-        "description": "new description",
-    }
+    data: dict[str, Any] = OktaGroupUpdateBodyFactory.json(name="Updated", description="new description")
     # Capture the id once before any requests — the failed PUT below rolls back
     # the shared session and expires the fixture-loaded object.
     group_id = builtin_access_owners_group.id
@@ -543,12 +545,7 @@ async def test_put_group_members(
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
     remove_owner_from_group_spy = mocker.patch.object(okta, "remove_owner_from_group")
 
-    data: dict[str, Any] = {
-        "members_to_add": [],
-        "owners_to_add": [],
-        "members_to_remove": [],
-        "owners_to_remove": [],
-    }
+    data: dict[str, Any] = GroupMemberFactory.json()
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -569,12 +566,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [],
-        "members_to_remove": [],
-        "owners_to_remove": [],
-    }
+    data = GroupMemberFactory.json(members_to_add=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -599,12 +591,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [],
-        "owners_to_add": [user.id],
-        "members_to_remove": [],
-        "owners_to_remove": [],
-    }
+    data = GroupMemberFactory.json(owners_to_add=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -628,12 +615,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [],
-        "owners_to_add": [],
-        "members_to_remove": [user.id],
-        "owners_to_remove": [],
-    }
+    data = GroupMemberFactory.json(members_to_remove=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -656,12 +638,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [],
-        "owners_to_add": [],
-        "members_to_remove": [],
-        "owners_to_remove": [user.id],
-    }
+    data = GroupMemberFactory.json(owners_to_remove=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -683,12 +660,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [],
-        "owners_to_add": [user.id],
-        "members_to_remove": [],
-        "owners_to_remove": [],
-    }
+    data = GroupMemberFactory.json(owners_to_add=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -711,12 +683,7 @@ async def test_put_group_members(
     remove_user_from_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
     remove_owner_from_group_spy.reset_mock()
-    data = {
-        "members_to_add": [user.id],
-        "owners_to_add": [],
-        "members_to_remove": [],
-        "owners_to_remove": [],
-    }
+    data = GroupMemberFactory.json(members_to_add=[user.id])
     group_url = url_for("api-groups.group_members_by_id", group_id=role_group.id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 200
@@ -877,7 +844,7 @@ async def test_create_group(
         okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
     )
 
-    data = {"type": "okta_group", "name": "Created", "description": "", "tags_to_add": [tag.id]}
+    data = OktaGroupCreateBodyFactory.json(name="Created", description="", tags_to_add=[tag.id])
     rep = await client.post(groups_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1
@@ -918,7 +885,7 @@ async def test_create_app_group(
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
 
     app_group_name = f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Created"
-    data = {"type": "app_group", "app_id": access_app.id, "name": app_group_name, "description": ""}
+    data = AppGroupCreateBodyFactory.json(app_id=access_app.id, name=app_group_name, description="")
     rep = await client.post(groups_url, json=data)
     assert rep.status_code == 201
     assert create_group_spy.call_count == 1

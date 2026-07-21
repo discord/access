@@ -33,6 +33,7 @@ from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory, RoleRequestFactory
 from tests.helpers import db_count
+from tests.request_factories import CreateRoleRequestBodyFactory, ResolveRoleRequestBodyFactory
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
@@ -208,7 +209,7 @@ async def test_put_role_request(
     # body shape returns 404. (PUT with no body returns 400 because the
     # ResolveRoleRequestBody schema rejects the missing `approved` field.)
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id="randomid")
-    rep = await client.put(role_request_url, json={"approved": True})
+    rep = await client.put(role_request_url, json=ResolveRoleRequestBodyFactory.json(approved=True))
     assert rep.status_code == 404
 
     db.session.add(user)
@@ -240,7 +241,7 @@ async def test_put_role_request(
     # The Access owner plus the role membership and ownership added above
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 3
 
-    data = {"approved": True, "reason": "test reason"}
+    data = ResolveRoleRequestBodyFactory.json(approved=True, reason="test reason")
 
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 200
@@ -277,7 +278,7 @@ async def test_put_role_request(
 
     add_user_to_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
-    data = {"approved": False, "reason": "test reason"}
+    data = ResolveRoleRequestBodyFactory.json(approved=False, reason="test reason")
 
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id=role_request.id)
     rep = await client.put(role_request_url, json=data)
@@ -358,7 +359,7 @@ async def test_put_role_request_by_non_owner(
     app.state.current_user_email = user.email
 
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id=role_request_by_owner.id)
-    data = {"approved": True, "reason": "test approval"}
+    data = ResolveRoleRequestBodyFactory.json(approved=True, reason="test approval")
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 403
 
@@ -371,7 +372,7 @@ async def test_put_role_request_by_non_owner(
 
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
-    data = {"approved": False, "reason": "test rejection"}
+    data = ResolveRoleRequestBodyFactory.json(approved=False, reason="test rejection")
 
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 403
@@ -386,7 +387,7 @@ async def test_put_role_request_by_non_owner(
 
     role_request_url = url_for("api-role-requests.role_request_by_id", role_request_id=role_request_by_non_owner.id)
 
-    data = {"approved": True, "reason": "test approval"}
+    data = ResolveRoleRequestBodyFactory.json(approved=True, reason="test approval")
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 403
 
@@ -397,7 +398,7 @@ async def test_put_role_request_by_non_owner(
 
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
 
-    data = {"approved": False, "reason": "test rejection"}
+    data = ResolveRoleRequestBodyFactory.json(approved=False, reason="test rejection")
 
     rep = await client.put(role_request_url, json=data)
     assert rep.status_code == 200
@@ -434,12 +435,9 @@ async def test_create_role_request(
     db.session.add(role_group)
     await db.session.commit()
 
-    data = {
-        "role_id": role_group.id,
-        "group_id": okta_group.id,
-        "group_owner": False,
-        "reason": "test reason",
-    }
+    data = CreateRoleRequestBodyFactory.json(
+        role_id=role_group.id, group_id=okta_group.id, group_owner=False, reason="test reason"
+    )
 
     rep = await client.post(role_requests_url, json=data)
     assert rep.status_code == 201
@@ -476,12 +474,9 @@ async def test_create_role_request_not_role_owner(
 
     app.state.current_user_email = user.email
 
-    data = {
-        "role_id": role_group.id,
-        "group_id": okta_group.id,
-        "group_owner": False,
-        "reason": "test reason",
-    }
+    data = CreateRoleRequestBodyFactory.json(
+        role_id=role_group.id, group_id=okta_group.id, group_owner=False, reason="test reason"
+    )
 
     role_requests_url = url_for("api-role-requests.role_requests")
     rep = await client.post(role_requests_url, json=data)
@@ -500,12 +495,9 @@ async def test_create_role_request_not_role_owner(
         sync_to_okta=False,
     ).execute()
 
-    data = {
-        "role_id": role_group.id,
-        "group_id": okta_group.id,
-        "group_owner": False,
-        "reason": "test reason",
-    }
+    data = CreateRoleRequestBodyFactory.json(
+        role_id=role_group.id, group_id=okta_group.id, group_owner=False, reason="test reason"
+    )
 
     rep = await client.post(role_requests_url, json=data)
     assert rep.status_code == 201
@@ -1568,7 +1560,7 @@ async def test_put_role_request_pending_check_includes_resolved_at(
     await db.session.commit()
 
     put_url = url_for("api-role-requests.role_request_by_id_put", role_request_id=rr.id)
-    rep = await client.put(put_url, json={"approved": False, "reason": "no"})
+    rep = await client.put(put_url, json=ResolveRoleRequestBodyFactory.json(approved=False, reason="no"))
     assert rep.status_code == 409
     assert "is not pending" in rep.text
 

@@ -32,6 +32,7 @@ from api.plugins import ConditionalAccessResponse, get_notification_hook
 from api.services import okta
 from tests.factories import AccessRequestFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory
 from tests.helpers import db_count
+from tests.request_factories import CreateAccessRequestBodyFactory, ResolveAccessRequestBodyFactory
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
 THREE_DAYS_IN_SECONDS = 3 * 24 * 60 * 60
@@ -171,7 +172,7 @@ async def test_put_access_request(
     # body shape returns 404. (PUT with no body returns 400 because the
     # ResolveAccessRequestBody schema rejects the missing `approved` field.)
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id="randomid")
-    rep = await client.put(access_request_url, json={"approved": True})
+    rep = await client.put(access_request_url, json=ResolveAccessRequestBodyFactory.json(approved=True))
     assert rep.status_code == 404
 
     db.session.add(user)
@@ -192,7 +193,7 @@ async def test_put_access_request(
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     add_owner_to_group_spy = mocker.patch.object(okta, "add_owner_to_group")
 
-    data = {"approved": True, "reason": "test reason"}
+    data = ResolveAccessRequestBodyFactory.json(approved=True, reason="test reason")
 
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
@@ -226,7 +227,7 @@ async def test_put_access_request(
 
     add_user_to_group_spy.reset_mock()
     add_owner_to_group_spy.reset_mock()
-    data = {"approved": False, "reason": "test reason"}
+    data = ResolveAccessRequestBodyFactory.json(approved=False, reason="test reason")
 
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request.id)
     rep = await client.put(access_request_url, json=data)
@@ -289,7 +290,7 @@ async def test_put_access_request_by_non_owner(
     access_request_url = url_for(
         "api-access-requests.access_request_by_id", access_request_id=access_request_by_owner.id
     )
-    data = {"approved": True, "reason": "test approval"}
+    data = ResolveAccessRequestBodyFactory.json(approved=True, reason="test approval")
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 403
 
@@ -302,7 +303,7 @@ async def test_put_access_request_by_non_owner(
 
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
 
-    data = {"approved": False, "reason": "test rejection"}
+    data = ResolveAccessRequestBodyFactory.json(approved=False, reason="test rejection")
 
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 403
@@ -318,7 +319,7 @@ async def test_put_access_request_by_non_owner(
         "api-access-requests.access_request_by_id", access_request_id=access_request_by_non_owner.id
     )
 
-    data = {"approved": True, "reason": "test approval"}
+    data = ResolveAccessRequestBodyFactory.json(approved=True, reason="test approval")
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 403
 
@@ -329,7 +330,7 @@ async def test_put_access_request_by_non_owner(
 
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
 
-    data = {"approved": False, "reason": "test rejection"}
+    data = ResolveAccessRequestBodyFactory.json(approved=False, reason="test rejection")
 
     rep = await client.put(access_request_url, json=data)
     assert rep.status_code == 200
@@ -422,7 +423,10 @@ async def test_put_app_group_access_request_by_app_owner(
     app.state.current_user_email = app_owner_user.email
     access_request_url = url_for("api-access-requests.access_request_by_id", access_request_id=access_request_id)
 
-    rep = await client.put(access_request_url, json={"approved": False, "reason": "already granted elsewhere"})
+    rep = await client.put(
+        access_request_url,
+        json=ResolveAccessRequestBodyFactory.json(approved=False, reason="already granted elsewhere"),
+    )
     assert rep.status_code == 200, rep.text
     assert rep.json()["status"] == AccessRequestStatus.REJECTED
 
@@ -444,11 +448,7 @@ async def test_create_access_request(
     db.session.add(okta_group)
     await db.session.commit()
 
-    data = {
-        "group_id": okta_group.id,
-        "group_owner": False,
-        "reason": "test reason",
-    }
+    data = CreateAccessRequestBodyFactory.json(group_id=okta_group.id, group_owner=False, reason="test reason")
 
     rep = await client.post(access_requests_url, json=data)
     assert rep.status_code == 201
@@ -477,6 +477,9 @@ async def test_create_access_request_with_rfc822_ending_at(
     db.session.add(okta_group)
     await db.session.commit()
 
+    # A literal dict, not CreateAccessRequestBodyFactory: this asserts the
+    # router parses the RFC822 wire string, and building through the schema
+    # would normalize ending_at to ISO before it ever left the test.
     data = {
         "group_id": okta_group.id,
         "group_owner": False,
@@ -1040,7 +1043,7 @@ async def test_post_access_request_403_for_deleted_user(
 
     rep = await client.post(
         url_for("api-access-requests.access_requests_create"),
-        json={"group_id": okta_group.id, "group_owner": False, "reason": "test"},
+        json=CreateAccessRequestBodyFactory.json(group_id=okta_group.id, group_owner=False, reason="test"),
     )
     assert rep.status_code == 403
 
@@ -1092,7 +1095,7 @@ async def test_post_access_request_for_role_group_with_associated_groups(
 
     rep = await client.post(
         url_for("api-access-requests.access_requests_create"),
-        json={"group_id": role.id, "group_owner": False, "reason": "want role membership"},
+        json=CreateAccessRequestBodyFactory.json(group_id=role.id, group_owner=False, reason="want role membership"),
     )
     assert rep.status_code == 201, rep.text
     body = rep.json()
