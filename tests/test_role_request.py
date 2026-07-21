@@ -526,7 +526,7 @@ async def test_get_all_role_request(
     db.session.add(okta_group)
     await db.session.commit()
 
-    role_requests = RoleRequestFactory.create_batch(
+    role_requests = RoleRequestFactory.batch(
         10, requester_user_id=user.id, requester_role_id=role_group.id, requested_group_id=okta_group.id
     )
     db.session.add_all(role_requests)
@@ -621,7 +621,7 @@ async def test_create_app_role_request_notification(
 ) -> None:
     # test bad data
     app_owner_user = await OktaUserFactory.create_async()
-    app_owner_group = AppGroupFactory.create()
+    app_owner_group = AppGroupFactory.build()
 
     # Add App
     db.session.add(access_app)
@@ -714,7 +714,7 @@ async def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: Moc
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    users = OktaUserFactory.build_batch(3)
+    users = OktaUserFactory.batch(3)
     db.session.add_all(users)
     await db.session.commit()
 
@@ -729,7 +729,7 @@ async def test_get_all_possible_role_request_approvers(app: FastAPI, mocker: Moc
     )
 
     req = RoleRequest()
-    req.requested_group = AppGroupFactory.create()
+    req.requested_group = AppGroupFactory.build()
 
     approvers = await get_all_possible_request_approvers(req)
 
@@ -1410,12 +1410,12 @@ async def test_role_request_list_filters_via_http(client: AsyncClient, db: Db, u
     requests across two users / two roles / two target groups so each
     filter must *exclude* the other to pass — otherwise a regression that
     returns everything would still match by ID."""
-    target_user = OktaUserFactory.create()
-    other_user = OktaUserFactory.create()
-    target_role = RoleGroupFactory.create()
-    other_role = RoleGroupFactory.create()
-    target_group = OktaGroupFactory.create()
-    other_group = OktaGroupFactory.create()
+    target_user = OktaUserFactory.build()
+    other_user = OktaUserFactory.build()
+    target_role = RoleGroupFactory.build()
+    other_role = RoleGroupFactory.build()
+    target_group = OktaGroupFactory.build()
+    other_group = OktaGroupFactory.build()
     db.session.add_all([target_user, other_user, target_role, other_role, target_group, other_group])
     await db.session.commit()
     await ModifyGroupUsers(

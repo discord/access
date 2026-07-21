@@ -435,8 +435,8 @@ async def test_audit_users_default_order_is_newest_first(client: AsyncClient, db
     `order_desc=True`; the FastAPI Query Model mirrors that. Seed three
     rows with controlled `created_at` so a regression that flips the
     direction reliably fails this test."""
-    group = OktaGroupFactory.create()
-    u_old, u_mid, u_new = (OktaUserFactory.create() for _ in range(3))
+    group = OktaGroupFactory.build()
+    u_old, u_mid, u_new = (OktaUserFactory.build() for _ in range(3))
     db.session.add_all([group, u_old, u_mid, u_new])
     await db.session.commit()
     await ModifyGroupUsers(
@@ -469,8 +469,8 @@ async def test_audit_groups_default_order_is_newest_first(client: AsyncClient, d
     """Same direction-of-default contract as `users` — seed three
     `RoleGroupMap` rows at controlled `created_at` and confirm the
     response order is newest-first when no order params are provided."""
-    role = RoleGroupFactory.create()
-    g_old, g_mid, g_new = (OktaGroupFactory.create() for _ in range(3))
+    role = RoleGroupFactory.build()
+    g_old, g_mid, g_new = (OktaGroupFactory.build() for _ in range(3))
     db.session.add_all([role, g_old, g_mid, g_new])
     await db.session.commit()
     await ModifyRoleGroups(

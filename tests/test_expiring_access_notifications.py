@@ -709,11 +709,11 @@ async def test_owner_expiring_access_notifications_managed_group_admin(
     db: Db, app: FastAPI, mocker: MockerFixture
 ) -> None:
     # Create an externally managed group and an Access managed group
-    group1 = OktaGroupFactory.create()
+    group1 = OktaGroupFactory.build()
     group1.is_managed = False
-    group2 = OktaGroupFactory.create()
+    group2 = OktaGroupFactory.build()
 
-    user = OktaUserFactory.create()
+    user = OktaUserFactory.build()
     access_owner = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()

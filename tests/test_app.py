@@ -365,7 +365,7 @@ async def test_delete_app(
     rep = await client.delete(app_url)
     assert rep.status_code == 404
 
-    app_groups = AppGroupFactory.create_batch(3, app=access_app)
+    app_groups = AppGroupFactory.batch(3, app=access_app)
     db.session.add(access_app)
     db.session.add_all(app_groups)
     db.session.add(tag)
@@ -640,7 +640,7 @@ async def test_create_app_with_name_collision(
     app_group: AppGroup,
     url_for: Any,
 ) -> None:
-    app = AppFactory.create()
+    app = AppFactory.build()
     app.name = "Test-Staging"
     db.session.add(app)
     await db.session.commit()
@@ -746,7 +746,7 @@ async def test_create_app_additional_group_collision_converts_correct_group(
 
 async def test_get_all_app(client: AsyncClient, db: Db, url_for: Any) -> None:
     apps_url = url_for("api-apps.apps")
-    apps = AppFactory.create_batch(10)
+    apps = AppFactory.batch(10)
 
     # Prefix all the app names with A so we can query for them easily
     for app in apps:

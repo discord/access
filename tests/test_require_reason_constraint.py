@@ -46,7 +46,7 @@ async def test_require_reason_modify_group_users(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
@@ -568,7 +568,7 @@ async def test_require_reason_modify_role_groups(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,
@@ -1237,7 +1237,7 @@ async def test_require_reason_approve_access_request(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True,

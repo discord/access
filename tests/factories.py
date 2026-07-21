@@ -5,26 +5,25 @@ polyfactory otherwise populates *every* column with random data; these factories
 instead whitelist just the columns each one sets (via `should_set_field_value` +
 `__set_foreign_keys__` / `__set_relationships__` off) and leave the rest — soft
 deletes, timestamps, discriminators, FKs, JSON config — to the model/DB defaults.
-Explicit `build(...)`/`create(...)` kwargs still override any column (managed or
-not), which the fixtures and tests rely on.
+Explicit `build(...)` kwargs still override any column (managed or not), which
+the fixtures and tests rely on.
 
-The `factory_boy`-style method names (`create`, `create_batch`, `build_batch`)
-are thin aliases over polyfactory's `build`/`batch` — they build detached
-instances without touching the DB, so a call site that wants them persisted still
-does its own `db.session.add(...)` + `await db.session.commit()`.
+Two ways to make an instance, both using polyfactory's native API:
 
-`await Factory.create_async(...)` (and `create_batch_async`) instead persist:
-`__async_session__` points at the active request-scoped `db.session`, so
-polyfactory adds, commits, and refreshes the built instance. That collapses the
-build/add/commit triad into one call — reach for it when a test just needs a row
-in the DB, and keep `build`/`create` for the cases that assemble an instance
-without persisting.
+- `build(**kwargs)` / `batch(n, **kwargs)` return detached instances without
+  touching the DB, so a call site that wants them persisted does its own
+  `db.session.add(...)` + `await db.session.commit()`.
+- `await create_async(**kwargs)` / `create_batch_async(n, **kwargs)` persist:
+  `__async_session__` points at the active request-scoped `db.session`, so
+  polyfactory adds, commits, and refreshes the instance — collapsing the
+  build/add/commit triad into one call.
 
 **Okta SDK model factories** (`Group`/`User`/`UserSchema`) build the
 openapi-generated SDK Pydantic models through `from_dict` (camelCase aliases, the
 `anyOf` `profile` union), which polyfactory's generic generation can't reproduce.
 They mock external Okta responses rather than our own schemas, so they stay
-hand-rolled builders.
+hand-rolled builders — and keep their own `create`/`create_batch` helpers, which
+are unrelated to the polyfactory API above.
 """
 
 from __future__ import annotations
@@ -104,19 +103,6 @@ class _ORMFactory(SQLAlchemyFactory):
         # `super()` returns False for fields the caller passed explicitly, so
         # `build(email=...)` overrides win over generation.
         return field_meta.name in cls._managed and super().should_set_field_value(field_meta, **kwargs)
-
-    # --- factory_boy-style aliases over build/batch (no persistence) ---------
-    @classmethod
-    def create(cls, **kwargs: Any) -> Any:
-        return cls.build(**kwargs)
-
-    @classmethod
-    def create_batch(cls, size: int, **kwargs: Any) -> list[Any]:
-        return cls.batch(size, **kwargs)
-
-    @classmethod
-    def build_batch(cls, size: int, **kwargs: Any) -> list[Any]:
-        return cls.batch(size, **kwargs)
 
 
 class OktaUserFactory(_ORMFactory):

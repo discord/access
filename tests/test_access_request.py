@@ -512,7 +512,7 @@ async def test_get_all_access_request(
     db.session.add(okta_group)
     await db.session.commit()
 
-    access_requests = AccessRequestFactory.create_batch(10, requester_user_id=user.id, requested_group_id=okta_group.id)
+    access_requests = AccessRequestFactory.batch(10, requester_user_id=user.id, requested_group_id=okta_group.id)
     db.session.add_all(access_requests)
     await db.session.commit()
 
@@ -584,7 +584,7 @@ async def test_create_app_access_request_notification(
 ) -> None:
     # test bad data
     app_owner_user = await OktaUserFactory.create_async()
-    app_owner_group = AppGroupFactory.create()
+    app_owner_group = AppGroupFactory.build()
 
     # Add App
     db.session.add(access_app)
@@ -665,7 +665,7 @@ async def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFi
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    users = OktaUserFactory.build_batch(3)
+    users = OktaUserFactory.batch(3)
     db.session.add_all(users)
     await db.session.commit()
 
@@ -680,7 +680,7 @@ async def test_get_all_possible_request_approvers(app: FastAPI, mocker: MockerFi
     )
 
     req = AccessRequest()
-    req.requested_group = AppGroupFactory.create()
+    req.requested_group = AppGroupFactory.build()
 
     approvers = await get_all_possible_request_approvers(req)
 
@@ -973,10 +973,10 @@ async def test_q_search_covers_all_fields_via_http(
     requesters and groups so each search must *exclude* the other to pass
     — a regression that returns everything would still match by ID but
     fail the exclusion assertions."""
-    target_user = OktaUserFactory.create(email="zelda-target@example.com", first_name="Zelda", last_name="Target")
-    other_user = OktaUserFactory.create(email="other-noise@example.com", first_name="Other", last_name="Noise")
-    target_group = OktaGroupFactory.create(name="ZeldaTargetGroup", description="zd-desc")
-    other_group = OktaGroupFactory.create(name="OtherNoiseGroup", description="on-desc")
+    target_user = OktaUserFactory.build(email="zelda-target@example.com", first_name="Zelda", last_name="Target")
+    other_user = OktaUserFactory.build(email="other-noise@example.com", first_name="Other", last_name="Noise")
+    target_group = OktaGroupFactory.build(name="ZeldaTargetGroup", description="zd-desc")
+    other_group = OktaGroupFactory.build(name="OtherNoiseGroup", description="on-desc")
     db.session.add_all([target_user, other_user, target_group, other_group])
     await db.session.commit()
 
@@ -1065,7 +1065,7 @@ async def test_post_access_request_for_role_group_with_associated_groups(
     test_app = await AppFactory.create_async(name="AssocTestApp")
 
     associated_app_groups = [
-        AppGroupFactory.create(
+        AppGroupFactory.build(
             name=f"App-AssocTestApp-Member-{i}",
             app_id=test_app.id,
             is_owner=False,
@@ -1073,7 +1073,7 @@ async def test_post_access_request_for_role_group_with_associated_groups(
         for i in range(3)
     ]
     associated_owner_groups = [
-        AppGroupFactory.create(
+        AppGroupFactory.build(
             name=f"App-AssocTestApp-OwnerSlot-{i}",
             app_id=test_app.id,
             is_owner=False,

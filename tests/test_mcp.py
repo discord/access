@@ -352,7 +352,7 @@ async def test_get_group_tool_role_grants_do_not_reload_own_group(
     await db.session.commit()
 
     for _ in range(5):
-        granting_role = RoleGroupFactory.create()
+        granting_role = RoleGroupFactory.build()
         db.session.add(granting_role)
         await db.session.commit()
         await ModifyRoleGroups(

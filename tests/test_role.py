@@ -464,7 +464,7 @@ async def test_role_group_add_with_notify_false_suppresses_completion_notificati
 
 async def test_get_all_role(client: AsyncClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
-    groups = RoleGroupFactory.create_batch(10)
+    groups = RoleGroupFactory.batch(10)
 
     db.session.add_all(groups)
     await db.session.commit()
@@ -1684,10 +1684,10 @@ async def test_role_list_owner_id_filter(client: AsyncClient, db: Db, url_for: A
     only honored `q`."""
     from datetime import datetime, timedelta, timezone
 
-    owner = OktaUserFactory.create()
-    other = OktaUserFactory.create()
-    role_a = RoleGroupFactory.create()
-    role_b = RoleGroupFactory.create()
+    owner = OktaUserFactory.build()
+    other = OktaUserFactory.build()
+    role_a = RoleGroupFactory.build()
+    role_b = RoleGroupFactory.build()
     db.session.add_all([owner, other, role_a, role_b])
     await db.session.commit()
     end = datetime.now(timezone.utc) + timedelta(days=30)

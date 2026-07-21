@@ -40,7 +40,7 @@ async def test_time_limit_modify_group_users(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
@@ -328,7 +328,7 @@ async def test_time_limit_modify_role_groups(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
@@ -483,7 +483,7 @@ async def test_time_limit_modify_group_type(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
@@ -638,7 +638,7 @@ async def test_time_limit_modify_group_tags(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 7 days initially
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
@@ -917,7 +917,7 @@ async def test_time_limit_add_group_tags(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,
@@ -1143,7 +1143,7 @@ async def test_time_limit_add_app_tags(
     url_for: Any,
 ) -> None:
     # Set primary tag constraint time limit to 3 days
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS,

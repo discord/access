@@ -182,7 +182,7 @@ async def test_create_group_request_tag_limits_ownership_time(
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 90 days
-    tag = TagFactory.create(
+    tag = TagFactory.build(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 7776000  # in seconds
@@ -226,7 +226,7 @@ async def test_create_group_request_tag_reduces_requested_ownership_time(
     user: OktaUser,
 ) -> None:
     # Create a tag that limits ownership to 30 days
-    tag = TagFactory.create(
+    tag = TagFactory.build(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # in seconds
@@ -420,7 +420,7 @@ async def test_approve_group_request_tag_limits_owner_ending_time(
     mocker.patch.object(okta, "add_owner_to_group")
 
     # Create a tag that limits ownership to 30 days
-    tag = TagFactory.create(
+    tag = TagFactory.build(
         enabled=True,
         constraints={
             Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 2592000  # in seconds
@@ -1030,7 +1030,7 @@ async def test_approver_can_modify_group_details(
     admin = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
-    tag = TagFactory.create(enabled=True)
+    tag = TagFactory.build(enabled=True)
     other_tag = await TagFactory.create_async(enabled=True)
 
     db.session.add(user)
@@ -1280,7 +1280,7 @@ async def test_app_owner_auto_approves_own_app_group_request_tagged(
 ) -> None:
     app_owner = await OktaUserFactory.create_async()
     app_obj = await AppFactory.create_async()
-    tag = TagFactory.create(enabled=True, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True})
+    tag = TagFactory.build(enabled=True, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True})
 
     db.session.add(tag)
     await db.session.commit()
@@ -2014,9 +2014,9 @@ async def test_group_request_list_filters_via_http(client: AsyncClient, db: Db, 
     would still match by ID."""
     from api.operations import CreateGroupRequest
 
-    target_user = OktaUserFactory.create()
-    other_user = OktaUserFactory.create()
-    target_app = AppFactory.create()
+    target_user = OktaUserFactory.build()
+    other_user = OktaUserFactory.build()
+    target_app = AppFactory.build()
     db.session.add_all([target_user, other_user, target_app])
     await db.session.commit()
 
@@ -2483,7 +2483,7 @@ async def test_approve_app_group_request_with_non_conforming_resolved_name_is_re
 ) -> None:
     """Approving an app group request whose resolved name lacks the
     "App-{app name}-" prefix is a 400 and leaves the request pending."""
-    app_obj = AppFactory.create()
+    app_obj = AppFactory.build()
     db.session.add_all([user, app_obj])
     await db.session.commit()
     app_name = app_obj.name

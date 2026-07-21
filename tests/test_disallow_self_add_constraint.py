@@ -42,10 +42,10 @@ async def test_disallow_self_add_modify_group_users(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUserFactory.create()
+    current_user = OktaUserFactory.build()
     app.state.current_user_email = current_user.email
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -511,12 +511,12 @@ async def test_disallow_self_add_modify_role_groups(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUserFactory.create()
+    current_user = OktaUserFactory.build()
     app.state.current_user_email = current_user.email
 
-    role_groups = RoleGroupFactory.create_batch(2)
+    role_groups = RoleGroupFactory.batch(2)
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -1210,7 +1210,7 @@ async def test_disallow_self_add_admin_modify_group_users(
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -1768,9 +1768,9 @@ async def test_disallow_self_add_admin_modify_role_groups(
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    role_groups = RoleGroupFactory.create_batch(2)
+    role_groups = RoleGroupFactory.batch(2)
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -2455,8 +2455,8 @@ async def test_disallow_self_add_membership_blocks_direct_modify_group_users(
     `DISALLOW_SELF_ADD_MEMBERSHIP` is blocked, with nothing added. The router
     path is covered above; this drives the operation directly, which is where
     the membership id list feeds `CheckForSelfAdd`."""
-    current_user = OktaUserFactory.create()
-    tag = TagFactory.create(
+    current_user = OktaUserFactory.build()
+    tag = TagFactory.build(
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
             Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
