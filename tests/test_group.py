@@ -28,7 +28,16 @@ from api.models import (
 )
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
+    AppTagMapFactory,
+    OktaGroupFactory,
+    OktaGroupTagMapFactory,
+    OktaUserFactory,
+    OktaUserGroupMemberFactory,
+    RoleGroupFactory,
+)
 from tests.helpers import db_count
 from tests.request_factories import (
     AppGroupCreateBodyFactory,
@@ -124,9 +133,7 @@ async def test_get_group_role_grants_do_not_reload_own_group(
     await db.session.commit()
 
     for _ in range(5):
-        granting_role = RoleGroupFactory.create()
-        db.session.add(granting_role)
-        await db.session.commit()
+        granting_role = await RoleGroupFactory.create_async()
         await ModifyRoleGroups(
             role_group=granting_role,
             groups_to_add=[app_group.id],
@@ -181,8 +188,7 @@ async def test_get_group_members(
     assert len(data["members"]) == 0
     assert len(data["owners"]) == 0
 
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=okta_group.id))
-    await db.session.commit()
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=okta_group.id)
 
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.get(group_url)
@@ -193,8 +199,7 @@ async def test_get_group_members(
     assert data["members"][0] == user.id
     assert len(data["owners"]) == 0
 
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=okta_group.id, is_owner=True))
-    await db.session.commit()
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=okta_group.id, is_owner=True)
 
     group_url = url_for("api-groups.group_members_by_id", group_id=okta_group.id)
     rep = await client.get(group_url)
@@ -403,15 +408,15 @@ async def test_put_app_group_rebind_authorization(
     app_group: AppGroup,
     url_for: Any,
 ) -> None:
-    source_app = AppFactory.create()
-    target_app = AppFactory.create()
-    source_app_owner_group = AppGroupFactory.create(
+    source_app = AppFactory.build()
+    target_app = AppFactory.build()
+    source_app_owner_group = AppGroupFactory.build(
         app_id=source_app.id,
         is_owner=True,
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{source_app.name}"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
     )
-    target_app_owner_group = AppGroupFactory.create(
+    target_app_owner_group = AppGroupFactory.build(
         app_id=target_app.id,
         is_owner=True,
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app.name}"
@@ -728,8 +733,7 @@ async def test_delete_group(
     # persistent fixture-loaded objects on the shared session.
     tag_id = tag.id
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag_id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag_id)
 
     # test delete group
     delete_group_spy = mocker.patch.object(okta, "delete_group")
@@ -753,11 +757,8 @@ async def test_delete_group(
     db.session.add(app_group)
     await db.session.commit()
 
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag_id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag_id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag_id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag_id, app_tag_map_id=app_tag_map.id)
 
     access_request = await CreateAccessRequest(
         requester_user=user,
@@ -875,8 +876,7 @@ async def test_create_app_group(
     db.session.add(access_app)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(AppTagMap(app_id=access_app.id, tag_id=tag.id))
-    await db.session.commit()
+    await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
 
     create_group_spy = mocker.patch.object(
         okta, "create_group", return_value=Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()})
@@ -912,14 +912,14 @@ async def test_create_app_group_cannot_set_is_owner_shadow_escalation(
     ever appearing in the App-<app>-Owners member list.
     """
     # App "Foo" with its owner group, owned by non-admin Alice
-    foo = AppFactory.create()
-    owners_group = AppGroupFactory.create(
+    foo = AppFactory.build()
+    owners_group = AppGroupFactory.build(
         app_id=foo.id,
         is_owner=True,
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{foo.name}"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}",
     )
-    alice = OktaUserFactory.create()
+    alice = OktaUserFactory.build()
     db.session.add_all([foo, owners_group, alice])
     await db.session.commit()
     foo_id = foo.id
@@ -961,10 +961,10 @@ async def test_get_all_group(client: AsyncClient, db: Db, access_app: App, url_f
     await db.session.commit()
 
     groups = []
-    groups.extend(OktaGroupFactory.create_batch(3))
-    app_groups = AppGroupFactory.create_batch(3, app_id=access_app.id)
+    groups.extend(OktaGroupFactory.batch(3))
+    app_groups = AppGroupFactory.batch(3, app_id=access_app.id)
     groups.extend(app_groups)
-    groups.extend(RoleGroupFactory.create_batch(3))
+    groups.extend(RoleGroupFactory.batch(3))
     db.session.add_all(groups)
     await db.session.commit()
 
@@ -990,11 +990,10 @@ async def test_get_all_group(client: AsyncClient, db: Db, access_app: App, url_f
 async def test_do_not_renew(
     db: Db, client: AsyncClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
-    user2 = OktaUserFactory.create()
+    user2 = await OktaUserFactory.create_async()
 
     db.session.add(okta_group)
     db.session.add(user)
-    db.session.add(user2)
     await db.session.commit()
 
     expiration_datetime = datetime.now() + timedelta(days=1)
@@ -1114,12 +1113,11 @@ async def test_do_not_renew_scoped_to_route_group(
     db: Db, client: AsyncClient, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, url_for: Any
 ) -> None:
     victim_group = OktaGroup(id="victim-group-id", name="Victim-Group", type="okta_group")
-    victim_user = OktaUserFactory.create()
+    victim_user = await OktaUserFactory.create_async()
 
     db.session.add(okta_group)
     db.session.add(victim_group)
     db.session.add(user)
-    db.session.add(victim_user)
     await db.session.commit()
 
     expiration_datetime = datetime.now() + timedelta(days=1)
@@ -1292,7 +1290,7 @@ async def test_cannot_convert_app_prefixed_group_to_non_app_type(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    app_group = AppGroupFactory.create(
+    app_group = AppGroupFactory.build(
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Members",
         app_id=access_app.id,
         is_owner=False,
@@ -1440,8 +1438,8 @@ async def test_cannot_rename_app_group_to_non_conforming_name(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    target_app = AppFactory.create()
-    app_group = AppGroupFactory.create(
+    target_app = AppFactory.build()
+    app_group = AppGroupFactory.build(
         app_id=target_app.id,
         name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{target_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Conforming",
     )
@@ -1487,7 +1485,7 @@ async def test_convert_to_app_group_requires_app_name_prefix(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    okta_group = OktaGroupFactory.create(name="PlainGroup")
+    okta_group = OktaGroupFactory.build(name="PlainGroup")
     db.session.add_all([access_app, okta_group])
     await db.session.commit()
     app_name = access_app.name
@@ -1548,8 +1546,8 @@ async def test_legacy_non_conforming_app_group_tolerates_unchanged_name(
     the unchanged name (the frontend always sends `name`) must keep working."""
     mocker.patch.object(okta, "update_group")
 
-    target_app = AppFactory.create()
-    legacy_group = AppGroupFactory.create(app_id=target_app.id, name="App-SomethingElse-Group")
+    target_app = AppFactory.build()
+    legacy_group = AppGroupFactory.build(app_id=target_app.id, name="App-SomethingElse-Group")
     db.session.add_all([target_app, legacy_group])
     await db.session.commit()
     legacy_name = legacy_group.name
@@ -1582,7 +1580,7 @@ async def test_cannot_rename_non_app_group_to_app_prefix(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    okta_group = OktaGroupFactory.create(name="Payments-Owners")
+    okta_group = OktaGroupFactory.build(name="Payments-Owners")
     db.session.add(access_app)
     db.session.add(okta_group)
     await db.session.commit()
@@ -1651,7 +1649,7 @@ async def test_cannot_rename_non_role_group_to_role_prefix(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    okta_group = OktaGroupFactory.create(name="Some-Group")
+    okta_group = OktaGroupFactory.build(name="Some-Group")
     db.session.add(okta_group)
     await db.session.commit()
 
@@ -1681,7 +1679,7 @@ async def test_cannot_convert_role_prefixed_group_to_non_role_type(
 ) -> None:
     mocker.patch.object(okta, "update_group")
 
-    role_group = RoleGroupFactory.create(name=f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins")
+    role_group = RoleGroupFactory.build(name=f"{RoleGroup.ROLE_GROUP_NAME_PREFIX}Admins")
     db.session.add(role_group)
     await db.session.commit()
 
@@ -1825,15 +1823,13 @@ async def test_get_group_member_details_paginated(client: AsyncClient, db: Db, u
     """`GET /api/groups/{id}/member-details` returns full member rows paginated,
     so the group page can page members instead of inlining all of them. `owner`
     filters members vs owners."""
-    group = OktaGroupFactory.create()
-    db.session.add(group)
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
 
     # Explicit, unique emails: the factory derives email from random Faker
     # names, so 60+ users can collide and trip the okta_user.email UNIQUE
     # constraint (flaky). Index-based emails make this deterministic.
-    members = [OktaUserFactory.create(email=f"member-{i:03d}@example.com") for i in range(60)]
-    owner = OktaUserFactory.create(email="owner@example.com")
+    members = [OktaUserFactory.build(email=f"member-{i:03d}@example.com") for i in range(60)]
+    owner = OktaUserFactory.build(email="owner@example.com")
     for u in members + [owner]:
         db.session.add(u)
     await db.session.commit()
@@ -1871,12 +1867,8 @@ async def test_get_group_omits_inline_members(client: AsyncClient, db: Db, url_f
     """`GET /api/groups/{id}` no longer inlines its members; the group page
     pages them via the member-details endpoint instead, so the detail response
     can't materialize an unbounded member list."""
-    group = OktaGroupFactory.create()
-    db.session.add(group)
-    await db.session.commit()
-    member = OktaUserFactory.create()
-    db.session.add(member)
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
+    member = await OktaUserFactory.create_async()
     await ModifyGroupUsers(group=group, members_to_add=[member.id], sync_to_okta=False).execute()
 
     group_id = group.id
@@ -1897,9 +1889,9 @@ async def test_group_member_details_counts_users_not_rows(client: AsyncClient, d
     """A user holding both a direct and a role-granted membership in a group is a
     single member: member-details pages by distinct user, so total counts the
     user once and both of their rows land on the same page."""
-    group = OktaGroupFactory.create()
-    role = RoleGroupFactory.create()
-    user = OktaUserFactory.create()
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    user = OktaUserFactory.build()
     db.session.add_all([group, role, user])
     await db.session.commit()
 
@@ -1929,11 +1921,9 @@ async def test_get_group_member_details_paginates_in_email_order(client: AsyncCl
     renders is continuous across pages instead of restarting A-Z on every page.
     User ids are assigned in reverse-email order to prove pages are ordered by
     email, not by the opaque user id."""
-    group = OktaGroupFactory.create()
-    db.session.add(group)
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
 
-    members = [OktaUserFactory.create(id=f"id-{59 - i:03d}", email=f"member-{i:03d}@example.com") for i in range(60)]
+    members = [OktaUserFactory.build(id=f"id-{59 - i:03d}", email=f"member-{i:03d}@example.com") for i in range(60)]
     for u in members:
         db.session.add(u)
     await db.session.commit()

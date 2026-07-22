@@ -336,9 +336,8 @@ async def test_deferred_group_request_created_notification_reads_requested_app(
     """A deferred `access_group_request_created` hook may read the group
     request's `requested_app`, so the App must be expunged with the rest of the
     payload — left attached, `db.expire_all()` expires it and the read raises."""
-    app_obj = AppFactory.create()
+    app_obj = await AppFactory.create_async()
     db.session.add(user)
-    db.session.add(app_obj)
     await db.session.commit()
     # The requester must not be an app manager, or the request auto-approves
     # and no `access_group_request_created` notification fires.

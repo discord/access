@@ -11,9 +11,7 @@ from api.extensions import Db
 from api.models import (
     App,
     AppGroup,
-    AppTagMap,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -23,7 +21,13 @@ from api.models import (
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.helpers import db_count
-from tests.factories import OktaUserFactory, RoleGroupFactory, TagFactory
+from tests.factories import (
+    AppTagMapFactory,
+    OktaGroupTagMapFactory,
+    OktaUserFactory,
+    RoleGroupFactory,
+    TagFactory,
+)
 
 
 async def test_disallow_self_add_modify_group_users(
@@ -38,10 +42,10 @@ async def test_disallow_self_add_modify_group_users(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUserFactory.create()
+    current_user = OktaUserFactory.build()
     app.state.current_user_email = current_user.email
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -81,17 +85,13 @@ async def test_disallow_self_add_modify_group_users(
         sync_to_okta=False,
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
@@ -511,12 +511,12 @@ async def test_disallow_self_add_modify_role_groups(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    current_user = OktaUserFactory.create()
+    current_user = OktaUserFactory.build()
     app.state.current_user_email = current_user.email
 
-    role_groups = RoleGroupFactory.create_batch(2)
+    role_groups = RoleGroupFactory.batch(2)
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -551,18 +551,14 @@ async def test_disallow_self_add_modify_role_groups(
         group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_groups[0].id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_groups[1].id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_groups[0].id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_groups[1].id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
@@ -1214,7 +1210,7 @@ async def test_disallow_self_add_admin_modify_group_users(
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -1253,17 +1249,13 @@ async def test_disallow_self_add_admin_modify_group_users(
         sync_to_okta=False,
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
@@ -1776,9 +1768,9 @@ async def test_disallow_self_add_admin_modify_role_groups(
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
 
-    role_groups = RoleGroupFactory.create_batch(2)
+    role_groups = RoleGroupFactory.batch(2)
 
-    tags = TagFactory.create_batch(
+    tags = TagFactory.batch(
         3,
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
@@ -1812,18 +1804,14 @@ async def test_disallow_self_add_admin_modify_role_groups(
         group=role_groups[1], members_to_add=[user.id], owners_to_add=[], sync_to_okta=False
     ).execute()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[0].id))
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_groups[0].id, tag_id=tags[2].id))
-    db.session.add(OktaGroupTagMap(group_id=role_groups[1].id, tag_id=tags[2].id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tags[1].id)
-    db.session.add(app_tag_map)
-    app_tag_map2 = AppTagMap(app_id=access_app.id, tag_id=tags[2].id)
-    db.session.add(app_tag_map2)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id))
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[0].id)
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_groups[0].id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_groups[1].id, tag_id=tags[2].id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[1].id)
+    app_tag_map2 = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tags[2].id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[1].id, app_tag_map_id=app_tag_map.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tags[2].id, app_tag_map_id=app_tag_map2.id)
 
     add_user_to_group_spy = mocker.patch.object(okta, "add_user_to_group")
     remove_user_from_group_spy = mocker.patch.object(okta, "remove_user_from_group")
@@ -2467,8 +2455,8 @@ async def test_disallow_self_add_membership_blocks_direct_modify_group_users(
     `DISALLOW_SELF_ADD_MEMBERSHIP` is blocked, with nothing added. The router
     path is covered above; this drives the operation directly, which is where
     the membership id list feeds `CheckForSelfAdd`."""
-    current_user = OktaUserFactory.create()
-    tag = TagFactory.create(
+    current_user = OktaUserFactory.build()
+    tag = TagFactory.build(
         constraints={
             Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True,
             Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
@@ -2476,8 +2464,7 @@ async def test_disallow_self_add_membership_blocks_direct_modify_group_users(
     )
     db.session.add_all([okta_group, current_user, tag])
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
 
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")

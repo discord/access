@@ -22,7 +22,12 @@ from api.auth import permissions as AuthorizationHelpers
 from api.operations import CreateAccessRequest, CreateRoleRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.plugins import get_notification_hook
 from api.services import okta
-from tests.factories import OktaUserFactory, RoleGroupFactory
+from tests.factories import (
+    OktaUserFactory,
+    OktaUserGroupMemberFactory,
+    RoleGroupFactory,
+    RoleGroupMapFactory,
+)
 from tests.helpers import db_count
 from tests.request_factories import RoleMemberFactory
 
@@ -108,9 +113,7 @@ async def test_get_role_prefers_active_after_name_reuse(
     role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
     await db.session.commit()
 
-    new_role = RoleGroupFactory.create(name=role_name)
-    db.session.add(new_role)
-    await db.session.commit()
+    new_role = await RoleGroupFactory.create_async(name=role_name)
     active_id = new_role.id
     assert active_id != soft_deleted_id
 
@@ -125,8 +128,7 @@ async def test_get_role_members_404_when_role_soft_deleted(
     db.session.add(role_group)
     db.session.add(okta_group)
     await db.session.commit()
-    db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id))
-    await db.session.commit()
+    await RoleGroupMapFactory.create_async(group_id=okta_group.id, role_group_id=role_group.id)
     role_id = role_group.id
 
     role_group.deleted_at = datetime.now(UTC).replace(tzinfo=None)
@@ -157,8 +159,7 @@ async def test_get_role_members(
     assert len(data["groups_in_role"]) == 0
     assert len(data["groups_owned_by_role"]) == 0
 
-    db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id))
-    await db.session.commit()
+    await RoleGroupMapFactory.create_async(group_id=okta_group.id, role_group_id=role_group.id)
 
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.get(role_url)
@@ -169,8 +170,7 @@ async def test_get_role_members(
     assert data["groups_in_role"][0] == okta_group.id
     assert len(data["groups_owned_by_role"]) == 0
 
-    db.session.add(RoleGroupMap(group_id=okta_group.id, role_group_id=role_group.id, is_owner=True))
-    await db.session.commit()
+    await RoleGroupMapFactory.create_async(group_id=okta_group.id, role_group_id=role_group.id, is_owner=True)
 
     role_url = url_for("api-roles.role_members_by_id", role_id=role_group.id)
     rep = await client.get(role_url)
@@ -464,7 +464,7 @@ async def test_role_group_add_with_notify_false_suppresses_completion_notificati
 
 async def test_get_all_role(client: AsyncClient, db: Db, url_for: Any) -> None:
     groups_url = url_for("api-roles.roles")
-    groups = RoleGroupFactory.create_batch(10)
+    groups = RoleGroupFactory.batch(10)
 
     db.session.add_all(groups)
     await db.session.commit()
@@ -1575,7 +1575,7 @@ async def test_do_not_renew(
 async def test_do_not_renew_scoped_to_route_role(
     db: Db, client: AsyncClient, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser, url_for: Any
 ) -> None:
-    victim_role = RoleGroupFactory.create()
+    victim_role = await RoleGroupFactory.create_async()
     victim_okta_group = OktaGroup(
         id="victim-group-id",
         name="Victim-Group",
@@ -1584,7 +1584,6 @@ async def test_do_not_renew_scoped_to_route_role(
 
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(victim_role)
     db.session.add(victim_okta_group)
     db.session.add(user)
     await db.session.commit()
@@ -1685,18 +1684,15 @@ async def test_role_list_owner_id_filter(client: AsyncClient, db: Db, url_for: A
     only honored `q`."""
     from datetime import datetime, timedelta, timezone
 
-    from api.models import OktaUserGroupMember as _OUGM
-
-    owner = OktaUserFactory.create()
-    other = OktaUserFactory.create()
-    role_a = RoleGroupFactory.create()
-    role_b = RoleGroupFactory.create()
+    owner = OktaUserFactory.build()
+    other = OktaUserFactory.build()
+    role_a = RoleGroupFactory.build()
+    role_b = RoleGroupFactory.build()
     db.session.add_all([owner, other, role_a, role_b])
     await db.session.commit()
     end = datetime.now(timezone.utc) + timedelta(days=30)
-    db.session.add(_OUGM(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end))
-    db.session.add(_OUGM(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end))
-    await db.session.commit()
+    await OktaUserGroupMemberFactory.create_async(user_id=owner.id, group_id=role_a.id, is_owner=True, ended_at=end)
+    await OktaUserGroupMemberFactory.create_async(user_id=other.id, group_id=role_b.id, is_owner=True, ended_at=end)
 
     list_url = url_for("api-roles.roles")
     rep = await client.get(list_url, params={"owner_id": owner.id})
@@ -1713,9 +1709,8 @@ async def test_put_role_members_rejects_role_in_role(
     url_for: Any,
 ) -> None:
     """Adding a RoleGroup as a member of another RoleGroup is rejected with 400."""
-    inner_role = RoleGroupFactory.create()
+    inner_role = await RoleGroupFactory.create_async()
     db.session.add(role_group)
-    db.session.add(inner_role)
     await db.session.commit()
 
     # Store the ID before requests — the 400 response path rolls back the

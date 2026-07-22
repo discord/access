@@ -5,18 +5,25 @@ polyfactory otherwise populates *every* column with random data; these factories
 instead whitelist just the columns each one sets (via `should_set_field_value` +
 `__set_foreign_keys__` / `__set_relationships__` off) and leave the rest — soft
 deletes, timestamps, discriminators, FKs, JSON config — to the model/DB defaults.
-Explicit `build(...)`/`create(...)` kwargs still override any column (managed or
-not), which the fixtures and tests rely on.
+Explicit `build(...)` kwargs still override any column (managed or not), which
+the fixtures and tests rely on.
 
-The `factory_boy`-style method names (`create`, `create_batch`, `build_batch`)
-are thin aliases over polyfactory's `build`/`batch`, so test call sites use them
-directly; none persist (they just build instances).
+Two ways to make an instance, both using polyfactory's native API:
+
+- `build(**kwargs)` / `batch(n, **kwargs)` return detached instances without
+  touching the DB, so a call site that wants them persisted does its own
+  `db.session.add(...)` + `await db.session.commit()`.
+- `await create_async(**kwargs)` / `create_batch_async(n, **kwargs)` persist:
+  `__async_session__` points at the active request-scoped `db.session`, so
+  polyfactory adds, commits, and refreshes the instance — collapsing the
+  build/add/commit triad into one call.
 
 **Okta SDK model factories** (`Group`/`User`/`UserSchema`) build the
 openapi-generated SDK Pydantic models through `from_dict` (camelCase aliases, the
 `anyOf` `profile` union), which polyfactory's generic generation can't reproduce.
 They mock external Okta responses rather than our own schemas, so they stay
-hand-rolled builders.
+hand-rolled builders — and keep their own `create`/`create_batch` helpers, which
+are unrelated to the polyfactory API above.
 """
 
 from __future__ import annotations
@@ -41,9 +48,14 @@ from api.models import (
     AccessRequestStatus,
     App,
     AppGroup,
+    AppTagMap,
+    GroupRequest,
     OktaGroup,
+    OktaGroupTagMap,
     OktaUser,
+    OktaUserGroupMember,
     RoleGroup,
+    RoleGroupMap,
     RoleRequest,
     Tag,
 )
@@ -76,6 +88,12 @@ class _ORMFactory(SQLAlchemyFactory):
     __set_relationships__ = False
     __set_foreign_keys__ = False
 
+    # Resolve the session lazily: the scope (and thus the bound AsyncSession)
+    # changes per test, so `create_async` must read `db.session` at call time,
+    # not at class-definition time. Only `create_async`/`create_batch_async`
+    # use it; `build`/`create` never touch the DB.
+    __async_session__ = staticmethod(lambda: db.session)
+
     # Columns this factory is responsible for generating. Anything not listed
     # (and not passed explicitly by the caller) is left unset.
     _managed: ClassVar[set[str]] = set()
@@ -85,19 +103,6 @@ class _ORMFactory(SQLAlchemyFactory):
         # `super()` returns False for fields the caller passed explicitly, so
         # `build(email=...)` overrides win over generation.
         return field_meta.name in cls._managed and super().should_set_field_value(field_meta, **kwargs)
-
-    # --- factory_boy-style aliases over build/batch (no persistence) ---------
-    @classmethod
-    def create(cls, **kwargs: Any) -> Any:
-        return cls.build(**kwargs)
-
-    @classmethod
-    def create_batch(cls, size: int, **kwargs: Any) -> list[Any]:
-        return cls.batch(size, **kwargs)
-
-    @classmethod
-    def build_batch(cls, size: int, **kwargs: Any) -> list[Any]:
-        return cls.batch(size, **kwargs)
 
 
 class OktaUserFactory(_ORMFactory):
@@ -180,6 +185,48 @@ class RoleRequestFactory(_ORMFactory):
     id = Use(_okta_id)
     status = AccessRequestStatus.PENDING
     request_reason = Use(lambda: _faker.paragraph(nb_sentences=5))
+
+
+class GroupRequestFactory(_ORMFactory):
+    __model__ = GroupRequest
+    # `requester_user_id` is a caller-supplied FK; the rest either generate here
+    # or fall back to their column defaults. `requested_group_name` /
+    # `requested_group_type` are NOT NULL without a default, so generate them
+    # too (an okta_group by default) to keep `create()`/`create_async()`
+    # persistable with just a requester.
+    _managed = {"id", "status", "request_reason", "requested_group_name", "requested_group_type"}
+
+    id = Use(_okta_id)
+    status = AccessRequestStatus.PENDING
+    request_reason = Use(lambda: _faker.paragraph(nb_sentences=5))
+    requested_group_name = Use(lambda: random.choice(string.ascii_uppercase) + _rand())
+    requested_group_type = "okta_group"
+
+
+# --- Membership / mapping rows ---------------------------------------------
+#
+# These association tables default every non-FK column (`is_owner` False,
+# timestamps to now, `ended_at` null → active, reason ""), and the FKs are
+# always caller-supplied, so there is nothing to generate — `_managed` is empty.
+# The factories exist for the `create_async` persistence path: `await
+# OktaUserGroupMemberFactory.create_async(user_id=u.id, group_id=g.id)` replaces
+# the add/commit triad. Pass `ended_at=...` to build an already-expired row.
+
+
+class OktaUserGroupMemberFactory(_ORMFactory):
+    __model__ = OktaUserGroupMember
+
+
+class RoleGroupMapFactory(_ORMFactory):
+    __model__ = RoleGroupMap
+
+
+class OktaGroupTagMapFactory(_ORMFactory):
+    __model__ = OktaGroupTagMap
+
+
+class AppTagMapFactory(_ORMFactory):
+    __model__ = AppTagMap
 
 
 # ---------------------------------------------------------------------------

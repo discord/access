@@ -5,9 +5,7 @@ from sqlalchemy import select
 from api.models import (
     App,
     AppGroup,
-    AppTagMap,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -16,7 +14,13 @@ from api.models import (
 )
 from api.extensions import Db
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
-from tests.factories import OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import (
+    AppTagMapFactory,
+    OktaGroupFactory,
+    OktaGroupTagMapFactory,
+    OktaUserFactory,
+    RoleGroupFactory,
+)
 from typing import Any
 
 
@@ -108,8 +112,7 @@ async def test_user_audit_row_includes_group_active_group_tags(
     db.session.add(okta_group)
     db.session.add(tag)
     await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
     await ModifyGroupUsers(group=okta_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     rep = await client.get(url_for("api-audit.users_and_groups"), params={"user_id": user.id})
@@ -219,13 +222,10 @@ async def test_get_group_audit(
     db.session.add(app_group)
     await db.session.commit()
 
-    db.session.add(OktaGroupTagMap(group_id=okta_group.id, tag_id=tag.id))
-    db.session.add(OktaGroupTagMap(group_id=role_group.id, tag_id=tag.id))
-    app_tag_map = AppTagMap(app_id=access_app.id, tag_id=tag.id)
-    db.session.add(app_tag_map)
-    await db.session.commit()
-    db.session.add(OktaGroupTagMap(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
-    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=okta_group.id, tag_id=tag.id)
+    await OktaGroupTagMapFactory.create_async(group_id=role_group.id, tag_id=tag.id)
+    app_tag_map = await AppTagMapFactory.create_async(app_id=access_app.id, tag_id=tag.id)
+    await OktaGroupTagMapFactory.create_async(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id)
 
     await ModifyGroupUsers(
         group=okta_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
@@ -435,8 +435,8 @@ async def test_audit_users_default_order_is_newest_first(client: AsyncClient, db
     `order_desc=True`; the FastAPI Query Model mirrors that. Seed three
     rows with controlled `created_at` so a regression that flips the
     direction reliably fails this test."""
-    group = OktaGroupFactory.create()
-    u_old, u_mid, u_new = (OktaUserFactory.create() for _ in range(3))
+    group = OktaGroupFactory.build()
+    u_old, u_mid, u_new = (OktaUserFactory.build() for _ in range(3))
     db.session.add_all([group, u_old, u_mid, u_new])
     await db.session.commit()
     await ModifyGroupUsers(
@@ -469,8 +469,8 @@ async def test_audit_groups_default_order_is_newest_first(client: AsyncClient, d
     """Same direction-of-default contract as `users` — seed three
     `RoleGroupMap` rows at controlled `created_at` and confirm the
     response order is newest-first when no order params are provided."""
-    role = RoleGroupFactory.create()
-    g_old, g_mid, g_new = (OktaGroupFactory.create() for _ in range(3))
+    role = RoleGroupFactory.build()
+    g_old, g_mid, g_new = (OktaGroupFactory.build() for _ in range(3))
     db.session.add_all([role, g_old, g_mid, g_new])
     await db.session.commit()
     await ModifyRoleGroups(
@@ -504,11 +504,9 @@ async def test_users_audit_q_with_user_id_searches_only_groups(client: AsyncClie
     """When `user_id` is pinned, the free-text `q` filter must narrow to
     *group* columns only — `?user_id=...&q=Alice` should match group
     names but not user profile fields (the user is already pinned)."""
-    user = OktaUserFactory.create(email="alice@example.com", first_name="Alice", last_name="A")
-    matching_group = OktaGroupFactory.create(name="MatchableGroup", description="contains Alice")
-    other_group = OktaGroupFactory.create(name="UnrelatedGroup", description="no match")
-    db.session.add_all([user, matching_group, other_group])
-    await db.session.commit()
+    user = await OktaUserFactory.create_async(email="alice@example.com", first_name="Alice", last_name="A")
+    matching_group = await OktaGroupFactory.create_async(name="MatchableGroup", description="contains Alice")
+    other_group = await OktaGroupFactory.create_async(name="UnrelatedGroup", description="no match")
     await ModifyGroupUsers(group=matching_group, members_to_add=[user.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=other_group, members_to_add=[user.id], sync_to_okta=False).execute()
 
@@ -527,11 +525,9 @@ async def test_users_audit_q_with_group_id_searches_only_users(client: AsyncClie
     """Symmetric: with `group_id` set, `q` must restrict to user columns
     so the response excludes memberships whose user doesn't match — even
     if the group name does."""
-    matching_user = OktaUserFactory.create(email="zlatan@example.com", first_name="Zlatan")
-    other_user = OktaUserFactory.create(email="other@example.com", first_name="Other")
-    group = OktaGroupFactory.create(name="GroupZlatan", description="zlatan-themed")
-    db.session.add_all([matching_user, other_user, group])
-    await db.session.commit()
+    matching_user = await OktaUserFactory.create_async(email="zlatan@example.com", first_name="Zlatan")
+    other_user = await OktaUserFactory.create_async(email="other@example.com", first_name="Other")
+    group = await OktaGroupFactory.create_async(name="GroupZlatan", description="zlatan-themed")
     await ModifyGroupUsers(group=group, members_to_add=[matching_user.id, other_user.id], sync_to_okta=False).execute()
 
     rep = await client.get(url_for("api-audit.users_and_groups"), params={"group_id": group.id, "q": "zlatan"})
@@ -545,11 +541,9 @@ async def test_users_audit_q_with_group_id_searches_only_users(client: AsyncClie
 async def test_groups_audit_q_with_role_id_searches_only_groups(client: AsyncClient, db: Db, url_for: Any) -> None:
     """When `role_id` is set on /api/audit/groups, `q` must restrict to
     the *associated group* columns and ignore the role columns."""
-    role = RoleGroupFactory.create(name="ZebraRole")
-    matching_group = OktaGroupFactory.create(name="ZebraStripeGroup")
-    other_group = OktaGroupFactory.create(name="UnrelatedGroup")
-    db.session.add_all([role, matching_group, other_group])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async(name="ZebraRole")
+    matching_group = await OktaGroupFactory.create_async(name="ZebraStripeGroup")
+    other_group = await OktaGroupFactory.create_async(name="UnrelatedGroup")
     await ModifyRoleGroups(
         role_group=role,
         groups_to_add=[matching_group.id, other_group.id],
@@ -571,11 +565,9 @@ async def test_users_audit_owner_id_excludes_owner_self_membership(client: Async
     exclude the owner's own memberships. The frontend's "expiring access"
     review surface is meant to show *other* users' access the owner owes
     a renewal on, not the owner's own."""
-    owner = OktaUserFactory.create(email="own@example.com")
-    other = OktaUserFactory.create(email="other@example.com")
-    group = OktaGroupFactory.create(name="OwnedGroup")
-    db.session.add_all([owner, other, group])
-    await db.session.commit()
+    owner = await OktaUserFactory.create_async(email="own@example.com")
+    other = await OktaUserFactory.create_async(email="other@example.com")
+    group = await OktaGroupFactory.create_async(name="OwnedGroup")
     # Owner is owner of group; owner is also a regular member of the same
     # group; another user is also a member.
     await ModifyGroupUsers(
@@ -600,11 +592,9 @@ async def test_users_audit_includes_role_associated_group_mappings_when_unfilter
     RoleGroup must surface `active_role_associated_group_member_mappings`
     and `active_role_associated_group_owner_mappings` so the React UI can
     render the role's associated-groups rollup."""
-    role = RoleGroupFactory.create(name="UnfilteredRole")
-    associated = OktaGroupFactory.create(name="UnfilteredAssociatedGroup")
-    user = OktaUserFactory.create()
-    db.session.add_all([role, associated, user])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async(name="UnfilteredRole")
+    associated = await OktaGroupFactory.create_async(name="UnfilteredAssociatedGroup")
+    user = await OktaUserFactory.create_async()
     await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
 
@@ -631,11 +621,9 @@ async def test_users_audit_omits_role_associated_group_mappings_when_user_filter
     must be suppressed on the response (eager-loading them under a
     polymorphic `with_polymorphic` query is unstable). The serializer
     must not attach those fields in this mode."""
-    role = RoleGroupFactory.create(name="FilteredRole")
-    associated = OktaGroupFactory.create(name="FilteredAssociatedGroup")
-    user = OktaUserFactory.create()
-    db.session.add_all([role, associated, user])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async(name="FilteredRole")
+    associated = await OktaGroupFactory.create_async(name="FilteredAssociatedGroup")
+    user = await OktaUserFactory.create_async()
     await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=role, members_to_add=[user.id], sync_to_okta=False).execute()
 
@@ -656,11 +644,9 @@ async def test_users_audit_direct_flag_reorders(client: AsyncClient, db: Db, url
     supplied, the order_by re-applies using the email/created_at compound
     shape: with `?direct=true&order_by=moniker`, rows come back ordered
     by lowercased email asc rather than insertion order."""
-    group = OktaGroupFactory.create()
-    u_z = OktaUserFactory.create(email="zara@example.com")
-    u_a = OktaUserFactory.create(email="alpha@example.com")
-    db.session.add_all([group, u_a, u_z])
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
+    u_z = await OktaUserFactory.create_async(email="zara@example.com")
+    u_a = await OktaUserFactory.create_async(email="alpha@example.com")
     # Insert in non-alphabetical order so a default unordered query would
     # surface them in insertion order rather than sorted.
     await ModifyGroupUsers(group=group, members_to_add=[u_z.id], sync_to_okta=False).execute()
@@ -684,11 +670,9 @@ async def test_users_audit_q_with_user_and_owner_pin_ands_narrow_and_broad(
     """`user_id` + `owner_id` pinned: the narrow group-only `q` filter
     AND-applies on top of the broad either-side filter. A search term that
     matches user columns but no group columns must return zero rows."""
-    user = OktaUserFactory.create(email="zzqterm@example.com", first_name="Zzqterm", last_name="Doe")
-    owner = OktaUserFactory.create(email="owner-pin@example.com", first_name="Pin", last_name="Owner")
-    group = OktaGroupFactory.create(name="GroupA", description="alpha")
-    db.session.add_all([user, owner, group])
-    await db.session.commit()
+    user = await OktaUserFactory.create_async(email="zzqterm@example.com", first_name="Zzqterm", last_name="Doe")
+    owner = await OktaUserFactory.create_async(email="owner-pin@example.com", first_name="Pin", last_name="Owner")
+    group = await OktaGroupFactory.create_async(name="GroupA", description="alpha")
     await ModifyGroupUsers(
         group=group,
         members_to_add=[user.id],
@@ -711,10 +695,8 @@ async def test_users_audit_q_with_user_and_group_pin_ands_both_narrow_filters(
     """`user_id` + `group_id` pinned: both narrow filters compose. A `q`
     that matches user columns but no group columns must filter out the
     pinned row."""
-    user = OktaUserFactory.create(email="qtfirst@example.com", first_name="Qtfirst", last_name="X")
-    group = OktaGroupFactory.create(name="GroupBeta", description="beta")
-    db.session.add_all([user, group])
-    await db.session.commit()
+    user = await OktaUserFactory.create_async(email="qtfirst@example.com", first_name="Qtfirst", last_name="X")
+    group = await OktaGroupFactory.create_async(name="GroupBeta", description="beta")
     await ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     rep = await client.get(
@@ -731,11 +713,9 @@ async def test_groups_audit_q_with_role_and_owner_pin(client: AsyncClient, db: D
     associated-group `q` filter AND-applies on top of the broad either-side
     filter. A `q` that matches role columns but no group columns must
     return zero rows."""
-    role = RoleGroupFactory.create(name="ZqxRole", description="zqx-only-role")
-    associated = OktaGroupFactory.create(name="GroupGamma", description="gamma")
-    owner = OktaUserFactory.create(email="role-pin-owner@example.com", first_name="Pin", last_name="Owner")
-    db.session.add_all([role, associated, owner])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async(name="ZqxRole", description="zqx-only-role")
+    associated = await OktaGroupFactory.create_async(name="GroupGamma", description="gamma")
+    owner = await OktaUserFactory.create_async(email="role-pin-owner@example.com", first_name="Pin", last_name="Owner")
     await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=associated, owners_to_add=[owner.id], sync_to_okta=False).execute()
 
@@ -754,10 +734,8 @@ async def test_users_audit_returns_rows_when_user_is_soft_deleted(client: AsyncC
     eager-loaded `OktaUserGroupMember.active_user`, whose relationship carries
     `innerjoin=True` + `deleted_at IS NULL`, so SQLAlchemy emitted an INNER
     JOIN that silently dropped the row for any soft-deleted user."""
-    group = OktaGroupFactory.create()
-    user = OktaUserFactory.create()
-    db.session.add_all([group, user])
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
+    user = await OktaUserFactory.create_async()
     await ModifyGroupUsers(group=group, members_to_add=[user.id], sync_to_okta=False).execute()
 
     user.deleted_at = datetime.now(timezone.utc)
@@ -783,10 +761,8 @@ async def test_groups_audit_returns_rows_when_role_group_is_soft_deleted(
     `joinedload(RoleGroupMap.active_role_group)`, and that relationship has
     the same `innerjoin=True` + `deleted_at IS NULL` shape, so audit rows
     were silently dropped when the role group was soft-deleted."""
-    role = RoleGroupFactory.create()
-    group = OktaGroupFactory.create()
-    db.session.add_all([role, group])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async()
+    group = await OktaGroupFactory.create_async()
     await ModifyRoleGroups(role_group=role, groups_to_add=[group.id], sync_to_okta=False).execute()
 
     role.deleted_at = datetime.now(timezone.utc)

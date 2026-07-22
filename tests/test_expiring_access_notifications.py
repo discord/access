@@ -180,19 +180,12 @@ async def test_individual_expiring_direct_with_role_week(
 
 # Test with one owner who owns two groups, each group has a member whose access expires this week
 async def test_owner_expiring_access_notifications(db: Db, mocker: MockerFixture) -> None:
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    user2 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    user2 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
-
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(user2)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group1, users_added_ended_at=expiration_datetime, members_to_add=[user1.id], sync_to_okta=False
@@ -233,13 +226,9 @@ async def test_owner_expiring_access_notifications(db: Db, mocker: MockerFixture
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring this week
 async def test_owner_expiring_access_notifications_owner_only_member(db: Db, mocker: MockerFixture) -> None:
-    group = OktaGroupFactory.create()
-    owner = OktaUserFactory.create()
+    group = await OktaGroupFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
-
-    db.session.add(group)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group, users_added_ended_at=expiration_datetime, members_to_add=[owner.id], sync_to_okta=False
@@ -257,19 +246,12 @@ async def test_owner_expiring_access_notifications_owner_only_member(db: Db, moc
 # Test with one owner who owns two groups, each group has a member whose access expires this week
 # The owner is also a group member with expiring access but their own access should not be included.
 async def test_owner_expiring_access_notifications_owner_member(db: Db, mocker: MockerFixture) -> None:
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    user2 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    user2 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
-
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(user2)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group1, users_added_ended_at=expiration_datetime, members_to_add=[user1.id, owner.id], sync_to_okta=False
@@ -318,19 +300,12 @@ async def test_owner_expiring_access_notifications_owner_member(db: Db, mocker: 
 
 # Test with one owner who owns two groups, each group has a member whose access expires next week
 async def test_owner_expiring_access_notifications_week(db: Db, mocker: MockerFixture) -> None:
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    user2 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    user2 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=9)
-
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(user2)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group1, users_added_ended_at=expiration_datetime, members_to_add=[user1.id], sync_to_okta=False
@@ -371,13 +346,9 @@ async def test_owner_expiring_access_notifications_week(db: Db, mocker: MockerFi
 
 # Test with one owner who owns one group, the owner is a member of the group and their access is expiring next week
 async def test_owner_expiring_access_notifications_owner_only_member_week(db: Db, mocker: MockerFixture) -> None:
-    group = OktaGroupFactory.create()
-    owner = OktaUserFactory.create()
+    group = await OktaGroupFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=9)
-
-    db.session.add(group)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group, users_added_ended_at=expiration_datetime, members_to_add=[owner.id], sync_to_okta=False
@@ -395,19 +366,12 @@ async def test_owner_expiring_access_notifications_owner_only_member_week(db: Db
 # Test with one owner who owns two groups, each group has a member whose access expires next week
 # The owner is also a group member with expiring access but their own access should not be included.
 async def test_owner_expiring_access_notifications_owner_member_week(db: Db, mocker: MockerFixture) -> None:
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    user2 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    user2 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=9)
-
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(user2)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group1, users_added_ended_at=expiration_datetime, members_to_add=[user1.id, owner.id], sync_to_okta=False
@@ -456,17 +420,11 @@ async def test_owner_expiring_access_notifications_owner_member_week(db: Db, moc
 
 # Test with one owner who owns a groups, the group has a role member whose access expires this week
 async def test_owner_expiring_access_notifications_role(db: Db, mocker: MockerFixture) -> None:
-    group1 = RoleGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    group1 = await RoleGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
-
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=group1, users_added_ended_at=None, members_to_add=[user1.id], sync_to_okta=False
@@ -497,19 +455,12 @@ async def test_owner_expiring_access_notifications_role(db: Db, mocker: MockerFi
 
 # Test with one owner who owns two groups, each group has a role member whose access expires next week
 async def test_owner_expiring_access_notifications_role_week(db: Db, mocker: MockerFixture) -> None:
-    role = RoleGroupFactory.create()
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    role = await RoleGroupFactory.create_async()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    user1 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=9)
-
-    db.session.add(role)
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(
         group=role, users_added_ended_at=None, members_to_add=[user1.id], sync_to_okta=False
@@ -596,14 +547,12 @@ async def test_individual_do_not_renew_notification_behavior(
 async def test_owner_role_do_not_renew_notification_behavior(
     db: Db, mocker: MockerFixture, role_group: RoleGroup, okta_group: OktaGroup
 ) -> None:
-    user1 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    user1 = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
 
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(user1)
-    db.session.add(owner)
     await db.session.commit()
 
     await ModifyGroupUsers(
@@ -657,19 +606,12 @@ async def test_owner_role_do_not_renew_notification_behavior(
 
 # Test with one owner who owns two role, each role is a member of a group and its access expires tomorrow
 async def test_role_owner_expiring_access_notifications_role_tomorrow(db: Db, mocker: MockerFixture) -> None:
-    role1 = RoleGroupFactory.create()
-    role2 = RoleGroupFactory.create()
-    group = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    role1 = await RoleGroupFactory.create_async()
+    role2 = await RoleGroupFactory.create_async()
+    group = await OktaGroupFactory.create_async()
+    await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=1)
-
-    db.session.add(role1)
-    db.session.add(role2)
-    db.session.add(group)
-    db.session.add(user1)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(group=role1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=role2, owners_to_add=[owner.id], sync_to_okta=False).execute()
@@ -710,22 +652,14 @@ async def test_role_owner_expiring_access_notifications_role_tomorrow(db: Db, mo
 # Test with one owner who owns two role, each role is a member of one or more groups and its
 # access expires tomorrow or next week
 async def test_role_owner_expiring_access_notifications_role_multiple_dates(db: Db, mocker: MockerFixture) -> None:
-    role1 = RoleGroupFactory.create()
-    role2 = RoleGroupFactory.create()
-    group1 = OktaGroupFactory.create()
-    group2 = OktaGroupFactory.create()
-    user1 = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
+    role1 = await RoleGroupFactory.create_async()
+    role2 = await RoleGroupFactory.create_async()
+    group1 = await OktaGroupFactory.create_async()
+    group2 = await OktaGroupFactory.create_async()
+    await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=1)
     expiration_datetime2 = datetime.now() + timedelta(weeks=1)
-
-    db.session.add(role1)
-    db.session.add(role2)
-    db.session.add(group1)
-    db.session.add(group2)
-    db.session.add(user1)
-    db.session.add(owner)
-    await db.session.commit()
 
     await ModifyGroupUsers(group=role1, owners_to_add=[owner.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=role2, owners_to_add=[owner.id], sync_to_okta=False).execute()
@@ -775,11 +709,11 @@ async def test_owner_expiring_access_notifications_managed_group_admin(
     db: Db, app: FastAPI, mocker: MockerFixture
 ) -> None:
     # Create an externally managed group and an Access managed group
-    group1 = OktaGroupFactory.create()
+    group1 = OktaGroupFactory.build()
     group1.is_managed = False
-    group2 = OktaGroupFactory.create()
+    group2 = OktaGroupFactory.build()
 
-    user = OktaUserFactory.create()
+    user = OktaUserFactory.build()
     access_owner = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
@@ -880,11 +814,9 @@ async def test_expiring_user_notification_hook_runs_on_loop_thread_with_usable_o
 async def test_expiring_owner_notification_hook_can_read_association_relationships(
     db: Db, mocker: MockerFixture
 ) -> None:
-    group = OktaGroupFactory.create()
-    member = OktaUserFactory.create()
-    owner = OktaUserFactory.create()
-    db.session.add_all([group, member, owner])
-    await db.session.commit()
+    group = await OktaGroupFactory.create_async()
+    member = await OktaUserFactory.create_async()
+    owner = await OktaUserFactory.create_async()
 
     await ModifyGroupUsers(
         group=group,
@@ -914,11 +846,9 @@ async def test_expiring_owner_notification_hook_can_read_association_relationshi
 async def test_expiring_role_owner_notification_hook_can_read_association_relationships(
     db: Db, mocker: MockerFixture
 ) -> None:
-    role = RoleGroupFactory.create()
-    group = OktaGroupFactory.create()
-    owner = OktaUserFactory.create()
-    db.session.add_all([role, group, owner])
-    await db.session.commit()
+    role = await RoleGroupFactory.create_async()
+    group = await OktaGroupFactory.create_async()
+    owner = await OktaUserFactory.create_async()
 
     await ModifyGroupUsers(group=role, owners_to_add=[owner.id], sync_to_okta=False).execute()
     await ModifyRoleGroups(
@@ -957,15 +887,12 @@ async def test_expiring_role_owner_notification_hook_can_read_association_relati
 async def test_owner_expiring_access_notifications_app_group_falls_back_to_app_managers(
     db: Db, mocker: MockerFixture
 ) -> None:
-    app = AppFactory.create()
-    owner_app_group = AppGroupFactory.create(app_id=app.id, is_owner=True)
-    member_app_group = AppGroupFactory.create(app_id=app.id, is_owner=False)
-    app_owner = OktaUserFactory.create()
-    member = OktaUserFactory.create()
+    app = await AppFactory.create_async()
+    owner_app_group = await AppGroupFactory.create_async(app_id=app.id, is_owner=True)
+    member_app_group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False)
+    app_owner = await OktaUserFactory.create_async()
+    member = await OktaUserFactory.create_async()
     expiration_datetime = datetime.now() + timedelta(days=2)
-
-    db.session.add_all([app, owner_app_group, member_app_group, app_owner, member])
-    await db.session.commit()
 
     # app_owner administers the app by owning the app owner group.
     await ModifyGroupUsers(group=owner_app_group, owners_to_add=[app_owner.id], sync_to_okta=False).execute()

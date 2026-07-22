@@ -151,10 +151,7 @@ async def test_create_user(client: AsyncClient, db: Db, user: OktaUser, url_for:
 
 async def test_get_all_user(client: AsyncClient, db: Db, url_for: Any) -> None:
     users_url = url_for("api-users.users")
-    users = OktaUserFactory.create_batch(10)
-
-    db.session.add_all(users)
-    await db.session.commit()
+    users = await OktaUserFactory.create_batch_async(10)
 
     rep = await client.get(users_url)
     assert rep.status_code == 200
@@ -175,7 +172,7 @@ async def test_user_email_uniqueness(client: AsyncClient, db: Db) -> None:
     known_email = "test@email.com"
 
     # Create a user with a unique email
-    user1 = OktaUserFactory.create()
+    user1 = OktaUserFactory.build()
 
     user1.email = known_email
 
@@ -183,7 +180,7 @@ async def test_user_email_uniqueness(client: AsyncClient, db: Db) -> None:
     await db.session.commit()
 
     # Trying to insert a user with the same email should fail
-    user2 = OktaUserFactory.create()
+    user2 = OktaUserFactory.build()
     user2.email = known_email
     try:
         db.session.add(user2)
@@ -222,7 +219,7 @@ async def test_get_user_manager_includes_profile(client: AsyncClient, db: Db, us
     `USER_DISPLAY_CUSTOM_ATTRIBUTES`). The FastAPI `OktaUserDetail.manager`
     must expose the same dict so the React user-detail page can render the
     manager's title alongside their name."""
-    manager = OktaUserFactory.create()
+    manager = OktaUserFactory.build()
     manager.profile = {"Title": "Director", "Manager": "ceo@example.com"}
     db.session.add(manager)
     await db.session.commit()

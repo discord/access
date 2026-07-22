@@ -5,8 +5,9 @@ from sqlalchemy import select
 
 from api.integrity import verify_and_fix_role_memberships
 from api.extensions import Db
-from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.services import okta
+from tests.factories import OktaUserGroupMemberFactory, RoleGroupMapFactory
 from tests.helpers import db_count
 
 
@@ -16,11 +17,13 @@ async def test_missing_user_from_group_membership(
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=role_group.id))
-    member_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=False)
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
-    db.session.add(owner_role_group_map)
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=role_group.id)
+    member_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=False
+    )
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=True
+    )
     await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
@@ -57,13 +60,15 @@ async def test_missing_user_from_group_membership_with_expiring_role_membership(
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(
-        OktaUserGroupMember(user_id=user.id, group_id=role_group.id, ended_at=datetime.now(UTC) + timedelta(days=2))
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id, group_id=role_group.id, ended_at=datetime.now(UTC) + timedelta(days=2)
     )
-    member_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=False)
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
-    db.session.add(owner_role_group_map)
+    member_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=False
+    )
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=True
+    )
     await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
@@ -124,23 +129,21 @@ async def test_missing_user_from_group_membership_with_expiring_role_assignment(
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(
-        OktaUserGroupMember(user_id=user.id, group_id=role_group.id, ended_at=datetime.now(UTC) + timedelta(days=4))
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id, group_id=role_group.id, ended_at=datetime.now(UTC) + timedelta(days=4)
     )
-    member_role_group_map = RoleGroupMap(
+    member_role_group_map = await RoleGroupMapFactory.create_async(
         role_group_id=role_group.id,
         group_id=okta_group.id,
         is_owner=False,
         ended_at=datetime.now(UTC) + timedelta(days=2),
     )
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
         role_group_id=role_group.id,
         group_id=okta_group.id,
         is_owner=True,
         ended_at=datetime.now(UTC) + timedelta(days=6),
     )
-    db.session.add(owner_role_group_map)
     await db.session.commit()
 
     # drop identity-map state staled by the ops above (expire_on_commit=False)
@@ -204,21 +207,19 @@ async def test_missing_user_from_group_membership_with_both_expiring(
     db.session.add(user)
     db.session.add(role_group)
     db.session.add(okta_group)
-    db.session.add(OktaUserGroupMember(user_id=user.id, group_id=role_group.id))
-    member_role_group_map = RoleGroupMap(
+    await OktaUserGroupMemberFactory.create_async(user_id=user.id, group_id=role_group.id)
+    member_role_group_map = await RoleGroupMapFactory.create_async(
         role_group_id=role_group.id,
         group_id=okta_group.id,
         is_owner=False,
         ended_at=datetime.now(UTC) + timedelta(days=2),
     )
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
         role_group_id=role_group.id,
         group_id=okta_group.id,
         is_owner=True,
         ended_at=datetime.now(UTC) + timedelta(days=4),
     )
-    db.session.add(owner_role_group_map)
     await db.session.commit()
 
     add_membership_spy = mocker.patch.object(okta, "add_user_to_group")
@@ -280,27 +281,24 @@ async def test_extra_user_from_role_membership(
     db.session.add(role_group)
     db.session.add(okta_group)
 
-    member_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=False)
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
-    db.session.add(owner_role_group_map)
-    await db.session.commit()
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-            role_group_map_id=member_role_group_map.id,
-        )
+    member_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=False
     )
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-            role_group_map_id=owner_role_group_map.id,
-            is_owner=True,
-        )
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=True
     )
     await db.session.commit()
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+        role_group_map_id=member_role_group_map.id,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+        role_group_map_id=owner_role_group_map.id,
+        is_owner=True,
+    )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
     remove_ownership_spy = mocker.patch.object(okta, "remove_owner_from_group")
@@ -346,40 +344,33 @@ async def test_extra_user_from_role_membership_with_direct(
     db.session.add(role_group)
     db.session.add(okta_group)
 
-    member_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=False)
-    db.session.add(member_role_group_map)
-    owner_role_group_map = RoleGroupMap(role_group_id=role_group.id, group_id=okta_group.id, is_owner=True)
-    db.session.add(owner_role_group_map)
-    await db.session.commit()
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-            role_group_map_id=member_role_group_map.id,
-        )
+    member_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=False
     )
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-            role_group_map_id=owner_role_group_map.id,
-            is_owner=True,
-        )
-    )
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-        )
-    )
-    db.session.add(
-        OktaUserGroupMember(
-            user_id=user.id,
-            group_id=okta_group.id,
-            is_owner=True,
-        )
+    owner_role_group_map = await RoleGroupMapFactory.create_async(
+        role_group_id=role_group.id, group_id=okta_group.id, is_owner=True
     )
     await db.session.commit()
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+        role_group_map_id=member_role_group_map.id,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+        role_group_map_id=owner_role_group_map.id,
+        is_owner=True,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+    )
+    await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=okta_group.id,
+        is_owner=True,
+    )
 
     remove_membership_spy = mocker.patch.object(okta, "remove_user_from_group")
     remove_ownership_spy = mocker.patch.object(okta, "remove_owner_from_group")
