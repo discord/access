@@ -5,8 +5,10 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from okta.exceptions.exceptions import ApiException
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
+from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
@@ -294,42 +296,83 @@ async def test_request_timeout_deadline_is_not_retried() -> None:
     assert get_user.call_count == 1
 
 
-def _mock_okta_executor(mocker, svc, *, body=None, retry_side_effect=None):
-    """Wire svc._okta_client() to a mock request executor. Returns the executor.
+def _fake_okta_client(mocker, svc):
+    """Wire svc._okta_client() to yield a MagicMock client. Returns the client so tests
+    can set its high-level group-push methods' return values / side effects.
 
-    By default every _retry call resolves to a single successful response; pass
-    retry_side_effect to script per-call outcomes (e.g. to simulate an error status)."""
-    executor = MagicMock()
-    executor.create_request = AsyncMock(return_value=(MagicMock(), None))
-    response = MagicMock()
-    response.get_body.return_value = body if body is not None else {}
-    response.has_next.return_value = False  # single page by default; pagination tested separately
+    The methods now go through the SDK's typed ``GroupPushMappingApi`` (inherited by the
+    Okta ``Client``), which returns ``(data, ApiResponse, error)`` tuples and raises
+    ``ApiException`` on HTTP errors — so tests script those methods directly rather than
+    the low-level request executor."""
     client = MagicMock()
-    client.get_request_executor.return_value = executor
 
     @asynccontextmanager
     async def fake_client():
         yield client
 
     mocker.patch.object(svc, "_okta_client", fake_client)
-    if retry_side_effect is not None:
-        mocker.patch.object(OktaService, "_call", AsyncMock(side_effect=retry_side_effect))
-    else:
-        mocker.patch.object(OktaService, "_call", AsyncMock(return_value=(response, None)))
-    return executor
+    return client
+
+
+def _mapping(**fields):
+    """Build a real ``GroupPushMapping`` model from camelCase fields, as the SDK returns."""
+    mapping = GroupPushMapping.from_dict(fields)
+    assert mapping is not None
+    return mapping
+
+
+def _list_result(data, *, next_cursor=None):
+    """A ``(data, ApiResponse, error)`` tuple; sets a Link header when a next page exists."""
+    resp = MagicMock()
+    resp.headers = (
+        {"Link": f'<https://x/api/v1/apps/app-1/group-push/mappings?after={next_cursor}>; rel="next"'}
+        if next_cursor
+        else {}
+    )
+    return (data, resp, None)
 
 
 async def test_create_group_push_mapping_posts_active_mapping(mocker):
     svc = OktaService()
-    executor = _mock_okta_executor(mocker, svc, body={"id": "map-123"})
+    client = _fake_okta_client(mocker, svc)
+    created = _mapping(id="map-123", sourceGroupId="src-1", targetGroupId="tgt-1", status="ACTIVE")
+    client.create_group_push_mapping = AsyncMock(return_value=(created, MagicMock(), None))
 
     result = await svc.create_group_push_mapping("app-1", "src-1", "tgt-1")
 
-    assert result == {"id": "map-123"}
-    _, kwargs = executor.create_request.call_args
-    assert kwargs["method"] == "POST"
-    assert kwargs["url"] == "/api/v1/apps/app-1/group-push/mappings"
-    assert kwargs["body"] == {"sourceGroupId": "src-1", "targetGroupId": "tgt-1", "status": "ACTIVE"}
+    assert result == {"id": "map-123", "sourceGroupId": "src-1", "targetGroupId": "tgt-1", "status": "ACTIVE"}
+    args, _ = client.create_group_push_mapping.call_args
+    assert args[0] == "app-1"
+    body = args[1].model_dump(by_alias=True, mode="json", exclude_none=True)
+    assert body == {"sourceGroupId": "src-1", "targetGroupId": "tgt-1", "status": "ACTIVE"}
+
+
+async def test_create_group_push_mapping_posts_new_group_by_name(mocker):
+    svc = OktaService()
+    client = _fake_okta_client(mocker, svc)
+    created = _mapping(id="map-123", sourceGroupId="src-1", status="ACTIVE")
+    client.create_group_push_mapping = AsyncMock(return_value=(created, MagicMock(), None))
+
+    result = await svc.create_group_push_mapping("app-1", "src-1", targetGroupName="gcp-security")
+
+    assert result == {"id": "map-123", "sourceGroupId": "src-1", "status": "ACTIVE"}
+    args, _ = client.create_group_push_mapping.call_args
+    body = args[1].model_dump(by_alias=True, mode="json", exclude_none=True)
+    assert body == {"sourceGroupId": "src-1", "targetGroupName": "gcp-security", "status": "ACTIVE"}
+
+
+async def test_create_group_push_mapping_parses_raw_body_when_untyped(mocker):
+    # Okta returns HTTP 200 for create-or-link, but the SDK only types the spec'd 201, so it
+    # returns data=None with the JSON in response.raw_data. The method must parse that body.
+    svc = OktaService()
+    client = _fake_okta_client(mocker, svc)
+    resp = MagicMock()
+    resp.raw_data = b'{"id":"map-200","sourceGroupId":"src-1","targetGroupId":"tgt-1","status":"ACTIVE"}'
+    client.create_group_push_mapping = AsyncMock(return_value=(None, resp, None))
+
+    result = await svc.create_group_push_mapping("app-1", "src-1", "tgt-1")
+
+    assert result == {"id": "map-200", "sourceGroupId": "src-1", "targetGroupId": "tgt-1", "status": "ACTIVE"}
 
 
 @pytest.mark.parametrize("args", [("", "src", "tgt"), ("app", "", "tgt"), ("app", "src", "")])
@@ -339,19 +382,30 @@ async def test_create_group_push_mapping_requires_args(args):
         await svc.create_group_push_mapping(*args)
 
 
+async def test_create_group_push_mapping_requires_exactly_one_target(mocker):
+    svc = OktaService()
+    # Neither target.
+    with pytest.raises(ValueError, match="exactly one"):
+        await svc.create_group_push_mapping("app-1", "src-1")
+    # Both targets.
+    with pytest.raises(ValueError, match="exactly one"):
+        await svc.create_group_push_mapping("app-1", "src-1", targetGroupId="tgt-1", targetGroupName="gcp-security")
+
+
 async def test_delete_group_push_mapping_deactivates_then_deletes(mocker):
     svc = OktaService()
-    executor = _mock_okta_executor(mocker, svc)
+    client = _fake_okta_client(mocker, svc)
+    client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
+    client.delete_group_push_mapping = AsyncMock(return_value=(None, MagicMock(), None))
 
     await svc.delete_group_push_mapping("app-1", "map-1", deleteTargetGroup=True)
 
-    calls = executor.create_request.call_args_list
-    assert len(calls) == 2
-    assert calls[0].kwargs["method"] == "PATCH"
-    assert calls[0].kwargs["url"] == "/api/v1/apps/app-1/group-push/mappings/map-1"
-    assert calls[0].kwargs["body"] == {"status": "INACTIVE"}
-    assert calls[1].kwargs["method"] == "DELETE"
-    assert calls[1].kwargs["url"] == "/api/v1/apps/app-1/group-push/mappings/map-1?deleteTargetGroup=true"
+    # Deactivate (update -> INACTIVE) must precede delete; Okta rejects deleting an ACTIVE mapping.
+    update_args, _ = client.update_group_push_mapping.call_args
+    assert update_args[0] == "app-1"
+    assert update_args[1] == "map-1"
+    assert update_args[2].status == "INACTIVE"
+    client.delete_group_push_mapping.assert_awaited_once_with("app-1", "map-1", True)
 
 
 @pytest.mark.parametrize("args", [("", "map-1"), ("app-1", "")])
@@ -363,66 +417,76 @@ async def test_delete_group_push_mapping_requires_args(args):
 
 async def test_delete_group_push_mapping_idempotent_on_404(mocker):
     # A 404 means the mapping is already gone; deletion is idempotent, so the operation must
-    # succeed rather than raise (covers retry/replay after a partial failure).
+    # succeed rather than raise (covers retry/replay after a partial failure). The typed client
+    # raises ApiException on HTTP errors, so simulate the DELETE raising a 404.
     svc = OktaService()
-    not_found = MagicMock(status=404)
-    # PATCH (deactivate) succeeds; DELETE returns 404 (already gone).
-    _mock_okta_executor(mocker, svc, retry_side_effect=[(MagicMock(), None), (None, not_found)])
+    client = _fake_okta_client(mocker, svc)
+    client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
+    client.delete_group_push_mapping = AsyncMock(side_effect=ApiException(status=404))
 
     await svc.delete_group_push_mapping("app-1", "map-1")  # must not raise
 
 
 async def test_delete_group_push_mapping_raises_on_non_404(mocker):
-    # A genuine failure (e.g. 500) must still surface, not be swallowed by the 404 tolerance.
+    # A genuine, non-transient failure (e.g. 403) must still surface, not be swallowed by the
+    # 404 tolerance. (5xx is handled separately as a transient error before reaching here.)
     svc = OktaService()
-    server_error = MagicMock(status=500)
-    _mock_okta_executor(mocker, svc, retry_side_effect=[(MagicMock(), None), (None, server_error)])
+    client = _fake_okta_client(mocker, svc)
+    client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
+    client.delete_group_push_mapping = AsyncMock(side_effect=ApiException(status=403))
 
-    with pytest.raises(Exception):
+    with pytest.raises(ApiException):
         await svc.delete_group_push_mapping("app-1", "map-1")
 
 
 async def test_list_group_push_mappings_returns_body(mocker):
     svc = OktaService()
-    executor = _mock_okta_executor(mocker, svc, body=[{"id": "m1", "sourceGroupId": "g1"}])
+    client = _fake_okta_client(mocker, svc)
+    mapping = _mapping(id="m1", sourceGroupId="g1", status="ACTIVE")
+    client.list_group_push_mappings = AsyncMock(return_value=_list_result([mapping]))
 
     result = await svc.list_group_push_mappings("app-1")
 
-    assert result == [{"id": "m1", "sourceGroupId": "g1"}]
-    _, kwargs = executor.create_request.call_args
-    assert kwargs["method"] == "GET"
-    assert kwargs["url"] == "/api/v1/apps/app-1/group-push/mappings"
+    assert result == [{"id": "m1", "sourceGroupId": "g1", "status": "ACTIVE"}]
+    args, kwargs = client.list_group_push_mappings.call_args
+    assert args[0] == "app-1"
+    # No source filter by default -> the SDK omits the sourceGroupId query param.
+    assert kwargs["source_group_id"] is None
+
+
+async def test_list_group_push_mappings_filters_by_source_group_id(mocker):
+    # Passing sourceGroupId filters server-side so a caller after one source group's mapping
+    # doesn't page the whole app's mappings.
+    svc = OktaService()
+    client = _fake_okta_client(mocker, svc)
+    mapping = _mapping(id="m1", sourceGroupId="g1", targetGroupId="t1", status="ACTIVE")
+    client.list_group_push_mappings = AsyncMock(return_value=_list_result([mapping]))
+
+    result = await svc.list_group_push_mappings("app-1", sourceGroupId="g1")
+
+    assert result == [{"id": "m1", "sourceGroupId": "g1", "targetGroupId": "t1", "status": "ACTIVE"}]
+    _, kwargs = client.list_group_push_mappings.call_args
+    assert kwargs["source_group_id"] == "g1"
 
 
 async def test_list_group_push_mappings_follows_pagination(mocker):
     # The Group Push Mappings endpoint is paginated via Link headers; list_group_push_mappings
-    # must follow the `next` link and return every page, not just the first.
+    # must follow the `next` cursor and return every page, not just the first.
     svc = OktaService()
-    executor = MagicMock()
-    executor.create_request = AsyncMock(return_value=(MagicMock(), None))
-    client = MagicMock()
-    client.get_request_executor.return_value = executor
-
-    @asynccontextmanager
-    async def fake_client():
-        yield client
-
-    mocker.patch.object(svc, "_okta_client", fake_client)
-
-    page1 = MagicMock()
-    page1.get_body.return_value = [{"id": "m1"}]
-    page1.has_next.side_effect = [True, False]  # one further page, then exhausted
-    # _call is invoked first for the initial execute (-> page1 response), then for page1.next
-    # (-> the second page's body), matching the low-level OktaAPIResponse pagination contract.
-    mocker.patch.object(
-        OktaService,
-        "_call",
-        AsyncMock(side_effect=[(page1, None), ([{"id": "m2"}], None)]),
+    client = _fake_okta_client(mocker, svc)
+    client.list_group_push_mappings = AsyncMock(
+        side_effect=[
+            _list_result([_mapping(id="m1")], next_cursor="CURSOR"),
+            _list_result([_mapping(id="m2")]),
+        ]
     )
 
     result = await svc.list_group_push_mappings("app-1")
 
     assert result == [{"id": "m1"}, {"id": "m2"}]
+    # Page one is fetched with no cursor; page two with the cursor from the Link header.
+    assert client.list_group_push_mappings.await_args_list[0].kwargs["after"] is None
+    assert client.list_group_push_mappings.await_args_list[1].kwargs["after"] == "CURSOR"
 
 
 async def test_list_group_push_mappings_requires_app_id():
