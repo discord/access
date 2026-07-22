@@ -399,7 +399,9 @@ async def test_discover_existing_push_mapping_finds_mapping(
     )
     tgt = Mock()
     tgt.group = Mock(id="okta-tgt-9")
-    tgt.group.profile = Mock(googleGroupEmail="found@test-company.com")
+    # Custom Okta attributes (googleGroupEmail) live in the profile union's
+    # actual_instance.additional_properties, not directly on the profile object.
+    tgt.group.profile.actual_instance.additional_properties = {"googleGroupEmail": "found@test-company.com"}
     mocker.patch("plugin.okta.get_group", return_value=tgt)
 
     link = await plugin_instance._discover_existing_push_mapping(group)
@@ -1356,7 +1358,10 @@ async def test_discover_existing_push_mapping_recovers_email(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
 ) -> None:
     group = _group(mocker)
-    profile = Mock(googleGroupEmail="sec@test-company.com")
+    profile = Mock()
+    # Custom Okta attributes (googleGroupEmail) live in the profile union's
+    # actual_instance.additional_properties, not directly on the profile object.
+    profile.actual_instance.additional_properties = {"googleGroupEmail": "sec@test-company.com"}
     mocker.patch(
         "plugin.okta.list_group_push_mappings",
         return_value=[
