@@ -278,7 +278,7 @@ async def put_group(
     if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set and isinstance(group, AppGroup):
         app_plugin_data = group.app.plugin_data if group.app is not None else {}
         _validate_group_plugin_config(
-            body.plugin_data,
+            body.plugin_data or {},
             app_plugin_data,
             get_app_group_lifecycle_plugin_to_invoke(group),
             old_plugin_data=group.plugin_data or {},
