@@ -9,7 +9,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from google.auth import default
@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.models import App, AppGroup
+from api.operations import ModifyGroupDetails
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
@@ -37,10 +38,6 @@ GOOGLE_GROUP_API_SCOPES = ["https://www.googleapis.com/auth/cloud-identity.group
 
 ENV_OKTA_APP_ID = "GOOGLE_WORKSPACE_OKTA_APP_ID"
 ENV_DOMAIN = "GOOGLE_WORKSPACE_DOMAIN"
-ENV_CUSTOMER_ID = "GOOGLE_WORKSPACE_CUSTOMER_ID"
-
-# Required label marking a Cloud Identity group as a Google Workspace (discussion) group.
-GROUP_DISCUSSION_FORUM_LABEL = "cloudidentity.googleapis.com/groups.discussion_forum"
 
 # App config keys
 CONFIG_ENABLED = "enabled"
@@ -98,11 +95,6 @@ class GoogleGroupManagerPlugin:
         if not domain:
             raise ValueError(f"{ENV_DOMAIN} environment variable is required")
         self._domain = domain
-
-        customer_id = os.environ.get(ENV_CUSTOMER_ID)
-        if not customer_id:
-            raise ValueError(f"{ENV_CUSTOMER_ID} environment variable is required")
-        self._customer_id = customer_id
 
         credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
         self._groups_api = build("cloudidentity", "v1", credentials=credentials).groups()
@@ -318,25 +310,6 @@ class GoogleGroupManagerPlugin:
     # The google-api-python-client is a synchronous, blocking HTTP client. Under the async
     # plugin interface these wrappers are coroutines that offload each blocking `.execute()`
     # to a worker thread (asyncio.to_thread) so they never stall the event loop.
-    async def _create_google_group(self, prefix: str, display_name: str, description: str) -> str:
-        body = {
-            "parent": f"customers/{self._customer_id}",
-            "groupKey": {"id": self._full_email(prefix)},
-            "displayName": display_name,
-            "description": description or "",
-            "labels": {GROUP_DISCUSSION_FORUM_LABEL: ""},
-        }
-        # initialGroupConfig=EMPTY: the admin-role service account creates the group without
-        # being added as an owner; Okta group push owns membership and ownership.
-        operation = await asyncio.to_thread(
-            lambda: self._groups_api.create(body=body, initialGroupConfig="EMPTY").execute()
-        )
-        created = operation.get("response") or {}
-        name = created.get("name")
-        if not name:
-            raise ValueError(f"Google group creation returned no resource name: {operation}")
-        return name.split("/", 1)[1]
-
     async def _get_google_group(self, google_group_id: str) -> dict[str, Any]:
         return await asyncio.to_thread(
             lambda: self._groups_api.get(name=self._resource_name(google_group_id)).execute()
@@ -377,7 +350,7 @@ class GoogleGroupManagerPlugin:
 
     # ---- Okta push-mapping + discovery ----
 
-    async def _okta_target_group_id(self, email: str) -> str | None:
+    async def _get_okta_target_group_id(self, email: str) -> str | None:
         """Find the Okta-imported target group for a Google group email, if present.
         The email is the stable join key (the Directory numeric id Cloud Identity does
         not reproduce, but Okta's googleGroupEmail attribute is immutable)."""
@@ -392,10 +365,10 @@ class GoogleGroupManagerPlugin:
             return None
         return str(matches[0].group.id)
 
-    async def _create_push_mapping(self, group: AppGroup, email: str) -> bool:
-        """Create the Okta push mapping. Returns False (defer) if Okta has not
-        imported the target group yet."""
-        target_group_id = await self._okta_target_group_id(email)
+    async def _create_push_mapping_for_existing_group(self, group: AppGroup, email: str) -> bool:
+        """Link to an already-imported Okta target group by id (the adoption path). Returns
+        False (defer) if Okta has not imported the target group yet."""
+        target_group_id = await self._get_okta_target_group_id(email)
         if target_group_id is None:
             return False
         result = await okta.create_group_push_mapping(
@@ -407,12 +380,26 @@ class GoogleGroupManagerPlugin:
         set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
         return True
 
-    async def _discover_existing_link(self, group: AppGroup) -> dict[str, Any] | None:
+    async def _create_push_mapping_and_new_group(self, group: AppGroup, email_prefix: str) -> None:
+        """Create a push mapping with a new target group name (the email prefix), so Okta creates
+        both its target group AND the downstream Google group and links them in one step. This is
+        the create path: it sidesteps the import lag of a Google-first create, since Okta already
+        knows the group it just made. The Google group's Cloud Identity ID and metadata are
+        resolved separately once Okta has pushed it to Google (see _reconcile)."""
+        result = await okta.create_group_push_mapping(
+            appId=self._okta_app_id, sourceGroupId=group.id, targetGroupName=email_prefix
+        )
+        mapping_id = result.get("id")
+        if not mapping_id:
+            raise ValueError(f"Okta push mapping creation returned no id: {result}")
+        set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
+
+    async def _discover_existing_push_mapping(self, group: AppGroup) -> dict[str, Any] | None:
         """Find an existing push mapping for this Access group and recover the linked
         Google group email from the Okta target group profile. Returns None if no link
         exists. The caller resolves the email to a Cloud Identity id via lookup."""
-        mappings = await okta.list_group_push_mappings(self._okta_app_id)
-        mapping = next((m for m in mappings if m.get("sourceGroupId") == group.id), None)
+        mappings = await okta.list_group_push_mappings(self._okta_app_id, sourceGroupId=group.id)
+        mapping = next(iter(mappings), None)
         if mapping is None:
             logger.debug(f"No mapping found for group {group.name}.")
             return None
@@ -423,7 +410,7 @@ class GoogleGroupManagerPlugin:
             return None
 
         profile = (await okta.get_group(target_group_id)).group.profile
-        email = getattr(profile, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL, None)
+        email = profile.actual_instance.additional_properties.get(OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL)
         if not email:
             logger.debug(
                 f"Google group email could not be resolved for target group mapped to {group.name}.\n"
@@ -436,10 +423,13 @@ class GoogleGroupManagerPlugin:
     # ---- Status setters ----
 
     async def _mark(self, session: AsyncSession, group: AppGroup, status: str, error: str | None = None) -> None:
+        if error:
+            logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
+
         set_status_value(group, STATUS_SYNC_STATUS, status, PLUGIN_ID)
         set_status_value(group, STATUS_SYNC_ERROR, error, PLUGIN_ID)
         if status == SYNC_SYNCED:
-            set_status_value(group, STATUS_LAST_SYNCED_AT, datetime.utcnow().isoformat(), PLUGIN_ID)
+            set_status_value(group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), PLUGIN_ID)
         session.add(group)
         await session.commit()
 
@@ -499,7 +489,7 @@ class GoogleGroupManagerPlugin:
                 group,
                 SYNC_ERROR,
                 f"Google group {display_email or candidate_id} is already managed by Access group "
-                f"'{owner.name}'; refusing to adopt it.",
+                f"'{owner.name}'; refusing to link it to this one.",
             )
             return None
         set_status_value(group, STATUS_GOOGLE_GROUP_ID, candidate_id, PLUGIN_ID)
@@ -570,59 +560,95 @@ class GoogleGroupManagerPlugin:
             email = self._full_email(config[0]) if config is not None else None
 
             # A Google group id we already own (claimed on a prior reconcile), if still live.
-            google_group_id = await self._owned_group_id(group)
+            claimed_google_group_id = await self._owned_group_id(group)
 
-            if google_group_id is None:
+            if claimed_google_group_id is None:
                 # Not yet owned. Find a candidate -- an existing Google group at our email, or one
                 # behind an out-of-band Okta link -- then CLAIM it: record it only after confirming
                 # no other Access group owns it. Refuse rather than adopt a group owned elsewhere.
-                candidate = await self._lookup_google_group_id(email) if email is not None else None
+                candidate_group_id = await self._lookup_google_group_id(email) if email is not None else None
                 link = None
-                if candidate is None:
-                    link = await self._discover_existing_link(group)
+                if candidate_group_id is None:
+                    link = await self._discover_existing_push_mapping(group)
                     if link is not None and link.get("email"):
+                        # A mapping that points at a Google group other than this group's configured
+                        # email is a conflict that won't self-heal (the group is already push-linked
+                        # elsewhere), so surface it rather than silently adopting the wrong group.
+                        if email is not None and link["email"] != email:
+                            await self._mark(
+                                session,
+                                group,
+                                SYNC_ERROR,
+                                f"Existing Okta push mapping targets Google group '{link['email']}', but this "
+                                f"group is configured for '{email}'. Resolve the conflict in Okta or update the "
+                                "group's configured email.",
+                            )
+                            return
                         logger.info(f"Backfilling group link for {group.name} that was added out-of-band...")
-                        candidate = await self._lookup_google_group_id(link["email"])
-                if candidate is not None:
+                        candidate_group_id = await self._lookup_google_group_id(link["email"])
+                if candidate_group_id is not None:
                     display_email = email or (link.get("email") if link else None)
-                    google_group_id = await self._claim_group_id(session, group, candidate, display_email)
-                    if google_group_id is None:
+                    claimed_google_group_id = await self._claim_group_id(
+                        session, group, candidate_group_id, display_email
+                    )
+                    if claimed_google_group_id is None:
                         return  # owned by another Access group; _claim_group_id marked the error
                     if link is not None and link.get("push_mapping_id"):
                         set_status_value(group, STATUS_PUSH_MAPPING_ID, link["push_mapping_id"], PLUGIN_ID)
 
-            if google_group_id is None:
-                # Nothing to adopt -> create from config (or skip when config is absent). Create is
-                # self-guarding against duplicate prefixes: Cloud Identity rejects a second group at
-                # the same email, so no ownership check is needed before recording the new id.
+            if claimed_google_group_id is None:
+                # Nothing to adopt -> create via Okta group push. Okta creates its target group AND
+                # the downstream Google group (named by the email prefix) and links them in one
+                # step, so we never wait for Okta to import a group we'd made in Google first (which involves
+                # a manually-triggered fetch). Skip entirely when config is absent.
                 if config is None:
                     logger.info(f"Skipping {group.name} due to missing required config.")
                     return
-                logger.info(f"Adding and linking a new Google group for {group.name}...")
-                prefix, display_name = config
+                prefix, _ = config
                 pattern = get_config_value(group.app, CONFIG_EMAIL_PATTERN, PLUGIN_ID)
                 pattern_error = self._validate_email_against_pattern(prefix, pattern)
                 if pattern_error:
                     await self._mark(session, group, SYNC_ERROR, pattern_error)
                     return
-                google_group_id = await self._create_google_group(prefix, display_name, group.description or "")
-                set_status_value(group, STATUS_GOOGLE_GROUP_ID, google_group_id, PLUGIN_ID)
-            else:
-                # We own this live Google group (cached or just claimed) -> enforce/adopt its props.
-                logger.debug(f"Reconciling group properties for {group.name}...")
-                live = await self._get_google_group(google_group_id)
-                reconcile_error = await self._adopt_or_enforce(session, group, google_group_id, live)
-                if reconcile_error is not None:
-                    await self._mark(session, group, SYNC_ERROR, reconcile_error)
+                if not get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID):
+                    logger.info(f"Creating and linking a new Google group for {group.name} via Okta group push...")
+                    await self._create_push_mapping_and_new_group(group, prefix)
+                # Okta may not have pushed the new group to Google yet: resolve it by email and
+                # defer if it isn't visible, adopting its Cloud Identity id and patching its
+                # metadata on a later reconcile once it appears.
+                assert email is not None  # config is present here, so email is set
+                claimed_google_group_id = await self._lookup_google_group_id(email)
+                if claimed_google_group_id is None:
+                    await self._mark(session, group, SYNC_PENDING, "Awaiting Google group creation via Okta push")
                     return
+                # Claim before recording, same as adoption: refuse (rather than double-link) a
+                # group already owned by another Access group.
+                claimed = await self._claim_group_id(session, group, claimed_google_group_id, email)
+                if claimed is None:
+                    return  # owned by another Access group; _claim_group_id marked the error
+                claimed_google_group_id = claimed
+
+            # We hold a live Google group (cached, adopted, or freshly created) -> enforce Access's
+            # properties onto it (or backfill from it during adoption). A group Okta just created is
+            # named after the email prefix and has no description, so this is what applies the real
+            # display name and description.
+            logger.debug(f"Reconciling group properties for {group.name}...")
+            live = await self._get_google_group(claimed_google_group_id)
+            reconcile_error = await self._adopt_or_enforce(group, claimed_google_group_id, live)
+            if reconcile_error is not None:
+                await self._mark(session, group, SYNC_ERROR, reconcile_error)
+                return
 
             # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
             # target (duplicate imports sharing the email) won't self-heal, so it errors rather
-            # than deferring forever.
+            # than deferring forever. The create-via-push path above already recorded a mapping, so
+            # this only runs when adopting an existing group that isn't linked yet.
             if not get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID):
                 resolved_email = email or await self._email_from_status(group)
                 try:
-                    linked = resolved_email is not None and await self._create_push_mapping(group, resolved_email)
+                    linked = resolved_email is not None and await self._create_push_mapping_for_existing_group(
+                        group, resolved_email
+                    )
                 except AmbiguousOktaTargetError as e:
                     await self._mark(session, group, SYNC_ERROR, str(e))
                     return
@@ -640,15 +666,15 @@ class GoogleGroupManagerPlugin:
             raise
 
     async def _adopt_or_enforce(
-        self, session: AsyncSession, group: AppGroup, google_group_id: str, live: dict[str, Any]
+        self, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
     ) -> str | None:
         """For an existing live Google group: adopt missing Access-side values from it,
         or enforce present values onto it. The email (groupKey) is immutable in the Cloud
         Identity API and host-blocked from changing, so it is never patched here. Returns
         an error string or None."""
         config = self._group_config(group)
-        live_email = (live.get("groupKey") or {}).get("id", "") or ""
-        google_desc = live.get("description", "") or ""
+        live_email = (google_group.get("groupKey") or {}).get("id", "") or ""
+        google_desc = google_group.get("description", "") or ""
 
         if config is None:
             logger.info(f"Backfilling group properties from Google to Access for {group.name}...")
@@ -656,17 +682,16 @@ class GoogleGroupManagerPlugin:
             if inferred_prefix is None:
                 return f"Live Google group email '{live_email}' is not in domain {self._domain}"
             set_config_value(group, CONFIG_EMAIL, inferred_prefix, PLUGIN_ID)
-            set_config_value(group, CONFIG_DISPLAY_NAME, live.get("displayName", "") or "", PLUGIN_ID)
-            # Adoption is the only time we backfill a missing description from Google.
+            set_config_value(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "", PLUGIN_ID)
             if not (group.description or "") and google_desc:
                 logger.info(f"Backfilling group description from Google to Access for {group.name}...")
-                group.description = google_desc
-                session.add(group)
-                await okta.update_group(group.id, group.name, google_desc)
+                # Route the Access-side description change through the operation so it updates the
+                # ORM, syncs to Okta, and audit-logs consistently.
+                await ModifyGroupDetails(group=group, description=google_desc, fire_lifecycle_hook=False).execute()
         else:
             logger.debug(f"Pushing Access group config to Google for {group.name}...")
             _, display_name = config
-            patch_display_name = display_name if (live.get("displayName") or "") != display_name else None
+            patch_display_name = display_name if (google_group.get("displayName") or "") != display_name else None
             access_desc = group.description or ""
             patch_description = access_desc if google_desc != access_desc else None
             await self._patch_google_group(

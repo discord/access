@@ -6,10 +6,11 @@ This plugin automatically creates, modifies, and deletes Google Groups correspon
 
 When an Access group is created or deleted or its plugin configuration is modified, the plugin:
 
-1. Creates, deletes, or modifies the properties (name, email, description) the corresponding Google Group in the configured Google Workspace domain.
-2. Creates or removes an Okta group push mapping between the Access-managed Okta group and the Google Group, so Okta keeps group membership in sync automatically.
+1. On create, creates an Okta group push mapping with a new target group named after the email prefix. Okta creates the downstream Google Group *and* links it in one step, so the plugin never has to wait for Okta to import a group created directly in Google (which requires a manual trigger). It then updates that Google Group's display name and description from Access.
+2. On modify, updates the corresponding Google Group's properties (display name, description) in the configured Google Workspace domain. The email is immutable.
+3. On delete, removes the Okta group push mapping and the Google Group.
 
-Additionally, Google groups are periodically reconciled (created or updated) to ensure eventual alignment to the source of truth in Access.
+Membership is kept in sync automatically by Okta group push. A Google Group linked out-of-band is adopted rather than recreated; if Okta hasn't yet pushed a newly-created group to Google, the group is marked pending and finalized on a later reconcile. Groups are also periodically reconciled to ensure eventual alignment to the source of truth in Access.
 
 ## Files
 
@@ -51,7 +52,6 @@ There are no app-level status properties.
 |----------|-------------|
 | `GOOGLE_WORKSPACE_OKTA_APP_ID` | The Okta application ID for the Google Workspace application. See https://support.okta.com/help/s/article/How-to-obtain-an-application-ID. |
 | `GOOGLE_WORKSPACE_DOMAIN` | The Google Workspace domain (e.g. `acme.com`). Used to construct the full Google Group email address. |
-| `GOOGLE_WORKSPACE_CUSTOMER_ID` | The Google Workspace customer ID (e.g. `C0xxxxxxx`), used as the Cloud Identity group parent (`customers/{id}`). See https://knowledge.workspace.google.com/admin/getting-started/find-your-customer-id. |
 
 ## Authentication and Authorization
 
@@ -61,7 +61,7 @@ For this plugin to work, Access must have permission to create and delete group 
 
 ### Calling the Google API
 
-This plugin uses the **Cloud Identity Groups API** (`cloudidentity.googleapis.com`, scope `https://www.googleapis.com/auth/cloud-identity.groups`) for all group CRUD. Because that API authorizes the calling principal directly, assign the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
+This plugin uses the **Cloud Identity Groups API** (`cloudidentity.googleapis.com`, scope `https://www.googleapis.com/auth/cloud-identity.groups`) to look up groups and to update and delete them. (Group *creation* goes through Okta group push, not this API.) Because that API authorizes the calling principal directly, assign the service account reachable via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) the Google Workspace **Group Administrator** admin role: https://knowledge.workspace.google.com/admin/users/assign-specific-admin-roles#service-account. Group membership is still synchronized by Okta group push.
 
 ## Installation
 
