@@ -52,6 +52,9 @@ class DummyPlugin:
 
     def __init__(self) -> None:
         self.group_created_calls: list[str] = []
+        # Config observed at group_created time, to assert the hook sees final state
+        # (i.e. that group_created fires after plugin_data is applied, not before).
+        self.group_created_configs: list[dict[str, Any]] = []
         self.group_updated_calls: list[tuple[str, str, str]] = []
         self.group_deleted_calls: list[str] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
@@ -189,6 +192,7 @@ class DummyPlugin:
         # calls assertion fails. Guards that eager-load across every op path.
         _ = group.app.name
         self.group_created_calls.append(group.id)
+        self.group_created_configs.append((group.plugin_data or {}).get(self.ID, {}).get("configuration", {}))
 
     @hookimpl
     async def group_updated(
@@ -1386,6 +1390,115 @@ class TestPluginGroupCreatedOnTypeChange:
         assert len(test_plugin.group_created_calls) == 0
 
 
+class TestPluginTypeChangeConsolidatedFire:
+    """A PUT fires exactly one app group lifecycle hook, after every field is applied, choosing the
+    event by whether (and how) the type changed. Covers the three transitions."""
+
+    async def test_convert_to_app_group_with_rename_and_config_fires_created_once(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        # Case 1: convert a plain group -> app group while also renaming and setting plugin config.
+        # Exactly one group_created fires (not created + updated), and it observes the final config
+        # (i.e. it fires after plugin_data is applied, not the pre-config state from ModifyGroupType).
+        test_app = AppFactory.build(
+            name="TestAppConvTo",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = OktaGroupFactory.build(name="Plain-ConvertTo")
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+        group_id = test_group.id
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=group_id)
+        data = {
+            "type": "app_group",
+            "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Conv",
+            "description": "converted",
+            "app_id": test_app.id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "ext-123"}}},
+        }
+        response = await client.put(url, json=data)
+        assert response.status_code == 200
+
+        assert test_plugin.group_created_calls == [group_id]
+        assert test_plugin.group_updated_calls == []
+        assert test_plugin.group_deleted_calls == []
+        # group_created saw the config set in the same request (fired after plugin_data applied).
+        assert test_plugin.group_created_configs[0].get("group_id") == "ext-123"
+
+    async def test_convert_away_from_app_group_with_rename_fires_deleted_only(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        # Case 2: convert an app group -> plain group while renaming. group_deleted fires once
+        # (cleanup for the departing plugin, from ModifyGroupType), and neither created nor updated.
+        test_app = AppFactory.build(
+            name="TestAppConvAway",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Away",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g1"}, "status": {}}},
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+        group_id = test_group.id
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=group_id)
+        data = {"type": "okta_group", "name": "Plain-AwayRenamed", "description": "no longer an app group"}
+        response = await client.put(url, json=data)
+        assert response.status_code == 200
+        assert response.json()["type"] == "okta_group"
+
+        assert test_plugin.group_deleted_calls == [group_id]
+        assert test_plugin.group_updated_calls == []
+        assert test_plugin.group_created_calls == []
+
+    async def test_no_type_change_name_and_config_fires_updated_only(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        # Case 3: no type change, but name + config both change -> exactly one group_updated, no
+        # created/deleted.
+        test_app = AppFactory.build(
+            name="TestAppStay",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        base = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{base}Stay",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g1"}, "status": {}}},
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+        group_id = test_group.id
+        mocker.patch.object(okta, "update_group")
+
+        url = url_for("api-groups.group_by_id", group_id=group_id)
+        data = {
+            "type": "app_group",
+            "name": f"{base}StayRenamed",
+            "description": "renamed",
+            "app_id": test_group.app_id,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g2"}}},
+        }
+        response = await client.put(url, json=data)
+        assert response.status_code == 200
+
+        assert len(test_plugin.group_updated_calls) == 1
+        assert test_plugin.group_updated_calls[0][0] == group_id
+        assert test_plugin.group_created_calls == []
+        assert test_plugin.group_deleted_calls == []
+
+
 class TestPluginMembershipHooks:
     """Tests for plugin lifecycle hooks when members are added/removed."""
 
@@ -2313,6 +2426,38 @@ class TestModifyGroupPluginData:
         assert test_plugin.group_updated_calls == []
         assert group.plugin_data[DummyPlugin.ID]["status"]["member_count"] == 5
 
+    async def test_partial_patch_omitting_unchanged_config_key_does_not_fire(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        # A partial patch that omits an unchanged config key (here the immutable `region`) merges
+        # back to an identical effective config, so it must not be misread as a change and must not
+        # fire a redundant group_updated. Regression: config_changed was previously computed against
+        # the pre-merge patch, before the omitted key was restored, yielding a false positive.
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
+        mocker.patch.object(okta, "update_group")
+        a = AppFactory.build()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        db.session.add(a)
+        group = AppGroupFactory.build(
+            app_id=a.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng",
+            plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g1", "region": "us"}, "status": {}}},
+        )
+        db.session.add(group)
+        await db.session.commit()
+
+        # Keep group_id unchanged and omit the immutable region entirely (a valid partial patch).
+        patch = {DummyPlugin.ID: {"configuration": {"group_id": "g1"}}}
+        op = ModifyGroupPluginData(group=group, plugin_data=patch)
+        await op.execute()
+
+        assert op.config_changed is False
+        assert test_plugin.group_updated_calls == []
+        # The omitted region is preserved by the partial-patch merge, so nothing actually changed.
+        assert group.plugin_data[DummyPlugin.ID]["configuration"]["region"] == "us"
+
     async def test_does_not_fire_without_lifecycle_plugin(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
@@ -2517,6 +2662,50 @@ class TestPostGroupPluginValidation:
             },
         )
         assert response.status_code == 201
+
+    async def test_put_group_filtering_error_returns_clean_500(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        # A plugin that doesn't answer the config-validation hook with exactly one response raises
+        # AppGroupLifecyclePluginFilteringError (a plain Exception, not ValueError). The PUT must
+        # surface a clean 500 (server-side misconfiguration) rather than an unhandled stack trace.
+        from api.plugins import app_group_lifecycle as agl
+
+        test_app = AppFactory.build(
+            name="TestAppFilter",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Filt",
+        )
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+
+        mocker.patch.object(okta, "update_group")
+        mocker.patch.object(
+            agl,
+            "validate_app_group_lifecycle_plugin_group_config",
+            side_effect=agl.AppGroupLifecyclePluginFilteringError(DummyPlugin.ID, 2),
+        )
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        response = await client.put(
+            url,
+            json={
+                "type": "app_group",
+                "name": test_group.name,
+                "description": "",
+                "app_id": test_group.app_id,
+                "plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "x"}}},
+            },
+        )
+        assert response.status_code == 500
+        # Distinguishes the deliberate clean-500 path from an unhandled exception (which would also
+        # be a 500, but without this message).
+        assert "Misconfigured app group lifecycle plugin" in response.text
 
 
 def test_validate_group_config_rejects_immutable_change_on_update(test_plugin: DummyPlugin) -> None:

@@ -25,11 +25,23 @@ from api.schemas import AuditLogSchema, EventType
 
 
 class ModifyGroupType:
-    def __init__(self, *, group: OktaGroup | str, group_changes: OktaGroup, current_user_id: Optional[str]):
+    def __init__(
+        self,
+        *,
+        group: OktaGroup | str,
+        group_changes: OktaGroup,
+        current_user_id: Optional[str],
+        fire_created_hook: bool = True,
+    ):
         self.group_id = group if isinstance(group, str) else group.id
 
         self.group_changes = group_changes
         self.current_user_id = current_user_id
+        # When False, suppress the group_created fire on conversion *to* an AppGroup so the
+        # caller can fire it once at the end of a multi-field update, after dependent fields
+        # (name/description/plugin_data) are applied. group_deleted is never suppressed: it
+        # must fire while the row is still an AppGroup (pre-conversion), so it can't be deferred.
+        self.fire_created_hook = fire_created_hook
 
     async def execute(self) -> OktaGroup:
         group = (
@@ -267,7 +279,8 @@ class ModifyGroupType:
 
             # Invoke group_created hook after converting to an AppGroup (symmetric
             # with group_deleted which fires when converting away from AppGroup).
-            if type(self.group_changes) is AppGroup:
+            # Skipped when the caller opts to fire it itself once all fields are applied.
+            if type(self.group_changes) is AppGroup and self.fire_created_hook:
                 await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
 
         # Audit logging if type changed
