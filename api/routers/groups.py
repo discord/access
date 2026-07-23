@@ -125,7 +125,10 @@ def _validate_group_plugin_config(
     if plugin_id is None:
         return
 
-    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginFilteringError,
+        validate_app_group_lifecycle_plugin_group_config,
+    )
 
     try:
         errors = validate_app_group_lifecycle_plugin_group_config(
@@ -133,6 +136,11 @@ def _validate_group_plugin_config(
         )
     except ValueError as e:
         raise HTTPException(400, f"plugin_data: {e}") from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        # A plugin that doesn't answer this hook with exactly one response is a server-side
+        # misconfiguration, not bad client input, so surface a clear 500 rather than letting the
+        # plain Exception become an unhandled stack trace.
+        raise HTTPException(500, f"Misconfigured app group lifecycle plugin '{plugin_id}': {e}") from e
     if errors:
         raise HTTPException(400, f"plugin_data: {errors}")
 
@@ -412,7 +420,8 @@ async def put_group(
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    if body_type != group.type:
+    type_changed = body_type != group.type
+    if type_changed:
         if not await is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
@@ -429,7 +438,12 @@ async def put_group(
             new_group.is_owner = False
         try:
             group = await ModifyGroupType(
-                group=group, group_changes=new_group, current_user_id=current_user_id
+                group=group,
+                group_changes=new_group,
+                current_user_id=current_user_id,
+                # Defer the group_created fire to the single consolidated fire below, after
+                # name/description/plugin_data are applied, so the plugin observes final state.
+                fire_created_hook=False,
             ).execute()
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
@@ -446,12 +460,19 @@ async def put_group(
     else:
         await db.commit()
 
-    # Fire group_updated exactly once, covering the name/description change (ModifyGroupDetails)
-    # and/or the config change (ModifyGroupPluginData), whose per-operation fires were suppressed
-    # above. A type conversion emits its own group_created/group_deleted via ModifyGroupType; this
-    # fire simply no-ops when no lifecycle plugin applies to the group's final type.
+    # Fire exactly one app group lifecycle hook for the whole PUT, after every field is applied so
+    # the plugin observes the final state. The per-operation fires of ModifyGroupDetails,
+    # ModifyGroupPluginData, and ModifyGroupType's group_created were all suppressed above.
+    #   - Converted TO an app group -> group_created (regardless of name/description/config, since
+    #     the group is new to the plugin).
+    #   - No type change, name/description/config changed -> group_updated.
+    # Converting AWAY from an app group already fired group_deleted inside ModifyGroupType (which
+    # needs the pre-conversion AppGroup row, so it can't be deferred); the final type has no
+    # lifecycle plugin, so nothing is fired here for that case.
     name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
-    if name_or_desc_changed or config_changed:
+    if type_changed and isinstance(group, AppGroup):
+        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+    elif not type_changed and (name_or_desc_changed or config_changed):
         await invoke_app_group_lifecycle_hook(
             AppGroupLifecycleHook.GROUP_UPDATED,
             group=group,

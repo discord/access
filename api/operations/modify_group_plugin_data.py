@@ -1,3 +1,4 @@
+import copy
 from typing import Any
 
 from api.extensions import db
@@ -42,6 +43,10 @@ class ModifyGroupPluginData:
         old_description = self.group.description or ""
         plugin_id = get_app_group_lifecycle_plugin_to_invoke(self.group)
 
+        # merge_app_lifecycle_plugin_data below mutates old_plugin_data in place (it shares the
+        # configuration/status dicts), so snapshot the pre-merge config to compare against later.
+        old_config_snapshot = copy.deepcopy(old_plugin_data)
+
         # Apply the patch: start from the incoming data, preserving top-level plugin
         # entries it didn't mention.
         merged_plugin_data = dict(self.plugin_data)
@@ -51,20 +56,21 @@ class ModifyGroupPluginData:
                 if key not in merged_plugin_data:
                     merged_plugin_data[key] = old_plugin_data[key]
 
-        # Decide whether to fire the hook before the per-plugin merge below, which
-        # mutates old_plugin_data in place (it shares the configuration/status dicts)
-        # and would otherwise erase the difference we're testing for.
-        config_changed = plugin_id is not None and is_plugin_config_changed(
-            old_plugin_data, merged_plugin_data, plugin_id
-        )
-        self.config_changed = config_changed
-
         self.group.plugin_data = merged_plugin_data
 
         # Preserve per-plugin configuration/status keys the patch omitted for app group
         # lifecycle plugins (partial-patch semantics).
         if changed and type(self.group) is AppGroup:
             merge_app_lifecycle_plugin_data(self.group, old_plugin_data)
+
+        # Compare the *fully merged* effective config against the pre-merge snapshot -- not the
+        # raw patch -- so a partial patch that merely omits an unchanged config key (e.g. the
+        # immutable email, which the present-only immutable check now permits) is not misread as
+        # a change and does not fire a redundant reconcile.
+        config_changed = plugin_id is not None and is_plugin_config_changed(
+            old_config_snapshot, self.group.plugin_data or {}, plugin_id
+        )
+        self.config_changed = config_changed
 
         await db.session.commit()
 
