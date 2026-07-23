@@ -770,7 +770,16 @@ export default function ReadGroup() {
                           </Typography>
                         </Stack>
                         <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'nowrap'}}>
+                          {/*
+                           * The field is an uncontrolled Autocomplete, so MUI owns its text.
+                           * /groups/:id and /roles/:id render the same ReadGroup element, so
+                           * navigating between groups re-renders rather than remounts — keying
+                           * on id remounts the field so its text clears in lockstep with the
+                           * memberSearchQuery reset above (otherwise stale text desyncs from the
+                           * results). The apps page keys its search group the same way.
+                           */}
                           <DebouncedSearchField
+                            key={id}
                             label="Search members"
                             onSearchChange={handleMemberSearchChange}
                             sx={{width: 220}}
