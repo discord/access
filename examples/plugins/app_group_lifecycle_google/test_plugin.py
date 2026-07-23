@@ -792,6 +792,83 @@ async def test_reconcile_marks_pending_when_google_group_not_yet_created(
     assert status.get(STATUS_PUSH_MAPPING_ID) == "map-1"  # mapping recorded even while deferred
 
 
+async def test_reconcile_skips_recreate_when_mapping_already_recorded(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
+    # Second reconcile after a deferred create: the push mapping id is already recorded and the
+    # Google group has now materialized. Reconcile must adopt it and mark SYNCED WITHOUT
+    # re-creating the mapping/group -- the core idempotency guarantee.
+    group = _group(
+        mocker,
+        group_config={"email": "platform-security", "display_name": "Platform Security"},
+        status={"push_mapping_id": "map-1"},  # recorded on the prior deferred pass; not yet owned
+        description="Sec team",
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "platform-security",
+            "display_name": "Platform Security",
+            "email_pattern": None,
+        }.get(key, default),
+    )
+    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")  # now materialized
+    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)  # not owned elsewhere
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "platform-security@test-company.com"},
+            "displayName": "platform-security",
+            "description": "",
+        },
+    )
+    mocker.patch.object(plugin_instance, "_patch_google_group")
+    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping")
+    create_new = mocker.patch.object(plugin_instance, "_create_push_mapping_and_new_group")
+
+    await plugin_instance._reconcile(session_mock, group)
+
+    create_mapping.assert_not_called()
+    create_new.assert_not_called()
+    status = group.plugin_data[PLUGIN_ID]["status"]
+    assert status[STATUS_SYNC_STATUS] == SYNC_SYNCED
+    assert status[STATUS_GOOGLE_GROUP_ID] == "ggid-1"
+
+
+async def test_reconcile_marks_error_and_reraises_on_unexpected_failure(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
+) -> None:
+    # An unexpected error mid-reconcile must both persist SYNC_ERROR (committed inside the hook so
+    # it survives the host's post-hook rollback) AND propagate to the host.
+    group = _group(
+        mocker,
+        group_config={"email": "sec", "display_name": "Sec"},
+        status={"google_group_id": "ggid-1"},
+        description="d",
+    )
+    mocker.patch(
+        "plugin.get_config_value",
+        side_effect=lambda obj, key, pid, default=None: {
+            "enabled": True,
+            "email": "sec",
+            "display_name": "Sec",
+        }.get(key, default),
+    )
+    # A cached, owned group is live, so reconcile proceeds to the enforce step -- where the Google
+    # read blows up with an unexpected (non-absent) error.
+    mocker.patch.object(plugin_instance, "_owned_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_get_google_group", side_effect=RuntimeError("boom"))
+    set_status = mocker.patch("plugin.set_status_value")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await plugin_instance._reconcile(session_mock, group)
+
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, PLUGIN_ID)
+
+
 async def test_reconcile_create_path_rejects_pattern_violation(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, session_mock: MagicMock
 ) -> None:

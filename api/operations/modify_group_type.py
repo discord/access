@@ -119,7 +119,7 @@ class ModifyGroupType:
 
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
-                # the linked GitHub team).
+                # the linked external group).
                 await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
 
                 # Remove app tag map for this group that is no longer attached to an app

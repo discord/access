@@ -404,6 +404,19 @@ async def put_group(
                 ),
             )
 
+        # Validate plugin_data against the *target* app's plugin now, on the conversion path.
+        # The standalone-update guard below runs only for groups that are already AppGroups, so
+        # without this an okta_group -> app_group PUT would persist invalid config (surfacing
+        # later as a plugin SYNC_ERROR instead of a 400). old_plugin_data=None: attaching the
+        # plugin on conversion is a fresh create, so immutable fields may be set.
+        if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set:
+            _validate_group_plugin_config(
+                body.plugin_data or {},
+                conversion_app.plugin_data or {},
+                conversion_app.app_group_lifecycle_plugin,
+                old_plugin_data=None,
+            )
+
     try:
         await ModifyGroupDetails(
             group=group,

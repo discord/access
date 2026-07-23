@@ -45,7 +45,7 @@ class PluginNotFoundError(Exception):
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class AppGroupLifecyclePluginMetadata:
     """Metadata for an app group lifecycle plugin."""
 
@@ -57,7 +57,7 @@ class AppGroupLifecyclePluginMetadata:
 _cached_plugin_registry: list[AppGroupLifecyclePluginMetadata] | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class AppGroupLifecyclePluginConfigProperty:
     """Schema for a configuration property required by an app group lifecycle plugin."""
 
@@ -66,6 +66,9 @@ class AppGroupLifecyclePluginConfigProperty:
     type: Literal["text", "number", "boolean"] = "text"
     default_value: Any = None
     required: bool = False
+    # An open, plugin-defined bag of validation rules -- the shape varies by plugin (this repo's
+    # examples use ``{"patterns": [{"regex", "message"}]}``, enforced client-side by the config
+    # form, and ``{"allowed_values": [...]}``), so it is intentionally not strictly typed.
     validation: dict[str, Any] | None = None
     # When True, the host rejects edits to this field on update (group config only);
     # the value may be set freely at create time. Enforced in
@@ -76,8 +79,14 @@ class AppGroupLifecyclePluginConfigProperty:
     # field. Purely presentational — it is not part of the stored value.
     suffix: str | None = None
 
+    def __post_init__(self) -> None:
+        # The frontend only renders a suffix on text inputs; setting it on a number/boolean is a
+        # silently-inert mistake, so fail fast at construction (i.e. when the plugin declares it).
+        if self.suffix is not None and self.type != "text":
+            raise ValueError(f"suffix is only supported on text config properties, not type={self.type!r}")
 
-@dataclass
+
+@dataclass(frozen=True)
 class AppGroupLifecyclePluginStatusProperty:
     """Schema for a status property exposed by an app group lifecycle plugin."""
 
@@ -660,7 +669,7 @@ def validate_app_group_lifecycle_plugin_group_config(
             hook.get_plugin_group_config_properties, plugin_id, app_config=app_configuration
         )
         for name, prop in properties.items():
-            if not getattr(prop, "immutable", False):
+            if not prop.immutable:
                 continue
             # Only treat an immutable field as edited when it's actually present in the
             # (possibly partial) patch: an omission isn't a change, while an explicit value
