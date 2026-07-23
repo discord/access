@@ -233,9 +233,9 @@ export default function ExpiringRoless() {
 
   return (
     <>
-      <ChangeTitle title="Expiring Roles" />
+      <ChangeTitle title="Expiring Role-Based Access" />
       <TableContainer component={Paper}>
-        <TableTopBar title="Expiring Roles">
+        <TableTopBar title="Expiring Role-Based Access">
           <BulkRenewal
             rows={rows.filter((row: AuditGroupRoleRow) =>
               canManageGroup(currentUser, row.group as GroupDetail | undefined),

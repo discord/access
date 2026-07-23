@@ -162,9 +162,9 @@ export default function ListRoleRequests() {
 
   return (
     <>
-      <ChangeTitle title="Role Requests" />
+      <ChangeTitle title="Role-Based Access Requests" />
       <TableContainer component={Paper}>
-        <TableTopBar title="Role Requests">
+        <TableTopBar title="Role-Based Access Requests">
           <CreateRoleRequest currentUser={currentUser} enabled={enableCreateRequest}></CreateRoleRequest>
           <StatusFilter value={statusFilter} onChange={handleStatusFilter} />
           <TableTopBarAutocomplete
