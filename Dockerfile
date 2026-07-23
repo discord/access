@@ -76,6 +76,38 @@ COPY ./config ./config
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev
 
+# --- Optional example plugins -------------------------------------------------
+# The example plugins under examples/plugins/ are opt-in. Each installs into the
+# app venv only when its build arg is set to "true" (default "false"), so the
+# default image ships without them and derived images enable just what they want:
+#   docker build --build-arg INSTALL_SLACK_NOTIFICATIONS_PLUGIN=true .
+# Installs use `uv pip install` because the venv at /app/.venv has no `pip`;
+# plain `pip` would install into the system interpreter where the app won't find
+# it. A plugin's requirements.txt is installed first when present (some examples
+# keep runtime deps there rather than in setup.py). See examples/plugins/README.md
+# for the full list and for how to bake in your own plugin.
+ARG INSTALL_AUDIT_LOGGER_PLUGIN="false"
+ARG INSTALL_CONDITIONAL_ACCESS_PLUGIN="false"
+ARG INSTALL_DATADOG_METRICS_PLUGIN="false"
+ARG INSTALL_HEALTH_CHECK_PLUGIN="false"
+ARG INSTALL_NOTIFICATIONS_PLUGIN="false"
+ARG INSTALL_SLACK_NOTIFICATIONS_PLUGIN="false"
+# Bind-mount the plugin sources for the length of this RUN only: enabled plugins
+# are installed (non-editable) into /app/.venv, so nothing needs to persist in
+# the final image and the default (all-false) build stays byte-identical.
+RUN --mount=type=bind,source=examples/plugins,target=examples/plugins \
+    set -eu; \
+    install_plugin() { \
+        if [ -f "$1/requirements.txt" ]; then uv pip install -r "$1/requirements.txt"; fi; \
+        uv pip install "$1"; \
+    }; \
+    if [ "$INSTALL_AUDIT_LOGGER_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/app_group_lifecycle_audit_logger; else echo "Skipping app_group_lifecycle_audit_logger plugin"; fi; \
+    if [ "$INSTALL_CONDITIONAL_ACCESS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/conditional_access; else echo "Skipping conditional_access plugin"; fi; \
+    if [ "$INSTALL_DATADOG_METRICS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/datadog_metrics_reporter; else echo "Skipping datadog_metrics_reporter plugin"; fi; \
+    if [ "$INSTALL_HEALTH_CHECK_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/health_check_plugin; else echo "Skipping health_check_plugin plugin"; fi; \
+    if [ "$INSTALL_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications; else echo "Skipping notifications plugin"; fi; \
+    if [ "$INSTALL_SLACK_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications_slack; else echo "Skipping notifications_slack plugin"; fi
+
 # Build an image that includes the optional sentry release push build step
 FROM false AS true
 COPY --from=sentry /app/sentry ./sentry

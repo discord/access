@@ -4,28 +4,25 @@ This plugin integrates Discord access metrics with Datadog, allowing users to tr
 
 ## Installation
 
-Update the Dockerfile used to build the App container includes the following section for installing the metrics plugin before starting gunicorn:
+This plugin's source ships in the Access build context under
+`examples/plugins/`, but the default image does **not** install it. Enable it at
+build time with its build arg (default `false`):
 
-```dockerfile
-# Add the specific plugins and install metrics
-WORKDIR /app/plugins
-ADD ./examples/plugins/metrics_reporter ./metrics_reporter
-RUN pip install -r ./metrics_reporter/requirements.txt && pip install ./metrics_reporter
-
-# Reset working directory
-WORKDIR /app
-
-ENV ENV production
-ENV SENTRY_RELEASE $SENTRY_RELEASE
-
-EXPOSE 3000
-
-CMD ["gunicorn", "-w", "4", "-t", "600", "-b", ":3000", "-k", "uvicorn.workers.UvicornWorker", "--access-logfile", "-", "api.asgi:app"]
+```bash
+docker build --build-arg INSTALL_DATADOG_METRICS_PLUGIN=true .
+# or, with docker compose:
+docker compose build --build-arg INSTALL_DATADOG_METRICS_PLUGIN=true
 ```
+
+The image installs the plugin (and its `requirements.txt`) into the `uv`
+virtualenv (`/app/.venv`) with `uv pip install` — the venv has no `pip`, and
+plain `pip` would install into the system interpreter where the running app
+won't find it. See [the plugins README](../README.md) for every plugin's build
+arg and for baking in a plugin of your own.
 
 ## Build the Docker image, run and test
 
-You may use the original Discord Access container build processes from the primary README.md:
+Build with the arg above, then run as usual:
 ```bash
 docker compose up --build
 ```

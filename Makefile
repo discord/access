@@ -8,12 +8,21 @@ LOCAL_DB_URI ?= sqlite:///instance/access.db
 BACKEND_PORT  ?= $(if $(PORT),$(PORT),6060)
 FRONTEND_PORT ?= $(if $(PORT),$(PORT),3000)
 
+# Space-separated example plugin directory names to install (editable) into the
+# local venv before running, e.g.:
+#   make run-backend PLUGINS="conditional_access notifications_slack"
+# Mirrors the Dockerfile's per-plugin INSTALL_*_PLUGIN build args for local dev.
+# Default empty ⇒ no extra plugins, so `make run-backend` is unchanged. The
+# audit logger is already loaded via the dev dependency group and needs no flag.
+PLUGINS ?=
+
 .PHONY: help
 help:
 	@echo "Access dev targets:"
 	@echo "  make run                Run backend (port $(BACKEND_PORT)) and frontend (port $(FRONTEND_PORT)) together"
 	@echo "  make run-backend        Run uvicorn on port $(BACKEND_PORT) with --reload"
 	@echo "  make run-frontend       Run Vite dev server on port $(FRONTEND_PORT)"
+	@echo "                          (add PLUGINS=\"dir1 dir2\" to install example plugins)"
 	@echo ""
 	@echo "Database:"
 	@echo "  make db-migrate         alembic upgrade head"
@@ -67,12 +76,28 @@ clean:
 dev:
 	uv sync
 
+# Install any plugins named in PLUGINS into the venv after `uv sync` (which
+# would otherwise prune them). Editable, so local edits to the plugin are picked
+# up on reload. A plugin's requirements.txt is installed first when present.
+.PHONY: install-plugins
+install-plugins: dev
+	@for p in $(PLUGINS); do \
+		if [ ! -d "examples/plugins/$$p" ]; then \
+			echo "No such example plugin: examples/plugins/$$p"; exit 1; \
+		fi; \
+		echo "Installing example plugin: $$p"; \
+		if [ -f "examples/plugins/$$p/requirements.txt" ]; then \
+			uv pip install -r "examples/plugins/$$p/requirements.txt"; \
+		fi; \
+		uv pip install -e "examples/plugins/$$p"; \
+	done
+
 # ----------------------------------------------------------------------
 # Run targets
 # ----------------------------------------------------------------------
 
 .PHONY: run
-run: .env dev db-migrate
+run: .env install-plugins db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	DATABASE_URI=$(LOCAL_DB_URI) \
@@ -84,7 +109,7 @@ run-frontend:
 	npm install && npx vite --host 0.0.0.0 --port $(FRONTEND_PORT)
 
 .PHONY: run-backend
-run-backend: .env dev db-migrate
+run-backend: .env install-plugins db-migrate
 	@mkdir -p .claude
 	@printf '%s\n' "$(BACKEND_PORT)" > .claude/.api-port
 	DATABASE_URI=$(LOCAL_DB_URI) \
@@ -125,11 +150,11 @@ db-init: db-migrate
 # ----------------------------------------------------------------------
 
 .PHONY: sync
-sync: dev
+sync: install-plugins
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync
 
 .PHONY: notify
-notify: dev
+notify: install-plugins
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access notify
 
 # ----------------------------------------------------------------------
