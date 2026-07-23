@@ -12,10 +12,13 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 from okta.client import Client as OktaClient
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.assign_group_owner_request_body import AssignGroupOwnerRequestBody
+from okta.models.create_group_push_mapping_request import CreateGroupPushMappingRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_owner_type import GroupOwnerType
+from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.okta_user_group_profile import OktaUserGroupProfile
+from okta.models.update_group_push_mapping_request import UpdateGroupPushMappingRequest
 from okta.models.user import User as OktaUserType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 from okta.models.user_schema_attribute import UserSchemaAttribute
@@ -125,6 +128,17 @@ def _is_retryable_okta_error(error: Any) -> bool:
     if str(error) == "Request Timeout exceeded.":
         return False
     return True
+
+
+def _group_push_mapping_to_dict(mapping: GroupPushMapping) -> dict[str, Any]:
+    """Render a Group Push Mapping model as the camelCase JSON dict callers expect.
+
+    Uses ``model_dump(by_alias=True)`` rather than the model's own ``to_dict()``,
+    which excludes the read-only ``id``/``sourceGroupId``/``targetGroupId``/
+    ``errorSummary`` fields consumers rely on. ``exclude_none=True`` matches how Okta
+    serializes the resource on the wire (null fields omitted).
+    """
+    return mapping.model_dump(by_alias=True, mode="json", exclude_none=True)
 
 
 class _WrapperClient:
@@ -539,6 +553,86 @@ class OktaService:
         # ``GroupOwner`` exposes the owning user's ``id``; wrap it in the same
         # loose accessor other okta reads return so callers stay uniform.
         return list(map(lambda owner: User(owner), owners))
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/createGroupPushMapping
+    async def create_group_push_mapping(
+        self,
+        appId: str,
+        sourceGroupId: str,
+        targetGroupId: str | None = None,
+        targetGroupName: str | None = None,
+    ) -> dict[str, Any]:
+        if not appId:
+            raise ValueError("appId is required")
+        if not sourceGroupId:
+            raise ValueError("sourceGroupId is required")
+        # The API takes exactly one of targetGroupId -- link an existing downstream group -- or
+        # targetGroupName -- create a new downstream group (or link if one by that name already
+        # exists). Passing both or neither is a caller error.
+        if bool(targetGroupId) == bool(targetGroupName):
+            raise ValueError("exactly one of targetGroupId or targetGroupName is required")
+
+        target = {"targetGroupId": targetGroupId} if targetGroupId else {"targetGroupName": targetGroupName}
+        body = CreateGroupPushMappingRequest.from_dict({"sourceGroupId": sourceGroupId, **target, "status": "ACTIVE"})
+        async with self._okta_client() as client:
+            mapping, response, error = await client.create_group_push_mapping(appId, body)
+
+        if error is not None:
+            raise Exception(error)
+        # Okta returns HTTP 200 for create-or-link, but the SDK's response map only types the
+        # spec'd 201, so it leaves the parsed ``mapping`` empty while the JSON sits in the
+        # response's ``raw_data``. Fall back to parsing that body when the typed data is absent.
+        # (An explicit check rather than ``assert`` so it holds under ``python -O``.)
+        if mapping is None:
+            if response is None or not response.raw_data:
+                raise Exception("Okta group push mapping create returned no data")
+            mapping = GroupPushMapping.from_dict(json.loads(response.raw_data))
+        if mapping is None:
+            raise Exception("Could not parse Okta group push mapping create response")
+        return _group_push_mapping_to_dict(mapping)
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/deleteGroupPushMapping
+    async def delete_group_push_mapping(self, appId: str, mappingId: str, deleteTargetGroup: bool = False) -> None:
+        if not appId:
+            raise ValueError("appId is required")
+        if not mappingId:
+            raise ValueError("mappingId is required")
+
+        async with self._okta_client() as client:
+            # The SDK returns HTTP errors in the result tuple rather than raising; ``_call``
+            # (via the client proxy) already converts transient ones (429/5xx) to
+            # OktaTransientError, so any error we see here is definitive. A 404 at either step
+            # means the mapping is already gone -- deletion is idempotent, so treat it as success
+            # (safe for a retry/replay after a partial earlier attempt). Read the trailing error
+            # element without a fixed-arity unpack: delete returns a 2-tuple on error but a
+            # 3-tuple on success, while update returns a 3-tuple either way.
+            # Okta rejects deleting an ACTIVE mapping, so deactivate it first.
+            deactivate = await client.update_group_push_mapping(
+                appId, mappingId, UpdateGroupPushMappingRequest(status="INACTIVE")
+            )
+            error = deactivate[-1] if isinstance(deactivate, tuple) else None
+            if error is not None:
+                if getattr(error, "status", None) == 404:
+                    return
+                raise Exception(error)
+
+            deletion = await client.delete_group_push_mapping(appId, mappingId, deleteTargetGroup)
+            error = deletion[-1] if isinstance(deletion, tuple) else None
+            if error is not None and getattr(error, "status", None) != 404:
+                raise Exception(error)
+
+    # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/listGroupPushMappings
+    async def list_group_push_mappings(self, appId: str, sourceGroupId: str | None = None) -> list[dict[str, Any]]:
+        if not appId:
+            raise ValueError("appId is required")
+
+        async with self._okta_client() as client:
+            # The Group Push Mappings endpoint is paginated via the Link header; `_paginate`
+            # follows the `after` cursor so callers see every mapping, not just the first page.
+            # ``sourceGroupId`` filters server-side (the SDK omits the query param when it is
+            # None), so callers after a single source group's mapping avoid paging the whole app.
+            mappings = await self._paginate(client.list_group_push_mappings, appId, source_group_id=sourceGroupId)
+        return [_group_push_mapping_to_dict(mapping) for mapping in mappings]
 
 
 # Wrapper class for the Okta API user model

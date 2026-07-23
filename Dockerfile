@@ -74,6 +74,12 @@ COPY ./api ./api
 COPY ./migrations ./migrations
 COPY ./config ./config
 COPY alembic.ini ./
+
+# Ship prod-ready plugin source into the image WITHOUT installing it here.
+# Downstream images opt in by pip installing the plugins, which keeps the source
+# single-homed in this repo while leaving activation to the consumer.
+COPY ./examples/plugins/app_group_lifecycle_google ./plugins/app_group_lifecycle_google
+
 RUN uv sync --frozen --no-dev
 
 # --- Optional example plugins -------------------------------------------------

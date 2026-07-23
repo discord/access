@@ -59,7 +59,7 @@ def _with_app_context(func: F) -> F:
                 created_engine = True
             # Trigger plugin discovery once per CLI run. Notification,
             # conditional access, and app-group-lifecycle hooks are all
-            # consumed by the `sync` / `notify` / `sync-app-group-memberships`
+            # consumed by the `sync` / `notify` / `sync-app-groups`
             # commands; the `init` family doesn't need them but the call is
             # cheap (memoized).
             load_plugins()
@@ -376,10 +376,7 @@ async def notify(owner: bool, role_owner: bool) -> None:
         await expiring_access_notifications_user()
 
 
-@cli.command("sync-app-group-memberships")
-@_with_app_context
-async def sync_app_group_memberships() -> None:
-    """Invoke the periodic membership sync hook for all apps with app group lifecycle plugins configured."""
+async def _sync_all_app_groups() -> None:
     from api.extensions import db
     from api.models import App
     from api.plugins._async_dispatch import run_hooks_to_completion
@@ -402,15 +399,14 @@ async def sync_app_group_memberships() -> None:
     click.echo(f"Found {len(apps)} app(s) with plugins configured")
 
     hook = get_app_group_lifecycle_hook()
-
     for app in apps:
         click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
-        # App-group-lifecycle hooks are native async: awaited directly
-        # with the AsyncSession, no run_sync bridge. run_hooks_to_completion uses
-        # asyncio.wait (not gather) and logs any plugin failure itself.
+        # App-group-lifecycle hooks are native async: awaited directly with the AsyncSession,
+        # no run_sync bridge. run_hooks_to_completion (asyncio.wait) drives the sync_all_groups
+        # hook and returns any plugin exceptions rather than raising.
         _, exceptions = await run_hooks_to_completion(
-            hook.sync_all_group_membership(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin),
-            context=f"sync_all_group_membership for app '{app.name}'",
+            hook.sync_all_groups(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin),
+            context=f"sync_all_groups for app '{app.name}'",
         )
         if exceptions:
             await db.session.rollback()
@@ -424,6 +420,13 @@ async def sync_app_group_memberships() -> None:
             click.echo(f"  ✗ Failed to sync app '{app.name}': {e}", err=True)
 
     click.echo("Completed app group lifecycle plugin sync")
+
+
+@cli.command("sync-app-groups")
+@_with_app_context
+async def sync_app_groups() -> None:
+    """Invoke the periodic group-sync hook for all apps with app group lifecycle plugins configured."""
+    await _sync_all_app_groups()
 
 
 if __name__ == "__main__":

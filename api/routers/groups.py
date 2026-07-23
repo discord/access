@@ -34,6 +34,7 @@ from api.operations import (
     CreateGroup,
     DeleteGroup,
     ModifyGroupDetails,
+    ModifyGroupPluginData,
     ModifyGroupTags,
     ModifyGroupType,
     ModifyGroupUsers,
@@ -42,7 +43,6 @@ from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
-from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 from api.routers._eager import (
     bind_role_group_map_own_groups,
     group_tag_map_options,
@@ -107,6 +107,42 @@ async def _load_group_with_options(db: DbSession, group_id: str) -> OktaGroup | 
     if group is not None:
         bind_role_group_map_own_groups(group)
     return group
+
+
+def _validate_group_plugin_config(
+    plugin_data: dict[str, Any],
+    app_plugin_data: dict[str, Any],
+    plugin_id: str | None,
+    old_plugin_data: dict[str, Any] | None = None,
+) -> None:
+    """Validate group-level plugin_data against the configured plugin's schema, raising
+    HTTP 400 on invalid config. No-op when the app has no app group lifecycle plugin.
+
+    Callers resolve the plugin id and the owning app's plugin_data themselves, since
+    group-create and group-update obtain them differently (a freshly-built group can't
+    lazy-load its app). On update, callers also pass the existing group's plugin_data as
+    `old_plugin_data` so the host can reject changes to immutable config fields."""
+    if plugin_id is None:
+        return
+
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginFilteringError,
+        validate_app_group_lifecycle_plugin_group_config,
+    )
+
+    try:
+        errors = validate_app_group_lifecycle_plugin_group_config(
+            plugin_data, plugin_id, app_plugin_data, old_plugin_data=old_plugin_data
+        )
+    except ValueError as e:
+        raise HTTPException(400, f"plugin_data: {e}") from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        # A plugin that doesn't answer this hook with exactly one response is a server-side
+        # misconfiguration, not bad client input, so surface a clear 500 rather than letting the
+        # plain Exception become an unhandled stack trace.
+        raise HTTPException(500, f"Misconfigured app group lifecycle plugin '{plugin_id}': {e}") from e
+    if errors:
+        raise HTTPException(400, f"plugin_data: {errors}")
 
 
 @router.get("", name="groups")
@@ -201,6 +237,14 @@ async def post_group(
             400, "App owner groups cannot be created directly. They are created automatically when an app is created."
         )
 
+    if isinstance(group, AppGroup) and group.plugin_data:
+        # group.app uses lazy="raise_on_sql" and the group isn't in the session yet,
+        # so load the App directly to resolve the plugin id (mirrors put_group's pattern).
+        _app = (await db.scalars(select(App).where(App.id == group.app_id).where(App.deleted_at.is_(None)))).first()
+        plugin_id = _app.app_group_lifecycle_plugin if _app is not None else None
+        app_plugin_data = _app.plugin_data if _app is not None else {}
+        _validate_group_plugin_config(group.plugin_data, app_plugin_data, plugin_id)
+
     try:
         created = await CreateGroup(group=group, tags=body.tags_to_add or [], current_user_id=current_user_id).execute()
     except ValueError as e:
@@ -218,29 +262,35 @@ async def put_group(
     current_user_id: CurrentUserId,
 ) -> GroupDetail:
     from api.plugins.app_group_lifecycle import (
+        AppGroupLifecycleHook,
         get_app_group_lifecycle_plugin_to_invoke,
-        validate_app_group_lifecycle_plugin_group_config,
+        invoke_app_group_lifecycle_hook,
     )
 
     fields_set = body.model_fields_set
     group = await _load_group_with_options(db, group_id)
     if group is None:
         raise HTTPException(404, "Not Found")
+
+    # Capture the pre-update name/description so the single, consolidated group_updated fire
+    # (below) can report them.
+    old_name = group.name
+    old_description = group.description or ""
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
     # just normalises a `None` (only possible when the client explicitly sent
     # `null`) to an empty string for ModifyGroupDetails.
     description = (body.description or "") if "description" in fields_set else None
 
-    # Validate plugin_data for app groups against the configured plugin's schema.
+    # Validate plugin_data for app groups against the configured plugin's schema. The
+    # group is loaded with its app (joinedload), so the app's plugin config is available.
     if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set and isinstance(group, AppGroup):
-        plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
-        if plugin_id is not None:
-            try:
-                errors = validate_app_group_lifecycle_plugin_group_config(body.plugin_data or {}, plugin_id)
-            except ValueError as e:
-                raise HTTPException(400, f"plugin_data: {e}") from e
-            if errors:
-                raise HTTPException(400, f"plugin_data: {errors}")
+        app_plugin_data = group.app.plugin_data if group.app is not None else {}
+        _validate_group_plugin_config(
+            body.plugin_data or {},
+            app_plugin_data,
+            get_app_group_lifecycle_plugin_to_invoke(group),
+            old_plugin_data=group.plugin_data or {},
+        )
 
     if not await _perms.can_manage_group(db, current_user_id, group):
         raise HTTPException(403, "Current user is not allowed to perform this action")
@@ -354,6 +404,19 @@ async def put_group(
                 ),
             )
 
+        # Validate plugin_data against the *target* app's plugin now, on the conversion path.
+        # The standalone-update guard below runs only for groups that are already AppGroups, so
+        # without this an okta_group -> app_group PUT would persist invalid config (surfacing
+        # later as a plugin SYNC_ERROR instead of a 400). old_plugin_data=None: attaching the
+        # plugin on conversion is a fresh create, so immutable fields may be set.
+        if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set:
+            _validate_group_plugin_config(
+                body.plugin_data or {},
+                conversion_app.plugin_data or {},
+                conversion_app.app_group_lifecycle_plugin,
+                old_plugin_data=None,
+            )
+
     try:
         await ModifyGroupDetails(
             group=group,
@@ -362,12 +425,16 @@ async def put_group(
             # A type conversion legitimately renames away from the App- prefix;
             # the final-state name rules are enforced above and by ModifyGroupType.
             validate_app_group_prefix=body.type == group.type,
+            # Suppress the per-operation fire; put_group fires a single consolidated
+            # group_updated below so a combined name + config change reconciles once.
+            fire_lifecycle_hook=False,
         ).execute()
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
 
     body_type = body.type
-    if body_type != group.type:
+    type_changed = body_type != group.type
+    if type_changed:
         if not await is_access_admin(db, current_user_id):
             raise HTTPException(403, "Current user is not an Access admin and not allowed to change group types")
         type_klass = {"okta_group": OktaGroup, "role_group": RoleGroup, "app_group": AppGroup}[body_type]
@@ -384,22 +451,47 @@ async def put_group(
             new_group.is_owner = False
         try:
             group = await ModifyGroupType(
-                group=group, group_changes=new_group, current_user_id=current_user_id
+                group=group,
+                group_changes=new_group,
+                current_user_id=current_user_id,
+                # Defer the group_created fire to the single consolidated fire below, after
+                # name/description/plugin_data are applied, so the plugin observes final state.
+                fire_created_hook=False,
             ).execute()
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
 
     old_plugin_data_for_audit = copy.deepcopy(group.plugin_data) if group.plugin_data else {}
-    old_plugin_data = group.plugin_data
+    config_changed = False
     if new_plugin_data is not None:
-        group.plugin_data = new_plugin_data
-        if old_plugin_data and group.plugin_data != old_plugin_data:
-            for key in old_plugin_data:
-                if key not in group.plugin_data:
-                    group.plugin_data[key] = old_plugin_data[key]
-            if type(group) is AppGroup:
-                merge_app_lifecycle_plugin_data(group, old_plugin_data)
-    await db.commit()
+        # ModifyGroupPluginData owns the merge (preserving omitted plugin entries and
+        # per-plugin status). We suppress its per-operation group_updated fire and fire once
+        # below instead, so a PUT changing both name and config reconciles once, not twice.
+        plugin_op = ModifyGroupPluginData(group=group, plugin_data=new_plugin_data, fire_lifecycle_hook=False)
+        await plugin_op.execute()
+        config_changed = plugin_op.config_changed
+    else:
+        await db.commit()
+
+    # Fire exactly one app group lifecycle hook for the whole PUT, after every field is applied so
+    # the plugin observes the final state. The per-operation fires of ModifyGroupDetails,
+    # ModifyGroupPluginData, and ModifyGroupType's group_created were all suppressed above.
+    #   - Converted TO an app group -> group_created (regardless of name/description/config, since
+    #     the group is new to the plugin).
+    #   - No type change, name/description/config changed -> group_updated.
+    # Converting AWAY from an app group already fired group_deleted inside ModifyGroupType (which
+    # needs the pre-conversion AppGroup row, so it can't be deferred); the final type has no
+    # lifecycle plugin, so nothing is fired here for that case.
+    name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
+    if type_changed and isinstance(group, AppGroup):
+        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+    elif not type_changed and (name_or_desc_changed or config_changed):
+        await invoke_app_group_lifecycle_hook(
+            AppGroupLifecycleHook.GROUP_UPDATED,
+            group=group,
+            old_name=old_name,
+            old_description=old_description,
+        )
 
     await ModifyGroupTags(
         group=group,
