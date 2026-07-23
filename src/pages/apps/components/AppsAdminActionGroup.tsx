@@ -1,12 +1,10 @@
-import {Autocomplete, Button, Grid, Paper, TextField, Box} from '@mui/material';
+import {Button, Grid, Paper, Box} from '@mui/material';
 import UnfoldLessIcon from '@mui/icons-material/UnfoldLess';
 import UnfoldMoreIcon from '@mui/icons-material/UnfoldMore';
 import CreateUpdateGroup from '../../groups/CreateUpdate';
+import DebouncedSearchField from '../../../components/DebouncedSearchField';
 import {OktaUserDetail, AppDetail} from '../../../api/apiSchemas';
 import React from 'react';
-
-// How long to wait after the last keystroke before firing the search query.
-const SEARCH_DEBOUNCE_MS = 200;
 
 interface AppsAdminActionGroupProps {
   currentUser: OktaUserDetail;
@@ -24,26 +22,9 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
     const onSearchChangeRef = React.useRef(onSearchChange);
     onSearchChangeRef.current = onSearchChange;
 
-    // Search as you type, debounced: fire the query shortly after the user stops
-    // typing rather than per keystroke (or only on Enter), so it stays responsive
-    // without a request per character.
-    const debounceRef = React.useRef<ReturnType<typeof setTimeout>>();
-    const handleSearchChange = React.useCallback((_: unknown, newValue: string | null) => {
-      const q = newValue?.trim() ?? '';
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-      debounceRef.current = setTimeout(() => onSearchChangeRef.current?.(q), SEARCH_DEBOUNCE_MS);
+    const handleSearchChange = React.useCallback((q: string) => {
+      onSearchChangeRef.current?.(q);
     }, []);
-
-    React.useEffect(
-      () => () => {
-        if (debounceRef.current) {
-          clearTimeout(debounceRef.current);
-        }
-      },
-      [],
-    );
 
     const onToggleExpandRef = React.useRef(onToggleExpand);
     const isExpandedRef = React.useRef(isExpanded);
@@ -81,14 +62,10 @@ export const AppsAdminActionGroup: React.FC<AppsAdminActionGroupProps> = React.m
                 marginLeft: 'auto',
                 justifyContent: 'flex-end',
               }}>
-              <Autocomplete
-                size="small"
+              <DebouncedSearchField
+                label="Search groups or users"
+                onSearchChange={handleSearchChange}
                 sx={{flex: '1 1 220px', minWidth: 0, maxWidth: 320}}
-                renderInput={(params) => <TextField {...params} label="Search groups or users" />}
-                options={[]}
-                onInputChange={handleSearchChange}
-                clearOnEscape
-                freeSolo
                 autoFocus
               />
               <Button

@@ -71,6 +71,7 @@ import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
+import DebouncedSearchField from '../../components/DebouncedSearchField';
 
 function sortGroupMembers(
   [aUserId, aUsers]: [string, Array<OktaUserGroupMemberDetail>],
@@ -167,13 +168,31 @@ export default function ReadGroup() {
 
   // Members page MEMBER_PAGE_SIZE at a time via the page-number control below.
   const [memberPage, setMemberPage] = React.useState(1);
-  // Reset to page 1 when the group changes (component is reused across
+  // Member search is computed server-side (member-details `q` param) so a large
+  // paginated group can be searched by name/email without loading every row.
+  const [memberSearchQuery, setMemberSearchQuery] = React.useState('');
+  // Reset page and search when the group changes (component is reused across
   // /groups/:id and /roles/:id).
   React.useEffect(() => {
     setMemberPage(1);
+    setMemberSearchQuery('');
   }, [id]);
+  // A new search returns a different, usually smaller result set, so jump back
+  // to the first page rather than stranding the user on a now-empty page. The
+  // search field is uncontrolled and only emits on keystrokes, so this can't
+  // reset the page out from under someone paging through results.
+  const handleMemberSearchChange = React.useCallback((q: string) => {
+    setMemberSearchQuery(q);
+    setMemberPage(1);
+  }, []);
   const {data: groupMemberData} = useGroupMemberDetailsById(
-    {pathParams: {groupId: id ?? ''}, queryParams: {owner: false, page: memberPage, size: 100}},
+    {
+      pathParams: {groupId: id ?? ''},
+      queryParams: Object.assign(
+        {owner: false, page: memberPage, size: 100},
+        memberSearchQuery ? {q: memberSearchQuery} : null,
+      ),
+    },
     {enabled: id != null},
   );
 
@@ -735,21 +754,31 @@ export default function ReadGroup() {
               <Table sx={{minWidth: 650}} size="small" aria-label="group members">
                 <TableHead>
                   <TableRow>
-                    <TableCell colSpan={3}>
-                      <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
-                          {group.type == 'role_group' ? 'Role Members' : 'Group Members'}
-                        </Typography>
-                        <Typography variant="body1" color="text.secondary">
-                          {group.type == 'role_group' ? 'Members of Okta Group for Role' : 'Members of Okta Group'}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Stack direction="row" spacing={1} justifyContent={'flex-end'}>
-                        <CreateRequest currentUser={currentUser} group={group} owner={false}></CreateRequest>
-                        <AddUsers currentUser={currentUser} group={group} />
-                        <AddRoles currentUser={currentUser} group={group} />
+                    <TableCell colSpan={4}>
+                      <Stack
+                        direction="row"
+                        spacing={2}
+                        alignItems="center"
+                        justifyContent="space-between"
+                        sx={{flexWrap: 'wrap', rowGap: 1}}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'wrap'}}>
+                          <Typography variant="h6" color="text.accent">
+                            {group.type == 'role_group' ? 'Role Members' : 'Group Members'}
+                          </Typography>
+                          <Typography variant="body1" color="text.secondary">
+                            {group.type == 'role_group' ? 'Members of Okta Group for Role' : 'Members of Okta Group'}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{flexWrap: 'nowrap'}}>
+                          <DebouncedSearchField
+                            label="Search members"
+                            onSearchChange={handleMemberSearchChange}
+                            sx={{width: 220}}
+                          />
+                          <CreateRequest currentUser={currentUser} group={group} owner={false}></CreateRequest>
+                          <AddUsers currentUser={currentUser} group={group} />
+                          <AddRoles currentUser={currentUser} group={group} />
+                        </Stack>
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -878,7 +907,7 @@ export default function ReadGroup() {
                     <TableRow key="member">
                       <TableCell>
                         <Typography variant="body2" color="text.secondary">
-                          None
+                          {memberSearchQuery ? 'No matching members' : 'None'}
                         </Typography>
                       </TableCell>
                     </TableRow>

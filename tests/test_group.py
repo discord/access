@@ -1942,3 +1942,101 @@ async def test_get_group_member_details_paginates_in_email_order(client: AsyncCl
     assert emails == sorted(emails)
     assert emails[0] == "member-000@example.com"
     assert emails[-1] == "member-059@example.com"
+
+
+async def test_get_group_member_details_search_by_q(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """`q` filters members server-side by name or email so a large paginated
+    group can be searched without loading every row client-side. Matching is a
+    case-insensitive substring against first/last name, display name, and email."""
+    group = await OktaGroupFactory.create_async()
+
+    alice = OktaUserFactory.build(first_name="Alice", last_name="Anderson", email="alice.anderson@example.com")
+    bob = OktaUserFactory.build(first_name="Bob", last_name="Baker", email="bob.baker@example.com")
+    carol = OktaUserFactory.build(first_name="Carol", last_name="Carter", email="carol.carter@example.com")
+    for u in (alice, bob, carol):
+        db.session.add(u)
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=group,
+        members_to_add=[alice.id, bob.id, carol.id],
+        sync_to_okta=False,
+    ).execute()
+
+    group_id = group.id
+    alice_id, bob_id, carol_id = alice.id, bob.id, carol.id
+    db.session.expunge_all()
+
+    url = url_for("api-groups.group_member_details_by_id", group_id=group_id)
+
+    def user_ids(payload: Any) -> set[str]:
+        return {r["active_user"]["id"] for r in payload["items"]}
+
+    # Last name (also a substring of the email).
+    rep = await client.get(url, params={"owner": "false", "q": "anderson"})
+    assert rep.status_code == 200, rep.text
+    data = rep.json()
+    assert data["total"] == 1
+    assert user_ids(data) == {alice_id}
+
+    # First name, case-insensitive.
+    data = (await client.get(url, params={"owner": "false", "q": "BOB"})).json()
+    assert data["total"] == 1
+    assert user_ids(data) == {bob_id}
+
+    # Email fragment.
+    data = (await client.get(url, params={"owner": "false", "q": "carol.carter@"})).json()
+    assert data["total"] == 1
+    assert user_ids(data) == {carol_id}
+
+    # Shared email domain matches everyone.
+    data = (await client.get(url, params={"owner": "false", "q": "@example.com"})).json()
+    assert data["total"] == 3
+    assert user_ids(data) == {alice_id, bob_id, carol_id}
+
+    # No match.
+    data = (await client.get(url, params={"owner": "false", "q": "nobody"})).json()
+    assert data["total"] == 0
+    assert data["items"] == []
+
+
+async def test_get_group_member_details_search_paginates(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """`q` composes with pagination: `total`/`pages` reflect the filtered set
+    (not the whole group), and paging through filtered results yields disjoint,
+    complete pages. This is what lets the group page search a large member list
+    and still page through the matches."""
+    group = await OktaGroupFactory.create_async()
+
+    # 15 users match the query, 10 don't. Distinct lowercase emails keep both the
+    # match set and the email ordering deterministic across pages.
+    matching = [OktaUserFactory.build(email=f"match-{i:02d}@example.com") for i in range(15)]
+    other = [OktaUserFactory.build(email=f"zzz-{i:02d}@example.com") for i in range(10)]
+    for u in matching + other:
+        db.session.add(u)
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=group,
+        members_to_add=[u.id for u in matching + other],
+        sync_to_okta=False,
+    ).execute()
+
+    group_id = group.id
+    db.session.expunge_all()
+
+    url = url_for("api-groups.group_member_details_by_id", group_id=group_id)
+
+    page1 = (await client.get(url, params={"owner": "false", "q": "match-", "size": 10, "page": 1})).json()
+    page2 = (await client.get(url, params={"owner": "false", "q": "match-", "size": 10, "page": 2})).json()
+
+    # total/pages count only the 15 matching users, not all 25 members.
+    assert page1["total"] == 15
+    assert page1["pages"] == 2
+    assert page2["total"] == 15
+
+    emails1 = [r["active_user"]["email"] for r in page1["items"]]
+    emails2 = [r["active_user"]["email"] for r in page2["items"]]
+    # Pages are disjoint and together cover exactly the matching set.
+    assert set(emails1).isdisjoint(emails2)
+    assert all(e.startswith("match-") for e in emails1 + emails2)
+    assert sorted(emails1 + emails2) == [f"match-{i:02d}@example.com" for i in range(15)]
