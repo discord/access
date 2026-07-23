@@ -71,6 +71,10 @@ class AppGroupLifecyclePluginConfigProperty:
     # the value may be set freely at create time. Enforced in
     # validate_app_group_lifecycle_plugin_group_config.
     immutable: bool = False
+    # Optional static text shown inline after a text field's value (an input suffix /
+    # end adornment), e.g. an email domain like "@example.com" appended to a local-part
+    # field. Purely presentational — it is not part of the stored value.
+    suffix: str | None = None
 
 
 @dataclass

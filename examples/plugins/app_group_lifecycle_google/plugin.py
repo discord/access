@@ -204,6 +204,8 @@ class GoogleGroupManagerPlugin:
                 required=True,
                 immutable=True,
                 validation={"patterns": email_patterns},
+                # Show the domain inline after the input so the operator sees the full address.
+                suffix=f"@{self._domain}",
             ),
             CONFIG_DISPLAY_NAME: AppGroupLifecyclePluginConfigProperty(
                 display_name="Google Group Display Name",

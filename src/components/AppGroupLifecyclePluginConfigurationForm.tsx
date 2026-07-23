@@ -8,6 +8,7 @@ import Box from '@mui/material/Box';
 import CircularProgress from '@mui/material/CircularProgress';
 import FormControl from '@mui/material/FormControl';
 import FormHelperText from '@mui/material/FormHelperText';
+import InputAdornment from '@mui/material/InputAdornment';
 import MenuItem from '@mui/material/MenuItem';
 import Select, {SelectChangeEvent} from '@mui/material/Select';
 import TextField from '@mui/material/TextField';
@@ -95,7 +96,7 @@ function patternValidators(property: PluginConfigProp): Record<string, (value: a
   return validators;
 }
 
-function ConfigField({
+export function ConfigField({
   property,
   value,
   fieldName,
@@ -175,7 +176,14 @@ function ConfigField({
           helperText={(fieldError?.message as string) || textHelp}
           required={property.required}
           defaultValue={value ?? property.default_value ?? ''}
-          InputProps={{readOnly: locked}}
+          InputProps={{
+            readOnly: locked,
+            // A static suffix (e.g. an email domain) shown inline after the value; decorative,
+            // not part of the stored value.
+            ...(property.suffix
+              ? {endAdornment: <InputAdornment position="end">{property.suffix}</InputAdornment>}
+              : {}),
+          }}
           {...register(
             fieldName,
             locked
