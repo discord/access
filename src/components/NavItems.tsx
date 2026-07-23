@@ -96,18 +96,23 @@ export default function NavItems(props: NavItemsProps) {
         displayIcon={<UserIcon />}
         tooltip="View users in your organization"
       />
-      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} tooltip="View and manage roles" />
-      <ListItemLink to="/apps" displayText="Apps" displayIcon={<AppIcon />} tooltip="View and manage connected apps" />
       <ListItemLink
         to="/groups"
         displayText="Groups"
         displayIcon={<GroupIcon />}
-        sx={{pb: 1}}
         tooltip="View and manage all kinds of groups, including roles and app groups"
+      />
+      <ListItemLink to="/roles" displayText="Roles" displayIcon={<RoleIcon />} tooltip="View and manage roles" />
+      <ListItemLink
+        to="/apps"
+        displayText="Apps"
+        displayIcon={<AppIcon />}
+        sx={{pb: 1}}
+        tooltip="View and manage connected apps"
       />
       <Divider />
       <ListItemLink
-        to="/role-requests"
+        to="/requests"
         displayText="Access Requests"
         displayIcon={<AccessRequestIcon />}
         open={openAccessRequests}
@@ -117,30 +122,6 @@ export default function NavItems(props: NavItemsProps) {
       />
       <Collapse component="li" in={props.open && openAccessRequests} timeout="auto" unmountOnExit>
         <List disablePadding>
-          <ListSubheader disableSticky sx={subheaderSx}>
-            Role-Based
-          </ListSubheader>
-          <ListItemLink
-            to="/role-requests?requester_user_id=@me"
-            displayText="From Me"
-            displayIcon={<RequestFromMe />}
-            sx={{pl: 4}}
-            tooltip="Role-based access requests you submitted"
-          />
-          <ListItemLink
-            to="/role-requests?assignee_user_id=@me"
-            displayText="Assigned to Me"
-            displayIcon={<RequestToMe />}
-            sx={{pl: 4}}
-            tooltip="Role-based access requests awaiting your approval"
-          />
-          <ListItemLink
-            to="/role-requests"
-            displayText="All"
-            displayIcon={<RequestAll />}
-            sx={{pl: 4}}
-            tooltip="All role-based access requests"
-          />
           <ListSubheader disableSticky sx={subheaderSx}>
             Individual
           </ListSubheader>
@@ -164,6 +145,30 @@ export default function NavItems(props: NavItemsProps) {
             displayIcon={<RequestAll />}
             sx={{pl: 4}}
             tooltip="All individual access requests"
+          />
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Role-Based
+          </ListSubheader>
+          <ListItemLink
+            to="/role-requests?requester_user_id=@me"
+            displayText="From Me"
+            displayIcon={<RequestFromMe />}
+            sx={{pl: 4}}
+            tooltip="Role-based access requests you submitted"
+          />
+          <ListItemLink
+            to="/role-requests?assignee_user_id=@me"
+            displayText="Assigned to Me"
+            displayIcon={<RequestToMe />}
+            sx={{pl: 4}}
+            tooltip="Role-based access requests awaiting your approval"
+          />
+          <ListItemLink
+            to="/role-requests"
+            displayText="All"
+            displayIcon={<RequestAll />}
+            sx={{pl: 4}}
+            tooltip="All role-based access requests"
           />
         </List>
       </Collapse>
@@ -203,7 +208,7 @@ export default function NavItems(props: NavItemsProps) {
       </Collapse>
       <Divider />
       <ListItemLink
-        to="/expiring-roles"
+        to="/expiring-groups"
         displayText="Expiring Access"
         displayIcon={<ExpiringGroupsIcon />}
         open={openExpiringAccess}
@@ -213,30 +218,6 @@ export default function NavItems(props: NavItemsProps) {
       />
       <Collapse component="li" in={props.open && openExpiringAccess} timeout="auto" unmountOnExit>
         <List disablePadding>
-          <ListSubheader disableSticky sx={subheaderSx}>
-            Role-Based
-          </ListSubheader>
-          <ListItemLink
-            to="/expiring-roles?role_owner_id=@me"
-            displayText="My Roles"
-            displayIcon={<ExpiringRolesOwnedByMe />}
-            sx={{pl: 4}}
-            tooltip="Roles you own that are losing access soon"
-          />
-          <ListItemLink
-            to="/expiring-roles?owner_id=@me"
-            displayText="My Groups"
-            displayIcon={<ExpiringOwnedByMe />}
-            sx={{pl: 4}}
-            tooltip="Groups you own with expiring role-based access"
-          />
-          <ListItemLink
-            to="/expiring-roles"
-            displayText="All"
-            displayIcon={<ExpiringAll />}
-            sx={{pl: 4}}
-            tooltip="All expiring role-based access"
-          />
           <ListSubheader disableSticky sx={subheaderSx}>
             Individual
           </ListSubheader>
@@ -260,6 +241,30 @@ export default function NavItems(props: NavItemsProps) {
             displayIcon={<ExpiringAll />}
             sx={{pl: 4}}
             tooltip="All expiring individual access"
+          />
+          <ListSubheader disableSticky sx={subheaderSx}>
+            Role-Based
+          </ListSubheader>
+          <ListItemLink
+            to="/expiring-roles?role_owner_id=@me"
+            displayText="My Roles"
+            displayIcon={<ExpiringRolesOwnedByMe />}
+            sx={{pl: 4}}
+            tooltip="Roles you own that are losing access soon"
+          />
+          <ListItemLink
+            to="/expiring-roles?owner_id=@me"
+            displayText="My Groups"
+            displayIcon={<ExpiringOwnedByMe />}
+            sx={{pl: 4}}
+            tooltip="Groups you own with expiring role-based access"
+          />
+          <ListItemLink
+            to="/expiring-roles"
+            displayText="All"
+            displayIcon={<ExpiringAll />}
+            sx={{pl: 4}}
+            tooltip="All expiring role-based access"
           />
         </List>
       </Collapse>
