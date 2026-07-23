@@ -101,6 +101,14 @@ def test_group_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin
     assert props["display_name"].required is True
 
 
+def test_group_config_email_property_carries_domain_suffix(plugin_instance: GoogleGroupManagerPlugin) -> None:
+    # The email prefix field surfaces the domain as an inline suffix so the operator sees the
+    # full address; the stored value remains the prefix only.
+    props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props["email"].suffix == "@test-company.com"
+    assert props["display_name"].suffix is None
+
+
 def test_group_config_properties_surface_validation_patterns(plugin_instance: GoogleGroupManagerPlugin) -> None:
     from plugin import GOOGLE_LOCAL_PART_RE
 

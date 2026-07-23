@@ -938,6 +938,7 @@ export type PluginConfigProp = {
    * @default false
    */
   immutable?: boolean;
+  suffix?: string | null;
 };
 
 /**

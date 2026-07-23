@@ -33,6 +33,7 @@ class PluginConfigProp(BaseModel):
     required: bool = False
     validation: Optional[dict[str, Any]] = None
     immutable: bool = False
+    suffix: Optional[str] = None
 
 
 class PluginStatusProp(BaseModel):
