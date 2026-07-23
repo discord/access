@@ -498,6 +498,7 @@ async def get_group_member_details(
     db: DbSession,
     current_user_id: CurrentUserId,
     owner: Annotated[Optional[bool], Query()] = None,
+    q: Annotated[Optional[str], Query()] = None,
 ) -> Page[OktaUserGroupMemberDetail]:
     """Paginated, fully-hydrated active membership rows for a group. `owner=true`
     returns ownerships, `owner=false` memberships, omitted returns both. Lets the
@@ -510,7 +511,11 @@ async def get_group_member_details(
     with the de-duplicated list the UI shows and keeps all of a user's rows on
     the same page. Note `total` and `size` count users, so a page can contain
     more than `size` items (rows) when users hold multiple rows; consumers must
-    not assume ``len(items) == size``."""
+    not assume ``len(items) == size``.
+
+    `q` is the group page's member search: it filters to users whose name or
+    email matches the query, computed in SQL so a large paginated group can be
+    searched without loading every member client-side."""
     resolved_group_id = (
         await db.scalars(
             select(OktaGroup.id)
@@ -540,6 +545,16 @@ async def get_group_member_details(
     )
     if owner is not None:
         user_stmt = user_stmt.where(OktaUserGroupMember.is_owner.is_(owner))
+    if q:
+        like = f"%{q}%"
+        user_stmt = user_stmt.where(
+            or_(
+                OktaUser.email.ilike(like),
+                OktaUser.display_name.ilike(like),
+                OktaUser.first_name.ilike(like),
+                OktaUser.last_name.ilike(like),
+            )
+        )
     user_stmt = user_stmt.distinct().order_by(OktaUser.email, OktaUserGroupMember.user_id)
 
     async def _load_rows(user_rows: Any) -> list[Any]:

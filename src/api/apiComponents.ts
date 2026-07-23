@@ -1752,6 +1752,7 @@ export type GroupMemberDetailsByIdPathParams = {
 
 export type GroupMemberDetailsByIdQueryParams = {
   owner?: boolean | null;
+  q?: string | null;
   /**
    * Page number
    *
@@ -1792,6 +1793,10 @@ export type GroupMemberDetailsByIdVariables = {
  * the same page. Note `total` and `size` count users, so a page can contain
  * more than `size` items (rows) when users hold multiple rows; consumers must
  * not assume ``len(items) == size``.
+ *
+ * `q` is the group page's member search: it filters to users whose name or
+ * email matches the query, computed in SQL so a large paginated group can be
+ * searched without loading every member client-side.
  */
 export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVariables, signal?: AbortSignal) =>
   apiFetch<
@@ -1821,6 +1826,10 @@ export const fetchGroupMemberDetailsById = (variables: GroupMemberDetailsByIdVar
  * the same page. Note `total` and `size` count users, so a page can contain
  * more than `size` items (rows) when users hold multiple rows; consumers must
  * not assume ``len(items) == size``.
+ *
+ * `q` is the group page's member search: it filters to users whose name or
+ * email matches the query, computed in SQL so a large paginated group can be
+ * searched without loading every member client-side.
  */
 export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVariables): {
   queryKey: reactQuery.QueryKey;
@@ -1861,6 +1870,10 @@ export function groupMemberDetailsByIdQuery(variables: GroupMemberDetailsByIdVar
  * the same page. Note `total` and `size` count users, so a page can contain
  * more than `size` items (rows) when users hold multiple rows; consumers must
  * not assume ``len(items) == size``.
+ *
+ * `q` is the group page's member search: it filters to users whose name or
+ * email matches the query, computed in SQL so a large paginated group can be
+ * searched without loading every member client-side.
  */
 export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>(
   variables: GroupMemberDetailsByIdVariables,
@@ -1898,6 +1911,10 @@ export const useSuspenseGroupMemberDetailsById = <TData = Schemas.PageTypeVarCus
  * the same page. Note `total` and `size` count users, so a page can contain
  * more than `size` items (rows) when users hold multiple rows; consumers must
  * not assume ``len(items) == size``.
+ *
+ * `q` is the group page's member search: it filters to users whose name or
+ * email matches the query, computed in SQL so a large paginated group can be
+ * searched without loading every member client-side.
  */
 export const useGroupMemberDetailsById = <TData = Schemas.PageTypeVarCustomizedOktaUserGroupMemberDetail>(
   variables: GroupMemberDetailsByIdVariables | reactQuery.SkipToken,
