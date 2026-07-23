@@ -406,15 +406,19 @@ class GoogleGroupManagerPlugin:
             logger.debug(f"No mapping found for group {group.name}.")
             return None
 
+        # A mapping that exists but can't be interpreted (no target group, or a target whose
+        # profile carries no googleGroupEmail) is an inconsistent Okta-side state, not a routine
+        # no-op: returning None makes the caller treat the group as unlinked and re-create, which
+        # can duplicate the mapping/group. Log at WARNING so it's visible at normal log levels.
         target_group_id = mapping.get("targetGroupId")
         if not target_group_id:
-            logger.debug(f"Failed to get target group ID mapped to {group.name}. Mapping:\n{mapping}")
+            logger.warning(f"Push mapping for {group.name} has no target group id. Mapping:\n{mapping}")
             return None
 
         profile = (await okta.get_group(target_group_id)).group.profile
         email = profile.actual_instance.additional_properties.get(OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL)
         if not email:
-            logger.debug(
+            logger.warning(
                 f"Google group email could not be resolved for target group mapped to {group.name}.\n"
                 f"Target group {target_group_id} has profile:\n{profile}"
             )
@@ -763,11 +767,18 @@ class GoogleGroupManagerPlugin:
                 select(AppGroup).where(AppGroup.app_id == app.id).where(AppGroup.deleted_at.is_(None))
             )
         ).all()
+        # Swallow per-group failures so one bad group doesn't abort the batch, but count them and
+        # emit an aggregate signal at the end -- otherwise a systemic outage (e.g. Google API down)
+        # leaves the periodic sync exiting cleanly with no top-level indication anything failed.
+        failures = 0
         for group in groups:
             try:
                 await self._reconcile(session, group)
             except Exception:
+                failures += 1
                 logger.exception(f"Sync reconcile failed for group {group.name}")
+        if failures:
+            logger.error(f"Google group sync for app {app.name}: {failures} of {len(groups)} groups failed to reconcile")
 
 
 google_group_manager_plugin = GoogleGroupManagerPlugin()

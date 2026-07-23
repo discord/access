@@ -266,6 +266,40 @@ def test_config_property_immutable_defaults_false_and_serializes() -> None:
     assert asdict(prop2)["immutable"] is True
 
 
+def test_config_property_suffix_rejected_on_non_text() -> None:
+    # suffix is presentational and only rendered on text inputs; declaring it on a number/boolean
+    # is a silently-inert mistake, so construction fails fast.
+    AppGroupLifecyclePluginConfigProperty(display_name="X", type="text", suffix="@example.com")  # ok
+    with pytest.raises(ValueError, match="suffix is only supported on text"):
+        AppGroupLifecyclePluginConfigProperty(display_name="X", type="number", suffix="@example.com")
+
+
+def test_plugin_schema_models_mirror_their_dataclasses() -> None:
+    # The Pydantic wire models mirror the plugin dataclasses; routes serialize via
+    # asdict() -> model_validate(), and Pydantic silently drops unknown keys, so a field added to
+    # one side but not the other would vanish from the API response with no error. Guard the
+    # mirror by asserting identical field names (the drift the review flagged).
+    import dataclasses
+
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginConfigProperty as _ConfigDC,
+    )
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginMetadata as _MetaDC,
+    )
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginStatusProperty as _StatusDC,
+    )
+    from api.schemas.plugin_schemas import PluginConfigProp, PluginInfo, PluginStatusProp
+
+    def dc_fields(dc: type) -> set[str]:
+        return {f.name for f in dataclasses.fields(dc)}
+
+    assert dc_fields(_ConfigDC) == set(PluginConfigProp.model_fields)
+    assert dc_fields(_StatusDC) == set(PluginStatusProp.model_fields)
+    assert dc_fields(_MetaDC) == set(PluginInfo.model_fields)
+
+
 class TestPluginRegistration:
     """Tests for plugin registration and discovery."""
 
@@ -2457,6 +2491,35 @@ class TestModifyGroupPluginData:
         assert test_plugin.group_updated_calls == []
         # The omitted region is preserved by the partial-patch merge, so nothing actually changed.
         assert group.plugin_data[DummyPlugin.ID]["configuration"]["region"] == "us"
+
+    async def test_fires_group_updated_on_first_config_set(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        # A group with a lifecycle plugin but no plugin_data yet: a config-only change that adds
+        # config for the first time must still fire group_updated. config_changed is keyed on the
+        # effective config, not on whether prior plugin_data existed -- a regression coupling the
+        # fire to "old data was present" would silently skip the very first reconcile.
+        from api.operations.modify_group_plugin_data import ModifyGroupPluginData
+
+        mocker.patch.object(okta, "update_group")
+        a = AppFactory.build()
+        a.app_group_lifecycle_plugin = DummyPlugin.ID
+        a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
+        db.session.add(a)
+        group = AppGroupFactory.build(
+            app_id=a.id, name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng", plugin_data={}
+        )
+        db.session.add(group)
+        await db.session.commit()
+
+        op = ModifyGroupPluginData(
+            group=group, plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-new"}}}
+        )
+        await op.execute()
+
+        assert op.config_changed is True
+        assert len(test_plugin.group_updated_calls) == 1
+        assert group.plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "g-new"
 
     async def test_does_not_fire_without_lifecycle_plugin(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture

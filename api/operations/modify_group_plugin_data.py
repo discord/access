@@ -30,10 +30,10 @@ class ModifyGroupPluginData:
     def __init__(self, *, group: OktaGroup, plugin_data: dict[str, Any], fire_lifecycle_hook: bool = True):
         self.group = group
         self.plugin_data = plugin_data
-        # put_group sets this False when it also changed the name/description, so a single
-        # group_updated fire covers both changes instead of reconciling twice. The merge still
-        # runs; only the hook call is gated. `config_changed` is exposed so that caller can
-        # decide whether to fire the consolidated hook itself.
+        # put_group always sets this False and fires a single consolidated hook itself after
+        # applying name/description/config, so a combined edit reconciles once instead of twice.
+        # The merge still runs; only the hook call is gated. `config_changed` is exposed so that
+        # caller can decide whether to fire the consolidated hook itself.
         self.fire_lifecycle_hook = fire_lifecycle_hook
         self.config_changed = False
 

@@ -5,7 +5,6 @@ from typing import Any, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from okta.exceptions.exceptions import ApiException
 from okta.models.add_group_request import AddGroupRequest
 from okta.models.group import Group as OktaGroupType
 from okta.models.group_push_mapping import GroupPushMapping
@@ -300,10 +299,11 @@ def _fake_okta_client(mocker, svc):
     """Wire svc._okta_client() to yield a MagicMock client. Returns the client so tests
     can set its high-level group-push methods' return values / side effects.
 
-    The methods now go through the SDK's typed ``GroupPushMappingApi`` (inherited by the
-    Okta ``Client``), which returns ``(data, ApiResponse, error)`` tuples and raises
-    ``ApiException`` on HTTP errors — so tests script those methods directly rather than
-    the low-level request executor."""
+    The methods go through the SDK's typed ``GroupPushMappingApi`` (inherited by the Okta
+    ``Client``), which returns ``(data, ApiResponse, error)`` tuples and reports HTTP errors
+    in the trailing ``error`` element (it does NOT raise) — delete even returns a 2-tuple
+    ``(response, error)`` on error. Tests script those methods directly rather than the
+    low-level request executor."""
     client = MagicMock()
 
     @asynccontextmanager
@@ -417,25 +417,40 @@ async def test_delete_group_push_mapping_requires_args(args):
 
 async def test_delete_group_push_mapping_idempotent_on_404(mocker):
     # A 404 means the mapping is already gone; deletion is idempotent, so the operation must
-    # succeed rather than raise (covers retry/replay after a partial failure). The typed client
-    # raises ApiException on HTTP errors, so simulate the DELETE raising a 404.
+    # succeed rather than raise (covers retry/replay after a partial failure). This SDK returns
+    # HTTP errors in the result tuple (it does NOT raise), and delete specifically returns a
+    # 2-tuple (response, error) on error vs a 3-tuple on success.
     svc = OktaService()
     client = _fake_okta_client(mocker, svc)
     client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
-    client.delete_group_push_mapping = AsyncMock(side_effect=ApiException(status=404))
+    client.delete_group_push_mapping = AsyncMock(return_value=(MagicMock(), MagicMock(status=404)))
 
     await svc.delete_group_push_mapping("app-1", "map-1")  # must not raise
 
 
+async def test_delete_group_push_mapping_idempotent_when_gone_at_deactivate(mocker):
+    # The mapping can vanish at the deactivate (update) step too; update returns a 3-tuple whose
+    # trailing error carries a 404. That is likewise treated as success, and delete is skipped.
+    svc = OktaService()
+    client = _fake_okta_client(mocker, svc)
+    client.update_group_push_mapping = AsyncMock(return_value=(None, MagicMock(), MagicMock(status=404)))
+    client.delete_group_push_mapping = AsyncMock()
+
+    await svc.delete_group_push_mapping("app-1", "map-1")  # must not raise
+
+    client.delete_group_push_mapping.assert_not_awaited()
+
+
 async def test_delete_group_push_mapping_raises_on_non_404(mocker):
     # A genuine, non-transient failure (e.g. 403) must still surface, not be swallowed by the
-    # 404 tolerance. (5xx is handled separately as a transient error before reaching here.)
+    # 404 tolerance. The SDK returns the error in the result tuple (delete: 2-tuple on error);
+    # 5xx is handled separately as a transient error before reaching here.
     svc = OktaService()
     client = _fake_okta_client(mocker, svc)
     client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
-    client.delete_group_push_mapping = AsyncMock(side_effect=ApiException(status=403))
+    client.delete_group_push_mapping = AsyncMock(return_value=(MagicMock(), MagicMock(status=403)))
 
-    with pytest.raises(ApiException):
+    with pytest.raises(Exception):
         await svc.delete_group_push_mapping("app-1", "map-1")
 
 
