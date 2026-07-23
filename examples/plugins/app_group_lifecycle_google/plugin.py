@@ -778,7 +778,9 @@ class GoogleGroupManagerPlugin:
                 failures += 1
                 logger.exception(f"Sync reconcile failed for group {group.name}")
         if failures:
-            logger.error(f"Google group sync for app {app.name}: {failures} of {len(groups)} groups failed to reconcile")
+            logger.error(
+                f"Google group sync for app {app.name}: {failures} of {len(groups)} groups failed to reconcile"
+            )
 
 
 google_group_manager_plugin = GoogleGroupManagerPlugin()

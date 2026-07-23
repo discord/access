@@ -2506,15 +2506,11 @@ class TestModifyGroupPluginData:
         a.app_group_lifecycle_plugin = DummyPlugin.ID
         a.plugin_data = {DummyPlugin.ID: {"configuration": {"enabled": True}, "status": {}}}
         db.session.add(a)
-        group = AppGroupFactory.build(
-            app_id=a.id, name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng", plugin_data={}
-        )
+        group = AppGroupFactory.build(app_id=a.id, name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{a.name}-Eng", plugin_data={})
         db.session.add(group)
         await db.session.commit()
 
-        op = ModifyGroupPluginData(
-            group=group, plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-new"}}}
-        )
+        op = ModifyGroupPluginData(group=group, plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "g-new"}}})
         await op.execute()
 
         assert op.config_changed is True
