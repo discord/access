@@ -974,6 +974,18 @@ class GroupRequest(Base):
         default=list,
         server_default="[]",
     )
+    # Plugin group config supplied with the request, in the same shape as a
+    # group's plugin_data: {plugin_id: {configuration: {...}}}. No status is
+    # stored -- the lifecycle hook populates that after the group is created.
+    requested_plugin_data: Mapped[Dict[str, Any]] = mapped_column(
+        mutable_json_type(
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
+            nested=True,
+        ),
+        nullable=False,
+        default=dict,
+        server_default="{}",
+    )
     # Will also be used to populate owner access reason field
     request_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 
@@ -994,6 +1006,17 @@ class GroupRequest(Base):
         nullable=False,
         default=list,
         server_default="[]",
+    )
+    # Resolver-editable copy of the plugin config; applied (falling back to
+    # requested_plugin_data) to the AppGroup created on approval.
+    resolved_plugin_data: Mapped[Dict[str, Any]] = mapped_column(
+        mutable_json_type(
+            dbtype=JSON().with_variant(JSONB, "postgresql"),
+            nested=True,
+        ),
+        nullable=False,
+        default=dict,
+        server_default="{}",
     )
     resolution_reason: Mapped[str] = mapped_column(Unicode(1024), nullable=False, default="")
 

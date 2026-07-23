@@ -284,6 +284,8 @@ class GroupRequestDetail(BaseModel):
     resolution_reason: Optional[str] = ""
     resolved_at: Optional[FlexibleDatetime] = None
     approved_group_id: Optional[str] = None
+    requested_plugin_data: dict[str, Any] = Field(default_factory=dict)
+    resolved_plugin_data: dict[str, Any] = Field(default_factory=dict)
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
     requester: Optional[OktaUserSummary] = None
@@ -333,6 +335,7 @@ class _RoleGroupRequestBody(_GroupRequestBodyBase):
 class _AppGroupRequestBody(_GroupRequestBodyBase):
     requested_group_type: Literal["app_group"]
     requested_app_id: str
+    requested_plugin_data: dict[str, Any] = Field(default_factory=dict)
 
 
 CreateGroupRequestBody = Annotated[
@@ -351,6 +354,7 @@ class ResolveGroupRequestBody(BaseModel):
     resolved_app_id: Optional[str] = None
     resolved_group_tags: Optional[list[str]] = None
     resolved_ownership_ending_at: Optional[FlexibleDatetime] = None
+    resolved_plugin_data: Optional[dict[str, Any]] = None
 
 
 # --- Tags -------------------------------------------------------------------

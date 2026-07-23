@@ -1,15 +1,16 @@
+import copy
+import logging
 from typing import Optional
 
-import logging
-
-from api.context import get_request_context
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
+from api.context import get_request_context
 from api.exceptions import ConflictError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
+    App,
     AppGroup,
     GroupRequest,
     OktaGroup,
@@ -22,12 +23,14 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
 from api.models.tag import coalesce_ended_at
+from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
 from api.operations.modify_group_users import ModifyGroupUsers
-from api.operations._fan_out import defer_notification
 from api.plugins import NotificationHook
 from api.schemas import AuditLogSchema, EventType
+
+logger = logging.getLogger(__name__)
 
 
 class ApproveGroupRequest:
@@ -118,6 +121,11 @@ class ApproveGroupRequest:
             if group_request.resolved_group_tags
             else group_request.requested_group_tags
         )
+        resolved_plugin_data = (
+            group_request.resolved_plugin_data
+            if group_request.resolved_plugin_data
+            else group_request.requested_plugin_data
+        )
 
         # authorization
         access_owner_ids = {u.id for u in await get_access_owners()}
@@ -206,6 +214,34 @@ class ApproveGroupRequest:
                 description=resolved_description,
                 app_id=resolved_app_id,
             )
+            # Carry the request's plugin config onto the group so the
+            # group_created hook (fired inside CreateGroup) sees it. Re-validate
+            # defensively: the app or its config may have changed since filing.
+            if resolved_plugin_data:
+                resolved_app = await db.session.get(App, resolved_app_id)
+                plugin_id = resolved_app.app_group_lifecycle_plugin if resolved_app is not None else None
+                if plugin_id is not None:
+                    from api.plugins.app_group_lifecycle import (
+                        validate_app_group_lifecycle_plugin_group_config,
+                    )
+
+                    plugin_errors = validate_app_group_lifecycle_plugin_group_config(
+                        resolved_plugin_data,
+                        plugin_id,
+                    )
+                    if plugin_errors:
+                        raise ValueError(f"plugin_data: {plugin_errors}")
+                    # Deep-copy so the created group and the persisted request
+                    # don't share nested plugin_data objects: the group_created
+                    # hook may mutate the group's copy (e.g. writing status),
+                    # which must not leak back into the immutable request record.
+                    new_group.plugin_data = copy.deepcopy(resolved_plugin_data)
+                else:
+                    logger.warning(
+                        f"Group request {group_request.id} carried plugin_data, "
+                        f"but app {resolved_app_id} has no app_group_lifecycle_plugin; "
+                        "dropping the supplied config."
+                    )
         else:
             new_group = OktaGroup(
                 name=resolved_name,

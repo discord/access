@@ -185,6 +185,22 @@ async def post_group_request(
         if app is None:
             raise HTTPException(404, "App not found")
 
+        # Validate any supplied plugin group config against the app's lifecycle
+        # plugin. A request describes a not-yet-created group, so immutable
+        # fields stay freely settable (no old-config comparison here).
+        if app.app_group_lifecycle_plugin is not None:
+            from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
+
+            try:
+                plugin_errors = validate_app_group_lifecycle_plugin_group_config(
+                    body.requested_plugin_data,
+                    app.app_group_lifecycle_plugin,
+                )
+            except ValueError as e:
+                raise HTTPException(400, f"plugin_data: {e}") from e
+            if plugin_errors:
+                raise HTTPException(400, f"plugin_data: {plugin_errors}")
+
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
         tags = (
@@ -213,16 +229,23 @@ async def post_group_request(
             current_user_id=current_user_id,
         ).execute()
 
-    gr = await CreateGroupRequest(
-        requester_user=requester,
-        requested_group_name=body.requested_group_name,
-        requested_group_description=body.requested_group_description or "",
-        requested_group_type=body.requested_group_type,
-        requested_app_id=requested_app_id,
-        requested_group_tags=body.requested_group_tags,
-        requested_ownership_ending_at=body.requested_ownership_ending_at,
-        request_reason=body.request_reason or "",
-    ).execute()
+    # execute() may auto-approve (app-owner self-approval / conditional access),
+    # which re-validates plugin config and raises ValueError on invalid input.
+    # Surface that as a 400 just like the PUT/approve path does.
+    try:
+        gr = await CreateGroupRequest(
+            requester_user=requester,
+            requested_group_name=body.requested_group_name,
+            requested_group_description=body.requested_group_description or "",
+            requested_group_type=body.requested_group_type,
+            requested_app_id=requested_app_id,
+            requested_group_tags=body.requested_group_tags,
+            requested_ownership_ending_at=body.requested_ownership_ending_at,
+            request_reason=body.request_reason or "",
+            requested_plugin_data=body.requested_plugin_data if isinstance(body, _AppGroupRequestBody) else {},
+        ).execute()
+    except ValueError as e:
+        raise HTTPException(400, f"Failed to create group request: {e}") from e
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
     # Drop cached ORM state so the response reflects what the operation
@@ -289,6 +312,8 @@ async def put_group_request(
         gr.resolved_group_tags = body.resolved_group_tags
     if body.resolved_ownership_ending_at is not None:
         gr.resolved_ownership_ending_at = body.resolved_ownership_ending_at
+    if body.resolved_plugin_data is not None:
+        gr.resolved_plugin_data = body.resolved_plugin_data
 
     await db.commit()
 

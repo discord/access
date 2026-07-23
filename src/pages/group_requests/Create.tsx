@@ -30,10 +30,13 @@ import {
 import {
   useGroupRequestsCreate,
   useApps,
+  useAppById,
   useTags,
   GroupRequestsCreateError,
   GroupRequestsCreateVariables,
 } from '../../api/apiComponents';
+import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
+import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
 import {
   AppDetail,
   AppGroupDetail,
@@ -154,6 +157,16 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     [detectedAppName, detectedAppData],
   );
 
+  // The app a submitted request would target: explicitly-selected app, or the
+  // one detected from an "App-…-" name prefix on an okta_group request.
+  const effectiveAppId = (groupType === 'app_group' ? selectedApp?.id : detectedApp?.id) ?? null;
+  // AppSummary (from search) lacks app_group_lifecycle_plugin; fetch AppDetail for it.
+  const {data: effectiveAppDetail} = useAppById(
+    {pathParams: {appId: effectiveAppId ?? ''}},
+    {enabled: effectiveAppId != null},
+  );
+  const requestPluginId = pluginIdForApp(effectiveAppDetail);
+
   const {data: tagSearchData} = useTags({
     queryParams: {page: 1, size: 10, q: tagSearchInput},
   });
@@ -195,6 +208,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       groupName = ROLE_GROUP_PREFIX + formData.name;
     }
 
+    const requestedPluginData = extractRequestedPluginData(formData as any);
+
     const body = {
       requested_group_name: groupName,
       requested_group_description: formData.description ?? '',
@@ -202,6 +217,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       requested_app_id: appId,
       request_reason: formData.reason ?? '',
       requested_group_tags: selectedTags.map((t) => t.id),
+      ...(effectiveType === 'app_group' && requestPluginId ? {requested_plugin_data: requestedPluginData} : {}),
     } as Parameters<typeof createRequest.mutate>[0]['body'];
 
     if (body == null) {
@@ -374,6 +390,9 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             required
           />
         </FormControl>
+        {requestPluginId && (
+          <AppGroupLifecyclePluginConfigurationForm entityType="group" selectedPluginId={requestPluginId} />
+        )}
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
