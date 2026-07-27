@@ -42,7 +42,7 @@ def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, N
 
 
 async def _make_app_with_plugin(db: Db) -> Any:
-    app_obj = AppFactory.create()
+    app_obj = await AppFactory.create_async()
     app_obj.app_group_lifecycle_plugin = DummyPlugin.ID
     db.session.add(app_obj)
     await db.session.commit()
@@ -52,9 +52,9 @@ async def _make_app_with_plugin(db: Db) -> Any:
 async def _make_app_owner(db: Db, app_obj: Any) -> OktaUser:
     """Create a user and make them an owner of ``app_obj`` via its owner group,
     so a group request they file auto-approves."""
-    owner = OktaUserFactory.create()
+    owner = await OktaUserFactory.create_async()
     db.session.add(owner)
-    owner_group = AppGroupFactory.create(
+    owner_group = await AppGroupFactory.create_async(
         name=(
             f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}"
             f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
@@ -107,7 +107,7 @@ def mutating_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[_StatusWri
 
 
 async def test_group_request_plugin_data_defaults_to_empty_dict(app: FastAPI, db: Db) -> None:
-    user: OktaUser = OktaUserFactory.create()
+    user: OktaUser = await OktaUserFactory.create_async()
     db.session.add(user)
     await db.session.commit()
 
@@ -127,7 +127,7 @@ async def test_group_request_plugin_data_defaults_to_empty_dict(app: FastAPI, db
 
 
 async def test_group_request_plugin_data_round_trips(app: FastAPI, db: Db) -> None:
-    user: OktaUser = OktaUserFactory.create()
+    user: OktaUser = await OktaUserFactory.create_async()
     db.session.add(user)
     await db.session.commit()
 
@@ -189,7 +189,7 @@ def test_resolve_body_accepts_resolved_plugin_data() -> None:
 
 
 async def test_create_group_request_persists_requested_plugin_data(app: FastAPI, db: Db) -> None:
-    user: OktaUser = OktaUserFactory.create()
+    user: OktaUser = await OktaUserFactory.create_async()
     db.session.add(user)
     await db.session.commit()
     app_obj = await _make_app_with_plugin(db)
@@ -218,7 +218,7 @@ async def test_post_app_group_request_rejects_missing_required_plugin_config(
     url_for: Callable[..., str],
     test_plugin: DummyPlugin,
 ) -> None:
-    user: OktaUser = OktaUserFactory.create()
+    user: OktaUser = await OktaUserFactory.create_async()
     db.session.add(user)
     await db.session.commit()
     mock_user(user)
@@ -246,7 +246,7 @@ async def test_post_app_group_request_accepts_valid_plugin_config(
     url_for: Callable[..., str],
     test_plugin: DummyPlugin,
 ) -> None:
-    user: OktaUser = OktaUserFactory.create()
+    user: OktaUser = await OktaUserFactory.create_async()
     db.session.add(user)
     await db.session.commit()
     mock_user(user)
@@ -286,7 +286,7 @@ async def test_approve_applies_resolved_plugin_data_over_requested(
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
 
-    requester: OktaUser = OktaUserFactory.create()
+    requester: OktaUser = await OktaUserFactory.create_async()
     db.session.add(requester)
     await db.session.commit()
     app_obj = await _make_app_with_plugin(db)
@@ -327,7 +327,7 @@ async def test_approve_falls_back_to_requested_plugin_data(
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
 
-    requester: OktaUser = OktaUserFactory.create()
+    requester: OktaUser = await OktaUserFactory.create_async()
     db.session.add(requester)
     await db.session.commit()
     app_obj = await _make_app_with_plugin(db)
@@ -372,7 +372,7 @@ async def test_put_group_request_persists_resolved_plugin_data(
     admin = (
         await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
     ).first()
-    requester: OktaUser = OktaUserFactory.create()
+    requester: OktaUser = await OktaUserFactory.create_async()
     db.session.add(requester)
     await db.session.commit()
     app_obj = await _make_app_with_plugin(db)
@@ -470,7 +470,7 @@ async def test_approve_does_not_mutate_request_plugin_data(
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
 
-    requester: OktaUser = OktaUserFactory.create()
+    requester: OktaUser = await OktaUserFactory.create_async()
     db.session.add(requester)
     await db.session.commit()
     app_obj = await _make_app_with_plugin(db)
@@ -517,9 +517,9 @@ async def test_approve_drops_plugin_data_and_warns_when_app_has_no_plugin(
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
 
-    requester: OktaUser = OktaUserFactory.create()
+    requester: OktaUser = await OktaUserFactory.create_async()
     db.session.add(requester)
-    app_obj = AppFactory.create()  # no app_group_lifecycle_plugin configured
+    app_obj = await AppFactory.create_async()  # no app_group_lifecycle_plugin configured
     db.session.add(app_obj)
     await db.session.commit()
 
