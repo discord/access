@@ -75,11 +75,6 @@ COPY ./migrations ./migrations
 COPY ./config ./config
 COPY alembic.ini ./
 
-# Ship prod-ready plugin source into the image WITHOUT installing it here.
-# Downstream images opt in by pip installing the plugins, which keeps the source
-# single-homed in this repo while leaving activation to the consumer.
-COPY ./examples/plugins/app_group_lifecycle_google ./plugins/app_group_lifecycle_google
-
 RUN uv sync --frozen --no-dev
 
 # --- Optional example plugins -------------------------------------------------
@@ -95,6 +90,7 @@ RUN uv sync --frozen --no-dev
 ARG INSTALL_AUDIT_LOGGER_PLUGIN="false"
 ARG INSTALL_CONDITIONAL_ACCESS_PLUGIN="false"
 ARG INSTALL_DATADOG_METRICS_PLUGIN="false"
+ARG INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN="false"
 ARG INSTALL_HEALTH_CHECK_PLUGIN="false"
 ARG INSTALL_NOTIFICATIONS_PLUGIN="false"
 ARG INSTALL_SLACK_NOTIFICATIONS_PLUGIN="false"
@@ -110,6 +106,7 @@ RUN --mount=type=bind,source=examples/plugins,target=examples/plugins \
     if [ "$INSTALL_AUDIT_LOGGER_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/app_group_lifecycle_audit_logger; else echo "Skipping app_group_lifecycle_audit_logger plugin"; fi; \
     if [ "$INSTALL_CONDITIONAL_ACCESS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/conditional_access; else echo "Skipping conditional_access plugin"; fi; \
     if [ "$INSTALL_DATADOG_METRICS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/datadog_metrics_reporter; else echo "Skipping datadog_metrics_reporter plugin"; fi; \
+    if [ "$INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/app_group_lifecycle_google; else echo "Skipping app_group_lifecycle_google plugin"; fi; \
     if [ "$INSTALL_HEALTH_CHECK_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/health_check_plugin; else echo "Skipping health_check_plugin plugin"; fi; \
     if [ "$INSTALL_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications; else echo "Skipping notifications plugin"; fi; \
     if [ "$INSTALL_SLACK_NOTIFICATIONS_PLUGIN" = "true" ]; then install_plugin ./examples/plugins/notifications_slack; else echo "Skipping notifications_slack plugin"; fi

@@ -13,6 +13,7 @@ you can enable as-is, and a template to copy when writing your own.
 | Directory | Extends | Entry-point group | Docker build arg |
 |-----------|---------|-------------------|------------------|
 | [`app_group_lifecycle_audit_logger`](./app_group_lifecycle_audit_logger) | Log app group lifecycle events (create/update/delete/membership) | `access_app_group_lifecycle` | `INSTALL_AUDIT_LOGGER_PLUGIN` |
+| [`app_group_lifecycle_google`](./app_group_lifecycle_google) | Provision Google Workspace groups for app groups via Okta group push | `access_app_group_lifecycle` | `INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN` |
 | [`conditional_access`](./conditional_access) | Auto approve/deny access requests | `access_conditional_access` | `INSTALL_CONDITIONAL_ACCESS_PLUGIN` |
 | [`datadog_metrics_reporter`](./datadog_metrics_reporter) | Export metrics to DataDog | `access_metrics_reporter` | `INSTALL_DATADOG_METRICS_PLUGIN` |
 | [`notifications`](./notifications) | Request/expiry notifications to logger | `access_notifications` | `INSTALL_NOTIFICATIONS_PLUGIN` |
