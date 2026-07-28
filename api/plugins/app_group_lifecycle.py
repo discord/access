@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.extensions import db
 from api.models import App, AppGroup, OktaUser
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
+from api.services import okta
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
 hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
@@ -40,6 +41,17 @@ class PluginNotFoundError(Exception):
     def __init__(self, plugin_id: str) -> None:
         self.plugin_id = plugin_id
         super().__init__(f"Plugin '{plugin_id}' not found")
+
+
+class AmbiguousOktaTargetError(Exception):
+    """More than one Okta target group matches an external group id, so a push mapping cannot be
+    created unambiguously. This is a misconfiguration (e.g. a stale + re-imported target sharing
+    the same external id) that will not self-heal, so it is surfaced as an error rather than
+    conflated with the not-yet-imported case (which simply defers)."""
+
+
+class MissingOktaTargetError(Exception):
+    """Okta is not aware of a target group from an external app and so cannot create a push mapping."""
 
 
 logger = logging.getLogger(__name__)
@@ -712,3 +724,105 @@ def get_app_group_lifecycle_plugin_group_status_properties(
     """
     hook = get_app_group_lifecycle_hook()
     return _get_hook_call_response(hook.get_plugin_group_status_properties, plugin_id)
+
+
+# ---- Okta group-push helpers (exposed to app group lifecycle plugins) ----
+#
+# App group lifecycle plugins that back Access groups with an externally-managed group provider
+# (e.g. Google Workspace) link the two through Okta group push. These helpers wrap the Okta group
+# push mapping surface so plugins can create, discover, and resolve those links through the plugin
+# interface rather than importing the internal `api.services.okta` client directly.
+
+
+async def _get_okta_target_group_id_by_external_id(external_id_profile_field_name: str, external_id: str) -> str | None:
+    """Get the ID for a single Okta group based on a uniquely identifying profile field,
+    imported from an external group provider (e.g. Google)."""
+    query = f'type eq "APP_GROUP" and profile.{external_id_profile_field_name} eq "{external_id}"'
+    matches = await okta.list_groups(query_params={"search": query})
+    if len(matches) > 1:
+        raise AmbiguousOktaTargetError(
+            f"{len(matches)} Okta target groups carry {external_id_profile_field_name} of '{external_id}'"
+        )
+    if not matches:
+        return None
+    return matches[0].group.id
+
+
+async def create_push_mapping_for_existing_group(
+    group: AppGroup, okta_app_id: str, external_id_field_name: str, external_id: str
+) -> str:
+    """Link an Access group to an already-imported Okta target group by id (the adoption path).
+    Returns the new push mapping id. Raises MissingOktaTargetError if Okta has not imported the
+    target group yet, or AmbiguousOktaTargetError if more than one target matches."""
+    target_group_id = await _get_okta_target_group_id_by_external_id(external_id_field_name, external_id)
+    if not target_group_id:
+        raise MissingOktaTargetError(
+            f"Could not find a target group with {external_id_field_name} of '{external_id}' in Okta. "
+            "This may require manual action to import external app groups to Okta."
+        )
+
+    result = await okta.create_group_push_mapping(
+        appId=okta_app_id, sourceGroupId=group.id, targetGroupId=target_group_id
+    )
+    mapping_id = result.get("id")
+    if not mapping_id:
+        raise Exception(f"Okta push mapping creation returned no id: {result}")
+    return mapping_id
+
+
+async def delete_push_mapping(okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
+    """Delete (unlink) an Okta group push mapping. When delete_target_group is True, Okta also
+    deletes the downstream target group it created; otherwise only the mapping is removed and the
+    target group is left in place."""
+    await okta.delete_group_push_mapping(appId=okta_app_id, mappingId=mapping_id, deleteTargetGroup=delete_target_group)
+
+
+async def create_push_mapping_and_new_group(group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
+    """Create a push mapping with a new target group name, so Okta creates both its target group
+    AND the downstream app group and links them in one step. Returns the new push mapping id."""
+    result = await okta.create_group_push_mapping(
+        appId=okta_app_id, sourceGroupId=group.id, targetGroupName=target_group_name
+    )
+    mapping_id = result.get("id")
+    if not mapping_id:
+        raise Exception(f"Okta push mapping creation returned no id: {result}")
+    return mapping_id
+
+
+async def discover_existing_push_mapping_and_target_group_external_id(
+    group: AppGroup, okta_app_id: str, target_group_external_id_field: str
+) -> tuple[str, str] | None:
+    """Find an existing push mapping for this Access group and recover the external id field (not
+    the Okta id) from the Okta target group profile. Returns (push_mapping_id, external_id), or
+    None if no link exists."""
+    mappings = await okta.list_group_push_mappings(okta_app_id, sourceGroupId=group.id)
+    mapping = next(iter(mappings), None)  # Okta can have at most one mapping per app, source, and target
+    if not mapping:
+        logger.debug(f"No mapping found for group {group.name}.")
+        return None
+
+    mapping_id = mapping.get("id")
+    if not mapping_id:
+        raise Exception(f"Push mapping for {group.name} has no ID. Mapping:\n{mapping}")
+
+    target_group_id = mapping.get("targetGroupId")
+    if not target_group_id:
+        raise Exception(f"Push mapping for {group.name} has no target group ID. Mapping:\n{mapping}")
+
+    # Custom Okta attributes live in the profile union's actual_instance.additional_properties;
+    # both the profile and its actual_instance are Optional on the SDK model, so guard before
+    # dereferencing them.
+    profile = (await okta.get_group(target_group_id)).group.profile
+    actual_instance = profile.actual_instance if profile is not None else None
+    target_group_external_id = (
+        (actual_instance.additional_properties or {}).get(target_group_external_id_field)
+        if actual_instance is not None
+        else None
+    )
+    if not target_group_external_id:
+        raise ValueError(
+            f"ID '{target_group_external_id_field}' could not be resolved for target group mapped to {group.name}.\n"
+            f"Target group {target_group_id} has profile:\n{profile}"
+        )
+
+    return mapping_id, target_group_external_id
