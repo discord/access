@@ -235,8 +235,10 @@ def test_validate_email_against_pattern(plugin_instance: GoogleGroupManagerPlugi
     assert plugin_instance._validate_email_against_pattern("anything", None) is None
 
 
-def test_group_config_returns_pair_or_none(plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture) -> None:
-    # both present -> tuple; missing one -> None
+def test_configured_accessors_read_group_config(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
+) -> None:
+    # The accessors surface the group's configured email prefix and display name from plugin config.
     mocker.patch(
         "plugin.get_config_value",
         side_effect=lambda obj, key, pid, default=None: {
@@ -244,32 +246,14 @@ def test_group_config_returns_pair_or_none(plugin_instance: GoogleGroupManagerPl
             "display_name": "Security",
         }.get(key, default),
     )
-    assert plugin_instance._group_config(_group(mocker)) == ("sec", "Security")
-
-    mocker.patch(
-        "plugin.get_config_value",
-        side_effect=lambda obj, key, pid, default=None: {
-            "email": "sec",
-        }.get(key, default),
-    )
-    assert plugin_instance._group_config(_group(mocker)) is None
-
-
-async def test_create_push_mapping_and_new_group_creates_by_name(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    # Create path: Okta creates its target group AND the downstream Google group from the email
-    # prefix and links them, so we pass targetGroupName (the prefix), never a targetGroupId.
     group = _group(mocker)
-    create = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    set_status = mocker.patch("plugin.set_status_value")
+    assert plugin_instance._get_configured_email_prefix(group) == "sec"
+    assert plugin_instance._get_configured_display_name(group) == "Security"
 
-    await plugin_instance._create_push_mapping_and_new_group(group, "platform-security")
-
-    create.assert_called_once_with(
-        appId="test-okta-app-123", sourceGroupId=group.id, targetGroupName="platform-security"
-    )
-    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
+    # A missing value falls through to None rather than raising.
+    mocker.patch("plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {}.get(key, default))
+    assert plugin_instance._get_configured_email_prefix(group) is None
+    assert plugin_instance._get_configured_display_name(group) is None
 
 
 async def test_get_google_group_calls_get_by_resource_name(
@@ -304,9 +288,34 @@ async def test_delete_google_group_calls_delete_by_resource_name(
     assert mock_groups_api.delete.call_args.kwargs == {"name": "groups/ggid-1"}
 
 
+@pytest.mark.parametrize("status", [403, 404])
+async def test_delete_google_group_tolerates_absent_group(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock, status: int
+) -> None:
+    # Deleting an already-absent group (deleted out of band, or a delete replay/retry the
+    # reconcile design intends to be safe) must not raise: Cloud Identity returns 403
+    # ("permission denied ... or it may not exist") or 404 for a group we can't see. Otherwise
+    # group_deleted would raise and the host would roll back the surrounding delete.
+    from googleapiclient.errors import HttpError
+
+    mock_groups_api.delete().execute.side_effect = HttpError(status)
+    assert await plugin_instance._delete_google_group("ggid-gone") is None
+
+
+async def test_delete_google_group_reraises_non_absent_error(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
+    # A non-absent error (e.g. 500) is a real failure and must surface, not be swallowed.
+    from googleapiclient.errors import HttpError
+
+    mock_groups_api.delete().execute.side_effect = HttpError(500)
+    with pytest.raises(HttpError):
+        await plugin_instance._delete_google_group("ggid-1")
+
+
 async def test_lookup_returns_bare_id(plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock) -> None:
     mock_groups_api.lookup().execute.return_value = {"name": "groups/ggid-9"}
-    assert await plugin_instance._lookup_google_group_id("x@test-company.com") == "ggid-9"
+    assert await plugin_instance._look_up_google_group_id("x@test-company.com") == "ggid-9"
     assert mock_groups_api.lookup.call_args.kwargs == {"groupKey_id": "x@test-company.com"}
 
 
@@ -316,7 +325,7 @@ async def test_lookup_returns_none_on_404(
     from googleapiclient.errors import HttpError
 
     mock_groups_api.lookup().execute.side_effect = HttpError(404)
-    assert await plugin_instance._lookup_google_group_id("missing@test-company.com") is None
+    assert await plugin_instance._look_up_google_group_id("missing@test-company.com") is None
 
 
 async def test_lookup_returns_none_on_403(
@@ -327,7 +336,7 @@ async def test_lookup_returns_none_on_403(
     from googleapiclient.errors import HttpError
 
     mock_groups_api.lookup().execute.side_effect = HttpError(403)
-    assert await plugin_instance._lookup_google_group_id("missing@test-company.com") is None
+    assert await plugin_instance._look_up_google_group_id("missing@test-company.com") is None
 
 
 async def test_email_from_status_returns_email_when_present(
@@ -335,7 +344,7 @@ async def test_email_from_status_returns_email_when_present(
 ) -> None:
     group = _group(mocker, status={STATUS_GOOGLE_GROUP_ID: "ggid-1"})
     mocker.patch.object(plugin_instance, "_get_google_group", return_value={"groupKey": {"id": "sec@test-company.com"}})
-    assert await plugin_instance._email_from_status(group) == "sec@test-company.com"
+    assert await plugin_instance._get_email_from_status(group) == "sec@test-company.com"
 
 
 @pytest.mark.parametrize("status", [403, 404])
@@ -343,13 +352,13 @@ async def test_email_from_status_returns_none_when_group_absent(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, status: int
 ) -> None:
     # The cached group was deleted out of band: recovering the email must treat it as absent
-    # (like _owned_group_id) and return None, not raise -- otherwise reconcile turns a transient
+    # (like _get_owned_group_id) and return None, not raise -- otherwise reconcile turns a transient
     # race into a hard SYNC_ERROR instead of a clean deferral.
     from googleapiclient.errors import HttpError
 
     group = _group(mocker, status={STATUS_GOOGLE_GROUP_ID: "ggid-gone"})
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=HttpError(status))
-    assert await plugin_instance._email_from_status(group) is None
+    assert await plugin_instance._get_email_from_status(group) is None
 
 
 async def test_email_from_status_reraises_non_absent_error(
@@ -361,71 +370,13 @@ async def test_email_from_status_reraises_non_absent_error(
     group = _group(mocker, status={STATUS_GOOGLE_GROUP_ID: "ggid-1"})
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=HttpError(500))
     with pytest.raises(HttpError):
-        await plugin_instance._email_from_status(group)
+        await plugin_instance._get_email_from_status(group)
 
 
 def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
     assert props["email"].immutable is True
     assert props["display_name"].immutable is False
-
-
-async def test_create_push_mapping_sets_status(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-1"))])
-    mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    set_status = mocker.patch("plugin.set_status_value")
-
-    created = await plugin_instance._create_push_mapping_for_existing_group(group, "sec@test-company.com")
-
-    assert created is True
-    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
-
-
-async def test_create_push_mapping_defers_when_target_not_imported(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    mocker.patch("plugin.okta.list_groups", return_value=[])  # Okta hasn't imported it yet
-    create = mocker.patch("plugin.okta.create_group_push_mapping")
-
-    created = await plugin_instance._create_push_mapping_for_existing_group(group, "sec@test-company.com")
-
-    assert created is False
-    create.assert_not_called()
-
-
-async def test_discover_existing_push_mapping_finds_mapping(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    mocker.patch(
-        "plugin.okta.list_group_push_mappings",
-        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-9"}],
-    )
-    tgt = Mock()
-    tgt.group = Mock(id="okta-tgt-9")
-    # Custom Okta attributes (googleGroupEmail) live in the profile union's
-    # actual_instance.additional_properties, not directly on the profile object.
-    tgt.group.profile.actual_instance.additional_properties = {"googleGroupEmail": "found@test-company.com"}
-    mocker.patch("plugin.okta.get_group", return_value=tgt)
-
-    link = await plugin_instance._discover_existing_push_mapping(group)
-
-    assert link == {
-        "email": "found@test-company.com",
-        "push_mapping_id": "map-9",
-    }
-
-
-async def test_discover_existing_push_mapping_returns_none_when_no_mapping(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    mocker.patch("plugin.okta.list_group_push_mappings", return_value=[])
-    assert await plugin_instance._discover_existing_push_mapping(group) is None
 
 
 @pytest.fixture
@@ -459,10 +410,12 @@ async def test_reconcile_creates_when_no_link_and_config_present(
     )
     # No existing group on the adoption lookup; after Okta creates it via the push mapping, the
     # second lookup resolves the new Cloud Identity id.
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", side_effect=[None, "ggid-1"])
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", side_effect=[None, "ggid-1"])
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
     # Okta names the fresh group after the email prefix; enforce patches the real display name.
     mocker.patch.object(
         plugin_instance,
@@ -571,7 +524,7 @@ async def test_reconcile_clears_description_on_existing_group(
         },
     )
     patch = mocker.patch.object(plugin_instance, "_patch_google_group")
-    update_group = mocker.patch("plugin.okta.update_group")
+    update_group = mocker.patch("api.plugins.app_group_lifecycle.okta.update_group")
     mocker.patch("plugin.set_status_value")
 
     await plugin_instance._reconcile(session_mock, group)
@@ -593,16 +546,11 @@ async def test_reconcile_adopts_missing_config_from_live_group(
         }.get(key, default),
     )
     mocker.patch("plugin.get_status_value", return_value=None)
-    mocker.patch.object(
-        plugin_instance,
-        "_discover_existing_push_mapping",
-        return_value={
-            "google_group_id": "ggid-1",
-            "push_mapping_id": "map-1",
-            "email": "adopted@test-company.com",
-        },
+    mocker.patch(
+        "plugin.discover_existing_push_mapping_and_target_group_external_id",
+        return_value=("map-1", "adopted@test-company.com"),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-1")
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -614,8 +562,8 @@ async def test_reconcile_adopts_missing_config_from_live_group(
         },
     )
     mocker.patch("plugin.set_status_value")
-    mocker.patch.object(plugin_instance, "_create_push_mapping_for_existing_group", return_value=True)
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)  # not owned elsewhere
+    mocker.patch("plugin.create_push_mapping_for_existing_group", return_value="map-existing")
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)  # not owned elsewhere
     seed = mocker.patch("plugin.set_config_value")
     modify = mocker.patch("plugin.ModifyGroupDetails")
     modify.return_value.execute = AsyncMock()
@@ -640,16 +588,11 @@ async def test_reconcile_flags_error_on_domain_mismatch_adoption(
         "plugin.get_config_value", side_effect=lambda obj, key, pid, default=None: {"enabled": True}.get(key, default)
     )
     mocker.patch("plugin.get_status_value", return_value=None)
-    mocker.patch.object(
-        plugin_instance,
-        "_discover_existing_push_mapping",
-        return_value={
-            "google_group_id": "ggid-1",
-            "push_mapping_id": "map-1",
-            "email": "x@other-domain.com",
-        },
+    mocker.patch(
+        "plugin.discover_existing_push_mapping_and_target_group_external_id",
+        return_value=("map-1", "x@other-domain.com"),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-1")
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -660,7 +603,7 @@ async def test_reconcile_flags_error_on_domain_mismatch_adoption(
             "description": "",
         },
     )
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)  # not owned elsewhere
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)  # not owned elsewhere
     set_status = mocker.patch("plugin.set_status_value")
 
     await plugin_instance._reconcile(session_mock, group)
@@ -685,11 +628,10 @@ async def test_reconcile_errors_when_existing_mapping_email_mismatches_config(
     )
     mocker.patch("plugin.get_status_value", return_value=None)
     # No Google group at the configured email, so discovery runs and finds a mapping pointing elsewhere.
-    lookup = mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
-    mocker.patch.object(
-        plugin_instance,
-        "_discover_existing_push_mapping",
-        return_value={"push_mapping_id": "map-1", "email": "someone-else@test-company.com"},
+    lookup = mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    mocker.patch(
+        "plugin.discover_existing_push_mapping_and_target_group_external_id",
+        return_value=("map-1", "someone-else@test-company.com"),
     )
     set_status = mocker.patch("plugin.set_status_value")
     claim = mocker.patch.object(plugin_instance, "_claim_group_id")
@@ -759,7 +701,7 @@ async def test_reconcile_skips_when_disabled(
 ) -> None:
     group = _group(mocker)
     mocker.patch("plugin.get_config_value", return_value=False)  # enabled = False
-    discover = mocker.patch.object(plugin_instance, "_discover_existing_push_mapping")
+    discover = mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id")
     await plugin_instance._reconcile(session_mock, group)
     discover.assert_not_called()
 
@@ -780,9 +722,11 @@ async def test_reconcile_marks_pending_when_google_group_not_yet_created(
             "email_pattern": None,
         }.get(key, default),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", side_effect=[None, None])
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", side_effect=[None, None])
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
+    )
 
     await plugin_instance._reconcile(session_mock, group)
 
@@ -813,8 +757,8 @@ async def test_reconcile_skips_recreate_when_mapping_already_recorded(
             "email_pattern": None,
         }.get(key, default),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-1")  # now materialized
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)  # not owned elsewhere
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-1")  # now materialized
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)  # not owned elsewhere
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -826,8 +770,8 @@ async def test_reconcile_skips_recreate_when_mapping_already_recorded(
         },
     )
     mocker.patch.object(plugin_instance, "_patch_google_group")
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping")
-    create_new = mocker.patch.object(plugin_instance, "_create_push_mapping_and_new_group")
+    create_mapping = mocker.patch("api.plugins.app_group_lifecycle.okta.create_group_push_mapping")
+    create_new = mocker.patch("plugin.create_push_mapping_and_new_group")
 
     await plugin_instance._reconcile(session_mock, group)
 
@@ -859,7 +803,7 @@ async def test_reconcile_marks_error_and_reraises_on_unexpected_failure(
     )
     # A cached, owned group is live, so reconcile proceeds to the enforce step -- where the Google
     # read blows up with an unexpected (non-absent) error.
-    mocker.patch.object(plugin_instance, "_owned_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_get_owned_group_id", return_value="ggid-1")
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=RuntimeError("boom"))
     set_status = mocker.patch("plugin.set_status_value")
 
@@ -883,9 +827,9 @@ async def test_reconcile_create_path_rejects_pattern_violation(
         }.get(key, default),
     )
     mocker.patch("plugin.get_status_value", return_value=None)
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value=None)
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create = mocker.patch.object(plugin_instance, "_create_push_mapping_and_new_group")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create = mocker.patch("plugin.create_push_mapping_and_new_group")
     set_status = mocker.patch("plugin.set_status_value")
 
     await plugin_instance._reconcile(session_mock, group)
@@ -906,10 +850,12 @@ async def test_reconcile_creates_when_no_group_exists(
             "display_name": "Security",
         }.get(key, default),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", side_effect=[None, "ggid-new"])
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", side_effect=[None, "ggid-new"])
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -941,8 +887,10 @@ async def test_reconcile_creates_when_lookup_403s_for_absent_group(
         }.get(key, default),
     )
     mock_groups_api.lookup().execute.side_effect = HttpError(403)
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
+    )
 
     await plugin_instance._reconcile(session_mock, group)
 
@@ -964,7 +912,7 @@ async def test_reconcile_adopts_existing_group_by_email_lookup(
             "display_name": "Security",
         }.get(key, default),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-existing")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-existing")
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -975,9 +923,9 @@ async def test_reconcile_adopts_existing_group_by_email_lookup(
             "description": "",
         },
     )
-    create = mocker.patch.object(plugin_instance, "_create_push_mapping_and_new_group")
-    mocker.patch.object(plugin_instance, "_create_push_mapping_for_existing_group", return_value=True)
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    create = mocker.patch("plugin.create_push_mapping_and_new_group")
+    mocker.patch("plugin.create_push_mapping_for_existing_group", return_value="map-existing")
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
 
     await plugin_instance._reconcile(session_mock, group)
 
@@ -1000,7 +948,7 @@ async def test_reconcile_refuses_google_group_owned_by_another_access_group(
         }.get(key, default),
     )
     # No push mapping yet -> resolve adopts the existing group by email and the owner check runs.
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-shared")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-shared")
     # The established owner lives in a different app but already records the id + a push mapping.
     owner = Mock(spec=AppGroup)
     owner.id = "owner-grp"
@@ -1015,7 +963,7 @@ async def test_reconcile_refuses_google_group_owned_by_another_access_group(
 
     enforce = mocker.patch.object(plugin_instance, "_adopt_or_enforce")
     get_live = mocker.patch.object(plugin_instance, "_get_google_group")
-    create_mapping = mocker.patch.object(plugin_instance, "_create_push_mapping_for_existing_group")
+    create_mapping = mocker.patch("plugin.create_push_mapping_for_existing_group")
     set_status = mocker.patch("plugin.set_status_value")
 
     await plugin_instance._reconcile(session_mock, group)
@@ -1045,7 +993,7 @@ async def test_reconcile_does_not_persist_id_when_owned_by_another_group(
             "display_name": "Shared",
         }.get(key, default),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-shared")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-shared")
     owner = Mock(spec=AppGroup)
     owner.name = "App-Other-Owner"
     session_mock.scalars.return_value.first.return_value = owner
@@ -1069,12 +1017,11 @@ async def test_reconcile_runs_owner_check_in_config_absent_adoption(
         "plugin.get_config_value",
         side_effect=lambda obj, key, pid, default=None: {"enabled": True}.get(key, default),
     )
-    mocker.patch.object(
-        plugin_instance,
-        "_discover_existing_push_mapping",
-        return_value={"email": "shared@test-company.com", "push_mapping_id": "map-x"},
+    mocker.patch(
+        "plugin.discover_existing_push_mapping_and_target_group_external_id",
+        return_value=("map-x", "shared@test-company.com"),
     )
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-shared")
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-shared")
     owner = Mock(spec=AppGroup)
     owner.name = "App-Other-Owner"
     session_mock.scalars.return_value.first.return_value = owner
@@ -1102,7 +1049,7 @@ async def test_google_group_owner_matches_on_google_group_id_alone(
     group = _group(mocker)
 
     session_mock.scalars.return_value.first.return_value = None
-    assert await plugin_instance._google_group_owner(session_mock, group, "ggid-x") is None
+    assert await plugin_instance._get_google_group_owner(session_mock, group, "ggid-x") is None
 
     stmt = session_mock.scalars.call_args.args[0]
     # The JSON path elements are bound parameters, so render against the Postgres dialect (which
@@ -1114,7 +1061,7 @@ async def test_google_group_owner_matches_on_google_group_id_alone(
 
     owner = Mock(spec=AppGroup)
     session_mock.scalars.return_value.first.return_value = owner
-    assert await plugin_instance._google_group_owner(session_mock, group, "ggid-x") is owner
+    assert await plugin_instance._get_google_group_owner(session_mock, group, "ggid-x") is owner
 
 
 async def test_claim_takes_advisory_lock_before_owner_check_on_postgres(
@@ -1174,10 +1121,12 @@ async def test_reconcile_relooks_up_when_cached_id_404s(
     # once it's re-resolved and enforced.
     live = {"name": "groups/ggid-fresh", "groupKey": {"id": "sec@test-company.com"}, "displayName": "sec"}
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=[HttpError(404), live])
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", side_effect=[None, "ggid-fresh"])
-    mocker.patch.object(plugin_instance, "_discover_existing_push_mapping", return_value=None)
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", side_effect=[None, "ggid-fresh"])
+    mocker.patch("plugin.discover_existing_push_mapping_and_target_group_external_id", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
     mocker.patch.object(plugin_instance, "_patch_google_group")
 
     await plugin_instance._reconcile(session_mock, group)
@@ -1212,8 +1161,8 @@ async def test_enforce_patches_display_name_not_email(
     }
     mocker.patch.object(plugin_instance, "_get_google_group", return_value=live)
     patch = mocker.patch.object(plugin_instance, "_patch_google_group")
-    mocker.patch.object(plugin_instance, "_create_push_mapping_for_existing_group", return_value=True)
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    mocker.patch("plugin.create_push_mapping_for_existing_group", return_value="map-existing")
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
 
     await plugin_instance._reconcile(session_mock, group)
 
@@ -1263,7 +1212,7 @@ async def test_group_deleted_unlinks_then_deletes(
             "google_group_id": "ggid-1",
         }.get(key, default),
     )
-    delete_mapping = mocker.patch("plugin.okta.delete_group_push_mapping")
+    delete_mapping = mocker.patch("plugin.delete_push_mapping")
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
     mgr = mocker.MagicMock()
     mgr.attach_mock(delete_mapping, "delete_mapping")
@@ -1271,9 +1220,7 @@ async def test_group_deleted_unlinks_then_deletes(
 
     await plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
 
-    delete_mapping.assert_called_once_with(
-        appId=plugin_instance._okta_app_id, mappingId="map-1", deleteTargetGroup=False
-    )
+    delete_mapping.assert_called_once_with(plugin_instance._okta_app_id, "map-1")
     delete_group.assert_called_once_with("ggid-1")
     # unlink must precede the Google group delete
     assert [c[0] for c in mgr.mock_calls] == ["delete_mapping", "delete_group"]
@@ -1310,7 +1257,7 @@ async def test_group_deleted_deletes_google_group_even_if_unlink_fails(
             "google_group_id": "ggid-1",
         }.get(key, default),
     )
-    mocker.patch("plugin.okta.delete_group_push_mapping", side_effect=Exception("okta boom"))
+    mocker.patch("plugin.delete_push_mapping", side_effect=Exception("okta boom"))
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
 
     await plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
@@ -1335,7 +1282,7 @@ async def test_group_deleted_does_not_fall_back_to_email_lookup(
         }.get(key, default),
     )
     mocker.patch("plugin.get_status_value", return_value=None)  # no google_group_id, no push_mapping_id
-    lookup = mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-del")
+    lookup = mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-del")
     delete_group = mocker.patch.object(plugin_instance, "_delete_google_group")
 
     await plugin_instance.group_deleted(session=session_mock, group=group, plugin_id=PLUGIN_ID)
@@ -1349,43 +1296,10 @@ async def test_sync_all_reconciles_each_group(
 ) -> None:
     app = Mock(spec=App)
     g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
-    session_mock.scalars.return_value.all.return_value = [g1, g2]
+    app.active_app_groups = [g1, g2]
     reconcile = mocker.patch.object(plugin_instance, "_reconcile")
     await plugin_instance.sync_all_groups(session=session_mock, app=app, plugin_id=PLUGIN_ID)
     assert reconcile.call_count == 2
-
-
-async def test_okta_target_group_id_searches_by_email(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    list_groups = mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-7"))])
-    assert await plugin_instance._get_okta_target_group_id("sec@test-company.com") == "okta-tgt-7"
-    search = list_groups.call_args.kwargs["query_params"]["search"]
-    assert "googleGroupEmail" in search
-    assert "sec@test-company.com" in search
-
-
-async def test_okta_target_group_id_none_when_not_imported(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    # Zero matches means Okta hasn't imported the group yet -> defer (None), not an error.
-    mocker.patch("plugin.okta.list_groups", return_value=[])
-    assert await plugin_instance._get_okta_target_group_id("sec@test-company.com") is None
-
-
-async def test_okta_target_group_id_raises_on_ambiguous_match(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    # More than one Okta target group carrying the same googleGroupEmail is a misconfiguration
-    # that will never self-heal; it must surface as an error, not be conflated with "not imported".
-    from plugin import AmbiguousOktaTargetError
-
-    mocker.patch(
-        "plugin.okta.list_groups",
-        return_value=[Mock(group=Mock(id="okta-tgt-1")), Mock(group=Mock(id="okta-tgt-2"))],
-    )
-    with pytest.raises(AmbiguousOktaTargetError):
-        await plugin_instance._get_okta_target_group_id("sec@test-company.com")
 
 
 async def test_reconcile_errors_on_ambiguous_okta_target(
@@ -1404,8 +1318,8 @@ async def test_reconcile_errors_on_ambiguous_okta_target(
         }.get(key, default),
     )
     # An existing group is adopted (found by email); then the link step hits two Okta targets.
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", return_value="ggid-adopt")
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-adopt")
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -1418,45 +1332,13 @@ async def test_reconcile_errors_on_ambiguous_okta_target(
     )
     mocker.patch.object(plugin_instance, "_patch_google_group")
     mocker.patch(
-        "plugin.okta.list_groups",
+        "api.plugins.app_group_lifecycle.okta.list_groups",
         return_value=[Mock(group=Mock(id="okta-tgt-1")), Mock(group=Mock(id="okta-tgt-2"))],
     )
 
     await plugin_instance._reconcile(session_mock, group)
 
     assert group.plugin_data[PLUGIN_ID]["status"][STATUS_SYNC_STATUS] == SYNC_ERROR
-
-
-async def test_create_push_mapping_resolves_target_by_email(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    mocker.patch("plugin.okta.list_groups", return_value=[Mock(group=Mock(id="okta-tgt-1"))])
-    mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "map-1"})
-    set_status = mocker.patch("plugin.set_status_value")
-
-    assert await plugin_instance._create_push_mapping_for_existing_group(group, "sec@test-company.com") is True
-    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-1", PLUGIN_ID)
-
-
-async def test_discover_existing_push_mapping_recovers_email(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture
-) -> None:
-    group = _group(mocker)
-    profile = Mock()
-    # Custom Okta attributes (googleGroupEmail) live in the profile union's
-    # actual_instance.additional_properties, not directly on the profile object.
-    profile.actual_instance.additional_properties = {"googleGroupEmail": "sec@test-company.com"}
-    mocker.patch(
-        "plugin.okta.list_group_push_mappings",
-        return_value=[
-            {"id": "map-1", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-1"},
-        ],
-    )
-    mocker.patch("plugin.okta.get_group", return_value=Mock(group=Mock(profile=profile)))
-
-    link = await plugin_instance._discover_existing_push_mapping(group)
-    assert link == {"email": "sec@test-company.com", "push_mapping_id": "map-1"}
 
 
 async def test_reconcile_ignores_stale_push_mapping_when_group_gone(
@@ -1475,17 +1357,15 @@ async def test_reconcile_ignores_stale_push_mapping_when_group_gone(
     )
     # Adoption lookups miss (the linked Google group is gone); the create path then resolves the
     # freshly-pushed group. Order: lookup(email) -> discover's email -> create-path lookup.
-    mocker.patch.object(plugin_instance, "_lookup_google_group_id", side_effect=[None, None, "ggid-new"])
-    mocker.patch.object(
-        plugin_instance,
-        "_discover_existing_push_mapping",
-        return_value={
-            "email": "sec@test-company.com",
-            "push_mapping_id": "stale-map",
-        },
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", side_effect=[None, None, "ggid-new"])
+    mocker.patch(
+        "plugin.discover_existing_push_mapping_and_target_group_external_id",
+        return_value=("stale-map", "sec@test-company.com"),
     )
-    create_mapping = mocker.patch("plugin.okta.create_group_push_mapping", return_value={"id": "fresh-map"})
-    mocker.patch.object(plugin_instance, "_google_group_owner", return_value=None)
+    create_mapping = mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "fresh-map"}
+    )
+    mocker.patch.object(plugin_instance, "_get_google_group_owner", return_value=None)
     mocker.patch.object(
         plugin_instance,
         "_get_google_group",
@@ -1508,7 +1388,7 @@ async def test_sync_all_continues_after_group_failure(
     app = Mock(spec=App)
     g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
     g1.name = "Group1"
-    session_mock.scalars.return_value.all.return_value = [g1, g2]
+    app.active_app_groups = [g1, g2]
     reconcile = mocker.patch.object(plugin_instance, "_reconcile", side_effect=[RuntimeError("boom"), None])
     await plugin_instance.sync_all_groups(session=session_mock, app=app, plugin_id=PLUGIN_ID)
     assert reconcile.call_count == 2  # g2 still reconciled despite g1 raising
