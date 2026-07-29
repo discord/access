@@ -120,8 +120,9 @@ def _flatten_query_param_models(openapi_schema: dict[str, Any]) -> None:
 
 
 def _configure_logging() -> None:
-    logging.basicConfig(level=logging.INFO, stream=sys.stdout, format="%(message)s")
-    logging.root.setLevel(logging.INFO)
+    level = environ.get("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(level=level, stream=sys.stdout, format="%(message)s")
+    logging.root.setLevel(level)
     token_filter = TokenSanitizingFilter()
     logging.getLogger("authlib").addFilter(token_filter)
     logging.getLogger("uvicorn.access").addFilter(token_filter)

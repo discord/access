@@ -277,8 +277,8 @@ class AuditLoggerPlugin:
         self._increment_event_count(session, group)
 
     @hookimpl
-    async def sync_all_group_membership(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
-        """Perform periodic sync of all group memberships."""
+    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+        """Perform periodic sync of all groups."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 

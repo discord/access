@@ -22,6 +22,7 @@ class ModifyGroupDetails:
         description: str | None = None,
         current_user_id: str | None = None,
         validate_app_group_prefix: bool = True,
+        fire_lifecycle_hook: bool = True,
     ):
         self.group = group
         self.name = name
@@ -32,6 +33,10 @@ class ModifyGroupDetails:
         # from an app group legitimately drops the prefix (ModifyGroupType
         # requires it gone before it will convert).
         self.validate_app_group_prefix = validate_app_group_prefix
+        # Callers that also modify plugin config in the same request (put_group)
+        # set this False so a single group_updated fire covers both changes rather
+        # than reconciling twice. Defaults to True to preserve standalone behavior.
+        self.fire_lifecycle_hook = fire_lifecycle_hook
 
     async def execute(self) -> OktaGroup:
         old_name = self.group.name
@@ -83,7 +88,7 @@ class ModifyGroupDetails:
         await db.session.commit()
 
         # Fire group_updated hook if name or description changed
-        if old_name != self.group.name or old_description != self.group.description:
+        if self.fire_lifecycle_hook and (old_name != self.group.name or old_description != self.group.description):
             await invoke_app_group_lifecycle_hook(
                 AppGroupLifecycleHook.GROUP_UPDATED,
                 group=self.group,
