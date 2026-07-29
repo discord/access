@@ -897,6 +897,36 @@ class TestPluginValidation:
         assert response.status_code == 400
         assert "group_id" in str(response.json())
 
+    async def test_group_config_with_unregistered_plugin_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """An app can name a lifecycle plugin id that isn't registered in this
+        deployment — e.g. an operator dropped the plugin while apps still referenced
+        it. Validation then raises AppGroupLifecyclePluginFilteringError, which is not
+        a ValueError, so the edit must still be a clean 400 and not a 500."""
+        test_app = AppFactory.build(name="TestApp14", app_group_lifecycle_plugin="unregistered_plugin")
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Testgroup3",
+        )
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": test_group.name,
+            "description": "",
+            "app_id": test_group.app_id,
+            "plugin_data": {"unregistered_plugin": {"configuration": {"group_id": "external_123"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
+
 
 class TestPluginDataRestore:
     """Tests for the restore_unchanged_app_lifecycle_plugin_data function."""

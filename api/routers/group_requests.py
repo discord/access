@@ -15,6 +15,7 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
+from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupRequestBody,
@@ -196,7 +197,10 @@ async def post_group_request(
                     body.requested_plugin_data,
                     app.app_group_lifecycle_plugin,
                 )
-            except ValueError as e:
+            # AppGroupLifecyclePluginFilteringError (not a ValueError) is raised when
+            # the app names a plugin id that isn't registered in this deployment — an
+            # operator misconfiguration, so a 400 rather than an uncaught 500.
+            except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
                 raise HTTPException(400, f"plugin_data: {e}") from e
             if plugin_errors:
                 raise HTTPException(400, f"plugin_data: {plugin_errors}")
@@ -230,8 +234,9 @@ async def post_group_request(
         ).execute()
 
     # execute() may auto-approve (app-owner self-approval / conditional access),
-    # which re-validates plugin config and raises ValueError on invalid input.
-    # Surface that as a 400 just like the PUT/approve path does.
+    # which re-validates plugin config and raises ValueError on invalid input — or
+    # AppGroupLifecyclePluginFilteringError if the app's plugin id is unregistered.
+    # Surface both as a 400 just like the PUT/approve path does.
     try:
         gr = await CreateGroupRequest(
             requester_user=requester,
@@ -244,7 +249,7 @@ async def post_group_request(
             request_reason=body.request_reason or "",
             requested_plugin_data=body.requested_plugin_data if isinstance(body, _AppGroupRequestBody) else {},
         ).execute()
-    except ValueError as e:
+    except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
         raise HTTPException(400, f"Failed to create group request: {e}") from e
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
@@ -325,7 +330,10 @@ async def put_group_request(
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
             ).execute()
-        except ValueError as e:
+        # Approval re-validates the resolved plugin config, which raises ValueError on
+        # invalid input and AppGroupLifecyclePluginFilteringError on an unregistered
+        # plugin id; both are the approver's input problem, not a server fault.
+        except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
             raise HTTPException(400, str(e)) from e
     else:
         await RejectGroupRequest(

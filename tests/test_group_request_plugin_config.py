@@ -14,11 +14,13 @@ from api.config import settings
 from api.extensions import Db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.operations import ApproveGroupRequest, CreateGroupRequest
-from api.plugins.app_group_lifecycle import hookimpl
+from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError, hookimpl
 from api.schemas.requests_schemas import CreateGroupRequestBody, ResolveGroupRequestBody
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
 from tests.test_app_group_lifecycle_plugin import DummyPlugin
+
+UNREGISTERED_PLUGIN_ID = "unregistered_plugin"
 
 
 @pytest.fixture
@@ -44,6 +46,18 @@ def test_plugin(app: FastAPI, mocker: MockerFixture) -> Generator[DummyPlugin, N
 async def _make_app_with_plugin(db: Db) -> Any:
     app_obj = await AppFactory.create_async()
     app_obj.app_group_lifecycle_plugin = DummyPlugin.ID
+    db.session.add(app_obj)
+    await db.session.commit()
+    return app_obj
+
+
+async def _make_app_with_unregistered_plugin(db: Db) -> Any:
+    """An app whose configured lifecycle plugin id isn't registered in this
+    deployment — e.g. an operator dropped the plugin while apps still referenced
+    it. Hook calls filtered to that id get no responses, so the plugin helpers
+    raise AppGroupLifecyclePluginFilteringError, which is not a ValueError."""
+    app_obj = await AppFactory.create_async()
+    app_obj.app_group_lifecycle_plugin = UNREGISTERED_PLUGIN_ID
     db.session.add(app_obj)
     await db.session.commit()
     return app_obj
@@ -265,6 +279,123 @@ async def test_post_app_group_request_accepts_valid_plugin_config(
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["requested_plugin_data"] == payload
+
+
+# --- An unregistered plugin id is a 400, not a 500 -------------------------
+#
+# AppGroupLifecyclePluginFilteringError subclasses Exception, not ValueError, so
+# each of the three plugin-config failure paths below has to name it explicitly or
+# the request 500s on what is really bad operator/approver input.
+
+
+async def test_post_app_group_request_returns_400_when_app_plugin_is_unregistered(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    mock_user: Callable[[Any], None],
+    url_for: Callable[..., str],
+    test_plugin: DummyPlugin,
+) -> None:
+    """Submit-time validation against an app whose plugin id isn't registered."""
+    user: OktaUser = await OktaUserFactory.create_async()
+    db.session.add(user)
+    await db.session.commit()
+    mock_user(user)
+    app_obj = await _make_app_with_unregistered_plugin(db)
+
+    resp = await client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_type": "app_group",
+            "requested_group_name": f"App-{app_obj.name}-Admins",
+            "requested_group_description": "desc",
+            "requested_app_id": app_obj.id,
+            "requested_plugin_data": {UNREGISTERED_PLUGIN_ID: {"configuration": {"group_id": "g-1"}}},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert UNREGISTERED_PLUGIN_ID in resp.text
+
+
+async def test_post_auto_approve_unregistered_plugin_returns_400(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    mock_user: Callable[[Any], None],
+    url_for: Callable[..., str],
+    test_plugin: DummyPlugin,
+    mocker: MockerFixture,
+) -> None:
+    """Same error raised from the auto-approve inside CreateGroupRequest (an app
+    owner's own request). Submit-time validation is forced to pass so the failure
+    can only be caught by the POST handler's wrapper around the operation."""
+    app_obj = await _make_app_with_plugin(db)
+    owner = await _make_app_owner(db, app_obj)
+    mock_user(owner)
+
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.validate_app_group_lifecycle_plugin_group_config",
+        side_effect=[{}, AppGroupLifecyclePluginFilteringError(DummyPlugin.ID, 0)],
+    )
+
+    resp = await client.post(
+        url_for("api-group-requests.group_requests_create"),
+        json={
+            "requested_group_type": "app_group",
+            "requested_group_name": f"App-{app_obj.name}-Admins",
+            "requested_group_description": "desc",
+            "requested_app_id": app_obj.id,
+            "requested_plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g-1"}}},
+        },
+    )
+    assert resp.status_code == 400, resp.text
+    assert "Expected one response" in resp.text
+    gr = (await db.session.scalars(select(GroupRequest))).first()
+    assert gr is not None
+    assert gr.status == AccessRequestStatus.PENDING
+
+
+async def test_put_approve_returns_400_when_app_plugin_is_unregistered(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    mock_user: Callable[[Any], None],
+    url_for: Callable[..., str],
+    test_plugin: DummyPlugin,
+) -> None:
+    """Same error raised from approval-time re-validation on the resolve path."""
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
+    requester: OktaUser = await OktaUserFactory.create_async()
+    db.session.add(requester)
+    await db.session.commit()
+    app_obj = await _make_app_with_unregistered_plugin(db)
+
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-Admins",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        requested_plugin_data={UNREGISTERED_PLUGIN_ID: {"configuration": {"group_id": "g-1"}}},
+    ).execute()
+    assert gr is not None
+    # Capture the id up front: the failed request rolls its session back, which
+    # expires every instance in the identity map, and touching `gr.id` afterwards
+    # would lazy-load outside a greenlet (MissingGreenlet).
+    gr_id = gr.id
+
+    mock_user(admin)
+    resp = await client.put(
+        url_for("api-group-requests.group_request_by_id_put", group_request_id=gr_id),
+        json={"approved": True},
+    )
+    assert resp.status_code == 400, resp.text
+    assert UNREGISTERED_PLUGIN_ID in resp.text
+    refreshed = await db.session.get(GroupRequest, gr_id)
+    assert refreshed is not None
+    assert refreshed.status == AccessRequestStatus.PENDING
+    assert refreshed.approved_group_id is None
 
 
 # --- Approval applies plugin config ----------------------------------------

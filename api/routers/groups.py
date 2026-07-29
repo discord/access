@@ -12,11 +12,12 @@ GET    /api/groups/{group_id}/audit         redirects to /api/audit/users
 
 from __future__ import annotations
 
+import copy
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from fastapi.responses import RedirectResponse
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from pydantic import TypeAdapter
 from sqlalchemy import and_, func, nullsfirst, or_, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
@@ -40,9 +41,8 @@ from api.operations import (
     ModifyGroupUsers,
 )
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
 from api.pagination import Page, validated
+from api.plugins.app_group_lifecycle import get_app_group_lifecycle_plugins
 from api.routers._eager import (
     bind_role_group_map_own_groups,
     group_tag_map_options,
@@ -52,11 +52,11 @@ from api.routers._eager import (
 )
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
-    GroupSummary,
     CreateGroupBody,
     DeleteMessage,
     GroupDetail,
     GroupMembersSummary,
+    GroupSummary,
     OktaUserGroupMemberDetail,
     SearchGroupQuery,
     UpdateGroupBody,
@@ -67,8 +67,6 @@ from api.schemas.requests_schemas import (
     _AppGroupUpdateBody,
     _RoleGroupCreateBody,
 )
-
-import copy
 
 router = APIRouter(prefix="/api/groups", tags=["groups"], dependencies=[Depends(defer_fan_out)])
 
@@ -137,6 +135,8 @@ def _validate_group_plugin_config(
     except ValueError as e:
         raise HTTPException(400, f"plugin_data: {e}") from e
     except AppGroupLifecyclePluginFilteringError as e:
+        if plugin_id not in [plugin.id for plugin in get_app_group_lifecycle_plugins()]:
+            raise HTTPException(400, f"The plugin {plugin_id} is not known")
         # A plugin that doesn't answer this hook with exactly one response is a server-side
         # misconfiguration, not bad client input, so surface a clear 500 rather than letting the
         # plain Exception become an unhandled stack trace.
@@ -506,10 +506,11 @@ async def put_group(
 
     # Audit log — plugin configuration changes at the group level
     if old_plugin_data_for_audit != (refreshed.plugin_data or {}):
+        import logging as _logging
+
         from api.context import get_request_context
         from api.models import OktaUser
         from api.schemas import AuditLogSchema, EventType
-        import logging as _logging
 
         _ctx = get_request_context()
         email = getattr(await db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None
