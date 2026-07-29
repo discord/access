@@ -284,7 +284,10 @@ async def put_app(
     from api.operations import ModifyAppTags, ModifyGroupDetails
     from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
 
-    from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_app_config
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecyclePluginFilteringError,
+        validate_app_group_lifecycle_plugin_app_config,
+    )
 
     fields_set = body.model_fields_set
     description = (body.description if body.description is not None else "") if "description" in fields_set else None
@@ -302,7 +305,11 @@ async def put_app(
     if "plugin_data" in fields_set and new_plugin_id is not None:
         try:
             errors = validate_app_group_lifecycle_plugin_app_config(body.plugin_data or {}, new_plugin_id)
-        except ValueError as e:
+        # AppGroupLifecyclePluginFilteringError (not a ValueError) is raised when
+        # new_plugin_id names a plugin that isn't registered in this deployment,
+        # whether it came from the body or from the app's stored config. Bad input
+        # either way, so a 400 rather than an uncaught 500.
+        except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
             raise HTTPException(400, f"plugin_data: {e}") from e
         if errors:
             raise HTTPException(400, f"plugin_data: {errors}")

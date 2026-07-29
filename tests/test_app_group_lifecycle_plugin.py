@@ -779,6 +779,49 @@ class TestPluginValidation:
         assert response.status_code == 400
         assert "enabled" in str(response.json())
 
+    async def test_app_config_with_unregistered_plugin_in_body_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """Pointing an app at a plugin id no registered plugin answers for. The
+        validation helpers raise AppGroupLifecyclePluginFilteringError, which is not a
+        ValueError, so the edit must still be a clean 400 and not a 500."""
+        test_app = AppFactory.build(name="TestApp15")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "app_group_lifecycle_plugin": "unregistered_plugin",
+            "plugin_data": {"unregistered_plugin": {"configuration": {"enabled": True, "category": "valid_id"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
+
+    async def test_app_config_with_unregistered_stored_plugin_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """Same failure when the unregistered id is the app's stored config rather
+        than something the body supplied, e.g. an operator dropped the plugin from
+        the deployment while apps still referenced it."""
+        test_app = AppFactory.build(name="TestApp16", app_group_lifecycle_plugin="unregistered_plugin")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "plugin_data": {"unregistered_plugin": {"configuration": {"enabled": True, "category": "valid_id"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
+
     async def test_valid_group_config(
         self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
