@@ -298,10 +298,17 @@ class OktaService:
         and retries 429s internally, returning errors rather than raising them.
         A transient outcome — a request timeout, a 429 that outlived the SDK's
         rate-limit retries, or a 5xx upstream/gateway error — is surfaced as
-        ``OktaTransientError`` so callers can choose to swallow it; every other
-        error passes through in the returned tuple for the caller to raise. A
-        gateway blip can also make the SDK *raise* (rather than return) a transient
-        failure, so raised exceptions are routed through the same check.
+        ``OktaTransientError`` so callers can choose to swallow it, and a 404 as
+        ``OktaResourceNotFoundError``; every other error passes through in the
+        returned tuple for the caller to raise. A gateway blip can also make the SDK
+        *raise* (rather than return) a transient failure, so raised exceptions are
+        routed through the same checks.
+
+        Classifying here rather than at each call site makes it uniform and
+        impossible to forget when a facade method is added. The corollary is that a
+        facade method can no longer inspect a 404 in the returned tuple — it never
+        gets one — so a method that treats "already gone" as success must catch
+        ``OktaResourceNotFoundError`` instead (see ``delete_group_push_mapping``).
         """
         try:
             result = await coro
@@ -310,10 +317,14 @@ class OktaService:
                 raise OktaTransientError(
                     str(exc) or "Okta request timed out", retryable=_is_retryable_okta_error(exc)
                 ) from exc
+            if _is_not_found_okta_error(exc):
+                raise OktaResourceNotFoundError(str(exc)) from exc
             raise
         error = result[-1] if isinstance(result, tuple) and result else None
         if _is_transient_okta_error(error):
             raise OktaTransientError(str(error) or "Okta request timed out", retryable=_is_retryable_okta_error(error))
+        if _is_not_found_okta_error(error):
+            raise OktaResourceNotFoundError(str(error))
         return result
 
     async def _paginate(self, list_method: Callable[..., Any], *args: Any, **kwargs: Any) -> list[Any]:
@@ -324,10 +335,9 @@ class OktaService:
         positional argument the endpoint requires (e.g. the group id for group
         listings).
 
-        A 404 here means the resource being listed is gone, so it surfaces as
-        ``OktaResourceNotFoundError`` for callers that treat that as benign. Every
-        other error keeps raising the generic ``Exception`` so genuine failures stay
-        loud.
+        A 404 — the resource being listed is gone — is already surfaced as
+        ``OktaResourceNotFoundError`` by ``_call``, so it never reaches the check
+        below; every other error keeps raising the generic ``Exception``.
         """
         results: list[Any] = []
         after: Optional[str] = None
@@ -338,8 +348,6 @@ class OktaService:
             # List endpoints are data-returning, so the tuple is (data, resp, error).
             page, response, error = result
             if error is not None:
-                if _is_not_found_okta_error(error):
-                    raise OktaResourceNotFoundError(str(error))
                 raise Exception(error)
             assert page is not None and response is not None
             results.extend(page)
@@ -639,25 +647,28 @@ class OktaService:
         async with self._okta_client() as client:
             # The SDK returns HTTP errors in the result tuple rather than raising; ``_call``
             # (via the client proxy) already converts transient ones (429/5xx) to
-            # OktaTransientError, so any error we see here is definitive. A 404 at either step
-            # means the mapping is already gone -- deletion is idempotent, so treat it as success
-            # (safe for a retry/replay after a partial earlier attempt). Read the trailing error
-            # element without a fixed-arity unpack: delete returns a 2-tuple on error but a
-            # 3-tuple on success, while update returns a 3-tuple either way.
-            # Okta rejects deleting an ACTIVE mapping, so deactivate it first.
-            deactivate = await client.update_group_push_mapping(
-                appId, mappingId, UpdateGroupPushMappingRequest(status="INACTIVE")
-            )
-            error = deactivate[-1] if isinstance(deactivate, tuple) else None
-            if error is not None:
-                if getattr(error, "status", None) == 404:
-                    return
-                raise Exception(error)
+            # OktaTransientError and a 404 to OktaResourceNotFoundError, so any error left in
+            # the tuple here is definitive. A 404 at either step means the mapping is already
+            # gone -- deletion is idempotent, so treat it as success (safe for a retry/replay
+            # after a partial earlier attempt); catching it also skips the delete when the
+            # mapping vanished at the deactivate step. Read the trailing error element without
+            # a fixed-arity unpack: delete returns a 2-tuple on error but a 3-tuple on success,
+            # while update returns a 3-tuple either way.
+            try:
+                # Okta rejects deleting an ACTIVE mapping, so deactivate it first.
+                deactivate = await client.update_group_push_mapping(
+                    appId, mappingId, UpdateGroupPushMappingRequest(status="INACTIVE")
+                )
+                error = deactivate[-1] if isinstance(deactivate, tuple) else None
+                if error is not None:
+                    raise Exception(error)
 
-            deletion = await client.delete_group_push_mapping(appId, mappingId, deleteTargetGroup)
-            error = deletion[-1] if isinstance(deletion, tuple) else None
-            if error is not None and getattr(error, "status", None) != 404:
-                raise Exception(error)
+                deletion = await client.delete_group_push_mapping(appId, mappingId, deleteTargetGroup)
+                error = deletion[-1] if isinstance(deletion, tuple) else None
+                if error is not None:
+                    raise Exception(error)
+            except OktaResourceNotFoundError:
+                return
 
     # https://developer.okta.com/docs/api/openapi/okta-management/management/tag/GroupPushMapping/#tag/GroupPushMapping/operation/listGroupPushMappings
     async def list_group_push_mappings(self, appId: str, sourceGroupId: str | None = None) -> list[dict[str, Any]]:

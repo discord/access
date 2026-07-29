@@ -73,8 +73,11 @@ async def test_transient_5xx_surfaces_as_okta_timeout(
 
 
 async def test_non_transient_http_error_not_mapped(mocker: MockerFixture, okta_service: OktaService) -> None:
-    """A non-transient HTTP error (e.g. 404) passes through and is not mapped to OktaTransientError."""
-    mocker.patch("okta.client.Client.get_user", return_value=(None, MagicMock(), _http_error(404)))
+    """A non-transient HTTP error (e.g. 403) passes through and is not mapped to
+    OktaTransientError. Uses 403 rather than 404: a 404 is separately classified as
+    ``OktaResourceNotFoundError`` (see tests/test_okta_service.py), which would make this
+    assertion pass for the wrong reason."""
+    mocker.patch("okta.client.Client.get_user", return_value=(None, MagicMock(), _http_error(403)))
     with pytest.raises(Exception) as exc_info:
         await okta_service.get_user("okta_id")
     assert not isinstance(exc_info.value, OktaTransientError)
