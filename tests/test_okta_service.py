@@ -11,8 +11,11 @@ from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
+from okta.errors.okta_api_error import OktaAPIError
+
 from api.services.okta_service import (
     OKTA_TRANSIENT_RETRIES,
+    OktaResourceNotFoundError,
     OktaService,
     OktaTransientError,
     UserSchema,
@@ -508,3 +511,42 @@ async def test_list_group_push_mappings_requires_app_id():
     svc = OktaService()
     with pytest.raises(ValueError):
         await svc.list_group_push_mappings("")
+
+
+async def test_paginate_404_surfaces_as_resource_not_found() -> None:
+    """A list endpoint that 404s because its parent resource is gone is surfaced as
+    ``OktaResourceNotFoundError`` so the syncer fan-out can skip it quietly rather
+    than logging an ERROR for an expected, benign race."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    response_details = MagicMock(status=404, headers={})
+    not_found = OktaAPIError(
+        "https://fake.domain/api/v1/groups/deleted_group/users",
+        response_details,
+        {"errorCode": "E0000007", "errorSummary": "Not found: Resource not found: deleted_group (UserGroup)"},
+    )
+
+    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), not_found))):
+        with pytest.raises(OktaResourceNotFoundError):
+            await service.list_users_for_group("deleted_group")
+
+
+async def test_paginate_non_404_error_is_not_resource_not_found() -> None:
+    """A list-endpoint error that isn't a 404 keeps raising the generic Exception, so
+    genuine failures stay loud instead of being downgraded to the benign path."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    response_details = MagicMock(status=403, headers={})
+    forbidden = OktaAPIError(
+        "https://fake.domain/api/v1/groups/some_group/users",
+        response_details,
+        {"errorCode": "E0000006", "errorSummary": "You do not have permission"},
+    )
+
+    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), forbidden))):
+        with pytest.raises(Exception) as exc_info:
+            await service.list_users_for_group("some_group")
+
+    assert not isinstance(exc_info.value, OktaResourceNotFoundError)

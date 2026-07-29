@@ -32,6 +32,10 @@ REQUEST_TIMEOUT = 30
 # may swallow them and let the next reconcile retry. Covers rate limiting (429)
 # and upstream/gateway blips (5xx, e.g. a 502 Bad Gateway from the load balancer).
 TRANSIENT_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+# The status a list endpoint returns when the resource it lists no longer exists —
+# chiefly a group deleted after the syncer took its group snapshot. See
+# ``OktaResourceNotFoundError``.
+NOT_FOUND_STATUS_CODE = 404
 # Page size for cursor-paginated list endpoints. Okta caps most list endpoints
 # at 200 per page; the facade drives the ``after`` cursor to walk pages.
 LIST_PAGE_LIMIT = 200
@@ -78,6 +82,23 @@ class OktaTransientError(Exception):
         self.retryable = retryable
 
 
+class OktaResourceNotFoundError(Exception):
+    """Raised when a list endpoint 404s because the resource it lists is gone.
+
+    The syncer takes one group snapshot per run (``api/cli.py``) and reuses it for
+    the whole membership and ownership fan-out, which can take tens of minutes. A
+    group deleted — usually *through Access itself*, whose ``DeleteGroup`` removes
+    it from Okta — after that snapshot was taken is still in the list being walked
+    but already absent from Okta, so its member/owner fetch 404s. That race is
+    expected and self-healing: the next run's snapshot won't contain the group and
+    ``sync_groups`` reconciles it as deleted locally. Callers in the fan-out skip
+    it at WARNING rather than ERROR so it doesn't alert.
+
+    Distinct from ``OktaTransientError``: nothing was flaky and a retry would not
+    help — the resource is genuinely gone.
+    """
+
+
 # On a gateway failure that yields no response object, the SDK returns
 # ``(None, None, error)`` from the request executor, then dereferences
 # ``response.status`` before checking the error on its list/get endpoints. That
@@ -107,6 +128,16 @@ def _is_transient_okta_error(error: Any) -> bool:
     if isinstance(error, AttributeError) and str(error) == _NONE_RESPONSE_ATTRIBUTE_ERROR:
         return True
     return str(error) == "Request Timeout exceeded."
+
+
+def _is_not_found_okta_error(error: Any) -> bool:
+    """Whether an SDK error is a 404 for a resource that no longer exists.
+
+    Both ``OktaAPIError`` (JSON error bodies) and ``HTTPError`` expose ``.status``.
+    Classified only for list endpoints (see ``_paginate``), where a 404 means the
+    parent resource being listed is gone rather than that a single lookup missed.
+    """
+    return error is not None and getattr(error, "status", None) == NOT_FOUND_STATUS_CODE
 
 
 def _is_retryable_okta_error(error: Any) -> bool:
@@ -292,6 +323,11 @@ class OktaService:
         carries the ``after`` cursor for the next page. ``*args`` carries any
         positional argument the endpoint requires (e.g. the group id for group
         listings).
+
+        A 404 here means the resource being listed is gone, so it surfaces as
+        ``OktaResourceNotFoundError`` for callers that treat that as benign. Every
+        other error keeps raising the generic ``Exception`` so genuine failures stay
+        loud.
         """
         results: list[Any] = []
         after: Optional[str] = None
@@ -302,6 +338,8 @@ class OktaService:
             # List endpoints are data-returning, so the tuple is (data, resp, error).
             page, response, error = result
             if error is not None:
+                if _is_not_found_okta_error(error):
+                    raise OktaResourceNotFoundError(str(error))
                 raise Exception(error)
             assert page is not None and response is not None
             results.extend(page)
