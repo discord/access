@@ -1,0 +1,29 @@
+name: Test Frontend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  node-test:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # Pin npm >= 11.16 so the v12 install defaults in .npmrc are enforced
+      # regardless of the npm bundled with Node. (--engine-strict=false so this
+      # bootstrap step itself isn't gated by package.json "engines".)
+      - name: Upgrade npm to enforce npm v12 install defaults
+        run: npm install -g npm@11.16.0 --engine-strict=false
+      - name: Install dependencies
+        run: npm ci
+      - name: Run vitest
+        # `vitest run` does a single pass and exits (the npm "test" script runs
+        # in watch mode, which would hang CI).
+        run: npx vitest run

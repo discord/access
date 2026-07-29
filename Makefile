@@ -47,7 +47,9 @@ help:
 	@echo "  make pytest-postgres    pytest against a disposable postgres:16 container"
 	@echo "  make ruff               ruff check + ruff format --check"
 	@echo "  make ty                 ty check"
-	@echo "  make test               ruff + ty + pytest"
+	@echo "  make test-backend       ruff + ty + pytest"
+	@echo "  make test-frontend      vitest (frontend unit tests, single run)"
+	@echo "  make test               test-backend + test-frontend (everything)"
 	@echo ""
 	@echo "Other:"
 	@echo "  make dev                Sync deps into .venv via uv (idempotent)"
@@ -236,5 +238,12 @@ ruff: dev
 	uv run ruff check .
 	uv run ruff format --check .
 
+.PHONY: test-backend
+test-backend: ruff ty pytest
+
+.PHONY: test-frontend
+test-frontend:
+	npm install && npx vitest run
+
 .PHONY: test
-test: ruff ty pytest
+test: test-backend test-frontend
