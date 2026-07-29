@@ -1,6 +1,6 @@
 import copy
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
@@ -162,6 +162,7 @@ class ApproveGroupRequest:
             if not is_admin:
                 return group_request
 
+        # Validation
         if resolved_type != "app_group" and resolved_name.startswith(AppGroup.APP_GROUP_NAME_PREFIX):
             return group_request
 
@@ -182,6 +183,38 @@ class ApproveGroupRequest:
         ).first()
         if existing_group is not None:
             return group_request
+
+        # Resolve the plugin config the new group will carry, and re-validate it here
+        # with the rest of the validation: the app or its plugin config may have
+        # changed since the request was filed, so this can legitimately fail. Raising
+        # after the group_request_approve audit event below would leave an "approved"
+        # audit entry for an approval that never completed — re-emitted on every retry.
+        new_group_plugin_data: dict[str, Any] = {}
+        if resolved_type == "app_group" and resolved_plugin_data:
+            resolved_app = await db.session.get(App, resolved_app_id)
+            plugin_id = resolved_app.app_group_lifecycle_plugin if resolved_app is not None else None
+            if plugin_id is None:
+                logger.warning(
+                    f"Group request {group_request.id} carried plugin_data, "
+                    f"but app {resolved_app_id} has no app_group_lifecycle_plugin; "
+                    "dropping the supplied config."
+                )
+            else:
+                from api.plugins.app_group_lifecycle import (
+                    validate_app_group_lifecycle_plugin_group_config,
+                )
+
+                plugin_errors = validate_app_group_lifecycle_plugin_group_config(
+                    resolved_plugin_data,
+                    plugin_id,
+                )
+                if plugin_errors:
+                    raise ValueError(f"plugin_data: {plugin_errors}")
+                # Deep-copy so the created group and the persisted request don't share
+                # nested plugin_data objects: the group_created hook may mutate the
+                # group's copy (e.g. writing status), which must not leak back into the
+                # immutable request record.
+                new_group_plugin_data = copy.deepcopy(resolved_plugin_data)
 
         await db.session.commit()
 
@@ -214,34 +247,10 @@ class ApproveGroupRequest:
                 description=resolved_description,
                 app_id=resolved_app_id,
             )
-            # Carry the request's plugin config onto the group so the
-            # group_created hook (fired inside CreateGroup) sees it. Re-validate
-            # defensively: the app or its config may have changed since filing.
-            if resolved_plugin_data:
-                resolved_app = await db.session.get(App, resolved_app_id)
-                plugin_id = resolved_app.app_group_lifecycle_plugin if resolved_app is not None else None
-                if plugin_id is not None:
-                    from api.plugins.app_group_lifecycle import (
-                        validate_app_group_lifecycle_plugin_group_config,
-                    )
-
-                    plugin_errors = validate_app_group_lifecycle_plugin_group_config(
-                        resolved_plugin_data,
-                        plugin_id,
-                    )
-                    if plugin_errors:
-                        raise ValueError(f"plugin_data: {plugin_errors}")
-                    # Deep-copy so the created group and the persisted request
-                    # don't share nested plugin_data objects: the group_created
-                    # hook may mutate the group's copy (e.g. writing status),
-                    # which must not leak back into the immutable request record.
-                    new_group.plugin_data = copy.deepcopy(resolved_plugin_data)
-                else:
-                    logger.warning(
-                        f"Group request {group_request.id} carried plugin_data, "
-                        f"but app {resolved_app_id} has no app_group_lifecycle_plugin; "
-                        "dropping the supplied config."
-                    )
+            # Carry the config resolved and validated above onto the group so the
+            # group_created hook (fired inside CreateGroup) sees it.
+            if new_group_plugin_data:
+                new_group.plugin_data = new_group_plugin_data
         else:
             new_group = OktaGroup(
                 name=resolved_name,

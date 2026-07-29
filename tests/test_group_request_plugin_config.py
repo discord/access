@@ -15,6 +15,7 @@ from api.extensions import Db
 from api.models import AccessRequestStatus, AppGroup, GroupRequest, OktaUser, OktaUserGroupMember
 from api.operations import ApproveGroupRequest, CreateGroupRequest
 from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError, hookimpl
+from api.schemas import EventType
 from api.schemas.requests_schemas import CreateGroupRequestBody, ResolveGroupRequestBody
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
@@ -624,6 +625,71 @@ async def test_approve_does_not_mutate_request_plugin_data(
     assert "createdgrp0000000004" in mutating_plugin.group_created_calls
     # ...but the request's stored config is untouched.
     assert gr.requested_plugin_data[DummyPlugin.ID]["configuration"]["group_id"] == "only-requested"
+
+
+# --- A failed approval leaves no approve audit event ------------------------
+
+
+async def test_approve_invalid_plugin_config_emits_no_approve_audit_event(
+    app: FastAPI,
+    client: AsyncClient,
+    db: Db,
+    test_plugin: DummyPlugin,
+    mocker: MockerFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Approval-time re-validation of the plugin config runs with the rest of the
+    validation, *before* the group_request_approve audit event is emitted. So a
+    config that has gone invalid since filing must leave no "approved" audit entry
+    behind for an approval that never completed — the router turns the failure into
+    a retryable 400, which would re-emit the event on every retry."""
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
+    # Mocked so that a regression (validating after the audit log again) fails on the
+    # audit assertion below rather than on an unmocked Okta call.
+    mocker.patch.object(
+        okta, "create_group", side_effect=lambda name, desc: OktaSdkGroup.from_dict({"id": "createdgrp0000000006"})
+    )
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+
+    requester: OktaUser = await OktaUserFactory.create_async()
+    db.session.add(requester)
+    await db.session.commit()
+    app_obj = await _make_app_with_plugin(db)
+
+    gr = await CreateGroupRequest(
+        requester_user=requester,
+        requested_group_name=f"App-{app_obj.name}-Admins",
+        requested_group_type="app_group",
+        requested_app_id=app_obj.id,
+        requested_plugin_data={DummyPlugin.ID: {"configuration": {"group_id": "valid-at-filing"}}},
+    ).execute()
+    assert gr is not None
+    gr_id = gr.id
+
+    # The plugin now rejects the stored config, as if the plugin's schema changed
+    # between filing and approval.
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.validate_app_group_lifecycle_plugin_group_config",
+        return_value={"group_id": "changed since submit"},
+    )
+
+    with caplog.at_level(logging.INFO, logger="access.audit"):
+        with pytest.raises(ValueError, match="group_id"):
+            await ApproveGroupRequest(group_request=gr, approver_user=admin, approval_reason="ok").execute()
+
+    audit_messages = [r.getMessage() for r in caplog.records if r.name == "access.audit"]
+    assert not any(EventType.group_request_approve.value in message for message in audit_messages), (
+        f"approval failed but emitted a {EventType.group_request_approve.value} audit event: {audit_messages}"
+    )
+    # The group must not have been created, nor the request resolved.
+    assert await db.session.get(AppGroup, "createdgrp0000000006") is None
+    refreshed = await db.session.get(GroupRequest, gr_id)
+    assert refreshed is not None
+    assert refreshed.status == AccessRequestStatus.PENDING
+    assert refreshed.approved_group_id is None
 
 
 # --- Config supplied for an app with no plugin is dropped with a warning ----
