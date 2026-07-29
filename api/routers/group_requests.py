@@ -15,7 +15,11 @@ from api.database import DbSession
 from api.models import AccessRequestStatus, App, GroupRequest, OktaUser, Tag
 from api.operations import ApproveGroupRequest, CreateGroupRequest, RejectGroupRequest
 from api.pagination import Page, validated
-from api.plugins.app_group_lifecycle import AppGroupLifecyclePluginFilteringError
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecyclePluginFilteringError,
+    raise_http_for_plugin_filtering_error,
+    validate_group_plugin_config_or_raise,
+)
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
     CreateGroupRequestBody,
@@ -186,24 +190,15 @@ async def post_group_request(
         if app is None:
             raise HTTPException(404, "App not found")
 
-        # Validate any supplied plugin group config against the app's lifecycle
-        # plugin. A request describes a not-yet-created group, so immutable
-        # fields stay freely settable (no old-config comparison here).
-        if app.app_group_lifecycle_plugin is not None:
-            from api.plugins.app_group_lifecycle import validate_app_group_lifecycle_plugin_group_config
-
-            try:
-                plugin_errors = validate_app_group_lifecycle_plugin_group_config(
-                    body.requested_plugin_data,
-                    app.app_group_lifecycle_plugin,
-                )
-            # AppGroupLifecyclePluginFilteringError (not a ValueError) is raised when
-            # the app names a plugin id that isn't registered in this deployment — an
-            # operator misconfiguration, so a 400 rather than an uncaught 500.
-            except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
-                raise HTTPException(400, f"plugin_data: {e}") from e
-            if plugin_errors:
-                raise HTTPException(400, f"plugin_data: {plugin_errors}")
+        # Validate any supplied plugin group config against the app's lifecycle plugin,
+        # through the same helper the group create/update endpoints use. `old_plugin_data`
+        # is omitted deliberately: a request describes a not-yet-created group, so there
+        # is no prior config and immutable fields stay freely settable.
+        validate_group_plugin_config_or_raise(
+            body.requested_plugin_data,
+            app.plugin_data or {},
+            app.app_group_lifecycle_plugin,
+        )
 
     # Every requested tag id must resolve to a non-deleted tag.
     if body.requested_group_tags:
@@ -233,10 +228,10 @@ async def post_group_request(
             current_user_id=current_user_id,
         ).execute()
 
-    # execute() may auto-approve (app-owner self-approval / conditional access),
-    # which re-validates plugin config and raises ValueError on invalid input — or
-    # AppGroupLifecyclePluginFilteringError if the app's plugin id is unregistered.
-    # Surface both as a 400 just like the PUT/approve path does.
+    # execute() may auto-approve (app-owner self-approval / conditional access), which
+    # re-validates plugin config; a ValueError is bad input, while a filtering error
+    # splits 400/500 by whether the plugin id is merely unknown. Same handling as the
+    # PUT/approve path below.
     try:
         gr = await CreateGroupRequest(
             requester_user=requester,
@@ -249,8 +244,10 @@ async def post_group_request(
             request_reason=body.request_reason or "",
             requested_plugin_data=body.requested_plugin_data if isinstance(body, _AppGroupRequestBody) else {},
         ).execute()
-    except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
+    except ValueError as e:
         raise HTTPException(400, f"Failed to create group request: {e}") from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        raise_http_for_plugin_filtering_error(e)
     if gr is None:
         raise HTTPException(400, "Failed to create group request")
     # Drop cached ORM state so the response reflects what the operation
@@ -330,11 +327,13 @@ async def put_group_request(
                 approver_user=current_user_id,
                 approval_reason=resolution_reason,
             ).execute()
-        # Approval re-validates the resolved plugin config, which raises ValueError on
-        # invalid input and AppGroupLifecyclePluginFilteringError on an unregistered
-        # plugin id; both are the approver's input problem, not a server fault.
-        except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
+        # Approval re-validates the resolved plugin config: a ValueError means the
+        # config no longer passes, while a filtering error means the app's plugin id is
+        # unknown (400) or its plugin is misconfigured (500).
+        except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        except AppGroupLifecyclePluginFilteringError as e:
+            raise_http_for_plugin_filtering_error(e)
     else:
         await RejectGroupRequest(
             group_request=gr,

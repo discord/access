@@ -282,11 +282,13 @@ async def test_post_app_group_request_accepts_valid_plugin_config(
     assert resp.json()["requested_plugin_data"] == payload
 
 
-# --- An unregistered plugin id is a 400, not a 500 -------------------------
+# --- Filtering errors split 400 (unknown id) from 500 (misconfigured) -------
 #
-# AppGroupLifecyclePluginFilteringError subclasses Exception, not ValueError, so
-# each of the three plugin-config failure paths below has to name it explicitly or
-# the request 500s on what is really bad operator/approver input.
+# AppGroupLifecyclePluginFilteringError subclasses Exception, not ValueError, so each
+# plugin-config failure path has to name it explicitly or the request 500s on what may
+# be nothing more than an unknown plugin id. Routers hand it to
+# raise_http_for_plugin_filtering_error, which answers 400 when no registered plugin
+# claims the id and 500 when one does but its hook misbehaves.
 
 
 async def test_post_app_group_request_returns_400_when_app_plugin_is_unregistered(
@@ -316,9 +318,18 @@ async def test_post_app_group_request_returns_400_when_app_plugin_is_unregistere
     )
     assert resp.status_code == 400, resp.text
     assert UNREGISTERED_PLUGIN_ID in resp.text
+    assert "is not known" in resp.text
 
 
-async def test_post_auto_approve_unregistered_plugin_returns_400(
+@pytest.mark.parametrize(
+    ("raised_plugin_id", "expected_status", "expected_text"),
+    [
+        (UNREGISTERED_PLUGIN_ID, 400, "is not known"),
+        (DummyPlugin.ID, 500, "Misconfigured"),
+    ],
+    ids=["unknown-plugin-400", "misconfigured-plugin-500"],
+)
+async def test_post_auto_approve_filtering_error_status(
     app: FastAPI,
     client: AsyncClient,
     db: Db,
@@ -326,17 +337,21 @@ async def test_post_auto_approve_unregistered_plugin_returns_400(
     url_for: Callable[..., str],
     test_plugin: DummyPlugin,
     mocker: MockerFixture,
+    raised_plugin_id: str,
+    expected_status: int,
+    expected_text: str,
 ) -> None:
-    """Same error raised from the auto-approve inside CreateGroupRequest (an app
-    owner's own request). Submit-time validation is forced to pass so the failure
-    can only be caught by the POST handler's wrapper around the operation."""
+    """The same split applied to the auto-approve inside CreateGroupRequest (an app
+    owner's own request). Submit-time validation is forced to pass so the failure can
+    only be caught by the POST handler's wrapper around the operation; the id carried by
+    the error then decides 400 versus 500."""
     app_obj = await _make_app_with_plugin(db)
     owner = await _make_app_owner(db, app_obj)
     mock_user(owner)
 
     mocker.patch(
         "api.plugins.app_group_lifecycle.validate_app_group_lifecycle_plugin_group_config",
-        side_effect=[{}, AppGroupLifecyclePluginFilteringError(DummyPlugin.ID, 0)],
+        side_effect=[{}, AppGroupLifecyclePluginFilteringError(raised_plugin_id, 0)],
     )
 
     resp = await client.post(
@@ -349,8 +364,9 @@ async def test_post_auto_approve_unregistered_plugin_returns_400(
             "requested_plugin_data": {DummyPlugin.ID: {"configuration": {"group_id": "g-1"}}},
         },
     )
-    assert resp.status_code == 400, resp.text
-    assert "Expected one response" in resp.text
+    assert resp.status_code == expected_status, resp.text
+    assert expected_text in resp.text
+    # Either way the request must not have been approved by the failed auto-approve.
     gr = (await db.session.scalars(select(GroupRequest))).first()
     assert gr is not None
     assert gr.status == AccessRequestStatus.PENDING
@@ -393,6 +409,7 @@ async def test_put_approve_returns_400_when_app_plugin_is_unregistered(
     )
     assert resp.status_code == 400, resp.text
     assert UNREGISTERED_PLUGIN_ID in resp.text
+    assert "is not known" in resp.text
     refreshed = await db.session.get(GroupRequest, gr_id)
     assert refreshed is not None
     assert refreshed.status == AccessRequestStatus.PENDING

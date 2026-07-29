@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-
+from fastapi_pagination.ext.sqlalchemy import apaginate
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
@@ -24,20 +24,17 @@ from api.models import (
     OktaUser,
     OktaUserGroupMember,
 )
-from fastapi_pagination.ext.sqlalchemy import apaginate
-
 from api.pagination import AppGroupsPage, Page, validated
 from api.routers._fan_out import defer_fan_out
 from api.schemas import (
-    AppSummary,
     AppDetail,
     AppGroupForAppDetail,
+    AppSummary,
     CreateAppBody,
     DeleteMessage,
     SearchAppQuery,
     UpdateAppBody,
 )
-
 
 APP_LOAD_OPTIONS = (
     selectinload(App.active_app_tags).options(
@@ -165,7 +162,8 @@ async def post_app(
     db: DbSession,
     current_user_id: str = Depends(require_access_admin_or_app_creator),
 ) -> AppDetail:
-    from api.models import AppGroup as _AppGroup, OktaUser, RoleGroup
+    from api.models import AppGroup as _AppGroup
+    from api.models import OktaUser, RoleGroup
     from api.operations import CreateApp
     from api.operations.create_group import GroupDict
 
@@ -282,12 +280,7 @@ async def put_app(
     from api.models import AppGroup as _AppGroup
     from api.models.app_group import app_owners_group_description
     from api.operations import ModifyAppTags, ModifyGroupDetails
-    from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data
-
-    from api.plugins.app_group_lifecycle import (
-        AppGroupLifecyclePluginFilteringError,
-        validate_app_group_lifecycle_plugin_app_config,
-    )
+    from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data, validate_app_plugin_config_or_raise
 
     fields_set = body.model_fields_set
     description = (body.description if body.description is not None else "") if "description" in fields_set else None
@@ -302,17 +295,8 @@ async def put_app(
         if "app_group_lifecycle_plugin" in fields_set
         else app_obj.app_group_lifecycle_plugin
     )
-    if "plugin_data" in fields_set and new_plugin_id is not None:
-        try:
-            errors = validate_app_group_lifecycle_plugin_app_config(body.plugin_data or {}, new_plugin_id)
-        # AppGroupLifecyclePluginFilteringError (not a ValueError) is raised when
-        # new_plugin_id names a plugin that isn't registered in this deployment,
-        # whether it came from the body or from the app's stored config. Bad input
-        # either way, so a 400 rather than an uncaught 500.
-        except (ValueError, AppGroupLifecyclePluginFilteringError) as e:
-            raise HTTPException(400, f"plugin_data: {e}") from e
-        if errors:
-            raise HTTPException(400, f"plugin_data: {errors}")
+    if "plugin_data" in fields_set:
+        validate_app_plugin_config_or_raise(body.plugin_data or {}, new_plugin_id)
 
     # Plugin config changes require access admin.
     new_plugin = (
@@ -421,10 +405,11 @@ async def put_app(
     ) or old_plugin_data_for_audit_pre != (refreshed.plugin_data or {})
 
     if name_changed or plugin_changed:
+        import logging as _logging
+
         from api.context import get_request_context
         from api.models import OktaUser
         from api.schemas import AuditLogSchema, EventType
-        import logging as _logging
 
         _ctx = get_request_context()
         email = getattr(await db.get(OktaUser, current_user_id), "email", None) if current_user_id is not None else None

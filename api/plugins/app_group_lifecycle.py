@@ -1,9 +1,10 @@
 import logging
 from dataclasses import asdict, dataclass
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 import pluggy
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.extensions import db
@@ -692,6 +693,76 @@ def validate_app_group_lifecycle_plugin_group_config(
                 errors.pop(name, None)
 
     return errors
+
+
+def raise_http_for_plugin_filtering_error(error: AppGroupLifecyclePluginFilteringError) -> NoReturn:
+    """Map a hook-filtering failure onto the right HTTP status; never returns.
+
+    `AppGroupLifecyclePluginFilteringError` covers two very different situations, and the
+    caller cannot be told the same thing about both:
+
+    - the id names no registered plugin, which is bad client input or stale app config
+      (e.g. an operator dropped a plugin while apps still referenced its id) -> **400**;
+    - the id *is* registered but its hook did not answer with exactly one response, which
+      is a server-side misconfiguration -> **500**, an explicit one naming the plugin
+      rather than letting the plain Exception become an unhandled stack trace.
+
+    Use this from any router that can see this error, whether raised by a validation
+    helper below or propagated out of an operation."""
+    if error.plugin_id not in [plugin.id for plugin in get_app_group_lifecycle_plugins()]:
+        raise HTTPException(400, f"The plugin {error.plugin_id} is not known")
+    raise HTTPException(500, f"Misconfigured app group lifecycle plugin '{error.plugin_id}': {error}") from error
+
+
+def validate_group_plugin_config_or_raise(
+    plugin_data: dict[str, Any],
+    app_plugin_data: dict[str, Any],
+    plugin_id: str | None,
+    old_plugin_data: dict[str, Any] | None = None,
+) -> None:
+    """Validate group-level plugin_data against the configured plugin's schema, raising
+    an HTTP error on invalid config. No-op when the app has no app group lifecycle plugin.
+
+    Shared by every router that accepts group plugin config -- group create/update and
+    app-group requests -- so they answer identically for the same bad input. Callers
+    resolve the plugin id and the owning app's plugin_data themselves, since each obtains
+    them differently (a freshly-built group can't lazy-load its app, and a group request
+    has no group yet). Callers editing an existing group also pass its current
+    plugin_data as `old_plugin_data` so the host can reject changes to immutable config
+    fields; omit it when the group does not exist yet."""
+    if plugin_id is None:
+        return
+
+    try:
+        errors = validate_app_group_lifecycle_plugin_group_config(
+            plugin_data, plugin_id, app_plugin_data, old_plugin_data=old_plugin_data
+        )
+    except ValueError as e:
+        raise HTTPException(400, f"plugin_data: {e}") from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        raise_http_for_plugin_filtering_error(e)
+    if errors:
+        raise HTTPException(400, f"plugin_data: {errors}")
+
+
+def validate_app_plugin_config_or_raise(plugin_data: dict[str, Any], plugin_id: str | None) -> None:
+    """Validate app-level plugin_data against the configured plugin's schema, raising an
+    HTTP error on invalid config. No-op when no app group lifecycle plugin is configured.
+
+    The app-level counterpart of `validate_group_plugin_config_or_raise`. It takes no
+    app-context or `old_plugin_data` arguments: app config has no parent to validate
+    against, and immutable app config properties are not a concept the hook exposes."""
+    if plugin_id is None:
+        return
+
+    try:
+        errors = validate_app_group_lifecycle_plugin_app_config(plugin_data, plugin_id)
+    except ValueError as e:
+        raise HTTPException(400, f"plugin_data: {e}") from e
+    except AppGroupLifecyclePluginFilteringError as e:
+        raise_http_for_plugin_filtering_error(e)
+    if errors:
+        raise HTTPException(400, f"plugin_data: {errors}")
 
 
 def get_app_group_lifecycle_plugin_app_status_properties(
