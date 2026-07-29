@@ -25,6 +25,7 @@ from api.models import AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecyclePluginConfigProperty,
+    AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
     MissingOktaTargetError,
@@ -779,6 +780,77 @@ class TestPluginValidation:
         assert response.status_code == 400
         assert "enabled" in str(response.json())
 
+    async def test_app_config_with_unregistered_plugin_in_body_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """Pointing an app at a plugin id no registered plugin claims. The validation
+        helpers raise AppGroupLifecyclePluginFilteringError, which is not a ValueError;
+        an unknown id is bad input, so it must be a clean 400 and not a 500."""
+        test_app = AppFactory.build(name="TestApp15")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "app_group_lifecycle_plugin": "unregistered_plugin",
+            "plugin_data": {"unregistered_plugin": {"configuration": {"enabled": True, "category": "valid_id"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
+
+    async def test_app_config_with_unregistered_stored_plugin_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """Same failure when the unregistered id is the app's stored config rather
+        than something the body supplied, e.g. an operator dropped the plugin from
+        the deployment while apps still referenced it."""
+        test_app = AppFactory.build(name="TestApp16", app_group_lifecycle_plugin="unregistered_plugin")
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "plugin_data": {"unregistered_plugin": {"configuration": {"enabled": True, "category": "valid_id"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
+
+    async def test_app_config_with_misconfigured_registered_plugin_returns_500(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """The other half of the filtering-error split: the plugin id is registered, but
+        its hook does not answer with exactly one response. That is a deployment fault
+        rather than bad input, so it stays a 500 -- an explicit one, carrying the plugin
+        id, rather than an unhandled stack trace."""
+        test_app = AppFactory.build(name="TestApp17", app_group_lifecycle_plugin=DummyPlugin.ID)
+
+        db.session.add(test_app)
+        await db.session.commit()
+
+        mocker.patch(
+            "api.plugins.app_group_lifecycle.validate_app_group_lifecycle_plugin_app_config",
+            side_effect=AppGroupLifecyclePluginFilteringError(DummyPlugin.ID, 2),
+        )
+
+        url = url_for("api-apps.app_by_id", app_id=test_app.id)
+        data = {
+            "name": test_app.name,
+            "plugin_data": {DummyPlugin.ID: {"configuration": {"enabled": True, "category": "valid_id"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 500, response.text
+        assert "Misconfigured" in str(response.json())
+        assert DummyPlugin.ID in str(response.json())
+
     async def test_valid_group_config(
         self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
     ) -> None:
@@ -896,6 +968,36 @@ class TestPluginValidation:
         response = await client.put(url, json=data)
         assert response.status_code == 400
         assert "group_id" in str(response.json())
+
+    async def test_group_config_with_unregistered_plugin_returns_400(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, url_for: Any
+    ) -> None:
+        """An app can name a lifecycle plugin id that isn't registered in this
+        deployment — e.g. an operator dropped the plugin while apps still referenced
+        it. Validation then raises AppGroupLifecyclePluginFilteringError, which is not
+        a ValueError, so the edit must still be a clean 400 and not a 500."""
+        test_app = AppFactory.build(name="TestApp14", app_group_lifecycle_plugin="unregistered_plugin")
+        test_group = AppGroupFactory.build(
+            app_id=test_app.id,
+            name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Testgroup3",
+        )
+
+        db.session.add(test_app)
+        db.session.add(test_group)
+        await db.session.commit()
+
+        url = url_for("api-groups.group_by_id", group_id=test_group.id)
+        data = {
+            "type": "app_group",
+            "name": test_group.name,
+            "description": "",
+            "app_id": test_group.app_id,
+            "plugin_data": {"unregistered_plugin": {"configuration": {"group_id": "external_123"}}},
+        }
+
+        response = await client.put(url, json=data)
+        assert response.status_code == 400, response.text
+        assert "unregistered_plugin" in str(response.json())
 
 
 class TestPluginDataRestore:

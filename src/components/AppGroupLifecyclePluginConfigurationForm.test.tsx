@@ -29,7 +29,7 @@ vi.mock('../api/apiComponents', () => ({
   useAppGroupLifecyclePluginGroupConfigProps: () => ({data: {}, isLoading: false}),
 }));
 
-import {ConfigField, isFieldLocked} from './AppGroupLifecyclePluginConfigurationForm';
+import {ConfigField, groupConfigHasFields, isFieldLocked} from './AppGroupLifecyclePluginConfigurationForm';
 import {PluginConfigProp} from '../api/apiSchemas';
 
 const prop = (over: Partial<PluginConfigProp>): PluginConfigProp =>
@@ -65,5 +65,17 @@ describe('ConfigField suffix', () => {
 
   it('omits the end adornment when no suffix is set', () => {
     expect(renderField({type: 'text'}).props.InputProps.endAdornment).toBeUndefined();
+  });
+});
+
+describe('groupConfigHasFields', () => {
+  it('is true when the plugin declares config properties', () => {
+    expect(groupConfigHasFields({email: {display_name: 'Email'}})).toBe(true);
+  });
+
+  it('is false for an empty, null, or undefined property map', () => {
+    expect(groupConfigHasFields({})).toBe(false);
+    expect(groupConfigHasFields(null)).toBe(false);
+    expect(groupConfigHasFields(undefined)).toBe(false);
   });
 });

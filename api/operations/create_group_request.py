@@ -39,6 +39,7 @@ class CreateGroupRequest:
         requested_group_tags: Optional[List[str]] = None,
         requested_ownership_ending_at: Optional[datetime] = None,
         request_reason: str = "",
+        requested_plugin_data: Optional[dict] = None,
     ):
         self.id = self.__generate_id()
 
@@ -51,6 +52,7 @@ class CreateGroupRequest:
         self.requested_group_tags = requested_group_tags if requested_group_tags is not None else []
         self.requested_ownership_ending_at = requested_ownership_ending_at
         self.request_reason = request_reason
+        self.requested_plugin_data = requested_plugin_data if requested_plugin_data is not None else {}
 
     async def execute(self) -> Optional[GroupRequest]:
         requester = await db.session.get(OktaUser, self.requester_user_id)
@@ -129,6 +131,7 @@ class CreateGroupRequest:
             requested_group_tags=self.requested_group_tags,
             requested_ownership_ending_at=coalesced_ownership_ending_at,
             request_reason=self.request_reason,
+            requested_plugin_data=self.requested_plugin_data,
         )
 
         db.session.add(group_request)
