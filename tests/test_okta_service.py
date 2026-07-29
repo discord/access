@@ -11,11 +11,15 @@ from okta.models.group_push_mapping import GroupPushMapping
 from okta.models.group_rule import GroupRule as OktaGroupRuleType
 from okta.models.user_schema import UserSchema as OktaUserSchemaType
 
+from okta.errors.okta_api_error import OktaAPIError
+
 from api.services.okta_service import (
     OKTA_TRANSIENT_RETRIES,
+    OktaResourceNotFoundError,
     OktaService,
     OktaTransientError,
     UserSchema,
+    _WrapperClient,
     is_managed_group,
 )
 from tests.factories import UserFactory
@@ -303,12 +307,19 @@ def _fake_okta_client(mocker, svc):
     ``Client``), which returns ``(data, ApiResponse, error)`` tuples and reports HTTP errors
     in the trailing ``error`` element (it does NOT raise) — delete even returns a 2-tuple
     ``(response, error)`` on error. Tests script those methods directly rather than the
-    low-level request executor."""
+    low-level request executor.
+
+    The mock is yielded wrapped in ``_WrapperClient``, exactly as the real
+    ``_okta_client`` does, so calls route through ``OktaService._call`` and its error
+    classification. Yielding the bare mock would bypass ``_call``, letting a facade
+    method's own error handling be tested against errors that in production never
+    reach it — the classification would have already raised.
+    """
     client = MagicMock()
 
     @asynccontextmanager
     async def fake_client():
-        yield client
+        yield _WrapperClient(client)
 
     mocker.patch.object(svc, "_okta_client", fake_client)
     return client
@@ -508,3 +519,73 @@ async def test_list_group_push_mappings_requires_app_id():
     svc = OktaService()
     with pytest.raises(ValueError):
         await svc.list_group_push_mappings("")
+
+
+async def test_call_404_on_list_endpoint_surfaces_as_resource_not_found() -> None:
+    """A list endpoint that 404s because its parent resource is gone is surfaced as
+    ``OktaResourceNotFoundError`` so the syncer fan-out can skip it quietly rather
+    than logging an ERROR for an expected, benign race."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    response_details = MagicMock(status=404, headers={})
+    not_found = OktaAPIError(
+        "https://fake.domain/api/v1/groups/deleted_group/users",
+        response_details,
+        {"errorCode": "E0000007", "errorSummary": "Not found: Resource not found: deleted_group (UserGroup)"},
+    )
+
+    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), not_found))):
+        with pytest.raises(OktaResourceNotFoundError):
+            await service.list_users_for_group("deleted_group")
+
+
+async def test_call_non_404_error_is_not_resource_not_found() -> None:
+    """An error that isn't a 404 keeps raising the generic Exception, so genuine
+    failures stay loud instead of being downgraded to the benign path."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    response_details = MagicMock(status=403, headers={})
+    forbidden = OktaAPIError(
+        "https://fake.domain/api/v1/groups/some_group/users",
+        response_details,
+        {"errorCode": "E0000006", "errorSummary": "You do not have permission"},
+    )
+
+    with patch("okta.client.Client.list_group_users", AsyncMock(return_value=(None, MagicMock(), forbidden))):
+        with pytest.raises(Exception) as exc_info:
+            await service.list_users_for_group("some_group")
+
+    assert not isinstance(exc_info.value, OktaResourceNotFoundError)
+
+
+async def test_call_404_on_single_resource_endpoint_surfaces_as_resource_not_found() -> None:
+    """Classification lives in ``_call``, not ``_paginate``, so it covers every proxied
+    SDK method — not just the paginated list endpoints the syncer fan-out uses."""
+    service = OktaService()
+    service.initialize("fake.domain", "fake.token")
+
+    response_details = MagicMock(status=404, headers={})
+    not_found = OktaAPIError(
+        "https://fake.domain/api/v1/users/gone",
+        response_details,
+        {"errorCode": "E0000007", "errorSummary": "Not found: Resource not found: gone (User)"},
+    )
+
+    with patch("okta.client.Client.get_user", AsyncMock(return_value=(None, MagicMock(), not_found))):
+        with pytest.raises(OktaResourceNotFoundError):
+            await service.get_user("gone")
+
+
+async def test_delete_group_push_mapping_tolerance_survives_call_level_classification(mocker) -> None:
+    """Regression guard for the classification move: ``_call`` now raises on a 404 before
+    the facade method can inspect it, so ``delete_group_push_mapping`` must catch
+    ``OktaResourceNotFoundError`` to keep deletion idempotent. Exercised through
+    ``_WrapperClient`` — mocking the bare client would bypass ``_call`` and pass either way."""
+    svc = OktaService()
+    client = _fake_okta_client(mocker, svc)
+    client.update_group_push_mapping = AsyncMock(return_value=(_mapping(id="map-1"), MagicMock(), None))
+    client.delete_group_push_mapping = AsyncMock(return_value=(MagicMock(), MagicMock(status=404)))
+
+    await svc.delete_group_push_mapping("app-1", "map-1")  # must not raise

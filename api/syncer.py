@@ -38,7 +38,13 @@ from api.operations import (
 )
 from api.plugins import NotificationHook, send_notification
 from api.services import okta
-from api.services.okta_service import Group, OktaTransientError, User, is_managed_group
+from api.services.okta_service import (
+    Group,
+    OktaResourceNotFoundError,
+    OktaTransientError,
+    User,
+    is_managed_group,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +283,12 @@ async def sync_group_memberships(
         if isinstance(members, OktaTransientError):
             logger.warning(f"Transient Okta error listing members for group {group.id}, skipping.", exc_info=members)
             continue
+        if isinstance(members, OktaResourceNotFoundError):
+            logger.warning(
+                f"Group {group.id} no longer exists in Okta (deleted after this run's group "
+                f"snapshot was taken), skipping membership sync."
+            )
+            continue
         if isinstance(members, Exception):
             logger.error(f"Failed to list members for group {group.id}, skipping.", exc_info=members)
             continue
@@ -381,6 +393,12 @@ async def sync_group_ownerships(
     async for group, owners in _prefetch_group_okta_lists(groups, okta.list_owners_for_group, concurrency):
         if isinstance(owners, OktaTransientError):
             logger.warning(f"Transient Okta error listing owners for group {group.id}, skipping.", exc_info=owners)
+            continue
+        if isinstance(owners, OktaResourceNotFoundError):
+            logger.warning(
+                f"Group {group.id} no longer exists in Okta (deleted after this run's group "
+                f"snapshot was taken), skipping ownership sync."
+            )
             continue
         if isinstance(owners, Exception):
             logger.error(f"Failed to list owners for group {group.id}, skipping.", exc_info=owners)

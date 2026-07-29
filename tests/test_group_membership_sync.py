@@ -1,7 +1,9 @@
+import logging
 from collections import namedtuple
 from datetime import datetime, timedelta
 from typing import Callable, Tuple
 
+import pytest
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember
 from api.extensions import Db
 from api.services import okta
-from api.services.okta_service import Group, User
+from api.services.okta_service import Group, OktaResourceNotFoundError, User
 from api.syncer import sync_group_memberships
 from tests.factories import GroupFactory, UserFactory
 
@@ -327,6 +329,45 @@ async def test_membership_sync_continues_after_group_failure(db: Db, mocker: Moc
     # Verify the failing group has no members
     failed_members = await _get_group_members(db, initial_okta_groups[0].id)
     assert len(failed_members) == 0
+
+
+async def test_membership_sync_skips_group_deleted_mid_run_at_warning(
+    db: Db, mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A group deleted from Okta after this run took its group snapshot 404s when the
+    membership pass reaches it. That race is expected and self-healing — the next run's
+    snapshot won't contain the group, and ``sync_groups`` soft-deletes it locally — so it
+    is logged at WARNING and skipped rather than raising an ERROR that pages someone."""
+    initial_okta_users = UserFactory.create_batch(3)
+    initial_okta_groups = GroupFactory.create_batch(3)
+    _, _ = await seed_db(db, initial_okta_users, initial_okta_groups)
+
+    deleted_group_id = initial_okta_groups[0].id
+
+    def fake_list_users_for_group(group_id: str) -> list[User]:
+        if group_id == deleted_group_id:
+            raise OktaResourceNotFoundError(
+                f"Okta HTTP 404 E0000007 Not found: Resource not found: {group_id} (UserGroup)"
+            )
+        if group_id == initial_okta_groups[1].id:
+            return initial_okta_users
+        return []
+
+    with caplog.at_level(logging.WARNING):
+        _ = await run_sync(db, mocker, initial_okta_groups, fake_list_users_for_group, False)
+
+    # The other groups still reconcile — one group vanishing does not stop the pass.
+    assert len(await _get_group_members(db, initial_okta_groups[1].id)) == 3
+    assert len(await _get_group_members(db, deleted_group_id)) == 0
+
+    # Skipped quietly: a WARNING naming the group, and nothing at ERROR to alert on.
+    # Scoped to the syncer's own logger — unrelated fan-out noise from Okta mutation
+    # calls the test doesn't stub is not what's under test here.
+    syncer_records = [record for record in caplog.records if record.name == "api.syncer"]
+    assert not any(record.levelno >= logging.ERROR for record in syncer_records)
+    assert any(
+        record.levelno == logging.WARNING and deleted_group_id in record.getMessage() for record in syncer_records
+    )
 
 
 async def seed_db(db: Db, users: list[OktaUser], groups: list[OktaGroup]) -> Tuple[list[OktaUser], list[OktaGroup]]:
