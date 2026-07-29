@@ -65,6 +65,8 @@ describe('ConfigField suffix', () => {
 
   it('omits the end adornment when no suffix is set', () => {
     expect(renderField({type: 'text'}).props.InputProps.endAdornment).toBeUndefined();
+  });
+});
 
 describe('groupConfigHasFields', () => {
   it('is true when the plugin declares config properties', () => {
