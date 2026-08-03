@@ -49,10 +49,18 @@ A plugin is an ordinary Python distribution with three parts:
 2. **Entry point registration.** A `setup.py` (or `pyproject.toml`) declaring the
    distribution and an `entry_points` mapping in the right group.
 
-3. **Dependencies.** Prefer declaring runtime deps in `install_requires` so a
-   plain `uv pip install ./your_plugin` pulls them. Some examples instead keep
-   deps in a `requirements.txt`; the image build and the `make` target below
-   both install that file first when it's present.
+3. **Dependencies.** Declare every runtime dep in `install_requires`, so a plain
+   `uv pip install ./your_plugin` yields a working plugin. The examples carry no
+   `requirements.txt`: a second list is a second place to forget, and a dep named
+   only there is missing from every install path that doesn't happen to read it.
+   The image build and the `make` target below still install a `requirements.txt`
+   first when one is present, so your own plugin may use one if you prefer.
+
+   Pin deps the app does not itself ship (`slack-sdk`, `datadog`), but keep deps
+   the app supplies (`pluggy`, `SQLAlchemy`) on a compatible range. Plugins are
+   installed *into* the app's venv, so an exact pin that disagrees with
+   [`pyproject.toml`](../../pyproject.toml) silently re-resolves that package for
+   the running app.
 
 The quickest start is to copy the example closest to your use case, change the
 distribution name, entry-point name, and hook bodies, and adjust its
@@ -73,7 +81,7 @@ docker build \
 ```
 
 See the table above for every arg. The build installs each enabled plugin (and
-its `requirements.txt`, when present) into the app's `uv` virtualenv at
+its `requirements.txt`, if it has one) into the app's `uv` virtualenv at
 `/app/.venv` with `uv pip install`. Use `uv pip install`, **not** `pip`: the
 venv has no `pip`, and plain `pip` installs into the base image's system
 interpreter, where the running app never looks — the classic
