@@ -56,6 +56,32 @@ public. This means:
 Operator-specific code (plugin implementations, container definitions, Kubernetes configs, and
 deployment config) lives in the operator's own private repo, not here.
 
+### The one carve-out: `.github/workflows/docker-image.yml`
+
+This single workflow is a deliberate, pre-existing exception. It builds and pushes the release
+image to Discord's own Google Artifact Registry, so it necessarily hardcodes the
+`discord-access-prd` GCP project, Discord's workload identity provider, and the
+`us-east1-docker.pkg.dev/discord-access-prd` registry path. It cannot be made general-purpose;
+another operator running Access publishes to their own registry from their own pipeline.
+
+Because the file is already operator-bound, operator-specific *release-pipeline plumbing* may be
+added to it — for example the `if: failure()` step that alerts a Discord channel via the
+`DISCORD_CI_ALERTS_WEBHOOK` secret. Two rules keep the carve-out contained:
+
+- **The exception is this file only.** Every other workflow runs for all operators and on forked
+  PRs, and must stay general-purpose and secret-free. Note especially the near-namesake
+  `docker-build.yml`: it is the merge-requirement counterpart that verifies the image builds from
+  a clean checkout, and its header documents that it is *deliberately* secret-free so forked-PR
+  builds work. Adding operator-specific plumbing there would break exactly what it exists to
+  guarantee. When in doubt about which of the two a change belongs in: pushing the release
+  artifact is `docker-image.yml`; proving the build works is `docker-build.yml`.
+- **Degrade to a no-op, never a failure.** Anything added here that depends on a Discord-only
+  secret must skip cleanly when that secret is absent, since secrets don't propagate to forks.
+  A fork's run should not gain a confusing extra error.
+
+Treat growth of this carve-out as a judgment call worth surfacing, not a precedent to lean on.
+Application logic never belongs here regardless; this covers CI plumbing only.
+
 ## Security and design goals
 
 Access exists to facilitate a company-wide Role-Based Access Control (RBAC) strategy. These
