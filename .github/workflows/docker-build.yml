@@ -70,36 +70,19 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Verify plugin entry points are registered
-        # `uv pip install` targeting the wrong interpreter is a silent failure
-        # that only shows up at runtime as "Registered 0 plugins", so assert the
-        # entry points are visible to the image's own Python rather than
-        # trusting the build's exit code. Uses importlib.metadata only — no DB,
-        # no Okta, no config required.
+        # Runs the script inside the built image, so the entry points are queried
+        # by the image's own Python. See the script's docstring for why a green
+        # build alone isn't sufficient.
+        #
+        # Mount the script rather than piping it to `python -` on stdin: without
+        # `docker run -i` the container's stdin is empty, so `python -` reads an
+        # EOF, runs nothing, and exits 0 — a check that always passes. Grepping
+        # for the script's success line is the backstop against that whole class
+        # of silent no-op.
         run: |
-          docker run --rm --entrypoint python access:ci - <<'PY'
-          import importlib.metadata as md
-          import sys
-
-          # Group -> entry point names expected once every INSTALL_* arg is on.
-          # examples/plugins/notifications and notifications_slack both publish
-          # the distribution "access-notifications" with an entry point named
-          # "notifications", so enabling both yields one, not two: the later
-          # install (slack) replaces the earlier one.
-          expected = {
-              "access_app_group_lifecycle": {"audit_logger", "google_group_manager"},
-              "access_conditional_access": {"conditional_access"},
-              "access_metrics_reporter": {"metrics_reporter"},
-              "access_notifications": {"notifications"},
-              "access.commands": {"health"},
-          }
-
-          failed = False
-          for group, want in expected.items():
-              got = {ep.name for ep in md.entry_points(group=group)}
-              print(f"{group}: {sorted(got)}")
-              if missing := want - got:
-                  print(f"  MISSING from {group}: {sorted(missing)}", file=sys.stderr)
-                  failed = True
-
-          sys.exit(1 if failed else 0)
-          PY
+          output=$(docker run --rm \
+            -v "$PWD/.github/scripts:/verify:ro" \
+            --entrypoint python \
+            access:ci /verify/verify_plugin_entry_points.py 2>&1)
+          echo "$output"
+          grep -q "^OK: all expected entry points registered" <<<"$output"
