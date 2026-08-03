@@ -97,7 +97,12 @@ ARG INSTALL_SLACK_NOTIFICATIONS_PLUGIN="false"
 # Bind-mount the plugin sources for the length of this RUN only: enabled plugins
 # are installed (non-editable) into /app/.venv, so nothing needs to persist in
 # the final image and the default (all-false) build stays byte-identical.
-RUN --mount=type=bind,source=examples/plugins,target=examples/plugins \
+# `rw` is required, not incidental: every example uses a legacy setup.py, and
+# setuptools' build_wheel writes <name>.egg-info/ into the source directory, so
+# a read-only mount fails the build with "could not create '<name>.egg-info':
+# Read-only file system". BuildKit discards writes to an `rw` bind mount, so the
+# scratch egg-info still never reaches the image.
+RUN --mount=type=bind,source=examples/plugins,target=examples/plugins,rw \
     set -eu; \
     install_plugin() { \
         if [ -f "$1/requirements.txt" ]; then uv pip install -r "$1/requirements.txt"; fi; \
