@@ -56,3 +56,39 @@ jobs:
             "SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}"
           secret-envs: |
             ACCESS_CONFIG_OVERRIDE=ACCESS_CONFIG_OVERRIDE
+
+      # Fires if any step above failed, not just the build. Best-effort: the
+      # secret is absent on forks, so a missing URL skips rather than adding a
+      # second, misleading failure on top of the real one.
+      - id: notify-discord
+        name: Notify Discord on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_ALERTS_WEBHOOK }}
+          # Passed via env, never interpolated into the script below: a `${{ }}`
+          # expansion of a commit message is a shell injection sink.
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_CI_ALERTS_WEBHOOK not set; skipping notification"
+            exit 0
+          fi
+          jq -n \
+            --arg url "$RUN_URL" \
+            --arg sha "${GITHUB_SHA:0:7}" \
+            --arg msg "$(printf '%s' "$COMMIT_MESSAGE" | head -n 1)" \
+            --arg actor "$GITHUB_ACTOR" \
+            '{embeds: [{
+              title: "Docker Image CI failed on main",
+              url: $url,
+              color: 15548997,
+              fields: [
+                {name: "Commit", value: ($sha + " — " +
+                  # Discord rejects a field value over 1024 chars; slicing in jq
+                  # counts codepoints, so this cannot split a multi-byte char.
+                  (if ($msg | length) > 200 then ($msg | .[0:197]) + "..." else $msg end))},
+                {name: "Pushed by", value: $actor}
+              ]
+            }]}' \
+            | curl -sS -f -X POST -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
