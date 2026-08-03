@@ -1,0 +1,105 @@
+name: Build Docker Image
+
+# Verifies the Access image builds from a clean checkout. This is the
+# merge-requirement counterpart to docker-image.yml, which only builds on pushes
+# to main (after merge) and needs registry credentials to push.
+#
+# Deliberately secret-free so it runs on forked-PR builds too:
+#   - PUSH_SENTRY_RELEASE stays "false", so the Dockerfile's `sentry` stage is
+#     never in the build graph and the SENTRY_* secret mounts are never reached.
+#   - ACCESS_CONFIG_OVERRIDE is not mounted, so the frontend builds against
+#     config/config.default.json — the same path an open-source `docker build`
+#     takes.
+# Nothing here needs a dummy value; if a future build step does require a
+# secret, mount a fake one rather than wiring a real repository secret in.
+#
+# No `paths:` filter on purpose: a required check that is skipped never reports a
+# status, which would block every PR that doesn't touch the filtered paths.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+# A superseded commit's image build is worth cancelling; this is the most
+# expensive job in CI.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    name: Build Access image with all example plugins
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          # Load into the local Docker daemon so the next step can run the
+          # image and confirm the plugins actually landed in /app/.venv.
+          load: true
+          tags: access:ci
+          # Enable every INSTALL_*_PLUGIN arg in the Dockerfile so all of the
+          # optional-plugin install branches are exercised, not just the one
+          # the release build happens to use. Keep in sync with the arg list in
+          # the Dockerfile and the table in examples/plugins/README.md.
+          build-args: |
+            INSTALL_AUDIT_LOGGER_PLUGIN=true
+            INSTALL_CONDITIONAL_ACCESS_PLUGIN=true
+            INSTALL_DATADOG_METRICS_PLUGIN=true
+            INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN=true
+            INSTALL_HEALTH_CHECK_PLUGIN=true
+            INSTALL_NOTIFICATIONS_PLUGIN=true
+            INSTALL_SLACK_NOTIFICATIONS_PLUGIN=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify plugin entry points are registered
+        # `uv pip install` targeting the wrong interpreter is a silent failure
+        # that only shows up at runtime as "Registered 0 plugins", so assert the
+        # entry points are visible to the image's own Python rather than
+        # trusting the build's exit code. Uses importlib.metadata only — no DB,
+        # no Okta, no config required.
+        run: |
+          docker run --rm --entrypoint python access:ci - <<'PY'
+          import importlib.metadata as md
+          import sys
+
+          # Group -> entry point names expected once every INSTALL_* arg is on.
+          # examples/plugins/notifications and notifications_slack both publish
+          # the distribution "access-notifications" with an entry point named
+          # "notifications", so enabling both yields one, not two: the later
+          # install (slack) replaces the earlier one.
+          expected = {
+              "access_app_group_lifecycle": {"audit_logger", "google_group_manager"},
+              "access_conditional_access": {"conditional_access"},
+              "access_metrics_reporter": {"metrics_reporter"},
+              "access_notifications": {"notifications"},
+              "access.commands": {"health"},
+          }
+
+          failed = False
+          for group, want in expected.items():
+              got = {ep.name for ep in md.entry_points(group=group)}
+              print(f"{group}: {sorted(got)}")
+              if missing := want - got:
+                  print(f"  MISSING from {group}: {sorted(missing)}", file=sys.stderr)
+                  failed = True
+
+          sys.exit(1 if failed else 0)
+          PY
