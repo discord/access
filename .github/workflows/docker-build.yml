@@ -1,0 +1,88 @@
+name: Build Docker Image
+
+# Verifies the Access image builds from a clean checkout. This is the
+# merge-requirement counterpart to docker-image.yml, which only builds on pushes
+# to main (after merge) and needs registry credentials to push.
+#
+# Deliberately secret-free so it runs on forked-PR builds too:
+#   - PUSH_SENTRY_RELEASE stays "false", so the Dockerfile's `sentry` stage is
+#     never in the build graph and the SENTRY_* secret mounts are never reached.
+#   - ACCESS_CONFIG_OVERRIDE is not mounted, so the frontend builds against
+#     config/config.default.json — the same path an open-source `docker build`
+#     takes.
+# Nothing here needs a dummy value; if a future build step does require a
+# secret, mount a fake one rather than wiring a real repository secret in.
+#
+# No `paths:` filter on purpose: a required check that is skipped never reports a
+# status, which would block every PR that doesn't touch the filtered paths.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+# A superseded commit's image build is worth cancelling; this is the most
+# expensive job in CI.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-build:
+    name: Build Access image with all example plugins
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          # Load into the local Docker daemon so the next step can run the
+          # image and confirm the plugins actually landed in /app/.venv.
+          load: true
+          tags: access:ci
+          # Enable every INSTALL_*_PLUGIN arg in the Dockerfile so all of the
+          # optional-plugin install branches are exercised, not just the one
+          # the release build happens to use. Keep in sync with the arg list in
+          # the Dockerfile and the table in examples/plugins/README.md.
+          build-args: |
+            INSTALL_AUDIT_LOGGER_PLUGIN=true
+            INSTALL_CONDITIONAL_ACCESS_PLUGIN=true
+            INSTALL_DATADOG_METRICS_PLUGIN=true
+            INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN=true
+            INSTALL_HEALTH_CHECK_PLUGIN=true
+            INSTALL_NOTIFICATIONS_PLUGIN=true
+            INSTALL_SLACK_NOTIFICATIONS_PLUGIN=true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify plugin entry points are registered
+        # Runs the script inside the built image, so the entry points are queried
+        # by the image's own Python. See the script's docstring for why a green
+        # build alone isn't sufficient.
+        #
+        # Mount the script rather than piping it to `python -` on stdin: without
+        # `docker run -i` the container's stdin is empty, so `python -` reads an
+        # EOF, runs nothing, and exits 0 — a check that always passes. Grepping
+        # for the script's success line is the backstop against that whole class
+        # of silent no-op.
+        run: |
+          output=$(docker run --rm \
+            -v "$PWD/.github/scripts:/verify:ro" \
+            --entrypoint python \
+            access:ci /verify/verify_plugin_entry_points.py 2>&1)
+          echo "$output"
+          grep -q "^OK: all expected entry points registered" <<<"$output"

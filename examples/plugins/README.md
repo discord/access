@@ -79,6 +79,14 @@ venv has no `pip`, and plain `pip` installs into the base image's system
 interpreter, where the running app never looks — the classic
 "Registered 0 plugins" symptom.
 
+The `Build Docker Image` CI check
+([docker-build.yml](../../.github/workflows/docker-build.yml)) builds the image
+with **every** arg in the table set to `true` and then asserts each plugin's
+entry point is visible to the image's own Python, so a broken install branch
+fails the PR rather than a deploy. Adding a new example plugin means adding its
+arg to that workflow's `build-args` (and to `make build-all-plugins`) alongside
+the `ARG` in the Dockerfile.
+
 ### Baking in your own plugin
 
 Suppose your plugin lives in your own repo, not this one. Add it to a Dockerfile that

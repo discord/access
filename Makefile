@@ -39,6 +39,7 @@ help:
 	@echo ""
 	@echo "Docker:"
 	@echo "  make build              docker build"
+	@echo "  make build-all-plugins  docker build with every INSTALL_*_PLUGIN arg on (mirrors CI)"
 	@echo "  make run-docker         docker compose up --build"
 	@echo "  make compose-down       docker compose down"
 	@echo ""
@@ -179,6 +180,21 @@ sync-app-groups: .env dev
 .PHONY: build
 build:
 	docker build -t access .
+
+# Same build the "Build Docker Image" CI check runs: every optional-plugin
+# install branch in the Dockerfile enabled, no secrets. Use this to reproduce a
+# CI image-build failure locally.
+.PHONY: build-all-plugins
+build-all-plugins:
+	docker build -t access:all-plugins \
+	  --build-arg INSTALL_AUDIT_LOGGER_PLUGIN=true \
+	  --build-arg INSTALL_CONDITIONAL_ACCESS_PLUGIN=true \
+	  --build-arg INSTALL_DATADOG_METRICS_PLUGIN=true \
+	  --build-arg INSTALL_GOOGLE_GROUP_LIFECYCLE_PLUGIN=true \
+	  --build-arg INSTALL_HEALTH_CHECK_PLUGIN=true \
+	  --build-arg INSTALL_NOTIFICATIONS_PLUGIN=true \
+	  --build-arg INSTALL_SLACK_NOTIFICATIONS_PLUGIN=true \
+	  .
 
 .PHONY: run-docker
 run-docker:
