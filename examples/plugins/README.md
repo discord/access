@@ -20,6 +20,11 @@ you can enable as-is, and a template to copy when writing your own.
 | [`notifications_slack`](./notifications_slack) | Request/expiry notifications to Slack | `access_notifications` | `INSTALL_SLACK_NOTIFICATIONS_PLUGIN` |
 | [`health_check_plugin`](./health_check_plugin) | A new `access` CLI command | `access.commands` | `INSTALL_HEALTH_CHECK_PLUGIN` |
 
+Two examples sharing an entry-point group (as the notification and app group
+lifecycle pairs do) are not alternatives — pluggy calls every registered
+implementation, so enabling both `INSTALL_NOTIFICATIONS_PLUGIN` and
+`INSTALL_SLACK_NOTIFICATIONS_PLUGIN` logs *and* Slacks each notification.
+
 ## How Access discovers plugins
 
 Access uses [pluggy](https://pluggy.readthedocs.io/) with setuptools
@@ -63,8 +68,10 @@ A plugin is an ordinary Python distribution with three parts:
    the running app.
 
 The quickest start is to copy the example closest to your use case, change the
-distribution name, entry-point name, and hook bodies, and adjust its
-dependencies.
+distribution name, top-level module name, entry-point name, and hook bodies, and
+adjust its dependencies. Change all three names, not just the distribution name:
+two distributions that ship the same top-level module overwrite each other's
+files on install, and the loser is gone with no error or warning.
 
 ## Installing into a built image
 

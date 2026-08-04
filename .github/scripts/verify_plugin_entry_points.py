@@ -19,16 +19,17 @@ import sys
 
 # Entry point group -> names expected once every INSTALL_* arg is on.
 #
-# Note examples/plugins/notifications and notifications_slack both publish the
-# distribution "access-notifications" with an entry point named "notifications",
-# so enabling both build args yields one, not two: the later install (slack)
-# replaces the earlier one. Both install branches still run, which is what the
-# image build is covering here.
+# examples/plugins/notifications and notifications_slack both register in
+# access_notifications, and pluggy calls every registered implementation, so
+# enabling both args must yield *both* names. They previously shipped as the
+# same distribution ("access-notifications") with the same module and entry
+# point, so the second install silently replaced the first and this group
+# yielded one name; expecting both is what keeps that from regressing.
 EXPECTED = {
     "access_app_group_lifecycle": {"audit_logger", "google_group_manager"},
     "access_conditional_access": {"conditional_access"},
     "access_metrics_reporter": {"metrics_reporter"},
-    "access_notifications": {"notifications"},
+    "access_notifications": {"notifications", "notifications_slack"},
     "access.commands": {"health"},
 }
 
