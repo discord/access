@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import settings
 from api.extensions import Db
-from api.models import AppGroup, OktaUser, OktaUserGroupMember
+from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecyclePluginConfigProperty,
@@ -66,6 +66,11 @@ class DummyPlugin:
         self.group_deleted_calls: list[str] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
         self.members_removed_calls: list[tuple[str, list[str]]] = []
+        # (app id, ["group name:owning app name", ...]) per sync_all_groups call.
+        self.sync_all_groups_calls: list[tuple[str, list[str]]] = []
+        # App names whose sync_all_groups should raise, so tests can exercise the
+        # caller's per-app error isolation.
+        self.sync_all_groups_failures: set[str] = set()
 
     @hookimpl
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -236,6 +241,20 @@ class DummyPlugin:
             return
         (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         self.members_removed_calls.append((group.id, [m.id for m in members]))
+
+    @hookimpl
+    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != self.ID:
+            return
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        # Walk the app's groups the way a bulk-reconcile plugin does. Both
+        # App.active_app_groups and AppGroup.app are lazy="raise_on_sql", so this
+        # raises unless the caller handed over an App with the collection loaded.
+        groups = app.active_app_groups
+        described = [f"{group.name}:{group.app.name}" for group in groups]
+        if app.name in self.sync_all_groups_failures:
+            raise RuntimeError(f"sync failed for {app.name}")
+        self.sync_all_groups_calls.append((app.id, described))
 
 
 @pytest.fixture
@@ -2236,6 +2255,76 @@ class TestPluginMembershipHooks:
 
         # Assert: Hook should NOT be called because user already had access
         assert len(test_plugin.members_added_calls) == 0
+
+
+class TestSyncAllGroupsHook:
+    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the
+    only caller of the `sync_all_groups` hook.
+
+    The hook is handed a whole `App` rather than one group, so these cover the two
+    things that are only true of a batch caller: the App must arrive with the
+    relationships the hookspec promises loaded, and one app's failure must not
+    strand the apps after it.
+    """
+
+    @staticmethod
+    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> App:
+        test_app = AppFactory.build(name=name, app_group_lifecycle_plugin=DummyPlugin.ID)
+        db.session.add(test_app)
+        await db.session.flush()
+        for suffix in group_suffixes:
+            db.session.add(
+                AppGroupFactory.build(
+                    app_id=test_app.id,
+                    name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
+                )
+            )
+        await db.session.commit()
+        return test_app
+
+    async def test_hook_receives_app_with_groups_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Every App relationship is lazy="raise_on_sql", so a plugin reading
+        # app.active_app_groups (the natural way to bulk reconcile) raises
+        # InvalidRequestError unless the caller eager-loaded it.
+        from api.cli import _sync_all_app_groups
+
+        test_app = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 0
+        # Ordered by AppGroup.name, and each group's .app resolves off the identity map.
+        assert test_plugin.sync_all_groups_calls == [
+            (test_app.id, ["App-SyncApp-Alpha:SyncApp", "App-SyncApp-Beta:SyncApp"])
+        ]
+
+    async def test_apps_after_a_failing_app_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Rolling back the failed app expires every instance in the identity map, so a
+        # graph loaded before the loop is unusable afterwards: reading a column raises
+        # MissingGreenlet (no greenlet for the implicit refresh) and reading a
+        # relationship raises InvalidRequestError again. Both must be impossible here.
+        from api.cli import _sync_all_app_groups
+
+        await self._add_app_with_groups(db, "SyncAppA", ["One"])
+        app_b = await self._add_app_with_groups(db, "SyncAppB", ["Two"])
+        test_plugin.sync_all_groups_failures.add("SyncAppA")
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 1
+        assert test_plugin.sync_all_groups_calls == [(app_b.id, ["App-SyncAppB-Two:SyncAppB"])]
+
+    async def test_apps_without_a_plugin_are_not_synced(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # The Access app seeded by the db fixture has no lifecycle plugin configured.
+        from api.cli import _sync_all_app_groups
+
+        db.session.add(AppFactory.build(name="NoPluginApp"))
+        await db.session.commit()
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 0
+        assert test_plugin.sync_all_groups_calls == []
 
 
 class TestPluginAuditLogging:

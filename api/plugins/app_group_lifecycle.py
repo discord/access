@@ -297,9 +297,17 @@ class AppGroupLifecyclePluginSpec:
 
         Args:
             session: The Access database AsyncSession. Await ORM calls on it.
-            app: The app for which to sync all groups.
+            app: The app for which to sync all groups. `app.active_app_groups` is
+                 eager-loaded, and each of those groups' `.app` resolves back to this
+                 same instance without SQL. Every other `App` relationship is
+                 `lazy="raise_on_sql"` and must be queried through `session` rather
+                 than read off `app` -- see the note on widening this below.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+
+        A hook that needs a wider object graph than the one above should have the caller
+        (`_sync_all_app_groups` in `api/cli.py`) eager-load it, the way request-path
+        operations do for the notification hooks; reaching for a lazy load here raises.
         """
 
 
