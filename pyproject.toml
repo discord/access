@@ -105,9 +105,16 @@ config = ["*.json"]
 line-length = 120
 
 # ----------------------------------------------------------------------
-# pytest — async test config
+# pytest — test scope and async config
 # ----------------------------------------------------------------------
 [tool.pytest.ini_options]
+# Both test roots, so an argument-less `pytest` run covers the same ground
+# everywhere: locally, in `make pytest`, and in CI. The example plugins ship
+# their own tests, and leaving them out of the default scope is how they went
+# unrun -- a plugin hook can regress against a host-side change without any
+# invocation noticing. Anything wanting only the DB-backed suite (the postgres
+# runs) passes `tests` explicitly.
+testpaths = ["tests", "examples/plugins"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
