@@ -8,7 +8,6 @@ from okta.models import Group as OktaSdkGroup
 from pydantic import TypeAdapter
 from pytest_mock import MockerFixture
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import settings
 from api.extensions import Db
@@ -19,6 +18,7 @@ from api.schemas import EventType
 from api.schemas.requests_schemas import CreateGroupRequestBody, ResolveGroupRequestBody
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
+from api.plugins.app_group_lifecycle import AppGroupLifecycleContext
 from tests.test_app_group_lifecycle_plugin import DummyPlugin
 
 UNREGISTERED_PLUGIN_ID = "unregistered_plugin"
@@ -91,7 +91,7 @@ class _StatusWritingPlugin(DummyPlugin):
     back into the persisted request record."""
 
     @hookimpl
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
         group.plugin_data[self.ID]["configuration"]["group_id"] = "mutated-by-hook"

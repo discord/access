@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from api.config import settings
 from api.extensions import Db
@@ -26,11 +26,13 @@ from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecycleContext,
+    AppGroupLifecycleHook,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
     MissingOktaTargetError,
+    _StatusWrite,
     create_push_mapping_and_new_group,
     create_push_mapping_for_existing_group,
     delete_push_mapping,
@@ -78,6 +80,9 @@ class DummyPlugin:
         self.group_created_failures: set[str] = set()
         self.group_updated_failures: set[str] = set()
         self.group_deleted_failures: set[str] = set()
+        # (property_name, value, durable_on_failure) triples the group_updated hook writes before
+        # its failure check, so tests can drive the host's durable-status replay.
+        self.status_writes_on_update: list[tuple[str, Any, bool]] = []
 
     @hookimpl
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -197,14 +202,13 @@ class DummyPlugin:
         }
 
     @hookimpl
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        # Await a read through the AsyncSession. The hookspec promises an
-        # AsyncSession; if an operation hands us something else (a broken bridge),
-        # this raises and the call below is never recorded — so the recorded-calls
-        # assertions in these tests fail loudly.
-        (await session.scalars(select(AppGroup))).all()
+        # Await a read through a real capability. If the host hands us a broken context this
+        # raises and the call below is never recorded — so the recorded-calls assertions in these
+        # tests fail loudly.
+        await ctx.find_groups_by_status("probe", "unset")
         # A hook may also read group.app, which is lazy="raise_on_sql". The invoking
         # operation must eager-load AppGroup.app (or seed the identity map) so this
         # resolves without emitting SQL; otherwise it raises here and the recorded-
@@ -217,21 +221,28 @@ class DummyPlugin:
 
     @hookimpl
     async def group_updated(
-        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+        self,
+        ctx: AppGroupLifecycleContext,
+        group: AppGroup,
+        old_name: str,
+        old_description: str,
+        plugin_id: str | None,
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
+        for property_name, value, durable in self.status_writes_on_update:
+            ctx.set_status(group, property_name, value, durable_on_failure=durable)
         if group.id in self.group_updated_failures:
             raise RuntimeError(f"group_updated failed for {group.id}")
         self.group_updated_calls.append((group.id, old_name, old_description))
 
     @hookimpl
-    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.group_deleted_failures:
             raise RuntimeError(f"group_deleted failed for {group.id}")
@@ -239,11 +250,11 @@ class DummyPlugin:
 
     @hookimpl
     async def group_members_added(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.members_added_failures:
             raise RuntimeError(f"group_members_added failed for {group.id}")
@@ -251,21 +262,21 @@ class DummyPlugin:
 
     @hookimpl
     async def group_members_removed(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.members_removed_failures:
             raise RuntimeError(f"group_members_removed failed for {group.id}")
         self.members_removed_calls.append((group.id, [m.id for m in members]))
 
     @hookimpl
-    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_all_groups(self, ctx: AppGroupLifecycleContext, app: App, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         # Walk the app's groups the way a bulk-reconcile plugin does. Both
         # App.active_app_groups and AppGroup.app are lazy="raise_on_sql", so this
         # raises unless the caller handed over an App with the collection loaded.
@@ -2884,6 +2895,117 @@ class TestPluginMembershipHooks:
 
         # Assert: Hook should NOT be called because user already had access
         assert len(test_plugin.members_added_calls) == 0
+
+
+class TestDurableStatusReplay:
+    """The host replays `set_status(..., durable_on_failure=True)` after a failed hook, so an operator
+    can still see why reconciliation failed -- without replaying ownership tokens, which would be
+    unsound."""
+
+    async def _app_group(self, db: Db, suffix: str) -> AppGroup:
+        test_app = AppFactory.build(
+            name=f"TestAppDurable{suffix}",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description="before")
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        # Re-load with `app` eager-loaded, the way the request path does: the hook reads `group.app`
+        # and the relationship is lazy="raise_on_sql", so a factory-built instance would raise.
+        return (
+            await db.session.scalars(select(AppGroup).where(AppGroup.id == group.id).options(joinedload(AppGroup.app)))
+        ).one()
+
+    async def test_diagnostics_survive_a_failing_hook_but_tokens_do_not(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """The load-bearing test for the durable/transactional split.
+
+        A plugin's sync status must outlive its own failure, or an operator sees a group stuck with no
+        explanation. An ownership token must NOT: it is only sound when committed in the same
+        transaction as the check that justified it (under `ctx.lock`), and replaying it in a fresh
+        transaction after the lock released would let a second Access group, which has meanwhile
+        passed its own ownership check, claim the same external group. Both then record it, and
+        deleting either would delete the shared external group.
+
+        Fails against a host that replays every recorded write instead of only the opted-in ones.
+        """
+        from api.operations import ModifyGroupDetails
+
+        group = await self._app_group(db, "Split")
+        group_id = group.id
+        mocker.patch.object(okta, "update_group")
+        test_plugin.status_writes_on_update = [
+            ("sync_status", "error", True),  # diagnostic -> replayed
+            ("sync_error", "the external system said no", True),  # diagnostic -> replayed
+            ("external_group_id", "token-should-not-persist", False),  # ownership token -> discarded
+        ]
+        test_plugin.group_updated_failures = {group_id}
+
+        await ModifyGroupDetails(group=group, description="after").execute()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        status = (reloaded.plugin_data or {})[DummyPlugin.ID]["status"]
+        assert status["sync_status"] == "error"
+        assert status["sync_error"] == "the external system said no"
+        assert "external_group_id" not in status
+
+    async def test_nothing_is_replayed_when_the_hook_succeeds(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """On success the ordinary post-hook commit persists everything, tokens included -- the replay
+        path is only for failures."""
+        from api.operations import ModifyGroupDetails
+
+        group = await self._app_group(db, "Success")
+        group_id = group.id
+        mocker.patch.object(okta, "update_group")
+        test_plugin.status_writes_on_update = [
+            ("sync_status", "synced", True),
+            ("external_group_id", "token-persists", False),
+        ]
+
+        await ModifyGroupDetails(group=group, description="after").execute()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        status = (reloaded.plugin_data or {})[DummyPlugin.ID]["status"]
+        assert status["sync_status"] == "synced"
+        assert status["external_group_id"] == "token-persists"
+
+    async def test_replay_against_a_vanished_row_logs_and_returns(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin
+    ) -> None:
+        """The row can be gone by replay time (rolled out of existence, or deleted concurrently). That
+        must not raise out of the host, since the surrounding operation already committed its work."""
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+        ctx._status_writes.append(_StatusWrite(entity="group", pk="does-not-exist", property_name="s", value="v"))
+
+        await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_UPDATED, context="test")
+
+    async def test_group_deleted_skips_the_replay(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """group_deleted fires while the row is on its way out -- ModifyGroupType fires it *before*
+        deleting the app_group row. Nothing will read that status again, and committing here would
+        land a commit inside the caller's half-finished conversion."""
+        group = await self._app_group(db, "Deleted")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+        ctx._status_writes.append(_StatusWrite(entity="group", pk=group.id, property_name="sync_status", value="error"))
+        commit = mocker.patch.object(db.session, "commit", new_callable=mocker.AsyncMock)
+
+        await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_DELETED, context="test")
+
+        commit.assert_not_awaited()
 
 
 class TestSyncAllGroupsHook:

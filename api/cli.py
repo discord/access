@@ -387,7 +387,7 @@ async def _sync_all_app_groups() -> int:
     from api.extensions import db
     from api.models import App
     from api.plugins._async_dispatch import run_hooks_to_completion
-    from api.plugins.app_group_lifecycle import get_app_group_lifecycle_hook
+    from api.plugins.app_group_lifecycle import AppGroupLifecycleContext, get_app_group_lifecycle_hook
 
     click.echo("Starting app group lifecycle plugin sync")
 
@@ -437,7 +437,12 @@ async def _sync_all_app_groups() -> int:
         # no run_sync bridge. run_hooks_to_completion (asyncio.wait) drives the sync_all_groups
         # hook and returns any plugin exceptions rather than raising.
         _, exceptions = await run_hooks_to_completion(
-            hook.sync_all_groups(session=db.session, app=app, plugin_id=plugin_id),
+            hook.sync_all_groups(
+                ctx=AppGroupLifecycleContext(session=db.session, plugin_id=plugin_id),
+                session=db.session,
+                app=app,
+                plugin_id=plugin_id,
+            ),
             context=f"sync_all_groups for app '{app_name}'",
         )
         if exceptions:

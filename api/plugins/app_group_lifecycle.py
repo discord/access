@@ -286,6 +286,62 @@ class AppGroupLifecycleContext:
                     )
                 )
 
+    async def _reapply_durable_status(self, hook_method: "AppGroupLifecycleHook", *, context: str) -> None:
+        """Host-only. Re-apply the status writes a failed hook marked ``durable_on_failure``, in a
+        fresh transaction, so an operator can still see why reconciliation failed.
+
+        The nested rollback that precedes this call expired every instance the plugin *modified*,
+        which is exactly the set of rows a status write targets: a column read on one raises
+        MissingGreenlet and a relationship read raises InvalidRequestError. The recorded writes
+        therefore carry only the entity kind, the primary key, and a plain value, and each target
+        row is re-loaded here. (Instances the plugin never touched survive the rollback now that
+        the hook runs inside a SAVEPOINT, but that does not help these targets, and the fallback
+        branch for a hook that commits still rolls the whole session back.)
+
+        `select(...).execution_options(populate_existing=True)` rather than `session.get`: `get` would
+        *refresh* the expired identity-map instance and raise ObjectDeletedError if the row is gone,
+        where a select simply yields no rows and we skip that target. It also leaves the caller's
+        instance usable again, which a bare rollback does not.
+
+        Best-effort: a failure here is logged and swallowed. The surrounding operation already
+        committed its own work before the hook fired, and a plugin's diagnostic status must never be
+        the thing that breaks a request.
+        """
+        # group_deleted fires while the row is on its way out (ModifyGroupType fires it *before*
+        # deleting the app_group row, DeleteGroup before the soft delete). Nothing will read that
+        # group's status again, and committing here would land a commit in the middle of the
+        # caller's half-finished operation.
+        if hook_method == AppGroupLifecycleHook.GROUP_DELETED or not self._status_writes:
+            return
+
+        # Group by target so each row loads once and the last write to a property wins; a single
+        # reconcile can mark the same status more than once.
+        by_target: dict[tuple[str, str], dict[str, Any]] = {}
+        for write in self._status_writes:
+            by_target.setdefault((write.entity, write.pk), {})[write.property_name] = write.value
+
+        try:
+            for (entity, pk), properties in by_target.items():
+                model: type[App] | type[AppGroup] = App if entity == "app" else AppGroup
+                target = (
+                    await self._session.scalars(
+                        select(model).where(model.id == pk).execution_options(populate_existing=True)
+                    )
+                ).first()
+                if target is None:
+                    logger.info(f"{context}: skipping durable status re-apply, {entity} {pk} is gone")
+                    continue
+                for property_name, value in properties.items():
+                    set_status_value(target, property_name, value, self._plugin_id)
+                self._session.add(target)
+            await self._session.commit()
+        except Exception:
+            logging.getLogger("api").exception(f"{context}: failed to re-apply durable plugin status")
+            try:
+                await self._session.rollback()
+            except Exception:
+                logging.getLogger("api").exception(f"{context}: rollback after failed status re-apply also failed")
+
     # ---- Group mutation ----
 
     async def set_group_description(self, group: AppGroup, description: str) -> None:
@@ -447,12 +503,20 @@ class AppGroupLifecyclePluginSpec:
     # Group lifecycle hooks
 
     @hookspec
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(
+        self, ctx: AppGroupLifecycleContext, session: AsyncSession, group: AppGroup, plugin_id: str | None
+    ) -> None:
         """
         Handle group creation.
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             group: The app group that was created.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -460,13 +524,25 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     async def group_updated(
-        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+        self,
+        ctx: AppGroupLifecycleContext,
+        session: AsyncSession,
+        group: AppGroup,
+        old_name: str,
+        old_description: str,
+        plugin_id: str | None,
     ) -> None:
         """
         Handle group update (name or description change).
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             group: The app group after the update.
             old_name: The group's name before the update.
             old_description: The group's description before the update.
@@ -475,12 +551,20 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(
+        self, ctx: AppGroupLifecycleContext, session: AsyncSession, group: AppGroup, plugin_id: str | None
+    ) -> None:
         """
         Handle group deletion.
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             group: The app group that was deleted.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -490,13 +574,24 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     async def group_members_added(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self,
+        ctx: AppGroupLifecycleContext,
+        session: AsyncSession,
+        group: AppGroup,
+        members: list[OktaUser],
+        plugin_id: str | None,
     ) -> None:
         """
         Handle member addition.
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             group: The app group to which members were added.
             members: The list of users that were added to the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -505,13 +600,24 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     async def group_members_removed(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self,
+        ctx: AppGroupLifecycleContext,
+        session: AsyncSession,
+        group: AppGroup,
+        members: list[OktaUser],
+        plugin_id: str | None,
     ) -> None:
         """
         Handle member removal.
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             group: The app group from which members were removed.
             members: The list of users that were removed from the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -519,13 +625,21 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_all_groups(
+        self, ctx: AppGroupLifecycleContext, session: AsyncSession, app: App, plugin_id: str | None
+    ) -> None:
         """
         Bulk reconcile all of an app's groups (membership and any external group state).
         Invoked periodically by the `access sync-app-groups` CLI command.
 
         Args:
-            session: The Access database AsyncSession. Await ORM calls on it.
+            ctx: The plugin capability context, bound to this plugin's id. Every Access
+                 interaction goes through it -- locks, lookups, configuration and status
+                 writes, Okta group push. Mutations are only persisted through `ctx`, and a
+                 hook must not commit or roll back: the host owns the transaction.
+            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
+                     that omits this parameter simply won't be passed it; pluggy only passes
+                     the arguments the implementation declares.
             app: The app for which to sync all groups. `app.active_app_groups` is
                  eager-loaded, and each of those groups' `.app` resolves back to this
                  same instance without SQL. Every other `App` relationship is
@@ -624,28 +738,33 @@ def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> str | None:
     return group.app.app_group_lifecycle_plugin
 
 
-async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *, group: Any, **kwargs: Any) -> None:
+async def invoke_app_group_lifecycle_hook(
+    hook_method: AppGroupLifecycleHook, *, group: Any, **kwargs: Any
+) -> list[BaseException]:
     """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
 
-    No-op when no lifecycle plugin applies to ``group``. The lifecycle hooks are
-    native async: they receive the request's ``AsyncSession`` directly
-    and run on the event loop, so no ``run_sync`` bridge is needed. Commits on
-    success; on any hook error it logs and rolls back so a misbehaving plugin
-    can't abort the surrounding operation.
+    No-op when no lifecycle plugin applies to ``group``. Owns the whole transaction policy for
+    lifecycle hooks: it builds the ``AppGroupLifecycleContext`` the hook works through, commits on
+    success, and on failure rolls back and then re-applies the status writes the plugin marked
+    ``durable_on_failure`` (see ``AppGroupLifecycleContext.set_status``).
 
     The hook runs inside a **SAVEPOINT**, so a plugin failure discards the plugin's writes
     without expiring the caller's ORM state. Callers may therefore keep reading their own
     instances across a fire; see the rollback branch below for why that was not true before,
     and for the one case (a hook that commits) where it still is not.
 
-    ``kwargs`` are forwarded to the hook alongside ``session`` and ``group`` — e.g.
+    Returns the exceptions the hook implementations raised, empty on success, so a batch caller can
+    count failures. Never propagates, so a misbehaving plugin can't abort the surrounding operation.
+
+    ``kwargs`` are forwarded to the hook alongside ``ctx``, ``session`` and ``group`` — e.g.
     ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
     ``group_updated``.
     """
     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
     if plugin_id is None:
-        return
+        return []
     hook = get_app_group_lifecycle_hook()
+    ctx = AppGroupLifecycleContext(session=db.session, plugin_id=plugin_id)
     context = f"{hook_method} hook for group {getattr(group, 'id', None)} (plugin '{plugin_id}')"
     # Run the hook inside a SAVEPOINT so a plugin failure rolls back the plugin's writes and
     # nothing else. A *top-level* rollback passes dirty_only=False to
@@ -664,16 +783,16 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
     # pending state, which must not escape a function documented never to propagate.
     try:
         savepoint = await db.session.begin_nested()
-    except Exception:
+    except Exception as e:
         logging.getLogger("api").exception(f"Failed to open savepoint before {context}")
-        return
+        return [e]
     # run_hooks_to_completion uses asyncio.wait (not gather): a cancelled request
     # won't tear down an in-flight hook, and one plugin failing won't cancel the
     # others. Failures are logged there; we roll back rather than commit partial
     # writes, but never propagate, so a misbehaving plugin can't abort the
     # surrounding operation.
     _, exceptions = await run_hooks_to_completion(
-        getattr(hook, hook_method)(session=db.session, group=group, plugin_id=plugin_id, **kwargs),
+        getattr(hook, hook_method)(ctx=ctx, session=db.session, group=group, plugin_id=plugin_id, **kwargs),
         context=context,
     )
     if exceptions:
@@ -683,19 +802,23 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
             # A hook that committed ended the savepoint itself, so there is nothing to roll back
             # to; fall back to a session rollback rather than silently skipping it. That path is
             # exactly the pre-savepoint behavior, cascading expiry and all, and it is reachable
-            # only from a plugin that commits. The Access 2.0 plugin interface makes "a hook must
-            # not commit" a rule, at which point this branch becomes unreachable.
+            # only from a plugin that commits, which this interface now forbids.
             await db.session.rollback()
-        return
+        await ctx._reapply_durable_status(hook_method, context=context)
+        # Returned, not raised: _sync_all_app_groups in api/cli.py counts these to set the
+        # CLI's exit status. Most callers discard the value; do not "simplify" it back to
+        # None on that basis.
+        return exceptions
     try:
         if savepoint.is_active:
             await savepoint.commit()
         await db.session.commit()
-    except Exception:
-        logging.getLogger("api").exception(
-            f"Failed to commit after {hook_method} hook for group {getattr(group, 'id', None)} with plugin '{plugin_id}'"
-        )
+    except Exception as e:
+        logging.getLogger("api").exception(f"Failed to commit after {context}")
         await db.session.rollback()
+        await ctx._reapply_durable_status(hook_method, context=context)
+        return [e]
+    return []
 
 
 def _get_data_for_plugin(plugin_data: dict[str, Any], plugin_id: str) -> AppGroupLifecyclePluginData:
