@@ -1,15 +1,22 @@
 import logging
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any, Literal, NoReturn
 
 import pluggy
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.extensions import db
-from api.models import App, AppGroup, OktaUser
+from api.models import App, AppGroup, OktaGroup, OktaUser
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
+
+# `api/routers/_eager.py` is a shared loader-option module rather than a router-private one
+# (`api/mcp/tools.py` imports it too), and it depends only on sqlalchemy and `api.models`, so
+# there is no import cycle back into this package.
+from api.routers._eager import polymorphic_group_options
 from api.services import okta
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
@@ -431,6 +438,54 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
             f"Failed to commit after {hook_method} hook for group {getattr(group, 'id', None)} with plugin '{plugin_id}'"
         )
         await db.session.rollback()
+
+
+async def invoke_app_group_lifecycle_membership_hook(
+    hook_method: AppGroupLifecycleHook, *, group_id: str, member_ids: Sequence[str]
+) -> None:
+    """Invoke a membership hook (``group_members_added`` / ``group_members_removed``) for one group,
+    re-loading the group and its affected members by id first.
+
+    Callers fire this inside a loop over the groups a single operation affected, and must hand it
+    **ids, not ORM instances**. ``invoke_app_group_lifecycle_hook`` above rolls the session back
+    when a plugin fails, and a top-level rollback expires the *entire* identity map (``dirty_only``
+    is False for a top-level rollback, and ``expire_on_commit=False`` does not apply), so any
+    instance held across an iteration boundary is unusable on the next pass: a column read raises
+    ``MissingGreenlet``, and reading ``group.app`` raises ``InvalidRequestError`` because the
+    relationship is ``lazy="raise_on_sql"``. Re-loading inside each iteration is what makes the
+    loop's per-group isolation real rather than nominal -- without it, one group's failing plugin
+    takes down every group queued behind it.
+
+    A no-op when there are no affected members, when the group has since been deleted, or when no
+    lifecycle plugin applies to the group -- the members are only queried once a plugin is known to
+    want them.
+    """
+    if len(member_ids) == 0:
+        return
+
+    group = (
+        await db.session.scalars(
+            select(OktaGroup)
+            .options(*polymorphic_group_options())
+            .where(OktaGroup.id == group_id)
+            .where(OktaGroup.deleted_at.is_(None))
+            # A prior iteration's rollback expired this row while a prior iteration's *commit* did
+            # not (expire_on_commit=False), so force the reload rather than depending on which of
+            # the two happened to come first.
+            .execution_options(populate_existing=True)
+        )
+    ).first()
+    if group is None or get_app_group_lifecycle_plugin_to_invoke(group) is None:
+        return
+
+    members = list(
+        (
+            await db.session.scalars(
+                select(OktaUser).where(OktaUser.id.in_(member_ids)).where(OktaUser.deleted_at.is_(None))
+            )
+        ).all()
+    )
+    await invoke_app_group_lifecycle_hook(hook_method, group=group, members=members)
 
 
 def _get_data_for_plugin(plugin_data: dict[str, Any], plugin_id: str) -> AppGroupLifecyclePluginData:

@@ -120,6 +120,11 @@ class CreateGroup:
                 )
             await db.session.commit()
 
+        # Hold the id as a plain string across the hook fire below. A failing plugin rolls the
+        # session back, and a top-level rollback expires every instance in the identity map, so
+        # re-reading `self.group.id` afterwards triggers a refresh and raises MissingGreenlet.
+        group_id = self.group.id
+
         # Invoke app group lifecycle plugin hook, if configured
         await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=self.group)
 
@@ -133,7 +138,7 @@ class CreateGroup:
                 select(OktaGroup)
                 .options(selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]), joinedload(AppGroup.app))
                 .where(OktaGroup.deleted_at.is_(None))
-                .where(OktaGroup.id == self.group.id)
+                .where(OktaGroup.id == group_id)
             )
         ).first()
 
