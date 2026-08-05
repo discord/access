@@ -1,6 +1,7 @@
 import pluggy
 
 from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleContext,
     AppGroupLifecycleHook,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
@@ -53,6 +54,7 @@ def load_plugins() -> None:
 __all__ = [
     # App Group Lifecycle Plugin
     "app_group_lifecycle_plugin_name",
+    "AppGroupLifecycleContext",
     "AppGroupLifecycleHook",
     "AppGroupLifecyclePluginConfigProperty",
     "AppGroupLifecyclePluginFilteringError",

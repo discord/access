@@ -10,6 +10,7 @@ This includes tests for:
 """
 
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any, Generator
 
 import pytest
@@ -24,6 +25,7 @@ from api.extensions import Db
 from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
+    AppGroupLifecycleContext,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
@@ -38,13 +40,9 @@ from api.plugins.app_group_lifecycle import (
     get_app_group_lifecycle_plugin_group_config_properties,
     get_app_group_lifecycle_plugin_group_status_properties,
     get_app_group_lifecycle_plugins,
-    get_config_value,
-    get_status_value,
     hookimpl,
     is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
-    set_config_value,
-    set_status_value,
     validate_app_group_lifecycle_plugin_app_config,
     validate_app_group_lifecycle_plugin_group_config,
 )
@@ -694,7 +692,14 @@ class TestPluginConfigAuthorization:
 
 
 class TestPluginHelperFunctions:
-    """Tests for plugin helper functions like get_config_value, set_status_value, etc."""
+    """Tests for the plugin-facing capability surface, `AppGroupLifecycleContext`.
+
+    These go through the context rather than the module-level accessors it delegates to, because the
+    context is what a plugin actually calls -- the accessors take a `plugin_id` the context owns.
+    """
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
 
     async def test_get_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting configuration values from plugin data."""
@@ -705,11 +710,10 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        enabled = get_config_value(test_app, "enabled", DummyPlugin.ID)
-        category = get_config_value(test_app, "category", DummyPlugin.ID)
-
-        assert enabled is True
-        assert category == "test_id_123"
+        ctx = self._ctx(db)
+        assert ctx.get_config(test_app, "enabled") is True
+        assert ctx.get_config(test_app, "category") == "test_id_123"
+        assert ctx.get_config(test_app, "absent", "fallback") == "fallback"
 
     async def test_get_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting status values from plugin data."""
@@ -720,11 +724,9 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
-        sync_count = get_status_value(test_app, "sync_count", DummyPlugin.ID)
-
-        assert last_sync == "2025-01-15T10:30:00Z"
-        assert sync_count == 42
+        ctx = self._ctx(db)
+        assert ctx.get_status(test_app, "last_sync") == "2025-01-15T10:30:00Z"
+        assert ctx.get_status(test_app, "sync_count") == 42
 
     async def test_set_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting status values in plugin data."""
@@ -732,14 +734,15 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        set_status_value(test_app, "last_sync", "2025-01-15T11:00:00Z", DummyPlugin.ID)
+        # No session.add by the caller: the context does it, so a plugin cannot forget.
+        self._ctx(db).set_status(test_app, "last_sync", "2025-01-15T11:00:00Z")
         await db.session.commit()
 
         # Refresh from DB (expire + sync lazy read would raise under async)
         await db.session.refresh(test_app)
 
-        last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
-        assert last_sync == "2025-01-15T11:00:00Z"
+        assert self._ctx(db).get_status(test_app, "last_sync") == "2025-01-15T11:00:00Z"
+        assert test_app.plugin_data[DummyPlugin.ID]["status"]["last_sync"] == "2025-01-15T11:00:00Z"
 
     async def test_set_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting configuration values in plugin data."""
@@ -747,11 +750,171 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        set_config_value(test_app, "category", "inferred_id", DummyPlugin.ID)
+        self._ctx(db).set_config(test_app, "category", "inferred_id")
         await db.session.commit()
         await db.session.refresh(test_app)
 
-        assert get_config_value(test_app, "category", DummyPlugin.ID) == "inferred_id"
+        assert self._ctx(db).get_config(test_app, "category") == "inferred_id"
+        assert test_app.plugin_data[DummyPlugin.ID]["configuration"]["category"] == "inferred_id"
+
+    async def test_context_is_bound_to_its_own_plugin_namespace(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """A context can only read and write its own plugin's slice of plugin_data. This is the point
+        of binding plugin_id at construction: a plugin cannot reach another plugin's namespace."""
+        test_app = AppFactory.build(
+            name="TestApp9c",
+            plugin_data={
+                DummyPlugin.ID: {"configuration": {"category": "mine"}},
+                "other_plugin": {"configuration": {"category": "theirs"}},
+            },
+        )
+        db.session.add(test_app)
+        await db.session.commit()
+
+        assert self._ctx(db).get_config(test_app, "category") == "mine"
+
+        self._ctx(db).set_config(test_app, "category", "changed")
+        await db.session.commit()
+        await db.session.refresh(test_app)
+
+        assert test_app.plugin_data[DummyPlugin.ID]["configuration"]["category"] == "changed"
+        assert test_app.plugin_data["other_plugin"]["configuration"]["category"] == "theirs"
+
+    async def test_set_status_records_only_durable_writes(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`durable_on_failure` is what the host replays after a failed hook. Ownership tokens must
+        stay out of that buffer, so only the opted-in writes are recorded."""
+        test_app = AppFactory.build(name="TestApp9d", plugin_data={})
+        db.session.add(test_app)
+        await db.session.commit()
+
+        ctx = self._ctx(db)
+        ctx.set_status(test_app, "sync_status", "error", durable_on_failure=True)
+        ctx.set_status(test_app, "external_group_id", "tok-1")
+
+        assert [(w.entity, w.pk, w.property_name, w.value) for w in ctx._status_writes] == [
+            ("app", test_app.id, "sync_status", "error")
+        ]
+
+    async def test_lock_is_a_noop_off_postgres(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The advisory lock is Postgres-only; on the SQLite test backend it must not emit SQL rather
+        than raising, since the relevant sync paths there are single-writer."""
+        ctx = self._ctx(db)
+        assert db.session.get_bind().dialect.name != "postgresql"
+        await ctx.lock("some-external-id")  # must not raise
+
+    async def test_lock_emits_a_namespaced_advisory_lock_on_postgres(
+        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """On Postgres it takes a transaction-scoped advisory lock, keyed by plugin id so two plugins
+        choosing the same string don't contend."""
+        ctx = self._ctx(db)
+        mocker.patch.object(db.session, "get_bind", return_value=mocker.Mock(dialect=mocker.Mock(name_="pg")))
+        db.session.get_bind.return_value.dialect.name = "postgresql"
+        execute = mocker.patch.object(db.session, "execute", new_callable=mocker.AsyncMock)
+
+        await ctx.lock("external-1")
+
+        statement, params = execute.await_args.args
+        assert "pg_advisory_xact_lock" in str(statement)
+        assert params == {"key": f"{DummyPlugin.ID}:external-1"}
+
+
+class TestContextFindGroupsByStatus:
+    """`ctx.find_groups_by_status` — the generalized ownership/uniqueness lookup that replaces a
+    plugin building its own cross-app query."""
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+    async def _app_with_group(
+        self,
+        db: Db,
+        app_name: str,
+        group_suffix: str,
+        status: dict[str, Any],
+        *,
+        plugin_id: str | None = DummyPlugin.ID,
+    ) -> tuple[App, AppGroup]:
+        test_app = AppFactory.build(name=app_name, app_group_lifecycle_plugin=plugin_id)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{prefix}{group_suffix}",
+            plugin_data={DummyPlugin.ID: {"status": status}},
+        )
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        return test_app, group
+
+    async def test_spans_every_app_configured_with_this_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """One external system can back several Access apps, and they all name the same plugin, so a
+        group in any of them can own the external id."""
+        _, group_a = await self._app_with_group(db, "FindAppOne", "A", {"ext_id": "shared"})
+        _, group_b = await self._app_with_group(db, "FindAppTwo", "B", {"ext_id": "shared"})
+
+        found = await self._ctx(db).find_groups_by_status("ext_id", "shared")
+
+        assert {g.id for g in found} == {group_a.id, group_b.id}
+
+    async def test_excludes_other_plugins_and_soft_deleted_rows(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Scoped to this plugin's apps, and both `deleted_at` filters apply."""
+        _, keeper = await self._app_with_group(db, "FindAppKeep", "K", {"ext_id": "target"})
+        await self._app_with_group(db, "FindAppOther", "O", {"ext_id": "target"}, plugin_id="a_different_plugin")
+
+        deleted_app, _ = await self._app_with_group(db, "FindAppGoneApp", "G", {"ext_id": "target"})
+        deleted_app.deleted_at = datetime.now(UTC)
+        _, deleted_group = await self._app_with_group(db, "FindAppGoneGroup", "D", {"ext_id": "target"})
+        deleted_group.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).find_groups_by_status("ext_id", "target")
+
+        assert [g.id for g in found] == [keeper.id]
+
+    async def test_honors_exclude_group_and_limit(self, db: Db, test_plugin: DummyPlugin) -> None:
+        _, group_a = await self._app_with_group(db, "FindAppExclA", "A", {"ext_id": "dupe"})
+        _, group_b = await self._app_with_group(db, "FindAppExclB", "B", {"ext_id": "dupe"})
+
+        assert [g.id for g in await self._ctx(db).find_groups_by_status("ext_id", "dupe", exclude_group=group_a)] == [
+            group_b.id
+        ]
+        assert len(await self._ctx(db).find_groups_by_status("ext_id", "dupe", limit=1)) == 1
+
+    async def test_no_match_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        await self._app_with_group(db, "FindAppNoMatch", "N", {"ext_id": "something-else"})
+        assert await self._ctx(db).find_groups_by_status("ext_id", "unclaimed") == []
+
+    async def test_returned_groups_have_app_loaded_on_a_cold_session(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`AppGroup.app` is lazy="raise_on_sql" and reading it is the obvious next thing a plugin
+        does with a result (e.g. to name the owning app in an error). The eager-load in the query is
+        therefore mandatory, not decorative -- and a warm session would hide a missing one, since
+        many-to-one resolves from the identity map without SQL.
+        """
+        _, group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
+        expected_app_name = "FindAppCold"
+
+        db.session.expunge_all()
+        found = await self._ctx(db).find_groups_by_status("ext_id", "cold")
+
+        assert len(found) == 1
+        assert found[0].app.name == expected_app_name  # must not raise
+
+    async def test_predicate_is_pushed_into_sql_as_a_json_path(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The id predicate compiles to a JSON path lookup on the stored status, so this stays a point
+        lookup rather than a scan of every plugin-managed group. Compiled against the Postgres dialect
+        because the tuple-index JSON path only renders there.
+        """
+        from sqlalchemy.dialects import postgresql
+
+        stmt = (
+            select(AppGroup)
+            .join(App, AppGroup.app_id == App.id)
+            .where(AppGroup.plugin_data[(DummyPlugin.ID, "status", "ext_id")].as_string() == "x")
+        )
+        compiled = str(stmt.compile(dialect=postgresql.dialect()))
+
+        assert "plugin_data" in compiled
+        assert "#>>" in compiled or "->>" in compiled
 
     def test_is_plugin_config_changed(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Only configuration differences count as a change; status differences do not."""

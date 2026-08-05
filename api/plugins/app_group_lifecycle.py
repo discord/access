@@ -5,7 +5,9 @@ from typing import Any, Literal, NoReturn
 
 import pluggy
 from fastapi import HTTPException
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaUser
@@ -114,6 +116,207 @@ class AppGroupLifecyclePluginData:
 
     configuration: dict[str, Any]
     status: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class _StatusWrite:
+    """One recorded ``set_status(..., durable_on_failure=True)`` call, in plain-Python form.
+
+    Deliberately holds no ORM references: it is replayed *after* a rollback has expired the entire
+    identity map, so anything but the entity kind, the primary key, and a plain value would be
+    unusable by then.
+    """
+
+    entity: Literal["app", "group"]
+    pk: str
+    property_name: str
+    value: Any
+
+
+class AppGroupLifecycleContext:
+    """The capability surface an app group lifecycle hook may use to talk to Access.
+
+    Replaces the raw ``AsyncSession`` the Access 1.x lifecycle hooks received. A plugin gets exactly
+    these verbs and nothing else: no session, no query builder, no ``api.operations`` import, no
+    ``api.services.okta`` import. Every method is already bound to the invoking plugin's id, so
+    plugin code never threads ``plugin_id`` through a capability call and cannot read or write
+    another plugin's ``plugin_data`` namespace.
+
+    Lifetime is one instance per hook invocation, constructed host-side by
+    ``invoke_app_group_lifecycle_hook``. **Transaction policy belongs to the host: a hook must not
+    commit or roll back.** The host commits after the hook returns normally, and on a hook exception
+    rolls back and then re-applies the status writes recorded here (see ``set_status``).
+    """
+
+    def __init__(self, *, session: AsyncSession, plugin_id: str) -> None:
+        # Captured eagerly rather than resolved lazily from `db.session` on each use. `db.session` is
+        # an async_scoped_session proxy; once the scope is removed the next access builds a brand-new
+        # AsyncSession, so a lazy lookup could silently switch sessions mid-hook and land writes in a
+        # transaction nobody commits. Holding the session also keeps this class testable without
+        # app-level DB setup -- and reaching for the module-global proxy in here would recreate
+        # exactly the coupling this context exists to remove.
+        self._session = session
+        self._plugin_id = plugin_id
+        self._status_writes: list[_StatusWrite] = []
+
+    @property
+    def plugin_id(self) -> str:
+        """The id of the plugin this context is bound to. Compare against your own plugin id in a
+        hook's filter guard: ``if plugin_id != ctx.plugin_id: return``."""
+        return self._plugin_id
+
+    # ---- Serialization ----
+
+    async def lock(self, key: str) -> None:
+        """Serialize this hook against concurrent runs of the same plugin locking the same ``key``,
+        for the remainder of the host's transaction.
+
+        Takes a Postgres transaction-level advisory lock. There is deliberately **no release**: the
+        lock is held until the host commits or rolls back after the hook, and that is precisely what
+        makes a check-then-write pair inside one hook atomic against a concurrent hook run. (Hence a
+        plain ``await`` rather than an ``async with`` block, which would advertise a scope this
+        cannot honor.) Keys are namespaced by plugin id, so two plugins choosing the same string do
+        not contend. Blocks until the lock is available.
+
+        A no-op on non-Postgres backends (e.g. the SQLite test DB), where the relevant paths are
+        single-writer. Note the lock is held across whatever I/O the rest of the hook performs, so
+        keep the locked region tight and give external clients a timeout.
+        """
+        bind = self._session.get_bind()
+        if bind is None or bind.dialect.name != "postgresql":
+            return
+        # hashtextextended maps the key to the bigint the advisory-lock functions take; key
+        # collisions only cause extra (harmless) serialization.
+        await self._session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"{self._plugin_id}:{key}"},
+        )
+
+    # ---- Queries ----
+
+    async def find_groups_by_status(
+        self,
+        status_property_name: str,
+        status_property_value: str,
+        *,
+        exclude_group: AppGroup | None = None,
+        limit: int | None = None,
+    ) -> list[AppGroup]:
+        """Active app groups whose status for this plugin records
+        ``status_property_name == status_property_value``.
+
+        Scoped to apps configured with this plugin id -- one external system can back several Access
+        apps and they all name the same plugin -- and to non-deleted apps and groups.
+        ``exclude_group`` drops one group from the result, normally the group being reconciled. The
+        predicate is pushed into SQL as a JSON path lookup on the stored status, so this stays a
+        point lookup rather than a scan of every plugin-managed group.
+
+        The value is compared **as text**: a status stored as a number or boolean will not match a
+        Python ``int``/``bool`` here (JSONB renders a boolean as ``"true"`` where ``str(True)`` is
+        ``"True"``), so pass the string form.
+
+        Each returned group arrives with ``.app`` loaded; every other relationship is
+        ``lazy="raise_on_sql"`` and must not be touched.
+        """
+        path = (self._plugin_id, "status", status_property_name)
+        stmt = (
+            select(AppGroup)
+            .options(joinedload(AppGroup.app))
+            .join(App, AppGroup.app_id == App.id)
+            .where(App.app_group_lifecycle_plugin == self._plugin_id)
+            .where(App.deleted_at.is_(None))
+            .where(AppGroup.deleted_at.is_(None))
+            .where(AppGroup.plugin_data[path].as_string() == status_property_value)
+        )
+        if exclude_group is not None:
+            stmt = stmt.where(AppGroup.id != exclude_group.id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list((await self._session.scalars(stmt)).unique().all())
+
+    # ---- Configuration and status ----
+
+    def get_config(self, app_or_group: App | AppGroup, config_property_name: str, default: Any | None = None) -> Any:
+        """This plugin's configuration value on an app or group."""
+        return get_config_value(app_or_group, config_property_name, self._plugin_id, default)
+
+    def set_config(self, app_or_group: App | AppGroup, config_property_name: str, value: Any) -> None:
+        """Write this plugin's configuration on an app or group -- e.g. to backfill config inferred
+        from the external system during reconciliation. Persisted by the host's post-hook commit and
+        discarded if the hook raises."""
+        set_config_value(app_or_group, config_property_name, value, self._plugin_id)
+        self._session.add(app_or_group)
+
+    def get_status(self, app_or_group: App | AppGroup, status_property_name: str, default: Any | None = None) -> Any:
+        """This plugin's status value on an app or group."""
+        return get_status_value(app_or_group, status_property_name, self._plugin_id, default)
+
+    def set_status(
+        self,
+        app_or_group: App | AppGroup,
+        status_property_name: str,
+        value: Any,
+        *,
+        durable_on_failure: bool = False,
+    ) -> None:
+        """Write this plugin's status on an app or group. Persisted by the host's post-hook commit.
+
+        Pass ``durable_on_failure=True`` for **diagnostic** status a plugin needs to survive its own
+        failure -- a sync status, an error string, a last-synced timestamp. The host re-applies those
+        writes in a fresh transaction after rolling back a failed hook, so an operator can still see
+        why reconciliation failed.
+
+        Leave it ``False`` (the default) for anything that is an **ownership or identity token**: an
+        external group id, a mapping id. Those are only sound when committed in the same transaction
+        as the check that justified them -- typically under ``lock()`` -- and replaying them after a
+        rollback drops that guarantee, which would let two Access groups claim the same external
+        group.
+        """
+        set_status_value(app_or_group, status_property_name, value, self._plugin_id)
+        self._session.add(app_or_group)
+        if durable_on_failure:
+            pk = getattr(app_or_group, "id", None)
+            if pk is not None:
+                self._status_writes.append(
+                    _StatusWrite(
+                        entity="app" if isinstance(app_or_group, App) else "group",
+                        pk=pk,
+                        property_name=status_property_name,
+                        value=value,
+                    )
+                )
+
+    # ---- Okta group push ----
+    #
+    # Thin delegates so a plugin never imports `api.services.okta`. They do Okta network I/O only and
+    # never touch the session.
+
+    async def create_push_mapping_and_new_group(self, group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
+        """Create a push mapping with a new target group name, so Okta creates both its target group
+        and the downstream app group and links them in one step. Returns the push mapping id."""
+        return await create_push_mapping_and_new_group(group, okta_app_id, target_group_name)
+
+    async def create_push_mapping_for_existing_group(
+        self, group: AppGroup, okta_app_id: str, external_id_field_name: str, external_id: str
+    ) -> str:
+        """Link an Access group to an already-imported Okta target group by id (the adoption path).
+        Raises MissingOktaTargetError if Okta has not imported it yet (defer and retry), or
+        AmbiguousOktaTargetError if more than one target matches (a misconfiguration)."""
+        return await create_push_mapping_for_existing_group(group, okta_app_id, external_id_field_name, external_id)
+
+    async def discover_existing_push_mapping_and_target_group_external_id(
+        self, group: AppGroup, okta_app_id: str, target_group_external_id_field: str
+    ) -> tuple[str, str] | None:
+        """Find an existing push mapping for this group and recover the external id from the Okta
+        target group profile. Returns ``(push_mapping_id, external_id)``, or None if unlinked."""
+        return await discover_existing_push_mapping_and_target_group_external_id(
+            group, okta_app_id, target_group_external_id_field
+        )
+
+    async def delete_push_mapping(self, okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
+        """Delete (unlink) a push mapping. With ``delete_target_group=True`` Okta also deletes the
+        downstream target group it created."""
+        await delete_push_mapping(okta_app_id, mapping_id, delete_target_group)
 
 
 class AppGroupLifecyclePluginSpec:
