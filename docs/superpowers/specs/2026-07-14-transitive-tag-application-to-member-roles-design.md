@@ -391,6 +391,15 @@ requests today, but the guard is cheap and correct).
 - **Role itself unmanaged:** outbound mappings and tag rows are preserved; derived rows stay but
   are inert (all checks gate on `is_managed`). Reconciler will not *create* new derived rows on an
   unmanaged role.
+- **Role re-managed (unmanaged → managed):** there is **no `ManageGroup` operation** to hook — the
+  transition is a bare attribute flip in `group.update_okta_group(...)` inside the syncer
+  (`syncer.py:246`), unlike the managed→unmanaged direction which the syncer routes through
+  `UnmanageGroup` (`syncer.py:248-249`, trigger #5). A re-managed role may qualify for derived
+  rows that were skipped while it was unmanaged, so it needs a reconcile. This is handled by the
+  **syncer-hosted full-population reconcile** (see "Orphan backstop & backfill"): because the
+  reconcile runs in the same syncer pass that performs the re-manage, the enforcement-gap window
+  is at most one syncer cycle. (Decided: backstop only, no eager re-manage hook — see "Orphan
+  backstop & backfill".)
 - **Externally-managed groups (`is_managed == False`) as targets:** the reconciler never creates
   derived rows on an unmanaged role, mirroring "tags can't be applied to unmanaged groups."
 - **Role carrying a tag both directly and transitively:** two rows with distinct provenance;
@@ -418,6 +427,16 @@ scoped subset.
   Instead, the first full-population reconcile after deploy materializes derived rows for all
   pre-existing role-in-tagged-group memberships. This is what makes a role already sitting in a
   SOX-tagged group become SOX-scoped at rollout rather than only on its next unrelated edit.
+- **Re-manage coverage:** the backstop is also what covers the unmanaged→managed transition,
+  which has no operation to hook (see the "Role re-managed" edge case). Wiring the reconcile as a
+  phase of the syncer pass — after group sync commits (`syncer.py:260`) — keeps that window to a
+  single cycle.
+
+**Decision — backstop only for re-manage.** We do **not** add an eager reconcile at the
+re-manage site. Since the unmanaged→managed transition happens only in the syncer, and the full
+reconcile runs in that same pass, the backstop covers it with a bounded (one-cycle) window and no
+extra call site. To keep that guarantee real, the implementation must **order the full-population
+reconcile after group sync commits** (`syncer.py:260`) within the syncer entrypoint.
 
 The migration adds the nullable `source_role_group_map_id` column and FK; existing rows get
 `NULL`; backfill is the reconcile pass, not a data migration.
@@ -479,6 +498,8 @@ Tests live in the same commit as the code they validate (repo convention).
   role.
 - Owner-mapping test: an owner `RoleGroupMap` does not produce derived rows.
 - Unmanaged-role test: reconciler does not create derived rows on an unmanaged role.
+- Re-manage test: a role that qualified while unmanaged (rows skipped) gets its derived rows
+  materialized by the full-population reconcile once managed again.
 - Migration test for the new column.
 - Backstop/backfill test: a full-population reconcile materializes rows for pre-existing
   memberships and self-heals a deliberately-orphaned derived row.
