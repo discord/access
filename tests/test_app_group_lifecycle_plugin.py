@@ -1356,6 +1356,102 @@ class TestPluginDirectFunctions:
         assert props["member_count"].display_name == "Member Count"
 
 
+class TestContextSetGroupDescription:
+    """`ctx.set_group_description` — the capability that replaces a plugin importing
+    `api.operations.ModifyGroupDetails` directly."""
+
+    async def _app_group(self, db: Db, suffix: str, description: str) -> AppGroup:
+        test_app = AppFactory.build(name=f"TestAppDesc{suffix}", app_group_lifecycle_plugin=DummyPlugin.ID)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description=description)
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        return group
+
+    async def test_updates_the_group_and_pushes_to_okta(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        group = await self._app_group(db, "Push", "")
+        update_group = mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "adopted from the external system")
+
+        assert group.description == "adopted from the external system"
+        update_group.assert_awaited_once()
+
+    async def test_does_not_commit(self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture) -> None:
+        """The host owns the transaction. Committing inside a hook would release any advisory lock the
+        hook holds and publish the surrounding operation's in-flight work."""
+        group = await self._app_group(db, "NoCommit", "original")
+        mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        # Hold the id across the rollback: it expires every instance in the identity map, so a
+        # `group.id` read afterwards would raise MissingGreenlet from the assertion itself.
+        group_id = group.id
+        await ctx.set_group_description(group, "not yet persisted")
+        await db.session.rollback()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert reloaded.description == "original"
+
+    async def test_does_not_refire_the_lifecycle_hook(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """A plugin adopting a description must not recurse back into its own group_updated hook."""
+        group = await self._app_group(db, "NoRefire", "")
+        mocker.patch.object(okta, "update_group")
+        test_plugin.group_updated_calls.clear()
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "adopted")
+
+        assert test_plugin.group_updated_calls == []
+
+    async def test_unchanged_description_still_no_ops_cleanly(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        group = await self._app_group(db, "Same", "identical")
+        mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "identical")
+
+        assert group.description == "identical"
+
+
+class TestModifyGroupDetailsCommitFlag:
+    """`commit_db_changes` defaults True, so the two request-path callers are unaffected."""
+
+    async def test_defaults_to_committing(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        from api.operations import ModifyGroupDetails
+
+        test_app = AppFactory.build(name="TestAppCommitFlag", app_group_lifecycle_plugin=DummyPlugin.ID)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description="before")
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        mocker.patch.object(okta, "update_group")
+
+        group_id = group.id  # held across the rollback below, which expires the identity map
+        await ModifyGroupDetails(group=group, description="after", fire_lifecycle_hook=False).execute()
+        await db.session.rollback()  # a committed change survives this
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert reloaded.description == "after"
+
+
 class TestPluginGroupUpdatedHook:
     """Tests for the group_updated lifecycle hook fired via the group PUT endpoint."""
 

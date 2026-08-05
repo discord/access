@@ -286,6 +286,32 @@ class AppGroupLifecycleContext:
                     )
                 )
 
+    # ---- Group mutation ----
+
+    async def set_group_description(self, group: AppGroup, description: str) -> None:
+        """Set an Access group's description, syncing it to Okta.
+
+        For a plugin adopting a description from the external system it mirrors. Goes through the
+        same operation the API uses, so the ORM update and the Okta push stay consistent, but with
+        both of that operation's re-entrancy hazards disabled: it does not re-fire the lifecycle
+        hooks (which would recurse), and it does not commit (the host commits after the hook; a
+        commit here would release any advisory lock this hook holds).
+
+        Note the Okta push is not rolled back with the surrounding transaction, so a hook that fails
+        after this call leaves Okta briefly ahead of Access. Reconciliation is expected to be
+        idempotent and re-enforce on the next pass; the alternative -- committing here -- breaks the
+        lock.
+        """
+        # Deferred: api.operations imports api.plugins, so a module-level import would cycle.
+        from api.operations import ModifyGroupDetails
+
+        await ModifyGroupDetails(
+            group=group,
+            description=description,
+            fire_lifecycle_hook=False,
+            commit_db_changes=False,
+        ).execute()
+
     # ---- Okta group push ----
     #
     # Thin delegates so a plugin never imports `api.services.okta`. They do Okta network I/O only and
