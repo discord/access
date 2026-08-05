@@ -6,23 +6,19 @@ It logs all group lifecycle events to provide a simple audit trail.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import models
 from api.models import App, AppGroup, OktaUser
 
 # Import the plugin spec and decorators
 from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleContext,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
-    get_config_value,
-    get_status_value,
     hookimpl,
-    set_status_value,
 )
 
 # Plugin configuration
@@ -191,53 +187,53 @@ class AuditLoggerPlugin:
     # Lifecycle hooks
 
     @hookimpl
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group creation."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
-        self._log(f"Group created: {group.name} (app: {group.app.name})", group=group)
+        self._log(ctx, f"Group created: {group.name} (app: {group.app.name})", group=group)
 
         # Update status
-        self._increment_event_count(session, group)
+        self._increment_event_count(ctx, group)
 
     @hookimpl
     async def group_updated(
-        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
     ) -> None:
         """Handle group update."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
-        self._log(f"Group updated: {group.name} (app: {group.app.name})", group=group)
+        self._log(ctx, f"Group updated: {group.name} (app: {group.app.name})", group=group)
 
         # Update status
-        self._increment_event_count(session, group)
+        self._increment_event_count(ctx, group)
 
     @hookimpl
-    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         """Handle group deletion."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
-        self._log(f"Group deleted: {group.name} (app: {group.app.name})", group=group)
+        self._log(ctx, f"Group deleted: {group.name} (app: {group.app.name})", group=group)
 
         # Update status
-        self._increment_event_count(session, group)
+        self._increment_event_count(ctx, group)
 
     @hookimpl
     async def group_members_added(
         self,
-        session: AsyncSession,
+        ctx: AppGroupLifecycleContext,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -246,19 +242,19 @@ class AuditLoggerPlugin:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
         member_emails = [m.email for m in members]
-        self._log(f"Members added to {group.name}: {', '.join(member_emails)}", group=group)
+        self._log(ctx, f"Members added to {group.name}: {', '.join(member_emails)}", group=group)
 
         # Update status
-        self._increment_event_count(session, group)
+        self._increment_event_count(ctx, group)
 
     @hookimpl
     async def group_members_removed(
         self,
-        session: AsyncSession,
+        ctx: AppGroupLifecycleContext,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -267,30 +263,36 @@ class AuditLoggerPlugin:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
         member_emails = [m.email for m in members]
-        self._log(f"Members removed from {group.name}: {', '.join(member_emails)}", group=group)
+        self._log(ctx, f"Members removed from {group.name}: {', '.join(member_emails)}", group=group)
 
         # Update status
-        self._increment_event_count(session, group)
+        self._increment_event_count(ctx, group)
 
     @hookimpl
-    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_all_groups(self, ctx: AppGroupLifecycleContext, app: App, plugin_id: str | None) -> None:
         """Perform periodic sync of all groups."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        self._log(f"Periodic sync triggered for app: {app.name}", app)
+        self._log(ctx, f"Periodic sync triggered for app: {app.name}", app)
 
-        # Update app-level status
-        set_status_value(app, "last_sync_at", datetime.utcnow().isoformat(), PLUGIN_ID)
-        session.add(app)
+        # Update app-level status. `ctx.set_status` marks the object for persistence itself, so the
+        # plugin never touches the session; the host commits after the hook returns.
+        ctx.set_status(app, "last_sync_at", datetime.now(UTC).isoformat())
 
     # Helper methods
 
-    def _log(self, message: str, app: App | None = None, group: AppGroup | None = None) -> None:
+    def _log(
+        self,
+        ctx: AppGroupLifecycleContext,
+        message: str,
+        app: App | None = None,
+        group: AppGroup | None = None,
+    ) -> None:
         """Log a message at the level specified in the app's plugin configuration."""
         if app is None:
             if group is None:
@@ -298,34 +300,30 @@ class AuditLoggerPlugin:
             else:
                 app = group.app
 
-        level_str: str = get_config_value(app, "log_level", PLUGIN_ID, "INFO")
+        level_str: str = ctx.get_config(app, "log_level", "INFO")
         level: int = getattr(logging, level_str)
-        custom_tag = get_config_value(group, "custom_tag", PLUGIN_ID) if group else ""
+        custom_tag = ctx.get_config(group, "custom_tag") if group else ""
         logger.log(level, f"[AUDIT_LOGGER]{f'[{custom_tag}]' if custom_tag else ''} {message}")
 
-    def _is_enabled(self, group: AppGroup) -> bool:
+    def _is_enabled(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> bool:
         """Check if the plugin is enabled for this group."""
-        return get_config_value(group.app, "enabled", PLUGIN_ID, True) and get_config_value(
-            group, "enabled", PLUGIN_ID, True
-        )
+        return ctx.get_config(group.app, "enabled", True) and ctx.get_config(group, "enabled", True)
 
-    def _increment_event_count(self, session: AsyncSession, group: AppGroup) -> None:
+    def _increment_event_count(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> None:
         """Increment the event count in the status.
 
-        Only synchronous work: ``session.add`` is not a coroutine on
-        ``AsyncSession``, and the get/set status helpers mutate ``plugin_data``
-        in memory, so this stays a plain method the async hooks call directly.
+        Stays synchronous: the context's status accessors mutate ``plugin_data`` in memory and mark
+        the object for persistence, so the async hooks call this directly. The host commits after the
+        hook returns -- a plugin never commits, and never touches the session.
         """
         # Update group-level status
-        current_count = get_status_value(group, "events_logged", PLUGIN_ID) or 0
-        set_status_value(group, "events_logged", current_count + 1, PLUGIN_ID)
-        set_status_value(group, "last_event_at", datetime.utcnow().isoformat(), PLUGIN_ID)
-        session.add(group)
+        current_count = ctx.get_status(group, "events_logged") or 0
+        ctx.set_status(group, "events_logged", current_count + 1)
+        ctx.set_status(group, "last_event_at", datetime.now(UTC).isoformat())
 
         # Update app-level status
-        app_count = get_status_value(group.app, "total_events_logged", PLUGIN_ID) or 0
-        set_status_value(group.app, "total_events_logged", app_count + 1, PLUGIN_ID)
-        session.add(group.app)
+        app_count = ctx.get_status(group.app, "total_events_logged") or 0
+        ctx.set_status(group.app, "total_events_logged", app_count + 1)
 
 
 # Create plugin instance
