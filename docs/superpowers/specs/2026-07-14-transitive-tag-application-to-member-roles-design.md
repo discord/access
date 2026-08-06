@@ -25,6 +25,17 @@ Any role that is a member of one of those app groups should also be treated as S
 own members must respect SOX time limits and self-add restrictions — without an operator having
 to hand-tag every such role and remember to untag it when the role's membership changes.
 
+### Key UX/behavior changes
+
+1. **Time-limit constraints can now be transitive** — the new capability, closing the one gap
+   (access expiration) that did not previously extend to member-roles.
+2. **Transitivity is on by default, opt-out per tag** — `apply_tag_to_member_roles` defaults to
+   `true` for new and existing tags; set it `false` to exclude a tag. Not a breaking change for
+   self-add/reason (which already propagate today); see the default-on decision.
+3. **Transitive tags are explicit in the UI** — they render alongside direct tags on the role and
+   in the tag's "Groups with Tag" list, with clear source/rationale (direct / via app / derived
+   from membership in {groups}).
+
 ## Decisions (from brainstorming)
 
 1. **Enforcement scope:** Display **and** enforce. A transitively-received tag governs the
@@ -40,13 +51,28 @@ to hand-tag every such role and remember to untag it when the role's membership 
 5. **Disabled tags:** Derived rows exist independent of `Tag.enabled`, mirroring how
    direct/app tag-map rows exist for disabled tags today. `enabled` gates enforcement only, and
    that suppression is automatic because derived rows point at the same `Tag`.
-6. **Gate vs. add (KEY DECISION — breaking, ships with Access 2.0):** `apply_tag_to_member_roles`
-   is the single opt-in switch that **gates all transitive application** — self-add, reason,
-   **and** time limits — replacing the existing *unconditional* propagation of self-add/reason
-   to member-roles. This is a **breaking change** (see "Existing role propagation and the
-   gate-vs-add decision" below) and is intended to land as part of the Access 2.0 major version
-   bump. The design isolates this to a single keep/remove edit so it can be reverted to the
-   non-breaking "add-only" variant if team feedback prefers it.
+6. **Default-on, opt-out (KEY DECISION):** `apply_tag_to_member_roles` is the single switch that
+   **gates all transitive application** — self-add, reason, **and** time limits — and it
+   **defaults to `true`** consistently for **both new and existing tags** (existing tags via a
+   one-time backfill of the key; new tags via a create-time default). An operator opts a specific
+   tag *out* by setting it `false`, which suppresses **all** transitive application for that tag
+   (the unified-gate reading — see decision 7). Because the default is on, this is **not a
+   breaking change** for the four constraints that already propagate today (self-add ×2, reason
+   ×2 — the defaults preserve current behavior); its new effect is to extend the two **time-limit**
+   constraints to member-roles by default, closing the compliance gap. See "Existing role
+   propagation and the default-on decision".
+7. **Unified gate — opt-out is all-or-nothing (KEY DECISION, open to team pushback):** setting
+   `apply_tag_to_member_roles: false` on a tag stops *every* transitive constraint for that tag,
+   not just the new time-limit extension. This keeps a single code path (derived rows are the sole
+   mechanism; the old live traversal is removed). The alternative — keep the live traversal so
+   opt-out suppresses only time limits while self-add/reason stay unconditionally transitive — is
+   documented as a one-edit variant in "Existing role propagation and the default-on decision" in
+   case the team prefers it.
+8. **Rollout staging:** the disruptive part of enabling time-limit transitivity is the
+   **retroactive capping** it triggers, not flipping the flag. So the initial full-population
+   capping reconcile is an **operator-triggered step**, decoupled from the key backfill, giving a
+   window to set `false` on any tag whose capping should be deferred. See "Orphan backstop &
+   backfill".
 
 ## Background: how tagging works today
 
@@ -83,7 +109,7 @@ Facts established from the codebase (`main`), load-bearing for this design:
   role from being a member of another role, so a role can *receive* a transitive tag but can
   never re-propagate it. No recursion, no cycle detection.
 
-## Existing role propagation and the gate-vs-add decision
+## Existing role propagation and the default-on decision
 
 **Four of the six constraints already propagate to member-roles today — unconditionally.**
 `CheckForSelfAdd.execute_for_group` (`check_for_self_add.py:89-115`) and
@@ -107,8 +133,8 @@ capping). That asymmetry is why the existing code propagates the first category 
 
 ### The decision
 
-`apply_tag_to_member_roles` becomes the **single opt-in gate for all transitive application**
-(option 2). Concretely:
+`apply_tag_to_member_roles` is the **single gate for all transitive application**, and it
+**defaults to `true`** for both new and existing tags (decision 6). Concretely:
 
 - The reconciler creates a derived `OktaGroupTagMap` row on a member-role **iff** the source
   group's tag has `apply_tag_to_member_roles` truthy. That row carries the tag's *entire*
@@ -117,30 +143,37 @@ capping). That asymmetry is why the existing code propagates the first category 
   same code that enforces a directly-applied tag.
 - **We remove** the existing associated-group live-traversal blocks in
   `CheckForSelfAdd.execute_for_group` (lines 89-115) and `CheckForReason.execute_for_group`
-  (lines 71-95). With derived rows present, those blocks are redundant for opted-in tags; kept,
-  they would leak un-gated self-add/reason propagation for tags that did *not* opt in, defeating
-  the gate.
+  (lines 71-95). Derived rows now carry self-add/reason to member-roles, so those blocks are
+  redundant; keeping them would also make opt-out (`false`) ineffective for self-add/reason,
+  because the live traversal ignores the flag. This is the **unified gate** (decision 7).
 
-**Why this is breaking:** existing tags that rely on the always-on self-add/reason propagation
-will stop propagating to member-roles until an operator sets `apply_tag_to_member_roles` on them.
-Hence it ships with the **Access 2.0** major version bump, and the PR must ship the admin
-enablement snippet (see "Breaking change & operator enablement").
+**Why default-on makes this non-breaking:** because every tag defaults to `true`, the four
+constraints that already propagate today (self-add ×2, reason ×2) keep propagating — now through
+derived rows instead of the live traversal, but with the same observable result. No operator
+action is required to preserve current behavior. The genuinely new effect is that the two
+**time-limit** constraints now extend to member-roles by default. That is a real enforcement
+change (it can shorten access), so operators should be told — but it is the intended
+gap-closure, not a regression. Whether it warrants a major version bump is an operator judgment;
+it is *not* the "your tags silently stop enforcing" break the earlier opt-in framing carried.
 
-### Reverting to the non-breaking "add-only" variant (option 1)
+### Opt-out semantics and the one-edit variant
 
-If team feedback prefers backwards compatibility, the entire decision reverts via a **single
-keep/remove edit**: **keep** the associated-group live-traversal blocks instead of removing them.
-Then self-add/reason continue propagating unconditionally (as today, non-breaking), the derived
-rows redundantly re-cover them for opted-in tags (idempotent — same answer), and
-`apply_tag_to_member_roles` meaningfully controls only time-limit propagation + materialized
-visibility. Nothing else in this design changes. This is the only behavioral knob between the two
-variants; the implementation plan should keep those two blocks factored so the edit stays a
-one-paragraph change.
+Under the unified gate (decision 7), `apply_tag_to_member_roles: false` suppresses **all**
+transitive application for that tag — self-add, reason, and time limits alike. That is the plain
+meaning of "this tag does not apply to member roles," and it is the recommended reading.
 
-> **Enforcement-path note (option 2):** removing the live traversal makes the derived rows the
+If the team instead wants opt-out to suppress **only** the new time-limit extension while
+self-add/reason stay unconditionally transitive (as they are today), that is a **single-edit
+variant**: **keep** the associated-group live-traversal blocks rather than removing them. Then
+self-add/reason propagate unconditionally regardless of the flag, derived rows redundantly
+re-cover them for opted-in tags (idempotent), and the flag governs only time-limit propagation +
+materialized visibility. Keep those two blocks factored/co-located so this stays a one-paragraph
+change either way.
+
+> **Enforcement-path note (unified gate):** removing the live traversal makes derived rows the
 > *sole* enforcement path for self-add/reason on member-roles. A missing derived row (an orphan or
-> a trigger gap) would silently stop enforcement — which is the primary reason the orphan
-> backstop below is not optional under option 2.
+> a trigger gap) would silently stop enforcement — which is the primary reason the orphan backstop
+> below is required, not optional.
 
 ## Data model
 
@@ -162,6 +195,15 @@ APPLY_TAG_TO_MEMBER_ROLES_CONSTRAINT_KEY: TagConstraint(
 ```
 
 Stored in the existing `Tag.constraints` JSON column — no new column on `Tag`.
+
+**Default value.** Per decisions 6–7 the constraint defaults to `true`. New tags are created
+with `apply_tag_to_member_roles: true` in their constraints unless the operator sets it `false`;
+existing tags receive the key via a one-time backfill (see "Orphan backstop & backfill"). The
+reconciler and `coalesce_constraints` keep the standard `absent → off` convention every other
+constraint follows — the default-on behavior comes from the key being *present and true*, never
+from special-casing a missing key. (A tag that predates the backfill and hasn't been touched
+therefore reads as off until backfilled, which is why the backfill is part of rollout rather than
+optional.)
 
 ### New column on `OktaGroupTagMap`
 
@@ -193,9 +235,18 @@ role).
 
 ### Migration
 
-Alembic migration adding the nullable `source_role_group_map_id` column and its FK to
-`okta_group_tag_map`. Additive and backwards-compatible: existing rows get `NULL`. Backfill is
-performed by the full-population reconcile, not the migration — see "Orphan backstop & backfill".
+Two rollout steps, kept separate on purpose:
+
+1. **Schema migration** — Alembic adds the nullable `source_role_group_map_id` column and its FK
+   to `okta_group_tag_map`. Additive and backwards-compatible: existing rows get `NULL`.
+2. **Constraint-key backfill** — a data step sets `apply_tag_to_member_roles: true` on existing
+   tags' `constraints` (the default-on decision). This is *enablement only*; it materializes no
+   rows and caps nothing by itself.
+
+The disruptive **derived-row materialization + retroactive capping** is a *third*, separately
+operator-triggered step (the full-population reconcile), so operators get a window between the
+backfill and the capping to set `false` on any tag whose capping should be deferred. See "Orphan
+backstop & backfill".
 
 ## Reconciler: `SyncMemberRoleTags`
 
@@ -293,7 +344,7 @@ that already exists:
 - `coalesce_constraints`, and the *direct-group* branches of `CheckForSelfAdd` /
   `CheckForReason` (lines 64-85 / 54-67), already read the role's own `active_group_tags` and
   therefore see derived rows with **zero changes** — this is how self-add and reason constraints
-  reach the role under option 2.
+  reach the role under the unified gate.
 - Retroactive time-limit capping fires via the reconciler's `ModifyGroupsTimeLimit` call — the
   new enforcement this feature adds, since time limits did not previously propagate in this
   direction.
@@ -302,12 +353,12 @@ that already exists:
   excludes it, so `T`'s constraints do not coalesce onto the role. The tag still displays on the
   role, inert — exactly like a disabled direct tag on a group.
 
-The one enforcement-code change is the **removal** (option 2) of the associated-group
+The one enforcement-code change is the **removal** (unified gate) of the associated-group
 live-traversal blocks in `CheckForSelfAdd.execute_for_group` (89-115) and
-`CheckForReason.execute_for_group` (71-95), as described in the gate-vs-add decision. Keep those
-blocks factored/co-located so the option-1 revert is a one-paragraph change. `execute_for_role`
-in both classes is a *different* direction (checking target-group tags when a role is attached to
-groups) and is **not** touched by this feature.
+`CheckForReason.execute_for_group` (71-95), as described in the default-on decision. Keep those
+blocks factored/co-located so the keep-live-traversal variant stays a one-paragraph change.
+`execute_for_role` in both classes is a *different* direction (checking target-group tags when a
+role is attached to groups) and is **not** touched by this feature.
 
 ## API & schema changes
 
@@ -410,25 +461,29 @@ requests today, but the guard is cheap and correct).
 
 ## Orphan backstop & backfill (one mechanism)
 
-The eager triggers are the fast path; a **full-population reconcile** is the safety net and the
-initial backfill, and they are the *same idempotent operation* run over "all roles" instead of a
-scoped subset.
+The eager triggers are the fast path; a **full-population reconcile** is the safety net, the
+initial materialization, and the re-manage coverage — all the *same idempotent operation* run
+over "all roles" instead of a scoped subset.
 
 - **What it does:** for every managed role, end derived rows whose sourcing `RoleGroupMap` is no
   longer active (or whose source group's tag no longer opts in / no longer exists), and create
-  any missing derived rows the invariant requires. Being delta-based, it is safe to run
-  repeatedly.
+  any missing derived rows the invariant requires (retroactively capping via
+  `ModifyGroupsTimeLimit` on each insert). Being delta-based, it is safe to run repeatedly.
 - **Backstop:** run it periodically (the syncer is the natural host — a batch CLI job that
   already runs on a schedule and drains hooks inline). This self-heals any orphan a future
-  bulk-write `RoleGroupMap`-ender introduces without wiring in a trigger, and — under option 2,
-  where derived rows are the sole self-add/reason enforcement path — closes the window in which a
-  missed trigger would silently drop enforcement.
-- **Backfill:** the migration is additive (nullable column) and does **not** backfill inline.
-  Instead, the first full-population reconcile after deploy materializes derived rows for all
-  pre-existing role-in-tagged-group memberships. This is what makes a role already sitting in a
-  SOX-tagged group become SOX-scoped at rollout rather than only on its next unrelated edit.
-- **Re-manage coverage:** the backstop is also what covers the unmanaged→managed transition,
-  which has no operation to hook (see the "Role re-managed" edge case). Wiring the reconcile as a
+  bulk-write `RoleGroupMap`-ender introduces without wiring in a trigger, and — under the unified
+  gate, where derived rows are the sole self-add/reason enforcement path — closes the window in
+  which a missed trigger would silently drop enforcement.
+- **Initial materialization is operator-triggered (staging lever).** The default-on key backfill
+  (migration step 2) only sets the flag; it is this reconcile that first materializes derived
+  rows and performs the org-wide retroactive capping. Running it as a deliberate operator step —
+  *after* the key backfill — gives the staging window: set `apply_tag_to_member_roles: false` on
+  any tag whose capping should be deferred, run the reconcile, then flip deferred tags back to
+  `true` later (each flip caps that tag's member-roles via the `ModifyTag` trigger, spreading the
+  load instead of one org-wide event). This is what closes the compliance gap at rollout on the
+  operator's schedule rather than in a single surprise mutation.
+- **Re-manage coverage:** the same reconcile covers the unmanaged→managed transition, which has
+  no operation to hook (see the "Role re-managed" edge case). Wiring the *periodic* reconcile as a
   phase of the syncer pass — after group sync commits (`syncer.py:260`) — keeps that window to a
   single cycle.
 
@@ -438,45 +493,59 @@ reconcile runs in that same pass, the backstop covers it with a bounded (one-cyc
 extra call site. To keep that guarantee real, the implementation must **order the full-population
 reconcile after group sync commits** (`syncer.py:260`) within the syncer entrypoint.
 
-The migration adds the nullable `source_role_group_map_id` column and FK; existing rows get
-`NULL`; backfill is the reconcile pass, not a data migration.
+## Operator rollout & opt-out
 
-## Breaking change & operator enablement
+Because the constraint defaults to `true` (decision 6), operators need **no action to preserve**
+today's self-add/reason propagation — it carries over automatically once the key backfill runs.
+The operator's levers are all about the *new* time-limit extension and its capping:
 
-Under the chosen option 2, existing tags stop propagating self-add/reason to member-roles until
-`apply_tag_to_member_roles` is set on them. To preserve pre-2.0 behavior exactly, an operator
-enables the constraint on the impacted tags at upgrade time. The **PR description must include a
-runnable snippet** an Access admin can execute once, post-deploy, to set
-`apply_tag_to_member_roles: true` on all tags that previously relied on the always-on propagation
-(conservatively: every tag carrying any self-add or reason constraint). Sketch — final form
+- **Defer or exclude a tag:** set `apply_tag_to_member_roles: false` on it. This is the precise,
+  per-tag lever — it suppresses transitivity for that tag only and leaves its direct/app-group
+  enforcement fully intact. **Do not** disable the tag to achieve this: `enabled` is a blunt
+  switch that turns off *all* of the tag's enforcement everywhere (including on the directly
+  tagged groups), and toggling it is not wired to the reconciler anyway (trigger #4 reacts to the
+  constraint value, not `enabled`).
+- **Stage the capping:** set `false` on defer-tags *before* triggering the initial reconcile,
+  then flip them to `true` on your own schedule.
+
+The **PR description must include a runnable snippet** an Access admin can adapt — both the
+default-on backfill (idempotent) and an opt-out helper for chosen tags. Sketch — final form
 verified against the ORM in the PR:
 
 ```python
-# One-off: preserve pre-2.0 transitive self-add/reason propagation to member-roles.
-# Run inside the app context (async session). Merges the new key into each tag's
-# JSON constraints without disturbing existing keys, then reconciles derived rows.
+# Default-on key backfill (migration step 2): set apply_tag_to_member_roles=true on every
+# existing tag. Enablement only — materializes no rows and caps nothing on its own. Idempotent.
+# Run inside the app context (async session).
 from sqlalchemy import select
-from api.models import Tag  # constraint-key constants live on this class
+from api.models import Tag  # constraint-key constant lives on this class
 
-BOOL_KEYS = {
-    Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-    Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-    Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY,
-    Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
-}
+KEY = Tag.APPLY_TAG_TO_MEMBER_ROLES_CONSTRAINT_KEY
 
-async def enable_transitivity_for_impacted_tags(session):
+async def backfill_default_on(session):
     tags = (await session.scalars(select(Tag).where(Tag.deleted_at.is_(None)))).all()
     for tag in tags:
-        if BOOL_KEYS & set(tag.constraints):
-            tag.constraints = {**tag.constraints, Tag.APPLY_TAG_TO_MEMBER_ROLES_CONSTRAINT_KEY: True}
+        if KEY not in tag.constraints:  # respect any operator-set value already present
+            tag.constraints = {**tag.constraints, KEY: True}
     await session.commit()
-    # then run the full-population reconcile (backfill) to materialize derived rows
+
+# Opt-out helper (staging): set apply_tag_to_member_roles=false on chosen tags BEFORE triggering
+# the initial full-population reconcile, to defer their capping. Reassigns the dict so SQLAlchemy
+# detects the change (Tag.constraints is a plain JSON column, not a MutableDict).
+async def opt_out(session, tag_names: set[str]):
+    tags = (await session.scalars(
+        select(Tag).where(Tag.deleted_at.is_(None)).where(Tag.name.in_(tag_names))
+    )).all()
+    for tag in tags:
+        tag.constraints = {**tag.constraints, KEY: False}
+    await session.commit()
+
+# Then, as a deliberate step, run the full-population reconcile to materialize derived rows
+# and retroactively cap. Flip any deferred tags back to True later to cap them on your schedule.
 ```
 
-> Note: because `Tag.constraints` is a JSON column, reassign a new dict (as above) rather than
-> mutating in place, so SQLAlchemy detects the change. If a `MutableDict` type is later adopted
-> this caveat can drop.
+> Note: because `Tag.constraints` is a plain JSON column, reassign a new dict (as above) rather
+> than mutating in place, so SQLAlchemy detects the change. If a `MutableDict` type is later
+> adopted this caveat can drop.
 
 ## Testing
 
@@ -490,10 +559,13 @@ Tests live in the same commit as the code they validate (repo convention).
 - Parity tests: a transitively-tagged role enforces time-limit, self-add, and reason
   constraints identically to a directly-tagged role, **including** retroactive capping on
   attach and on constraint-add.
-- **Gate test (option 2 behavior):** a tag *without* `apply_tag_to_member_roles` produces no
-  derived rows and (after removing the live traversal) does *not* enforce self-add/reason on
-  member-roles; adding the constraint makes both appear. This test is the tripwire that documents
-  the breaking change — if the design reverts to option 1, this test's expectations change.
+- **Default-on test:** a newly created tag has `apply_tag_to_member_roles: true` by default and
+  propagates to member-roles without operator action; the backfill sets it on existing tags.
+- **Opt-out / unified-gate test:** a tag with `apply_tag_to_member_roles: false` produces no
+  derived rows and (with the live traversal removed) enforces *neither* time limits *nor*
+  self-add/reason on member-roles. This is the tripwire for the unified-gate decision (decision
+  7); if the team chooses the keep-live-traversal variant, this test's self-add/reason
+  expectations change while the time-limit ones stay.
 - Disabled-tag test: derived rows exist and display but constraints do not coalesce onto the
   role.
 - Owner-mapping test: an owner `RoleGroupMap` does not produce derived rows.
