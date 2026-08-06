@@ -15,7 +15,7 @@ from typing import Any
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from api.models import App, AppGroup
+from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecycleContext,
@@ -672,25 +672,14 @@ class GoogleGroupManagerPlugin:
         logger.info(f"Deleted Google group {google_group_id} for Access group {group.name}")
 
     @hookimpl
-    async def sync_all_groups(self, ctx: AppGroupLifecycleContext, app: App, plugin_id: str | None) -> None:
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+        # The periodic sync is the same idempotent reconcile as the event-driven hooks. The host
+        # invokes this once per group in its own transaction, so there is no batch loop or per-group
+        # error isolation to implement here -- letting the exception propagate is correct, and is
+        # what gets the group counted as failed and the CLI exiting non-zero.
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
-
-        # Swallow per-group failures so one bad group doesn't abort the batch, but count them and
-        # emit an aggregate signal at the end -- otherwise a systemic outage (e.g. Google API down)
-        # leaves the periodic sync exiting cleanly with no top-level indication anything failed.
-        failures = 0
-        groups = app.active_app_groups
-        for group in groups:
-            try:
-                await self._reconcile(ctx, group)
-            except Exception:
-                failures += 1
-                logger.exception(f"Sync reconcile failed for group {group.name}")
-        if failures:
-            logger.error(
-                f"Google group sync for app {app.name}: {failures} of {len(groups)} groups failed to reconcile"
-            )
+        await self._reconcile(ctx, group)
 
 
 google_group_manager_plugin = GoogleGroupManagerPlugin()

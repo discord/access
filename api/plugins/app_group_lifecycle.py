@@ -22,7 +22,7 @@ _cached_app_group_lifecycle_hook: pluggy.HookRelay | None = None
 
 
 class AppGroupLifecycleHook(StrEnum):
-    """The lifecycle hooks that receive an AsyncSession and are awaited by the
+    """The lifecycle hooks that receive an ``AppGroupLifecycleContext`` and are awaited by the
     application (StrEnum value == the pluggy hook name). The
     metadata/config/status/validation hooks are pure schema accessors and remain
     synchronous, so they are not members here (and are excluded from the async check)."""
@@ -32,7 +32,7 @@ class AppGroupLifecycleHook(StrEnum):
     GROUP_DELETED = "group_deleted"
     GROUP_MEMBERS_ADDED = "group_members_added"
     GROUP_MEMBERS_REMOVED = "group_members_removed"
-    SYNC_ALL_GROUPS = "sync_all_groups"
+    SYNC_GROUP = "sync_group"
 
 
 class PluginNotFoundError(Exception):
@@ -503,9 +503,7 @@ class AppGroupLifecyclePluginSpec:
     # Group lifecycle hooks
 
     @hookspec
-    async def group_created(
-        self, ctx: AppGroupLifecycleContext, session: AsyncSession, group: AppGroup, plugin_id: str | None
-    ) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group creation.
 
@@ -514,9 +512,6 @@ class AppGroupLifecyclePluginSpec:
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
             group: The app group that was created.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -526,7 +521,6 @@ class AppGroupLifecyclePluginSpec:
     async def group_updated(
         self,
         ctx: AppGroupLifecycleContext,
-        session: AsyncSession,
         group: AppGroup,
         old_name: str,
         old_description: str,
@@ -540,9 +534,6 @@ class AppGroupLifecyclePluginSpec:
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
             group: The app group after the update.
             old_name: The group's name before the update.
             old_description: The group's description before the update.
@@ -551,9 +542,7 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def group_deleted(
-        self, ctx: AppGroupLifecycleContext, session: AsyncSession, group: AppGroup, plugin_id: str | None
-    ) -> None:
+    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         """
         Handle group deletion.
 
@@ -562,9 +551,6 @@ class AppGroupLifecyclePluginSpec:
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
             group: The app group that was deleted.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
@@ -576,7 +562,6 @@ class AppGroupLifecyclePluginSpec:
     async def group_members_added(
         self,
         ctx: AppGroupLifecycleContext,
-        session: AsyncSession,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -589,9 +574,6 @@ class AppGroupLifecyclePluginSpec:
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
             group: The app group to which members were added.
             members: The list of users that were added to the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -602,7 +584,6 @@ class AppGroupLifecyclePluginSpec:
     async def group_members_removed(
         self,
         ctx: AppGroupLifecycleContext,
-        session: AsyncSession,
         group: AppGroup,
         members: list[OktaUser],
         plugin_id: str | None,
@@ -615,9 +596,6 @@ class AppGroupLifecyclePluginSpec:
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
             group: The app group from which members were removed.
             members: The list of users that were removed from the group.
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -625,26 +603,23 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def sync_all_groups(
-        self, ctx: AppGroupLifecycleContext, session: AsyncSession, app: App, plugin_id: str | None
-    ) -> None:
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         """
-        Bulk reconcile all of an app's groups (membership and any external group state).
-        Invoked periodically by the `access sync-app-groups` CLI command.
+        Reconcile one app group (membership and any external group state).
+
+        Invoked by the `access sync-app-groups` CLI command once per active app group of every app
+        with this plugin configured, each in its own transaction -- so one group's failure cannot
+        strand the groups behind it, and a plugin does not implement its own batch loop or error
+        isolation.
 
         Args:
             ctx: The plugin capability context, bound to this plugin's id. Every Access
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
-            session: DEPRECATED, removed later in Access 2.0. Use `ctx`. An implementation
-                     that omits this parameter simply won't be passed it; pluggy only passes
-                     the arguments the implementation declares.
-            app: The app for which to sync all groups. `app.active_app_groups` is
-                 eager-loaded, and each of those groups' `.app` resolves back to this
-                 same instance without SQL. Every other `App` relationship is
-                 `lazy="raise_on_sql"` and must be queried through `session` rather
-                 than read off `app` -- see the note on widening this below.
+            group: The app group to reconcile. `group.app` is eager-loaded; every other
+                   relationship is `lazy="raise_on_sql"` and must be reached through `ctx`
+                   rather than read off `group` -- see the note on widening this below.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
 
@@ -756,7 +731,7 @@ async def invoke_app_group_lifecycle_hook(
     Returns the exceptions the hook implementations raised, empty on success, so a batch caller can
     count failures. Never propagates, so a misbehaving plugin can't abort the surrounding operation.
 
-    ``kwargs`` are forwarded to the hook alongside ``ctx``, ``session`` and ``group`` — e.g.
+    ``kwargs`` are forwarded to the hook alongside ``ctx`` and ``group`` — e.g.
     ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
     ``group_updated``.
     """
@@ -792,7 +767,7 @@ async def invoke_app_group_lifecycle_hook(
     # writes, but never propagate, so a misbehaving plugin can't abort the
     # surrounding operation.
     _, exceptions = await run_hooks_to_completion(
-        getattr(hook, hook_method)(ctx=ctx, session=db.session, group=group, plugin_id=plugin_id, **kwargs),
+        getattr(hook, hook_method)(ctx=ctx, group=group, plugin_id=plugin_id, **kwargs),
         context=context,
     )
     if exceptions:

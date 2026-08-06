@@ -273,16 +273,23 @@ class AuditLoggerPlugin:
         self._increment_event_count(ctx, group)
 
     @hookimpl
-    async def sync_all_groups(self, ctx: AppGroupLifecycleContext, app: App, plugin_id: str | None) -> None:
-        """Perform periodic sync of all groups."""
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+        """Handle the periodic sync of one group."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
 
-        self._log(ctx, f"Periodic sync triggered for app: {app.name}", app)
+        if not self._is_enabled(ctx, group):
+            return
+
+        self._log(ctx, f"Periodic sync triggered for group: {group.name} (app: {group.app.name})", group=group)
 
         # Update app-level status. `ctx.set_status` marks the object for persistence itself, so the
         # plugin never touches the session; the host commits after the hook returns.
-        ctx.set_status(app, "last_sync_at", datetime.now(UTC).isoformat())
+        #
+        # Note this is now written once per group rather than once per app, so the last group of an
+        # app to sync wins. It still means "this app was last swept at T", which is what the status
+        # property describes.
+        ctx.set_status(group.app, "last_sync_at", datetime.now(UTC).isoformat())
 
     # Helper methods
 

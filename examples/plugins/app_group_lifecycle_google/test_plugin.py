@@ -1059,16 +1059,42 @@ async def test_reconcile_ignores_stale_push_mapping_when_group_gone(
     ctx_mock.create_push_mapping_and_new_group.assert_awaited_once()
 
 
-async def test_sync_all_continues_after_group_failure(
+async def test_sync_group_runs_the_same_reconcile(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
 ) -> None:
-    app = Mock(spec=App)
-    g1, g2 = Mock(spec=AppGroup), Mock(spec=AppGroup)
-    g1.name = "Group1"
-    app.active_app_groups = [g1, g2]
-    reconcile = mocker.patch.object(plugin_instance, "_reconcile", side_effect=[RuntimeError("boom"), None])
-    await plugin_instance.sync_all_groups(ctx=ctx_mock, app=app, plugin_id=PLUGIN_ID)
-    assert reconcile.call_count == 2  # g2 still reconciled despite g1 raising
+    # The periodic sync is the same idempotent reconcile as the event-driven hooks, one group at a
+    # time. The host invokes it per group in its own transaction, so there is no batch loop here.
+    group = _group(mocker)
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+
+    await plugin_instance.sync_group(ctx=ctx_mock, group=group, plugin_id=PLUGIN_ID)
+
+    reconcile.assert_awaited_once_with(ctx_mock, group)
+
+
+async def test_sync_group_lets_failures_propagate_to_the_host(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Deliberately NOT swallowed: the host isolates each group in its own transaction and counts the
+    # failure, which is what makes `access sync-app-groups` exit non-zero. Catching here would hide a
+    # systemic outage behind a clean exit -- the reason the plugin's own batch loop used to keep a
+    # failure tally.
+    group = _group(mocker)
+    mocker.patch.object(plugin_instance, "_reconcile", side_effect=RuntimeError("boom"))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await plugin_instance.sync_group(ctx=ctx_mock, group=group, plugin_id=PLUGIN_ID)
+
+
+async def test_sync_group_ignores_other_plugins(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    group = _group(mocker)
+    reconcile = mocker.patch.object(plugin_instance, "_reconcile")
+
+    await plugin_instance.sync_group(ctx=ctx_mock, group=group, plugin_id="a_different_plugin")
+
+    reconcile.assert_not_awaited()
 
 
 def test_plugin_only_imports_the_access_plugin_interface() -> None:

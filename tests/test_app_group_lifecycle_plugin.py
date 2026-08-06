@@ -66,11 +66,11 @@ class DummyPlugin:
         self.group_deleted_calls: list[str] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
         self.members_removed_calls: list[tuple[str, list[str]]] = []
-        # (app id, ["group name:owning app name", ...]) per sync_all_groups call.
-        self.sync_all_groups_calls: list[tuple[str, list[str]]] = []
-        # App names whose sync_all_groups should raise, so tests can exercise the
-        # caller's per-app error isolation.
-        self.sync_all_groups_failures: set[str] = set()
+        # (group id, "owning app name") per sync_group call.
+        self.sync_group_calls: list[tuple[str, str]] = []
+        # Group names whose sync_group should raise, so tests can exercise the caller's
+        # per-group error isolation.
+        self.sync_group_failures: set[str] = set()
         # Group ids whose membership hooks should raise, so tests can exercise the
         # callers' per-group error isolation when one operation affects several groups.
         self.members_added_failures: set[str] = set()
@@ -273,18 +273,16 @@ class DummyPlugin:
         self.members_removed_calls.append((group.id, [m.id for m in members]))
 
     @hookimpl
-    async def sync_all_groups(self, ctx: AppGroupLifecycleContext, app: App, plugin_id: str | None) -> None:
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
         await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
-        # Walk the app's groups the way a bulk-reconcile plugin does. Both
-        # App.active_app_groups and AppGroup.app are lazy="raise_on_sql", so this
-        # raises unless the caller handed over an App with the collection loaded.
-        groups = app.active_app_groups
-        described = [f"{group.name}:{group.app.name}" for group in groups]
-        if app.name in self.sync_all_groups_failures:
-            raise RuntimeError(f"sync failed for {app.name}")
-        self.sync_all_groups_calls.append((app.id, described))
+        # Read `group.app`, which the hookspec promises eager-loaded. It is
+        # lazy="raise_on_sql", so this raises unless the caller loaded it.
+        app_name = group.app.name
+        if group.name in self.sync_group_failures:
+            raise RuntimeError(f"sync failed for {group.name}")
+        self.sync_group_calls.append((group.id, app_name))
 
 
 @pytest.fixture
@@ -3012,62 +3010,71 @@ class TestDurableStatusReplay:
         commit.assert_not_awaited()
 
 
-class TestSyncAllGroupsHook:
-    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the
-    only caller of the `sync_all_groups` hook.
+class TestSyncGroupHook:
+    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the only caller of
+    the `sync_group` hook.
 
-    The hook is handed a whole `App` rather than one group, so these cover the two
-    things that are only true of a batch caller: the App must arrive with the
-    relationships the hookspec promises loaded, and one app's failure must not
-    strand the apps after it.
+    The hook now gets one group per invocation, each in its own transaction, so these cover what is
+    only true of the batch caller: every group of every configured app is visited, `group.app`
+    arrives loaded as the hookspec promises, and one group's failure must not strand the groups
+    behind it.
     """
 
     @staticmethod
-    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> App:
+    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> tuple[str, dict[str, str]]:
+        """Returns (app id, {suffix: group id}) as plain strings -- a rolled-back group in the loop
+        under test expires every instance in the identity map, so a test holding ORM objects across
+        that boundary would fail in its own assertions rather than reporting the behaviour."""
         test_app = AppFactory.build(name=name, app_group_lifecycle_plugin=DummyPlugin.ID)
         db.session.add(test_app)
         await db.session.flush()
+        group_ids = {}
         for suffix in group_suffixes:
-            db.session.add(
-                AppGroupFactory.build(
-                    app_id=test_app.id,
-                    name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
-                )
+            group = AppGroupFactory.build(
+                app_id=test_app.id,
+                name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
             )
+            db.session.add(group)
+            group_ids[suffix] = group.id
         await db.session.commit()
-        return test_app
+        return test_app.id, group_ids
 
-    async def test_hook_receives_app_with_groups_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
-        # Every App relationship is lazy="raise_on_sql", so a plugin reading
-        # app.active_app_groups (the natural way to bulk reconcile) raises
-        # InvalidRequestError unless the caller eager-loaded it.
+    async def test_every_group_is_synced_with_its_app_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # `AppGroup.app` is lazy="raise_on_sql", so a plugin reading it (the natural way to reach
+        # app-level config) raises InvalidRequestError unless the caller eager-loaded it.
         from api.cli import _sync_all_app_groups
 
-        test_app = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
+        _, group_ids = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
 
         failures = await _sync_all_app_groups()
 
         assert failures == 0
-        # Ordered by AppGroup.name, and each group's .app resolves off the identity map.
-        assert test_plugin.sync_all_groups_calls == [
-            (test_app.id, ["App-SyncApp-Alpha:SyncApp", "App-SyncApp-Beta:SyncApp"])
+        # Ordered by app name then group name, so a run's sequence is reproducible.
+        assert test_plugin.sync_group_calls == [
+            (group_ids["Alpha"], "SyncApp"),
+            (group_ids["Beta"], "SyncApp"),
         ]
 
-    async def test_apps_after_a_failing_app_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
-        # Rolling back the failed app expires every instance in the identity map, so a
-        # graph loaded before the loop is unusable afterwards: reading a column raises
-        # MissingGreenlet (no greenlet for the implicit refresh) and reading a
-        # relationship raises InvalidRequestError again. Both must be impossible here.
+    async def test_groups_after_a_failing_group_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Rolling back the failed group expires every instance in the identity map, so a graph loaded
+        # before the loop is unusable afterwards: reading a column raises MissingGreenlet (no
+        # greenlet for the implicit refresh) and reading a relationship raises InvalidRequestError
+        # again. Both must be impossible here. This is also the isolation the plugins no longer
+        # implement themselves -- it lives in the caller now.
         from api.cli import _sync_all_app_groups
 
-        await self._add_app_with_groups(db, "SyncAppA", ["One"])
-        app_b = await self._add_app_with_groups(db, "SyncAppB", ["Two"])
-        test_plugin.sync_all_groups_failures.add("SyncAppA")
+        _, a_ids = await self._add_app_with_groups(db, "SyncAppA", ["One", "Two"])
+        _, b_ids = await self._add_app_with_groups(db, "SyncAppB", ["Three"])
+        test_plugin.sync_group_failures.add("App-SyncAppA-One")
 
         failures = await _sync_all_app_groups()
 
         assert failures == 1
-        assert test_plugin.sync_all_groups_calls == [(app_b.id, ["App-SyncAppB-Two:SyncAppB"])]
+        # The failing group's siblings and the following app's groups all still sync.
+        assert test_plugin.sync_group_calls == [
+            (a_ids["Two"], "SyncAppA"),
+            (b_ids["Three"], "SyncAppB"),
+        ]
 
     async def test_apps_without_a_plugin_are_not_synced(self, db: Db, test_plugin: DummyPlugin) -> None:
         # The Access app seeded by the db fixture has no lifecycle plugin configured.
@@ -3079,7 +3086,7 @@ class TestSyncAllGroupsHook:
         failures = await _sync_all_app_groups()
 
         assert failures == 0
-        assert test_plugin.sync_all_groups_calls == []
+        assert test_plugin.sync_group_calls == []
 
     # The two below cover the command wrapper rather than the helper: the failure count has to
     # reach the process exit status, or a cronjob run that reconciled nothing still reports
@@ -3093,29 +3100,30 @@ class TestSyncAllGroupsHook:
     # happens to pass on a given driver. `raise SystemExit` propagating out of asyncio.run to
     # Click is Python's behavior, not this repo's; what needs guarding is the `if failures`.
 
-    async def test_command_exits_non_zero_when_an_app_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_command_exits_non_zero_when_a_group_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
         from api.cli import sync_app_groups
 
-        await self._add_app_with_groups(db, "SyncExitA", ["One"])
-        await self._add_app_with_groups(db, "SyncExitB", ["Two"])
-        test_plugin.sync_all_groups_failures.add("SyncExitA")
+        _, a_groups = await self._add_app_with_groups(db, "SyncExitA", ["One"])
+        _, b_groups = await self._add_app_with_groups(db, "SyncExitB", ["Two"])
+        test_plugin.sync_group_failures.add("App-SyncExitA-One")
 
         with pytest.raises(SystemExit) as exc_info:
             await sync_app_groups.callback.__wrapped__()
 
         assert exc_info.value.code == 1
-        # Every app is still attempted; only the exit status reflects the failure.
-        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitB-Two:SyncExitB"]]
+        # Every group is still attempted; only the exit status reflects the failure.
+        assert test_plugin.sync_group_calls == [(b_groups["Two"], "SyncExitB")]
+        assert a_groups["One"] not in [call[0] for call in test_plugin.sync_group_calls]
 
-    async def test_command_exits_zero_when_every_app_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_command_exits_zero_when_every_group_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
         from api.cli import sync_app_groups
 
-        await self._add_app_with_groups(db, "SyncExitOk", ["One"])
+        _, groups = await self._add_app_with_groups(db, "SyncExitOk", ["One"])
 
         # Must not raise SystemExit: a clean run has to leave the exit status at 0.
         await sync_app_groups.callback.__wrapped__()
 
-        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitOk-One:SyncExitOk"]]
+        assert test_plugin.sync_group_calls == [(groups["One"], "SyncExitOk")]
 
 
 class TestPluginAuditLogging:
