@@ -18,7 +18,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import joinedload
 
 from api.config import settings
@@ -800,28 +800,34 @@ class TestPluginHelperFunctions:
             ("app", test_app.id, "sync_status", "error")
         ]
 
-    async def test_lock_is_a_noop_off_postgres(self, db: Db, test_plugin: DummyPlugin) -> None:
-        """The advisory lock is Postgres-only; on the SQLite test backend it must not emit SQL rather
-        than raising, since the relevant sync paths there are single-writer."""
-        ctx = self._ctx(db)
-        assert db.session.get_bind().dialect.name != "postgresql"
-        await ctx.lock("some-external-id")  # must not raise
+    async def _advisory_locks_held(self, db: Db) -> int:
+        """Advisory locks held by this session's own backend. `pg_advisory_xact_lock` is
+        transaction-scoped and never explicitly released, so they stay visible for the rest of the
+        transaction."""
+        return await db.session.scalar(
+            text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()")
+        )
 
-    async def test_lock_emits_a_namespaced_advisory_lock_on_postgres(
-        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    async def test_lock_takes_a_namespaced_advisory_lock_on_postgres_only(
+        self, db: Db, test_plugin: DummyPlugin
     ) -> None:
-        """On Postgres it takes a transaction-scoped advisory lock, keyed by plugin id so two plugins
-        choosing the same string don't contend."""
+        """Postgres-only by design: a transaction-scoped advisory lock there, keyed by plugin id so
+        two plugins choosing the same string don't contend; elsewhere a no-op rather than a raise,
+        since the relevant sync paths there are single-writer. The suite runs against both backends,
+        so each run asserts what its own dialect calls for rather than assuming one of them."""
         ctx = self._ctx(db)
-        mocker.patch.object(db.session, "get_bind", return_value=mocker.Mock(dialect=mocker.Mock(name_="pg")))
-        db.session.get_bind.return_value.dialect.name = "postgresql"
-        execute = mocker.patch.object(db.session, "execute", new_callable=mocker.AsyncMock)
 
+        if db.session.get_bind().dialect.name != "postgresql":
+            await ctx.lock("some-external-id")  # must not raise
+            return
+
+        assert await self._advisory_locks_held(db) == 0
         await ctx.lock("external-1")
+        assert await self._advisory_locks_held(db) == 1
 
-        statement, params = execute.await_args.args
-        assert "pg_advisory_xact_lock" in str(statement)
-        assert params == {"key": f"{DummyPlugin.ID}:external-1"}
+        # Same key string from a different plugin takes its own lock rather than contending.
+        await AppGroupLifecycleContext(session=db.session, plugin_id="other_plugin").lock("external-1")
+        assert await self._advisory_locks_held(db) == 2
 
 
 class TestContextFindGroupsByStatus:
