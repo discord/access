@@ -2696,6 +2696,42 @@ class TestSyncAllGroupsHook:
         assert failures == 0
         assert test_plugin.sync_all_groups_calls == []
 
+    # The two below cover the command wrapper rather than the helper: the failure count has to
+    # reach the process exit status, or a cronjob run that reconciled nothing still reports
+    # success. That is the one deliberate behavior change in this command, so it gets a test.
+    #
+    # These call the command's async body (`sync_app_groups.callback.__wrapped__`) rather than
+    # driving click.testing.CliRunner. CliRunner is synchronous, so invoking it from an async
+    # test means `_with_app_context` calls asyncio.run() on another thread's event loop while
+    # the test's async engine is bound to this one. SQLAlchemy's asyncio extension requires an
+    # engine be used from the loop that created it, so that shape is unsound whether or not it
+    # happens to pass on a given driver. `raise SystemExit` propagating out of asyncio.run to
+    # Click is Python's behavior, not this repo's; what needs guarding is the `if failures`.
+
+    async def test_command_exits_non_zero_when_an_app_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
+        from api.cli import sync_app_groups
+
+        await self._add_app_with_groups(db, "SyncExitA", ["One"])
+        await self._add_app_with_groups(db, "SyncExitB", ["Two"])
+        test_plugin.sync_all_groups_failures.add("SyncExitA")
+
+        with pytest.raises(SystemExit) as exc_info:
+            await sync_app_groups.callback.__wrapped__()
+
+        assert exc_info.value.code == 1
+        # Every app is still attempted; only the exit status reflects the failure.
+        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitB-Two:SyncExitB"]]
+
+    async def test_command_exits_zero_when_every_app_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
+        from api.cli import sync_app_groups
+
+        await self._add_app_with_groups(db, "SyncExitOk", ["One"])
+
+        # Must not raise SystemExit: a clean run has to leave the exit status at 0.
+        await sync_app_groups.callback.__wrapped__()
+
+        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitOk-One:SyncExitOk"]]
+
 
 class TestPluginAuditLogging:
     """Tests for plugin configuration audit logging."""
