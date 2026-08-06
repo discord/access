@@ -801,7 +801,7 @@ class TestPluginHelperFunctions:
         ctx.set_status(test_app, "sync_status", "error", durable_on_failure=True)
         ctx.set_status(test_app, "external_group_id", "tok-1")
 
-        assert [(w.entity, w.pk, w.property_name, w.value) for w in ctx._status_writes] == [
+        assert [(w.entity_type, w.entity_id, w.property_name, w.value) for w in ctx._status_writes] == [
             ("app", test_app.id, "sync_status", "error")
         ]
 
@@ -2988,7 +2988,9 @@ class TestDurableStatusReplay:
         """The row can be gone by replay time (rolled out of existence, or deleted concurrently). That
         must not raise out of the host, since the surrounding operation already committed its work."""
         ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
-        ctx._status_writes.append(_StatusWrite(entity="group", pk="does-not-exist", property_name="s", value="v"))
+        ctx._status_writes.append(
+            _StatusWrite(entity_type="group", entity_id="does-not-exist", property_name="s", value="v")
+        )
 
         await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_UPDATED, context="test")
 
@@ -3000,7 +3002,9 @@ class TestDurableStatusReplay:
         land a commit inside the caller's half-finished conversion."""
         group = await self._app_group(db, "Deleted")
         ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
-        ctx._status_writes.append(_StatusWrite(entity="group", pk=group.id, property_name="sync_status", value="error"))
+        ctx._status_writes.append(
+            _StatusWrite(entity_type="group", entity_id=group.id, property_name="sync_status", value="error")
+        )
         commit = mocker.patch.object(db.session, "commit", new_callable=mocker.AsyncMock)
 
         await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_DELETED, context="test")

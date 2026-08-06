@@ -123,12 +123,12 @@ class _StatusWrite:
     """One recorded ``set_status(..., durable_on_failure=True)`` call, in plain-Python form.
 
     Deliberately holds no ORM references: it is replayed *after* a rollback has expired the entire
-    identity map, so anything but the entity kind, the primary key, and a plain value would be
-    unusable by then.
+    identity map, so anything but the entity type, its id, and a plain value would be unusable by
+    then.
     """
 
-    entity: Literal["app", "group"]
-    pk: str
+    entity_type: Literal["app", "group"]
+    entity_id: str
     property_name: str
     value: Any
 
@@ -275,12 +275,12 @@ class AppGroupLifecycleContext:
         set_status_value(app_or_group, status_property_name, value, self._plugin_id)
         self._session.add(app_or_group)
         if durable_on_failure:
-            pk = getattr(app_or_group, "id", None)
-            if pk is not None:
+            entity_id = getattr(app_or_group, "id", None)
+            if entity_id is not None:
                 self._status_writes.append(
                     _StatusWrite(
-                        entity="app" if isinstance(app_or_group, App) else "group",
-                        pk=pk,
+                        entity_type="app" if isinstance(app_or_group, App) else "group",
+                        entity_id=entity_id,
                         property_name=status_property_name,
                         value=value,
                     )
@@ -293,10 +293,10 @@ class AppGroupLifecycleContext:
         The nested rollback that precedes this call expired every instance the plugin *modified*,
         which is exactly the set of rows a status write targets: a column read on one raises
         MissingGreenlet and a relationship read raises InvalidRequestError. The recorded writes
-        therefore carry only the entity kind, the primary key, and a plain value, and each target
-        row is re-loaded here. (Instances the plugin never touched survive the rollback now that
-        the hook runs inside a SAVEPOINT, but that does not help these targets, and the fallback
-        branch for a hook that commits still rolls the whole session back.)
+        therefore carry only the entity type, its id, and a plain value, and each target row is
+        re-loaded here. (Instances the plugin never touched survive the rollback now that the hook
+        runs inside a SAVEPOINT, but that does not help these targets, and the fallback branch for
+        a hook that commits still rolls the whole session back.)
 
         `select(...).execution_options(populate_existing=True)` rather than `session.get`: `get` would
         *refresh* the expired identity-map instance and raise ObjectDeletedError if the row is gone,
@@ -318,18 +318,18 @@ class AppGroupLifecycleContext:
         # reconcile can mark the same status more than once.
         by_target: dict[tuple[str, str], dict[str, Any]] = {}
         for write in self._status_writes:
-            by_target.setdefault((write.entity, write.pk), {})[write.property_name] = write.value
+            by_target.setdefault((write.entity_type, write.entity_id), {})[write.property_name] = write.value
 
         try:
-            for (entity, pk), properties in by_target.items():
-                model: type[App] | type[AppGroup] = App if entity == "app" else AppGroup
+            for (entity_type, entity_id), properties in by_target.items():
+                model: type[App] | type[AppGroup] = App if entity_type == "app" else AppGroup
                 target = (
                     await self._session.scalars(
-                        select(model).where(model.id == pk).execution_options(populate_existing=True)
+                        select(model).where(model.id == entity_id).execution_options(populate_existing=True)
                     )
                 ).first()
                 if target is None:
-                    logger.info(f"{context}: skipping durable status re-apply, {entity} {pk} is gone")
+                    logger.info(f"{context}: skipping durable status re-apply, {entity_type} {entity_id} is gone")
                     continue
                 for property_name, value in properties.items():
                     set_status_value(target, property_name, value, self._plugin_id)
