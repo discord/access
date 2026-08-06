@@ -404,6 +404,11 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
     success; on any hook error it logs and rolls back so a misbehaving plugin
     can't abort the surrounding operation.
 
+    The hook runs inside a **SAVEPOINT**, so a plugin failure discards the plugin's writes
+    without expiring the caller's ORM state. Callers may therefore keep reading their own
+    instances across a fire; see the rollback branch below for why that was not true before,
+    and for the one case (a hook that commits) where it still is not.
+
     ``kwargs`` are forwarded to the hook alongside ``session`` and ``group`` — e.g.
     ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
     ``group_updated``.
@@ -412,6 +417,27 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
     if plugin_id is None:
         return
     hook = get_app_group_lifecycle_hook()
+    context = f"{hook_method} hook for group {getattr(group, 'id', None)} (plugin '{plugin_id}')"
+    # Run the hook inside a SAVEPOINT so a plugin failure rolls back the plugin's writes and
+    # nothing else. A *top-level* rollback passes dirty_only=False to
+    # SessionTransaction._restore_snapshot, expiring every instance in the identity map;
+    # `expire_on_commit=False` does not apply. On an AsyncSession the caller's next attribute
+    # read -- including a primary key, which refreshes rather than returning the identity key --
+    # then needs sync IO and raises MissingGreenlet. That is how one plugin's failure took down
+    # the operation that fired the hook. A *nested* rollback passes dirty_only=True and expires
+    # only what the plugin itself modified, so the caller's objects stay usable.
+    #
+    # begin_nested() flushes before emitting the SAVEPOINT: _take_snapshot() calls
+    # session.flush() for any origin that is not BEGIN/AUTOBEGIN. That flush is what makes this
+    # safe rather than merely narrower; the caller's pending state lands in the *outer*
+    # transaction, ahead of the savepoint, and having been flushed is no longer `modified`, so
+    # the dirty-only expiry skips it. It also means the flush can raise on the caller's own
+    # pending state, which must not escape a function documented never to propagate.
+    try:
+        savepoint = await db.session.begin_nested()
+    except Exception:
+        logging.getLogger("api").exception(f"Failed to open savepoint before {context}")
+        return
     # run_hooks_to_completion uses asyncio.wait (not gather): a cancelled request
     # won't tear down an in-flight hook, and one plugin failing won't cancel the
     # others. Failures are logged there; we roll back rather than commit partial
@@ -419,12 +445,22 @@ async def invoke_app_group_lifecycle_hook(hook_method: AppGroupLifecycleHook, *,
     # surrounding operation.
     _, exceptions = await run_hooks_to_completion(
         getattr(hook, hook_method)(session=db.session, group=group, plugin_id=plugin_id, **kwargs),
-        context=f"{hook_method} hook for group {getattr(group, 'id', None)} (plugin '{plugin_id}')",
+        context=context,
     )
     if exceptions:
-        await db.session.rollback()
+        if savepoint.is_active:
+            await savepoint.rollback()
+        else:
+            # A hook that committed ended the savepoint itself, so there is nothing to roll back
+            # to; fall back to a session rollback rather than silently skipping it. That path is
+            # exactly the pre-savepoint behavior, cascading expiry and all, and it is reachable
+            # only from a plugin that commits. The Access 2.0 plugin interface makes "a hook must
+            # not commit" a rule, at which point this branch becomes unreachable.
+            await db.session.rollback()
         return
     try:
+        if savepoint.is_active:
+            await savepoint.commit()
         await db.session.commit()
     except Exception:
         logging.getLogger("api").exception(
