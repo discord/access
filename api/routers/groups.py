@@ -445,11 +445,6 @@ async def put_group(
     # needs the pre-conversion AppGroup row, so it can't be deferred); the final type has no
     # lifecycle plugin, so nothing is fired here for that case.
     name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
-    # Hold the id as a plain string across the hook fires below. A failing plugin rolls the session
-    # back, and a top-level rollback expires every instance in the identity map, so re-reading
-    # `group.id` afterwards triggers a refresh and raises MissingGreenlet — turning one plugin's
-    # failure into a 500 on an otherwise-successful PUT.
-    group_id = group.id
     if type_changed and isinstance(group, AppGroup):
         await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
     elif not type_changed and (name_or_desc_changed or config_changed):
@@ -461,13 +456,13 @@ async def put_group(
         )
 
     await ModifyGroupTags(
-        group=group_id,
+        group=group,
         tags_to_add=tags_to_add,
         tags_to_remove=tags_to_remove,
         current_user_id=current_user_id,
     ).execute()
 
-    refreshed = await _load_group_with_options(db, group_id)
+    refreshed = await _load_group_with_options(db, group.id)
     # The group was just committed above, so re-loading it by id always resolves.
     assert refreshed is not None
 
