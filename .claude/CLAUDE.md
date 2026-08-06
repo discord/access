@@ -543,11 +543,35 @@ notifications, conditional access, `metrics_reporter` (`record_*` etc.; `batch_m
 async context manager), and the app-group-lifecycle *lifecycle* hooks — must be `async def`, and
 `verify_async_impls` fails fast at hook load if one is registered as a plain `def`. Do blocking
 I/O off the event loop: prefer a native async client (`httpx`, an SDK's async client) and fall
-back to `await asyncio.to_thread(...)` only for sync-only dependencies. App-group-lifecycle hooks
-that mutate state receive an `AsyncSession` (await ORM calls on it; `session.add(...)` is sync);
-the pure metadata/config/status/validation hooks stay **sync**. Plugin-contributed
+back to `await asyncio.to_thread(...)` only for sync-only dependencies. The pure
+metadata/config/status/validation hooks stay **sync**. Plugin-contributed
 `access.commands` CLI commands run as ordinary Click commands and must drive their own
 `asyncio.run(...)`. The README's plugin section documents this in full.
+
+**Plugins are self-contained: they integrate with Access only through the plugin interface.** A
+plugin never imports `api.operations` or `api.services`, never builds a query, and never touches a
+session — if it needs something Access can do, that becomes a capability on the interface rather
+than an import reaching past it. Concretely, the six async app-group-lifecycle hooks receive an
+`AppGroupLifecycleContext` (`api/plugins/app_group_lifecycle.py`) instead of an `AsyncSession`:
+
+- It is bound to the invoking plugin's id, so plugin code never passes `plugin_id` to a capability
+  call and cannot read or write another plugin's `plugin_data` namespace.
+- It carries the verbs a plugin legitimately needs — `lock`, `find_groups_by_status`,
+  `get_config`/`set_config`/`get_status`/`set_status`, `set_group_description`, and the Okta
+  group-push calls. The module-level equivalents are `_`-private; adding a capability means adding a
+  method here.
+- **The host owns the transaction: a hook must not commit or roll back.** Access commits after the
+  hook returns, and on a hook exception rolls back — which expires the *entire* identity map, so
+  nothing may read ORM state after a hook fires (see the `MissingGreenlet` note under
+  `lazy="raise_on_sql"`).
+- Because of that rollback, `set_status` takes `durable_on_failure`. Pass it for **diagnostics** (a
+  sync status, an error string) that must outlive the plugin's own failure — the host re-applies
+  those in a fresh transaction. Leave it off for **ownership or identity tokens**, which are only
+  sound when committed in the transaction that held the `lock` justifying them; replaying one after
+  the lock released would let two Access groups claim the same external resource.
+
+`examples/plugins/app_group_lifecycle_google` is the reference implementation, and its
+`test_plugin_only_imports_the_access_plugin_interface` pins the boundary.
 
 **Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification
 raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group
