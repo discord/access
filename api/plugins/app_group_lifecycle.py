@@ -238,18 +238,18 @@ class AppGroupLifecycleContext:
 
     def get_config(self, app_or_group: App | AppGroup, config_property_name: str, default: Any | None = None) -> Any:
         """This plugin's configuration value on an app or group."""
-        return get_config_value(app_or_group, config_property_name, self._plugin_id, default)
+        return _get_config_value(app_or_group, config_property_name, self._plugin_id, default)
 
     def set_config(self, app_or_group: App | AppGroup, config_property_name: str, value: Any) -> None:
         """Write this plugin's configuration on an app or group -- e.g. to backfill config inferred
         from the external system during reconciliation. Persisted by the host's post-hook commit and
         discarded if the hook raises."""
-        set_config_value(app_or_group, config_property_name, value, self._plugin_id)
+        _set_config_value(app_or_group, config_property_name, value, self._plugin_id)
         self._session.add(app_or_group)
 
     def get_status(self, app_or_group: App | AppGroup, status_property_name: str, default: Any | None = None) -> Any:
         """This plugin's status value on an app or group."""
-        return get_status_value(app_or_group, status_property_name, self._plugin_id, default)
+        return _get_status_value(app_or_group, status_property_name, self._plugin_id, default)
 
     def set_status(
         self,
@@ -272,7 +272,7 @@ class AppGroupLifecycleContext:
         rollback drops that guarantee, which would let two Access groups claim the same external
         group.
         """
-        set_status_value(app_or_group, status_property_name, value, self._plugin_id)
+        _set_status_value(app_or_group, status_property_name, value, self._plugin_id)
         self._session.add(app_or_group)
         if durable_on_failure:
             entity_id = getattr(app_or_group, "id", None)
@@ -332,7 +332,7 @@ class AppGroupLifecycleContext:
                     logger.info(f"{context}: skipping durable status re-apply, {entity_type} {entity_id} is gone")
                     continue
                 for property_name, value in properties.items():
-                    set_status_value(target, property_name, value, self._plugin_id)
+                    _set_status_value(target, property_name, value, self._plugin_id)
                 self._session.add(target)
             await self._session.commit()
         except Exception:
@@ -376,7 +376,7 @@ class AppGroupLifecycleContext:
     async def create_push_mapping_and_new_group(self, group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
         """Create a push mapping with a new target group name, so Okta creates both its target group
         and the downstream app group and links them in one step. Returns the push mapping id."""
-        return await create_push_mapping_and_new_group(group, okta_app_id, target_group_name)
+        return await _create_push_mapping_and_new_group(group, okta_app_id, target_group_name)
 
     async def create_push_mapping_for_existing_group(
         self, group: AppGroup, okta_app_id: str, external_id_field_name: str, external_id: str
@@ -384,21 +384,21 @@ class AppGroupLifecycleContext:
         """Link an Access group to an already-imported Okta target group by id (the adoption path).
         Raises MissingOktaTargetError if Okta has not imported it yet (defer and retry), or
         AmbiguousOktaTargetError if more than one target matches (a misconfiguration)."""
-        return await create_push_mapping_for_existing_group(group, okta_app_id, external_id_field_name, external_id)
+        return await _create_push_mapping_for_existing_group(group, okta_app_id, external_id_field_name, external_id)
 
     async def discover_existing_push_mapping_and_target_group_external_id(
         self, group: AppGroup, okta_app_id: str, target_group_external_id_field: str
     ) -> tuple[str, str] | None:
         """Find an existing push mapping for this group and recover the external id from the Okta
         target group profile. Returns ``(push_mapping_id, external_id)``, or None if unlinked."""
-        return await discover_existing_push_mapping_and_target_group_external_id(
+        return await _discover_existing_push_mapping_and_target_group_external_id(
             group, okta_app_id, target_group_external_id_field
         )
 
     async def delete_push_mapping(self, okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
         """Delete (unlink) a push mapping. With ``delete_target_group=True`` Okta also deletes the
         downstream target group it created."""
-        await delete_push_mapping(okta_app_id, mapping_id, delete_target_group)
+        await _delete_push_mapping(okta_app_id, mapping_id, delete_target_group)
 
 
 class AppGroupLifecyclePluginSpec:
@@ -826,12 +826,14 @@ def _get_data_for_plugin(plugin_data: dict[str, Any], plugin_id: str) -> AppGrou
     return AppGroupLifecyclePluginData(configuration, status)
 
 
-def get_config_value(
+def _get_config_value(
     app_or_group: App | AppGroup, config_property_name: str, plugin_id: str, default: Any | None = None
 ) -> Any:
     """
     Get a configuration value for a particular app group lifecycle plugin.
-    Should only be called by the plugin itself.
+
+    Host-internal: plugins reach this through ``AppGroupLifecycleContext.get_config``, which binds
+    ``plugin_id`` so a plugin cannot read another plugin's namespace.
 
     Args:
         app_or_group: The app or group to get the configuration value for.
@@ -845,12 +847,13 @@ def get_config_value(
     return _get_data_for_plugin(app_or_group.plugin_data, plugin_id).configuration.get(config_property_name, default)
 
 
-def get_status_value(
+def _get_status_value(
     app_or_group: App | AppGroup, status_property_name: str, plugin_id: str, default: Any | None = None
 ) -> Any:
     """
     Get a status value for a particular app group lifecycle plugin.
-    Should only be called by the plugin itself.
+
+    Host-internal: plugins reach this through ``AppGroupLifecycleContext.get_status``.
 
     Args:
         app_or_group: The app or group to get the status value for.
@@ -864,10 +867,12 @@ def get_status_value(
     return _get_data_for_plugin(app_or_group.plugin_data, plugin_id).status.get(status_property_name, default)
 
 
-def set_status_value(app_or_group: App | AppGroup, status_property_name: str, value: Any, plugin_id: str) -> None:
+def _set_status_value(app_or_group: App | AppGroup, status_property_name: str, value: Any, plugin_id: str) -> None:
     """
-    set a status value for a particular app group lifecycle plugin.
-    Should only be called by the plugin itself.
+    Set a status value for a particular app group lifecycle plugin.
+
+    Host-internal: plugins reach this through ``AppGroupLifecycleContext.set_status``, which also
+    marks the object for persistence and records durable writes for the post-failure replay.
 
     Args:
         app_or_group: The app or group to set the status value for.
@@ -880,11 +885,12 @@ def set_status_value(app_or_group: App | AppGroup, status_property_name: str, va
     app_or_group.plugin_data[plugin_id] = asdict(data)
 
 
-def set_config_value(app_or_group: App | AppGroup, config_property_name: str, value: Any, plugin_id: str) -> None:
+def _set_config_value(app_or_group: App | AppGroup, config_property_name: str, value: Any, plugin_id: str) -> None:
     """
     Set a configuration value for a particular app group lifecycle plugin.
-    Should only be called by the plugin itself (e.g. to backfill config inferred
-    from an external system during reconciliation).
+
+    Host-internal: plugins reach this through ``AppGroupLifecycleContext.set_config`` (e.g. to
+    backfill config inferred from an external system during reconciliation).
 
     Args:
         app_or_group: The app or group to set the configuration value for.
@@ -1190,7 +1196,7 @@ async def _get_okta_target_group_id_by_external_id(external_id_profile_field_nam
     return matches[0].group.id
 
 
-async def create_push_mapping_for_existing_group(
+async def _create_push_mapping_for_existing_group(
     group: AppGroup, okta_app_id: str, external_id_field_name: str, external_id: str
 ) -> str:
     """Link an Access group to an already-imported Okta target group by id (the adoption path).
@@ -1212,14 +1218,14 @@ async def create_push_mapping_for_existing_group(
     return mapping_id
 
 
-async def delete_push_mapping(okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
+async def _delete_push_mapping(okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
     """Delete (unlink) an Okta group push mapping. When delete_target_group is True, Okta also
     deletes the downstream target group it created; otherwise only the mapping is removed and the
     target group is left in place."""
     await okta.delete_group_push_mapping(appId=okta_app_id, mappingId=mapping_id, deleteTargetGroup=delete_target_group)
 
 
-async def create_push_mapping_and_new_group(group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
+async def _create_push_mapping_and_new_group(group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
     """Create a push mapping with a new target group name, so Okta creates both its target group
     AND the downstream app group and links them in one step. Returns the new push mapping id."""
     result = await okta.create_group_push_mapping(
@@ -1231,7 +1237,7 @@ async def create_push_mapping_and_new_group(group: AppGroup, okta_app_id: str, t
     return mapping_id
 
 
-async def discover_existing_push_mapping_and_target_group_external_id(
+async def _discover_existing_push_mapping_and_target_group_external_id(
     group: AppGroup, okta_app_id: str, target_group_external_id_field: str
 ) -> tuple[str, str] | None:
     """Find an existing push mapping for this Access group and recover the external id field (not

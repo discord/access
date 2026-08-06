@@ -10,6 +10,7 @@ This includes tests for:
 """
 
 from dataclasses import asdict
+from unittest.mock import MagicMock
 from datetime import UTC, datetime
 from typing import Any, Generator
 
@@ -33,10 +34,6 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginStatusProperty,
     MissingOktaTargetError,
     _StatusWrite,
-    create_push_mapping_and_new_group,
-    create_push_mapping_for_existing_group,
-    delete_push_mapping,
-    discover_existing_push_mapping_and_target_group_external_id,
     get_app_group_lifecycle_plugin_app_config_properties,
     get_app_group_lifecycle_plugin_app_status_properties,
     get_app_group_lifecycle_plugin_group_config_properties,
@@ -3828,6 +3825,13 @@ _OKTA_APP_ID = "test-okta-app-123"
 _EXTERNAL_ID_FIELD = "googleGroupEmail"
 
 
+def _push_ctx() -> AppGroupLifecycleContext:
+    """A context over a stand-in session: the Okta group-push capabilities do network I/O only and
+    never touch it. Going through the context rather than the module-level helpers keeps the tested
+    surface the one plugins actually use, and covers the delegation."""
+    return AppGroupLifecycleContext(session=MagicMock(), plugin_id="google_group_manager")
+
+
 def _push_source_group(mocker: MockerFixture) -> Any:
     """A minimal stand-in for the Access group a push mapping sources from."""
     group = mocker.Mock()
@@ -3848,7 +3852,7 @@ async def test_create_push_mapping_for_existing_group_links_by_resolved_target(m
         "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
     )
 
-    mapping_id = await create_push_mapping_for_existing_group(
+    mapping_id = await _push_ctx().create_push_mapping_for_existing_group(
         group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
     )
 
@@ -3870,7 +3874,7 @@ async def test_create_push_mapping_for_existing_group_raises_when_target_not_imp
     create = mocker.patch("api.plugins.app_group_lifecycle.okta.create_group_push_mapping")
 
     with pytest.raises(MissingOktaTargetError):
-        await create_push_mapping_for_existing_group(
+        await _push_ctx().create_push_mapping_for_existing_group(
             _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
         )
     create.assert_not_called()
@@ -3889,7 +3893,7 @@ async def test_create_push_mapping_for_existing_group_raises_on_ambiguous_target
     create = mocker.patch("api.plugins.app_group_lifecycle.okta.create_group_push_mapping")
 
     with pytest.raises(AmbiguousOktaTargetError):
-        await create_push_mapping_for_existing_group(
+        await _push_ctx().create_push_mapping_for_existing_group(
             _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
         )
     create.assert_not_called()
@@ -3904,7 +3908,7 @@ async def test_create_push_mapping_and_new_group_creates_by_name(mocker: MockerF
         "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
     )
 
-    mapping_id = await create_push_mapping_and_new_group(group, _OKTA_APP_ID, "platform-security")
+    mapping_id = await _push_ctx().create_push_mapping_and_new_group(group, _OKTA_APP_ID, "platform-security")
 
     assert mapping_id == "map-1"
     create.assert_called_once_with(appId=_OKTA_APP_ID, sourceGroupId="grp-1", targetGroupName="platform-security")
@@ -3922,14 +3926,16 @@ async def test_discover_existing_push_mapping_returns_mapping_id_and_external_id
     tgt.group.profile.actual_instance.additional_properties = {_EXTERNAL_ID_FIELD: "found@test-company.com"}
     mocker.patch("api.plugins.app_group_lifecycle.okta.get_group", return_value=tgt)
 
-    result = await discover_existing_push_mapping_and_target_group_external_id(group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD)
+    result = await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+        group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+    )
 
     assert result == ("map-9", "found@test-company.com")
 
 
 async def test_discover_existing_push_mapping_returns_none_when_no_mapping(mocker: MockerFixture) -> None:
     mocker.patch("api.plugins.app_group_lifecycle.okta.list_group_push_mappings", return_value=[])
-    result = await discover_existing_push_mapping_and_target_group_external_id(
+    result = await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
         _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
     )
     assert result is None
@@ -3940,6 +3946,6 @@ async def test_delete_push_mapping_unlinks_without_deleting_target_by_default(mo
     # callers that also want the target removed pass delete_target_group=True.
     delete = mocker.patch("api.plugins.app_group_lifecycle.okta.delete_group_push_mapping")
 
-    await delete_push_mapping(_OKTA_APP_ID, "map-1")
+    await _push_ctx().delete_push_mapping(_OKTA_APP_ID, "map-1")
 
     delete.assert_called_once_with(appId=_OKTA_APP_ID, mappingId="map-1", deleteTargetGroup=False)
