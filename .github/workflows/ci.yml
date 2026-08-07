@@ -47,8 +47,13 @@ jobs:
         # Fail if uv.lock drifts from pyproject.toml or the environment
         # drifts from uv.lock (e.g. a dependency edit without `uv lock`).
         run: uv sync --locked --check
+      # No path argument, so this picks up both roots in `testpaths`: the api suite
+      # under tests/ and the example plugins' own tests. The plugin tests stub their
+      # third-party SDKs, so they need no plugin installed and no extra dependency.
       - name: Test (sqlite)
-        run: uv run pytest -s tests
+        run: uv run pytest -s
+      # Only the DB-backed suite is worth re-running against postgres; the plugin
+      # tests never touch a session, hence the explicit path here.
       - name: Test (postgresql)
         run: uv run pytest -s tests
         env:
