@@ -169,7 +169,7 @@ notify: install-plugins
 # at the same migrated instance/access.db the dev server uses, rather than
 # whatever DATABASE_URI .env happens to set.
 .PHONY: sync-app-groups
-sync-app-groups: .env dev
+sync-app-groups: .env install-plugins
 	set -a && . ./.env && set +a && \
 	DATABASE_URI=$(LOCAL_DB_URI) uv run access sync-app-groups
 
