@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, AsyncGenerator, Generator
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 import itsdangerous
@@ -31,6 +32,14 @@ from tests.factories import OktaUserFactory
 
 TEST_SECRET_KEY = "test-oidc-secret-key-min-32-bytes-long!!"
 TEST_OIDC_USER_EMAIL = "oidc-user@example.com"
+# The OIDC login bounce is only served to top-level browser navigation —
+# `fetch` cannot complete an interactive IdP round trip. These mirror what a
+# browser sends for each case; see `_is_document_navigation`.
+NAVIGATION_HEADERS = {
+    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "sec-fetch-mode": "navigate",
+}
+XHR_HEADERS = {"accept": "*/*", "sec-fetch-mode": "cors"}
 STUB_OIDC_CLIENT_SECRETS = {
     "web": {
         "client_id": "test-client",
@@ -343,14 +352,24 @@ async def test_staging_app_exposes_api_docs_when_enabled(oidc_app_with_docs: Fas
     assert oidc_app_with_docs.openapi_url == "/api/openapi.json"
 
 
-async def test_unauthenticated_protected_endpoint_redirects_to_oidc_login(
-    oidc_client: httpx.AsyncClient,
-) -> None:
-    response = await oidc_client.get("/api/users")
+async def test_unauthenticated_xhr_returns_401(oidc_client: httpx.AsyncClient) -> None:
+    # `fetch` can't complete an interactive IdP round trip, so it gets a 401
+    # pointing at the login endpoint and navigates the window there itself.
+    response = await oidc_client.get("/api/users", headers=XHR_HEADERS)
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["status"] == 401
+    assert body["login_url"] == "/oidc/login"
+    assert "location" not in response.headers
+
+
+async def test_unauthenticated_api_navigation_redirects_to_oidc_login(oidc_client: httpx.AsyncClient) -> None:
+    # A browser pointed at an `/api/*` page — `/api/docs` when ENABLE_API_DOCS
+    # is on — is still a navigation, so it gets the login bounce.
+    response = await oidc_client.get("/api/users", headers=NAVIGATION_HEADERS)
     assert response.status_code == 307
-    location = response.headers["location"]
-    assert location.startswith("/oidc/login?next=")
-    assert "next=%2Fapi%2Fusers" in location
+    assert "next=%2Fapi%2Fusers" in response.headers["location"]
 
 
 async def test_oidc_login_is_in_allowlist(oidc_client: httpx.AsyncClient) -> None:
@@ -371,18 +390,26 @@ async def test_oidc_logout_is_in_allowlist(oidc_client: httpx.AsyncClient) -> No
     assert not response.headers["location"].startswith("/oidc/login")
 
 
-async def test_unmapped_api_path_redirects_through_auth_gate(oidc_client: httpx.AsyncClient) -> None:
-    response = await oidc_client.get("/api/this-endpoint-does-not-exist")
-    assert response.status_code == 307
-    assert response.headers["location"].startswith("/oidc/login?next=")
+async def test_unmapped_api_path_goes_through_auth_gate(oidc_client: httpx.AsyncClient) -> None:
+    response = await oidc_client.get("/api/this-endpoint-does-not-exist", headers=XHR_HEADERS)
+    assert response.status_code == 401
 
 
 async def test_unauthenticated_spa_path_redirects_to_oidc_login(oidc_client: httpx.AsyncClient) -> None:
-    response = await oidc_client.get("/groups/foo")
+    response = await oidc_client.get("/groups/foo", headers=NAVIGATION_HEADERS)
     assert response.status_code == 307
     location = response.headers["location"]
     assert location.startswith("/oidc/login?next=")
     assert "next=%2Fgroups%2Ffoo" in location
+
+
+async def test_unauthenticated_spa_path_keeps_query_string(oidc_client: httpx.AsyncClient) -> None:
+    # Filters, search and pagination live in the query string, so a shared deep
+    # link is only half preserved without it.
+    response = await oidc_client.get("/roles", params={"q": "painter", "page": "2"}, headers=NAVIGATION_HEADERS)
+    assert response.status_code == 307
+    next_value = parse_qs(urlparse(response.headers["location"]).query)["next"][0]
+    assert next_value == "/roles?q=painter&page=2"
 
 
 # ---------------------------------------------------------------------------
@@ -392,10 +419,12 @@ async def test_unauthenticated_spa_path_redirects_to_oidc_login(oidc_client: htt
 
 @pytest.mark.parametrize(
     "next_value",
-    ["/dashboard", "/groups/foo", "/api/users/me", "/"],
+    ["/dashboard", "/groups/foo", "/api/users/me", "/", "/roles?q=painter&page=2", "/groups/foo#members"],
 )
 async def test_oidc_login_stores_safe_next(oidc_client: httpx.AsyncClient, next_value: str) -> None:
-    response = await oidc_client.get(f"/oidc/login?next={next_value}")
+    # `params=` so `next` is percent-encoded — an unencoded `&` or `#` would be
+    # parsed as part of the login URL rather than as part of `next`.
+    response = await oidc_client.get("/oidc/login", params={"next": next_value})
     assert response.status_code == 302
     session = _read_session_from_set_cookie(response.headers.get("set-cookie", ""))
     assert session is not None
@@ -415,6 +444,9 @@ async def test_oidc_login_stores_safe_next(oidc_client: httpx.AsyncClient, next_
         "data:text/html,<script>alert(1)</script>",
         "",
         "relative/path",
+        # Bouncing back into the auth endpoints undoes or loops the login.
+        "/oidc/logout",
+        "/oidc/login?next=%2F",
     ],
 )
 async def test_oidc_login_drops_unsafe_next(oidc_client: httpx.AsyncClient, next_value: str) -> None:
@@ -442,13 +474,23 @@ async def test_oidc_authorize_defaults_to_root_when_no_next(oidc_client: httpx.A
     assert response.headers["location"] == "/"
 
 
+async def test_oidc_authorize_restores_next_with_query_string(oidc_client: httpx.AsyncClient) -> None:
+    _set_session(oidc_client, {"oidc_next": "/roles?q=painter&page=2"})
+    response = await oidc_client.get("/oidc/authorize")
+    assert response.status_code in (302, 307)
+    assert response.headers["location"] == "/roles?q=painter&page=2"
+
+
 # ---------------------------------------------------------------------------
 # Happy-path login
 # ---------------------------------------------------------------------------
 
 
 async def test_full_login_flow(oidc_client: httpx.AsyncClient, seed_oidc_user: OktaUser) -> None:
-    initial = await oidc_client.get("/api/users")
+    # The scenario from issue #566: someone follows a link to a deep page while
+    # signed out and should land on that same page once the IdP is done.
+    deep_link = "/roles?q=painter&page=2"
+    initial = await oidc_client.get(deep_link, headers=NAVIGATION_HEADERS)
     assert initial.status_code == 307
     redirect_target = initial.headers["location"]
     assert redirect_target.startswith("/oidc/login?next=")
@@ -459,9 +501,9 @@ async def test_full_login_flow(oidc_client: httpx.AsyncClient, seed_oidc_user: O
 
     callback = await oidc_client.get("/oidc/authorize")
     assert callback.status_code in (302, 307)
-    assert callback.headers["location"] == "/api/users"
+    assert callback.headers["location"] == deep_link
 
-    final = await oidc_client.get("/api/users")
+    final = await oidc_client.get(deep_link, headers=NAVIGATION_HEADERS)
     assert final.status_code == 200
 
 
@@ -546,7 +588,7 @@ async def test_post_logout_request_redirects_back_to_login(oidc_client: httpx.As
     assert logout.status_code in (302, 307)
 
     oidc_client.cookies.clear()
-    response = await oidc_client.get("/api/users")
+    response = await oidc_client.get("/groups/foo", headers=NAVIGATION_HEADERS)
     assert response.status_code == 307
     assert response.headers["location"].startswith("/oidc/login?next=")
 

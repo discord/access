@@ -57,6 +57,17 @@ class OIDCRedirectRequired(Exception):
         super().__init__(f"OIDC login required (next={next_path!r})")
 
 
+def _requested_path(request: Request) -> str:
+    """The path the caller asked for, query string included.
+
+    The SPA keeps list filters, search terms, sort order and pagination in the
+    query string, so those are the shareable part of a deep link — dropping
+    them lands the user on an unfiltered page after login.
+    """
+    query = request.url.query
+    return f"{request.url.path}?{query}" if query else request.url.path
+
+
 async def get_current_user_id(request: Request, db: DbSession) -> str:
     """Resolve the current user id, raising 403 if unauthenticated."""
     if settings.ENV in ("development", "test"):
@@ -94,9 +105,11 @@ async def get_current_user_id(request: Request, db: DbSession) -> str:
     if settings.OIDC_CLIENT_SECRETS:
         userinfo = request.session.get("userinfo") if hasattr(request, "session") else None
         if not userinfo or "email" not in userinfo:
-            # Browser flow: the SPA should follow the 307 to the OIDC login
-            # endpoint, which kicks off the authorization-code redirect.
-            raise OIDCRedirectRequired(next_path=request.url.path)
+            # Browser navigation gets a 307 to the OIDC login endpoint, which
+            # kicks off the authorization-code redirect and returns the user to
+            # `next_path` afterwards. `/api/*` callers get a 401 instead — see
+            # `oidc_redirect_handler`.
+            raise OIDCRedirectRequired(next_path=_requested_path(request))
         user = await _lookup_user_by_email(db, userinfo["email"])
         request.state.current_user_id = user.id
         if settings.FASTAPI_SENTRY_DSN:
