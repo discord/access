@@ -15,10 +15,11 @@ from __future__ import annotations
 import asyncio
 import functools
 import uuid
-from typing import Any, Callable, List, TypeVar, cast
+from typing import Any, Callable, TypeVar, cast
 
 import click
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import selectinload
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -376,7 +377,13 @@ async def notify(owner: bool, role_owner: bool) -> None:
         await expiring_access_notifications_user()
 
 
-async def _sync_all_app_groups() -> None:
+async def _sync_all_app_groups() -> int:
+    """Invoke the `sync_all_groups` hook once per app with a lifecycle plugin
+    configured. Returns the number of apps that failed to sync.
+
+    Each app is loaded, handed to its plugin, and committed as its own unit of work so
+    one app's failure can't strand the apps after it.
+    """
     from api.extensions import db
     from api.models import App
     from api.plugins._async_dispatch import run_hooks_to_completion
@@ -384,49 +391,84 @@ async def _sync_all_app_groups() -> None:
 
     click.echo("Starting app group lifecycle plugin sync")
 
-    apps: List[App] = list(
-        (
-            await db.session.scalars(
-                select(App).where(App.deleted_at.is_(None)).where(App.app_group_lifecycle_plugin.isnot(None))
-            )
-        ).all()
-    )
+    # Scan for plain column values rather than ORM instances. Rolling back a failed app
+    # below expires *every* instance in the session's identity map -- `dirty_only` is
+    # False for a top-level rollback, and `expire_on_commit=False` does not apply -- and
+    # re-reading an expired attribute on an AsyncSession raises MissingGreenlet instead
+    # of quietly refreshing. Holding only strings across that boundary keeps the loop's
+    # own bookkeeping (and its error messages) independent of session state.
+    # Ordered by name so a run's sequence, and hence its output, is reproducible.
+    app_rows = (
+        await db.session.execute(
+            select(App.id, App.name, App.app_group_lifecycle_plugin)
+            .where(App.deleted_at.is_(None))
+            .where(App.app_group_lifecycle_plugin.isnot(None))
+            .order_by(App.name)
+        )
+    ).all()
 
-    if len(apps) == 0:
+    if len(app_rows) == 0:
         click.echo("No apps with app group lifecycle plugins configured")
-        return
+        return 0
 
-    click.echo(f"Found {len(apps)} app(s) with plugins configured")
+    click.echo(f"Found {len(app_rows)} app(s) with plugins configured")
 
     hook = get_app_group_lifecycle_hook()
-    for app in apps:
-        click.echo(f"Syncing app '{app.name}' (plugin: {app.app_group_lifecycle_plugin})")
+    skipped = 0
+    failures = 0
+    for app_id, app_name, plugin_id in app_rows:
+        click.echo(f"Syncing app '{app_name}' (plugin: {plugin_id})")
+
+        # Eager-load the groups the `sync_all_groups` hookspec promises: every App
+        # relationship is lazy="raise_on_sql", so a plugin reading them off an
+        # unloaded App raises instead of querying. This loads per iteration rather
+        # than once up front because a preceding app's rollback expires the whole
+        # identity map, which would leave later apps' collections unloaded again.
+        app = (
+            await db.session.scalars(select(App).where(App.id == app_id).options(selectinload(App.active_app_groups)))
+        ).one_or_none()
+        if app is None:
+            # Deleted between the scan above and now; there is nothing left to sync.
+            skipped += 1
+            click.echo(f"  - Skipped app '{app_name}': no longer present")
+            continue
+
         # App-group-lifecycle hooks are native async: awaited directly with the AsyncSession,
         # no run_sync bridge. run_hooks_to_completion (asyncio.wait) drives the sync_all_groups
         # hook and returns any plugin exceptions rather than raising.
         _, exceptions = await run_hooks_to_completion(
-            hook.sync_all_groups(session=db.session, app=app, plugin_id=app.app_group_lifecycle_plugin),
-            context=f"sync_all_groups for app '{app.name}'",
+            hook.sync_all_groups(session=db.session, app=app, plugin_id=plugin_id),
+            context=f"sync_all_groups for app '{app_name}'",
         )
         if exceptions:
             await db.session.rollback()
-            click.echo(f"  ✗ Failed to sync app '{app.name}': {exceptions[0]}", err=True)
+            failures += 1
+            click.echo(f"  ✗ Failed to sync app '{app_name}': {exceptions[0]}", err=True)
             continue
         try:
             await db.session.commit()
-            click.echo(f"  ✓ Synced app '{app.name}'")
+            click.echo(f"  ✓ Synced app '{app_name}'")
         except Exception as e:
             await db.session.rollback()
-            click.echo(f"  ✗ Failed to sync app '{app.name}': {e}", err=True)
+            failures += 1
+            click.echo(f"  ✗ Failed to sync app '{app_name}': {e}", err=True)
 
-    click.echo("Completed app group lifecycle plugin sync")
+    click.echo(
+        f"Completed app group lifecycle plugin sync with {failures} failures and {skipped} skipped, out of {len(app_rows)} total"
+    )
+    return failures
 
 
 @cli.command("sync-app-groups")
 @_with_app_context
 async def sync_app_groups() -> None:
     """Invoke the periodic group-sync hook for all apps with app group lifecycle plugins configured."""
-    await _sync_all_app_groups()
+    failures = await _sync_all_app_groups()
+    if failures:
+        # Every app is attempted regardless, but the command must still exit non-zero:
+        # this runs as a periodic job, so a run that left apps unreconciled has to be
+        # visible as a failed run rather than only as stderr output.
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

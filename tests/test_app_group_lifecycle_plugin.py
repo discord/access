@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.config import settings
 from api.extensions import Db
-from api.models import AppGroup, OktaUser, OktaUserGroupMember
+from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecyclePluginConfigProperty,
@@ -66,6 +66,20 @@ class DummyPlugin:
         self.group_deleted_calls: list[str] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
         self.members_removed_calls: list[tuple[str, list[str]]] = []
+        # (app id, ["group name:owning app name", ...]) per sync_all_groups call.
+        self.sync_all_groups_calls: list[tuple[str, list[str]]] = []
+        # App names whose sync_all_groups should raise, so tests can exercise the
+        # caller's per-app error isolation.
+        self.sync_all_groups_failures: set[str] = set()
+        # Group ids whose membership hooks should raise, so tests can exercise the
+        # callers' per-group error isolation when one operation affects several groups.
+        self.members_added_failures: set[str] = set()
+        self.members_removed_failures: set[str] = set()
+        # Group names / ids whose single-fire hooks should raise, so tests can exercise that a
+        # failing plugin doesn't take the surrounding operation or request down with it.
+        self.group_created_failures: set[str] = set()
+        self.group_updated_failures: set[str] = set()
+        self.group_deleted_failures: set[str] = set()
 
     @hookimpl
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -198,6 +212,8 @@ class DummyPlugin:
         # resolves without emitting SQL; otherwise it raises here and the recorded-
         # calls assertion fails. Guards that eager-load across every op path.
         _ = group.app.name
+        if group.name in self.group_created_failures:
+            raise RuntimeError(f"group_created failed for {group.name}")
         self.group_created_calls.append(group.id)
         self.group_created_configs.append((group.plugin_data or {}).get(self.ID, {}).get("configuration", {}))
 
@@ -209,6 +225,8 @@ class DummyPlugin:
             return
         (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
+        if group.id in self.group_updated_failures:
+            raise RuntimeError(f"group_updated failed for {group.id}")
         self.group_updated_calls.append((group.id, old_name, old_description))
 
     @hookimpl
@@ -217,6 +235,8 @@ class DummyPlugin:
             return
         (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
+        if group.id in self.group_deleted_failures:
+            raise RuntimeError(f"group_deleted failed for {group.id}")
         self.group_deleted_calls.append(group.id)
 
     @hookimpl
@@ -226,6 +246,9 @@ class DummyPlugin:
         if plugin_id is not None and plugin_id != self.ID:
             return
         (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        _ = group.app.name  # exercise group.app eager-load (see group_created)
+        if group.id in self.members_added_failures:
+            raise RuntimeError(f"group_members_added failed for {group.id}")
         self.members_added_calls.append((group.id, [m.id for m in members]))
 
     @hookimpl
@@ -235,7 +258,24 @@ class DummyPlugin:
         if plugin_id is not None and plugin_id != self.ID:
             return
         (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        _ = group.app.name  # exercise group.app eager-load (see group_created)
+        if group.id in self.members_removed_failures:
+            raise RuntimeError(f"group_members_removed failed for {group.id}")
         self.members_removed_calls.append((group.id, [m.id for m in members]))
+
+    @hookimpl
+    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+        if plugin_id is not None and plugin_id != self.ID:
+            return
+        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        # Walk the app's groups the way a bulk-reconcile plugin does. Both
+        # App.active_app_groups and AppGroup.app are lazy="raise_on_sql", so this
+        # raises unless the caller handed over an App with the collection loaded.
+        groups = app.active_app_groups
+        described = [f"{group.name}:{group.app.name}" for group in groups]
+        if app.name in self.sync_all_groups_failures:
+            raise RuntimeError(f"sync failed for {app.name}")
+        self.sync_all_groups_calls.append((app.id, described))
 
 
 @pytest.fixture
@@ -1917,6 +1957,355 @@ class TestPluginMembershipHooks:
         await ModifyRoleGroups(role_group=role_group.id, groups_to_remove=[test_group.id], sync_to_okta=False).execute()
         assert test_plugin.members_removed_calls == [(test_group.id, [user.id])]
 
+    async def _build_two_group_role_scenario(
+        self, db: Db, mocker: MockerFixture, suffix: str
+    ) -> tuple[str, str, str, str]:
+        """An app with two plugin-managed groups, plus a role and a user, so that a single
+        operation affects both groups and the callers' per-group hook isolation is exercised.
+
+        Returns plain ids, not ORM instances, for the same reason the operations under test now hold
+        ids: the hook failure these tests inject rolls the session back, which expires every
+        instance in the identity map, so a `group_a.id` read *after* the operation would raise
+        MissingGreenlet from the assertion itself rather than reporting the behavior.
+        """
+        test_app = AppFactory.build(
+            name=f"TestApp_Isolation{suffix}",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group_a = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}A")
+        group_b = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}B")
+        role_group = RoleGroupFactory.build(name=f"Role-Isolation{suffix}", is_managed=True)
+        user = OktaUserFactory.build()
+        db.session.add_all([test_app, group_a, group_b, role_group, user])
+        await db.session.commit()
+
+        mocker.patch.object(okta, "add_user_to_group", return_value=None)
+        mocker.patch.object(okta, "remove_user_from_group", return_value=None)
+        return role_group.id, group_a.id, group_b.id, user.id
+
+    # A failing plugin must not strand the groups queued behind it. invoke_app_group_lifecycle_hook
+    # rolls the session back when a plugin raises, and a top-level rollback expires the *entire*
+    # identity map, so these loops used to hand the next iteration an expired group whose `app` read
+    # raised straight out of the operation -- meaning one bad plugin took down every group behind it.
+    #
+    # Each test fails group A on one run and group B on the next. Iteration follows dict insertion
+    # order, which follows an unordered query, so failing only the group that happens to come second
+    # would let the regression pass by luck.
+
+    async def test_modify_group_users_removal_hook_failure_does_not_strand_other_groups(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """modify_group_users role-member removal cascade: one group's failure is isolated."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        for run, failing in enumerate(("A", "B")):
+            role_id, group_a_id, group_b_id, user_id = await self._build_two_group_role_scenario(
+                db, mocker, f"UsrRm{run}"
+            )
+            groups = {"A": group_a_id, "B": group_b_id}
+            await ModifyRoleGroups(
+                role_group=role_id, groups_to_add=[group_a_id, group_b_id], sync_to_okta=False
+            ).execute()
+            await ModifyGroupUsers(group=role_id, members_to_add=[user_id], sync_to_okta=False).execute()
+
+            test_plugin.members_removed_calls.clear()
+            test_plugin.members_removed_failures = {groups[failing]}
+            survivor_id = groups["B" if failing == "A" else "A"]
+
+            await ModifyGroupUsers(group=role_id, members_to_remove=[user_id], sync_to_okta=False).execute()
+
+            assert test_plugin.members_removed_calls == [(survivor_id, [user_id])], (
+                f"group {failing} failing stranded the other group's group_members_removed hook"
+            )
+            test_plugin.members_removed_failures.clear()
+
+    async def test_modify_group_users_add_hook_failure_does_not_strand_other_groups(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """modify_group_users role-member add cascade: one group's failure is isolated."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        for run, failing in enumerate(("A", "B")):
+            role_id, group_a_id, group_b_id, user_id = await self._build_two_group_role_scenario(
+                db, mocker, f"UsrAdd{run}"
+            )
+            groups = {"A": group_a_id, "B": group_b_id}
+            await ModifyRoleGroups(
+                role_group=role_id, groups_to_add=[group_a_id, group_b_id], sync_to_okta=False
+            ).execute()
+
+            test_plugin.members_added_calls.clear()
+            test_plugin.members_added_failures = {groups[failing]}
+            survivor_id = groups["B" if failing == "A" else "A"]
+
+            await ModifyGroupUsers(group=role_id, members_to_add=[user_id], sync_to_okta=False).execute()
+
+            assert test_plugin.members_added_calls == [(survivor_id, [user_id])], (
+                f"group {failing} failing stranded the other group's group_members_added hook"
+            )
+            test_plugin.members_added_failures.clear()
+
+    async def test_modify_role_groups_removal_hook_failure_does_not_strand_other_groups(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """modify_role_groups group-removal cascade: one group's failure is isolated."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        for run, failing in enumerate(("A", "B")):
+            role_id, group_a_id, group_b_id, user_id = await self._build_two_group_role_scenario(
+                db, mocker, f"RoleRm{run}"
+            )
+            groups = {"A": group_a_id, "B": group_b_id}
+            await ModifyRoleGroups(
+                role_group=role_id, groups_to_add=[group_a_id, group_b_id], sync_to_okta=False
+            ).execute()
+            await ModifyGroupUsers(group=role_id, members_to_add=[user_id], sync_to_okta=False).execute()
+
+            test_plugin.members_removed_calls.clear()
+            test_plugin.members_removed_failures = {groups[failing]}
+            survivor_id = groups["B" if failing == "A" else "A"]
+
+            # Both groups leave the role in one operation, so the hook fires once per group.
+            await ModifyRoleGroups(
+                role_group=role_id, groups_to_remove=[group_a_id, group_b_id], sync_to_okta=False
+            ).execute()
+
+            assert test_plugin.members_removed_calls == [(survivor_id, [user_id])], (
+                f"group {failing} failing stranded the other group's group_members_removed hook"
+            )
+            test_plugin.members_removed_failures.clear()
+
+    async def test_modify_role_groups_add_hook_failure_does_not_strand_other_groups(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """modify_role_groups group-add cascade: one group's failure is isolated."""
+        from api.operations import ModifyGroupUsers, ModifyRoleGroups
+
+        for run, failing in enumerate(("A", "B")):
+            role_id, group_a_id, group_b_id, user_id = await self._build_two_group_role_scenario(
+                db, mocker, f"RoleAdd{run}"
+            )
+            groups = {"A": group_a_id, "B": group_b_id}
+            # Member joins the role first, so attaching the groups grants first access to both.
+            await ModifyGroupUsers(group=role_id, members_to_add=[user_id], sync_to_okta=False).execute()
+
+            test_plugin.members_added_calls.clear()
+            test_plugin.members_added_failures = {groups[failing]}
+            survivor_id = groups["B" if failing == "A" else "A"]
+
+            await ModifyRoleGroups(
+                role_group=role_id, groups_to_add=[group_a_id, group_b_id], sync_to_okta=False
+            ).execute()
+
+            assert test_plugin.members_added_calls == [(survivor_id, [user_id])], (
+                f"group {failing} failing stranded the other group's group_members_added hook"
+            )
+            test_plugin.members_added_failures.clear()
+
+    # The single-fire hook call sites have the same hazard as the loops above, one frame out: the
+    # rollback expires the caller's own group, and the very next statement reads it. A plugin that
+    # raises would take the whole operation (or request) down with it.
+
+    async def test_create_group_survives_failing_plugin(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """CreateGroup re-reads `self.group.id` after firing group_created, to load the group for
+        its audit log. A failing plugin must not turn a successful create into MissingGreenlet."""
+        from api.operations import CreateGroup
+
+        test_app = AppFactory.build(
+            name="TestApp_CreateSurvives",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        db.session.add(test_app)
+        await db.session.commit()
+
+        group_name = (
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}CreateSurvives"
+        )
+        mocker.patch.object(okta, "create_group", return_value=mocker.Mock(id="okta-create-survives"))
+        test_plugin.group_created_failures = {group_name}
+
+        # Must not raise: the plugin failure is logged and swallowed, the group is still created.
+        await CreateGroup(
+            group=AppGroupFactory.build(app_id=test_app.id, name=group_name, is_managed=True),
+        ).execute()
+
+        created = (await db.session.scalars(select(AppGroup).where(AppGroup.name == group_name))).one_or_none()
+        assert created is not None
+        assert test_plugin.group_created_calls == []  # the hook raised before recording
+
+    async def test_put_group_survives_failing_plugin(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """PUT /groups/{id} reads `group.id` after firing group_updated, to apply tags and re-load
+        the response body. A failing plugin must not turn a successful PUT into a 500."""
+        # No underscore in the app name: this goes through the router, which validates the derived
+        # group name against ACCESS_CONFIG's `^[A-Z][A-Za-z0-9-]*$` pattern.
+        test_app = AppFactory.build(
+            name="TestAppPutSurvives",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        test_group = AppGroupFactory.build(app_id=test_app.id, name=f"{prefix}Before", description="Unchanged")
+        db.session.add_all([test_app, test_group])
+        await db.session.commit()
+
+        mocker.patch.object(okta, "update_group")
+        test_plugin.group_updated_failures = {test_group.id}
+
+        response = await client.put(
+            url_for("api-groups.group_by_id", group_id=test_group.id),
+            json={
+                "type": "app_group",
+                "name": f"{prefix}After",
+                "description": "Unchanged",
+                "app_id": test_group.app_id,
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["name"] == f"{prefix}After"
+        assert test_plugin.group_updated_calls == []  # the hook raised before recording
+
+    # The call sites below read ORM state after a hook fires too, and were missed when this was
+    # being fixed one site at a time. They are covered here because the SAVEPOINT is a single
+    # host-side fix rather than a per-call-site convention: whatever fires a hook is protected,
+    # including sites nobody enumerated. Each of these was a reproducible 500 (or a
+    # MissingGreenlet out of the operation) before the savepoint.
+
+    async def test_modify_group_type_survives_a_failing_group_deleted(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """ModifyGroupType fires group_deleted while converting away from an app group, then
+        reads group.id on the very next statement to clear the app tag maps."""
+        test_app = AppFactory.build(
+            name="TestAppConvAway",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        test_group = AppGroupFactory.build(app_id=test_app.id, name=f"{prefix}Conv", description="Unchanged")
+        db.session.add_all([test_app, test_group])
+        await db.session.commit()
+        group_id = test_group.id
+
+        mocker.patch.object(okta, "update_group")
+        test_plugin.group_deleted_failures = {group_id}
+
+        response = await client.put(
+            url_for("api-groups.group_by_id", group_id=group_id),
+            json={"type": "okta_group", "name": "PlainConvGroup", "description": "Unchanged"},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["type"] == "okta_group"
+        assert test_plugin.group_deleted_calls == []  # the hook raised before recording
+
+    async def test_modify_group_type_survives_a_failing_group_created(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """ModifyGroupType fires group_created when converting *into* an app group, then reads
+        group.type for its audit log and returns the instance. Reachable from CreateApp, which
+        leaves fire_created_hook at its default."""
+        from api.operations import ModifyGroupType
+
+        test_app = AppFactory.build(
+            name="TestAppConvInto",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group_name = f"{prefix}Into"
+        test_group = OktaGroupFactory.build(name=group_name, description="Unchanged")
+        actor = OktaUserFactory.build()
+        db.session.add_all([test_app, test_group, actor])
+        await db.session.commit()
+
+        mocker.patch.object(okta, "update_group")
+        test_plugin.group_created_failures = {group_name}
+
+        # Must not raise: the plugin failure is logged and swallowed, the conversion still lands.
+        converted = await ModifyGroupType(
+            group=test_group.id,
+            group_changes=AppGroup(app_id=test_app.id, is_owner=False),
+            current_user_id=actor.id,
+        ).execute()
+
+        assert converted.type == "app_group"
+        assert test_plugin.group_created_calls == []  # the hook raised before recording
+
+    async def test_app_rename_survives_a_failing_group_updated(
+        self, client: AsyncClient, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """Renaming an app loops ModifyGroupDetails over every one of its groups, and that
+        operation reads self.group.name right after its own group_updated fire. A failure part
+        way through used to 500 and leave the app renamed with only some groups renamed."""
+        test_app = AppFactory.build(
+            name="TestAppRename",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        owner_group = AppGroupFactory.build(
+            app_id=test_app.id, is_owner=True, name=f"{prefix}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        )
+        group_a = AppGroupFactory.build(app_id=test_app.id, name=f"{prefix}Aaa")
+        group_b = AppGroupFactory.build(app_id=test_app.id, name=f"{prefix}Bbb")
+        db.session.add_all([test_app, owner_group, group_a, group_b])
+        await db.session.commit()
+        app_id = test_app.id
+        # Fail every group's hook, so whichever the loop reaches first cannot be the only one
+        # that matters and no group is left unrenamed by luck of iteration order.
+        test_plugin.group_updated_failures = {owner_group.id, group_a.id, group_b.id}
+
+        mocker.patch.object(okta, "update_group")
+
+        response = await client.put(
+            url_for("api-apps.app_by_id", app_id=app_id),
+            json={"name": "TestAppRenamed", "description": ""},
+        )
+
+        assert response.status_code == 200, response.text
+        new_prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}TestAppRenamed{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        renamed = sorted(
+            g.name for g in (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == app_id))).all()
+        )
+        assert renamed == [f"{new_prefix}Aaa", f"{new_prefix}Bbb", f"{new_prefix}Owners"], (
+            f"the rename stopped part way through: {renamed}"
+        )
+
+    async def test_operation_returns_a_usable_instance_after_a_failing_hook(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """ModifyGroupUsers returns the group it operated on. A caller reading that instance is
+        the same post-hook read one frame out, so the operation's return value has to survive a
+        plugin failure too."""
+        from api.operations import ModifyGroupUsers
+
+        test_app = AppFactory.build(
+            name="TestAppReturn",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        test_group = AppGroupFactory.build(app_id=test_app.id, name=f"{prefix}Return", is_managed=True)
+        user = OktaUserFactory.build()
+        db.session.add_all([test_app, test_group, user])
+        await db.session.commit()
+        group_id = test_group.id
+        test_plugin.members_added_failures = {group_id}
+
+        returned = await ModifyGroupUsers(group=group_id, members_to_add=[user.id], sync_to_okta=False).execute()
+
+        assert returned.id == group_id
+        assert returned.name == f"{prefix}Return"
+        assert test_plugin.members_added_calls == []  # the hook raised before recording
+
     async def test_role_member_removed_but_has_redundant_access_via_another_role(
         self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
     ) -> None:
@@ -2236,6 +2625,112 @@ class TestPluginMembershipHooks:
 
         # Assert: Hook should NOT be called because user already had access
         assert len(test_plugin.members_added_calls) == 0
+
+
+class TestSyncAllGroupsHook:
+    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the
+    only caller of the `sync_all_groups` hook.
+
+    The hook is handed a whole `App` rather than one group, so these cover the two
+    things that are only true of a batch caller: the App must arrive with the
+    relationships the hookspec promises loaded, and one app's failure must not
+    strand the apps after it.
+    """
+
+    @staticmethod
+    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> App:
+        test_app = AppFactory.build(name=name, app_group_lifecycle_plugin=DummyPlugin.ID)
+        db.session.add(test_app)
+        await db.session.flush()
+        for suffix in group_suffixes:
+            db.session.add(
+                AppGroupFactory.build(
+                    app_id=test_app.id,
+                    name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
+                )
+            )
+        await db.session.commit()
+        return test_app
+
+    async def test_hook_receives_app_with_groups_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Every App relationship is lazy="raise_on_sql", so a plugin reading
+        # app.active_app_groups (the natural way to bulk reconcile) raises
+        # InvalidRequestError unless the caller eager-loaded it.
+        from api.cli import _sync_all_app_groups
+
+        test_app = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 0
+        # Ordered by AppGroup.name, and each group's .app resolves off the identity map.
+        assert test_plugin.sync_all_groups_calls == [
+            (test_app.id, ["App-SyncApp-Alpha:SyncApp", "App-SyncApp-Beta:SyncApp"])
+        ]
+
+    async def test_apps_after_a_failing_app_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Rolling back the failed app expires every instance in the identity map, so a
+        # graph loaded before the loop is unusable afterwards: reading a column raises
+        # MissingGreenlet (no greenlet for the implicit refresh) and reading a
+        # relationship raises InvalidRequestError again. Both must be impossible here.
+        from api.cli import _sync_all_app_groups
+
+        await self._add_app_with_groups(db, "SyncAppA", ["One"])
+        app_b = await self._add_app_with_groups(db, "SyncAppB", ["Two"])
+        test_plugin.sync_all_groups_failures.add("SyncAppA")
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 1
+        assert test_plugin.sync_all_groups_calls == [(app_b.id, ["App-SyncAppB-Two:SyncAppB"])]
+
+    async def test_apps_without_a_plugin_are_not_synced(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # The Access app seeded by the db fixture has no lifecycle plugin configured.
+        from api.cli import _sync_all_app_groups
+
+        db.session.add(AppFactory.build(name="NoPluginApp"))
+        await db.session.commit()
+
+        failures = await _sync_all_app_groups()
+
+        assert failures == 0
+        assert test_plugin.sync_all_groups_calls == []
+
+    # The two below cover the command wrapper rather than the helper: the failure count has to
+    # reach the process exit status, or a cronjob run that reconciled nothing still reports
+    # success. That is the one deliberate behavior change in this command, so it gets a test.
+    #
+    # These call the command's async body (`sync_app_groups.callback.__wrapped__`) rather than
+    # driving click.testing.CliRunner. CliRunner is synchronous, so invoking it from an async
+    # test means `_with_app_context` calls asyncio.run() on another thread's event loop while
+    # the test's async engine is bound to this one. SQLAlchemy's asyncio extension requires an
+    # engine be used from the loop that created it, so that shape is unsound whether or not it
+    # happens to pass on a given driver. `raise SystemExit` propagating out of asyncio.run to
+    # Click is Python's behavior, not this repo's; what needs guarding is the `if failures`.
+
+    async def test_command_exits_non_zero_when_an_app_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
+        from api.cli import sync_app_groups
+
+        await self._add_app_with_groups(db, "SyncExitA", ["One"])
+        await self._add_app_with_groups(db, "SyncExitB", ["Two"])
+        test_plugin.sync_all_groups_failures.add("SyncExitA")
+
+        with pytest.raises(SystemExit) as exc_info:
+            await sync_app_groups.callback.__wrapped__()
+
+        assert exc_info.value.code == 1
+        # Every app is still attempted; only the exit status reflects the failure.
+        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitB-Two:SyncExitB"]]
+
+    async def test_command_exits_zero_when_every_app_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
+        from api.cli import sync_app_groups
+
+        await self._add_app_with_groups(db, "SyncExitOk", ["One"])
+
+        # Must not raise SystemExit: a clean run has to leave the exit status at 0.
+        await sync_app_groups.callback.__wrapped__()
+
+        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitOk-One:SyncExitOk"]]
 
 
 class TestPluginAuditLogging:
