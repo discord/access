@@ -60,7 +60,7 @@ interface AddRolesButtonProps {
 function AddRolesButton(props: AddRolesButtonProps) {
   return (
     <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<RoleAddIcon />}>
-      {'Add ' + (props.owner ? 'Roles as Owners' : 'Roles as Members')}
+      {'Add ' + (props.owner ? 'Roles as Owners' : 'Roles')}
     </Button>
   );
 }

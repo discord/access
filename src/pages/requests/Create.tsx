@@ -46,8 +46,8 @@ import {
   RoleGroupDetail,
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
-import {canManageGroup} from '../../authorization';
-import {minTagTime, minTagTimeGroups} from '../../helpers';
+import {canManageGroup, isAccessAdmin} from '../../authorization';
+import {minTagTime, minTagTimeGroups, ownerCantAddSelf} from '../../helpers';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -525,9 +525,20 @@ export default function CreateRequest(props: CreateRequestProps) {
   const open = props.open ?? internalOpen;
   const setOpen = props.setOpen ?? setInternalOpen;
 
+  // Managers of a group normally have no need to request access — they can add themselves
+  // directly — so the button is hidden for them. The exception is a group tagged to disallow
+  // owner self-add, where a request is their only path. Access admins are exempt from tag
+  // constraints, so they never see it.
+  const blockedFromSelfAdd =
+    !isAccessAdmin(props.currentUser) &&
+    ownerCantAddSelf(
+      props.group?.active_group_tags?.map((tagMap) => tagMap.active_tag!),
+      props.owner ?? false,
+    );
+
   if (
     props.group?.deleted_at != null ||
-    (props.group != null && canManageGroup(props.currentUser, props.group)) ||
+    (props.group != null && canManageGroup(props.currentUser, props.group) && !blockedFromSelfAdd) ||
     props.group?.is_managed == false
   ) {
     return null;

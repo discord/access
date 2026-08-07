@@ -236,6 +236,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   };
 
   const addUsersText = props.owner ? 'Owners' : 'Members';
+  const ownerOrMember = props.owner ? 'owner' : 'member';
 
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
@@ -253,9 +254,13 @@ function AddUsersDialog(props: AddUsersDialogProps) {
               : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
-            {disallow_owner_add && !isAccessAdmin(props.currentUser)
-              ? 'Owners may not add themselves as ' + (props.owner ? 'owners' : 'members') + ' of this group.'
-              : null}
+            {disallow_owner_add && !isAccessAdmin(props.currentUser) ? (
+              <>
+                You cannot add yourself to this group due to the{' '}
+                <strong>owner can't add themselves as {ownerOrMember}</strong> tag constraint. Please get another owner
+                to add you or make an access request instead.
+              </>
+            ) : null}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl size="small" margin="normal" fullWidth>
