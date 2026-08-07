@@ -187,6 +187,17 @@ class CreateGroup:
         ...
 ```
 
+**Validate the target at the top of `execute()`, then key everything off what you loaded.**
+Operations are handed an id or a possibly-stale ORM instance (`group: OktaGroup | str` and
+friends) and keep only the id. `execute()` opens by re-selecting that row with the
+active-record filters applied (`deleted_at.is_(None)`, `ended_at`) and asserting it exists;
+every query and write after that point uses the loaded instance (`group.id`), not the raw
+constructor input (`self.group_id`). Do this even where the two are provably equal — the
+loaded object is what carries the "exists and is still active" guarantee, so reaching back for
+the raw id quietly moves unvalidated input past the check, and a later edit that reorders or
+adds a query inherits the gap. The same holds for every other entity an operation is handed
+(actor, requester, approver, app, role).
+
 Plugin hooks fire from inside `execute()`. The plugin interface is **async** (see the Plugin
 system section): each hook call returns coroutines that Access awaits via `run_hooks_to_completion`
 in `api/plugins/_async_dispatch.py`, which uses `asyncio.wait` (not `gather`, so one hook failing
@@ -569,6 +580,8 @@ infrastructure details live there too.
 - **Missing eager loads** — `lazy="raise_on_sql"` raises at runtime, not at query time
 - **Forgetting `deleted_at` or `ended_at` filters** — queries silently return stale records
 - **Putting business logic in a router** — it goes in an operation class
+- **Using a raw constructor input in `execute()` after the row has been re-loaded** — key later
+  queries off the validated instance (`group.id`), not `self.group_id`
 - **Wrong order in multi-field group updates** — type before name when type determines valid prefixes
 - **Authorizing against the requested target when the body can override it** — on resolve /
   approve endpoints (e.g. `PUT /api/group-requests/{id}`) that let the approver supply
