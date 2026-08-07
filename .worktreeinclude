@@ -15,8 +15,16 @@ config/config.test.json
 # worktrees skips re-running `make db-init` for each new worktree.
 instance/access.db
 
-# Installed dependencies. Copying these avoids re-running `npm install` /
-# `make dev` in every new worktree. uv re-validates the copied .venv on the
-# next `uv run`/`uv sync`, rebuilding it if the interpreter path drifted.
-node_modules/
+# Python virtualenv. Copying it skips re-running `uv sync` in every new
+# worktree, and the copy is self-repairing: uv re-validates the .venv on the
+# next `uv run`/`uv sync`, rebuilding it if the interpreter path drifted,
+# which it always does across worktrees.
 .venv/
+
+# node_modules/ is deliberately absent. npm has no equivalent re-validation
+# pass: packages already present at the locked version count as satisfied, so
+# whatever is wrong with a copied tree survives `npm install`. If the copy drops
+# file modes, every bin/ entry lands non-executable and the install then dies in
+# esbuild's install script with EACCES, a failure that names the wrong package
+# and that npm cannot repair. Installing from the committed lockfile against a
+# warm cache takes ~4s, which is cheaper than that class of bug.
