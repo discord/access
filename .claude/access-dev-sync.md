@@ -1,7 +1,7 @@
 # Access — Sync and notifications
 
-Companion to `.claude/CLAUDE.md`. Read this when working on `syncer.py` (the Okta sync cronjob)
-or on notification-plugin code.
+Companion to `.claude/CLAUDE.md`. Read this when working on `syncer.py` (the Okta sync cronjob),
+the `sync-app-groups` cronjob, or notification-plugin code.
 
 ## Sync and authority
 
@@ -15,6 +15,23 @@ and whether a group `is_managed` (`act_authoritatively = act_as_authority and is
   pushed to Okta.
 - **Unmanaged group, or `act_as_authority=False`**: Okta is authoritative. Changes in Okta
   are reflected into the DB; DB-only records are removed.
+
+## App group lifecycle sync (`access sync-app-groups`)
+
+A separate cronjob from `syncer.py`, driving the app-group-lifecycle plugin hooks rather than Okta
+membership. `_sync_all_app_groups` in `api/cli.py` invokes the `sync_group` hook once per active app
+group, and **each group is its own unit of work** — loaded, handed to its plugin, then committed or
+rolled back by `invoke_app_group_lifecycle_hook`.
+
+Keep that boundary per-group. Batching it back up for throughput would put failure isolation back on
+the plugins (a plugin's own loop swallowing failures is how the job used to exit 0 having reconciled
+nothing) and would let advisory locks accumulate across a batch, which overlapping runs iterating in
+different orders can deadlock on.
+
+Note the loop holds plain column values and re-loads each group inside the iteration. That is
+deliberate, not incidental: a rolled-back group expires the entire identity map, so anything held
+across an iteration boundary is unusable — the same hazard described under `lazy="raise_on_sql"` in
+`.claude/CLAUDE.md`.
 
 ## Notification cadence
 
