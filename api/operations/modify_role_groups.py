@@ -325,7 +325,10 @@ class ModifyRoleGroups:
                             )
                         ).all()
                         await invoke_app_group_lifecycle_hook(
-                            AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED, group=group, members=members_losing_access
+                            AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
+                            session=db.session,
+                            group=group,
+                            members=members_losing_access,
                         )
 
                 if self.sync_to_okta:
@@ -466,7 +469,10 @@ class ModifyRoleGroups:
                             )
                         ).all()
                         await invoke_app_group_lifecycle_hook(
-                            AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, group=group, members=members_gaining_access
+                            AppGroupLifecycleHook.GROUP_MEMBERS_ADDED,
+                            session=db.session,
+                            group=group,
+                            members=members_gaining_access,
                         )
 
                 for member in active_role_memberships:

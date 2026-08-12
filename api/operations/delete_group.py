@@ -326,7 +326,10 @@ class DeleteGroup:
 
         # Invoke app group lifecycle plugin hook, if configured
         await invoke_app_group_lifecycle_hook(
-            AppGroupLifecycleHook.GROUP_DELETED, group=group, members=lifecycle_hook_members
+            AppGroupLifecycleHook.GROUP_DELETED,
+            session=db.session,
+            group=group,
+            members=lifecycle_hook_members,
         )
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")

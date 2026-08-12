@@ -81,6 +81,7 @@ class ModifyGroupPluginData:
         if config_changed and self.fire_lifecycle_hook:
             await invoke_app_group_lifecycle_hook(
                 AppGroupLifecycleHook.GROUP_UPDATED,
+                session=db.session,
                 group=self.group,
                 old_name=old_name,
                 old_description=old_description,

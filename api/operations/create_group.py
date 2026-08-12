@@ -121,7 +121,7 @@ class CreateGroup:
             await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=self.group)
+        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, session=db.session, group=self.group)
 
         # Audit logging
         email = None

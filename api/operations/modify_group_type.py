@@ -132,6 +132,7 @@ class ModifyGroupType:
                 # rather than something a plugin could read off the group here and not there.
                 await invoke_app_group_lifecycle_hook(
                     AppGroupLifecycleHook.GROUP_DELETED,
+                    session=db.session,
                     group=group,
                     members=await get_active_group_members(db.session, group.id),
                 )
@@ -295,7 +296,9 @@ class ModifyGroupType:
             # with group_deleted which fires when converting away from AppGroup).
             # Skipped when the caller opts to fire it itself once all fields are applied.
             if type(self.group_changes) is AppGroup and self.fire_created_hook:
-                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+                await invoke_app_group_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_CREATED, session=db.session, group=group
+                )
 
         # Audit logging if type changed
         if group.type != old_group_type:

@@ -446,10 +446,11 @@ async def put_group(
     # lifecycle plugin, so nothing is fired here for that case.
     name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
     if type_changed and isinstance(group, AppGroup):
-        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, session=db, group=group)
     elif not type_changed and (name_or_desc_changed or config_changed):
         await invoke_app_group_lifecycle_hook(
             AppGroupLifecycleHook.GROUP_UPDATED,
+            session=db,
             group=group,
             old_name=old_name,
             old_description=old_description,

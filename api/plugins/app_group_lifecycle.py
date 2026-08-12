@@ -9,7 +9,6 @@ from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, joinedload
 
-from api.extensions import db
 from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.services import okta
@@ -1136,7 +1135,7 @@ def get_app_group_lifecycle_plugin_to_invoke(group: Any) -> str | None:
 
 
 async def invoke_app_group_lifecycle_hook(
-    hook_method: AppGroupLifecycleHook, *, group: Any, **kwargs: Any
+    hook_method: AppGroupLifecycleHook, *, session: AsyncSession, group: Any, **kwargs: Any
 ) -> list[BaseException]:
     """Invoke an app-group lifecycle hook for ``group``, if a plugin is configured.
 
@@ -1144,6 +1143,11 @@ async def invoke_app_group_lifecycle_hook(
     lifecycle hooks: it builds the ``AppGroupLifecycleContext`` the hook works through, commits on
     success, and on failure rolls back and then re-applies the status writes the plugin marked
     ``durable_on_failure`` (see ``AppGroupLifecycleContext.set_status``).
+
+    ``session`` is passed in rather than read from ``db.session`` because this function commits and
+    rolls back: it must act on the very session its caller's ``group`` is attached to, and the
+    caller is the only one that knows which that is. ``group`` must be live in ``session`` — the
+    plugin reads it, and ``AppGroupLifecycleContext`` writes plugin_data back through it.
 
     The hook runs inside a **SAVEPOINT**, so a plugin failure discards the plugin's writes without
     expiring the caller's ORM state. Callers may therefore keep reading their own instances across a
@@ -1167,7 +1171,7 @@ async def invoke_app_group_lifecycle_hook(
     if plugin_id is None:
         return []
     hook = get_app_group_lifecycle_hook()
-    ctx = AppGroupLifecycleContext(session=db.session, plugin_id=plugin_id)
+    ctx = AppGroupLifecycleContext(session=session, plugin_id=plugin_id)
     context = f"{hook_method} hook for group {getattr(group, 'id', None)} (plugin '{plugin_id}')"
     # Run the hook inside a SAVEPOINT so a plugin failure rolls back the plugin's writes and
     # nothing else. A *top-level* rollback passes dirty_only=False to
@@ -1185,7 +1189,7 @@ async def invoke_app_group_lifecycle_hook(
     # the dirty-only expiry skips it. It also means the flush can raise on the caller's own
     # pending state, which must not escape a function documented never to propagate.
     try:
-        savepoint = await db.session.begin_nested()
+        savepoint = await session.begin_nested()
     except Exception as e:
         logging.getLogger("api").exception(f"Failed to open savepoint before {context}")
         return [e]
@@ -1206,7 +1210,7 @@ async def invoke_app_group_lifecycle_hook(
             # to; fall back to a session rollback rather than silently skipping it. That path
             # cascades the expiry described above to the caller's instances, and is reachable only
             # from a plugin that commits, which this interface forbids.
-            await db.session.rollback()
+            await session.rollback()
         await ctx._reapply_durable_status(hook_method, context=context)
         # Returned, not raised: _sync_all_app_groups in api/cli.py counts these to set the
         # CLI's exit status. Most callers discard the value; do not "simplify" it back to
@@ -1215,10 +1219,10 @@ async def invoke_app_group_lifecycle_hook(
     try:
         if savepoint.is_active:
             await savepoint.commit()
-        await db.session.commit()
+        await session.commit()
     except Exception as e:
         logging.getLogger("api").exception(f"Failed to commit after {context}")
-        await db.session.rollback()
+        await session.rollback()
         await ctx._reapply_durable_status(hook_method, context=context)
         return [e]
     return []

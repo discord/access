@@ -452,7 +452,9 @@ async def _sync_all_app_groups() -> int:
         # rolls back and re-applies the plugin's durable status. It returns plugin exceptions
         # rather than raising, and re-derives the plugin id from `group.app` -- authoritative if an
         # app is reconfigured mid-run.
-        exceptions = await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.SYNC_GROUP, group=group)
+        exceptions = await invoke_app_group_lifecycle_hook(
+            AppGroupLifecycleHook.SYNC_GROUP, session=db.session, group=group
+        )
         if exceptions:
             failures += 1
             click.echo(f"  ✗ Failed to sync group '{group_name}' (app: '{app_name}'): {exceptions[0]}", err=True)

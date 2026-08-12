@@ -100,6 +100,7 @@ class ModifyGroupDetails:
         if self.fire_lifecycle_hook and (old_name != self.group.name or old_description != self.group.description):
             await invoke_app_group_lifecycle_hook(
                 AppGroupLifecycleHook.GROUP_UPDATED,
+                session=db.session,
                 group=self.group,
                 old_name=old_name,
                 old_description=old_description,
