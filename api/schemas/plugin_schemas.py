@@ -42,6 +42,8 @@ class PluginStatusProp(BaseModel):
     display_name: str
     help_text: Optional[str] = None
     type: Literal["text", "number", "date", "boolean"] = "text"
+    # Declared as a tuple on the dataclass; a list on the wire, which is what JSON has anyway.
+    pending_values: Optional[list[Any]] = None
 
 
 class AppGroupLifecyclePlugins(RootModel[list[PluginInfo]]):

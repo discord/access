@@ -107,6 +107,22 @@ class AppGroupLifecyclePluginStatusProperty:
     display_name: str
     help_text: str | None = None
     type: Literal["text", "number", "date", "boolean"] = "text"
+    # Values of this property that mean reconciliation is still in progress, e.g. ``("pending",)``
+    # on a sync-state property. Access has no opinion on what a plugin's status values *mean* --
+    # they are the plugin's vocabulary -- so a plugin that wants the UI to keep polling while it
+    # converges has to say which values those are. The group page refreshes on an interval while
+    # any status property is sitting on one of its pending values, and stops once none is.
+    #
+    # Leave it unset for a property with no transient state, and for terminal states: an error
+    # value is not pending, and polling on one spins until the operator or the sync-app-groups
+    # cronjob changes something.
+    pending_values: tuple[Any, ...] | None = None
+
+    def __post_init__(self) -> None:
+        # An empty tuple reads as "declared pending values" but can never match, so it silently
+        # disables the polling the plugin was asking for. Fail at declaration instead.
+        if self.pending_values is not None and len(self.pending_values) == 0:
+            raise ValueError("pending_values must name at least one value, or be left unset")
 
 
 @dataclass

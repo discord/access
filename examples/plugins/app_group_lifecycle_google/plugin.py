@@ -239,7 +239,13 @@ class GoogleGroupManagerPlugin:
             ),
             STATUS_GOOGLE_GROUP_ID: AppGroupLifecyclePluginStatusProperty(display_name="Google Group ID", type="text"),
             STATUS_SYNC_STATUS: AppGroupLifecyclePluginStatusProperty(
-                display_name="Sync Status", help_text="synced, pending, or error", type="text"
+                display_name="Sync Status",
+                help_text="synced, pending, or error",
+                type="text",
+                # SYNC_PENDING is this plugin's "not converged yet" state -- it is waiting on Okta
+                # to import or push a group -- so the UI keeps refreshing while a group sits on it.
+                # SYNC_ERROR is deliberately absent: it is terminal until the next reconcile.
+                pending_values=(SYNC_PENDING,),
             ),
             STATUS_SYNC_ERROR: AppGroupLifecyclePluginStatusProperty(display_name="Sync Error", type="text"),
             STATUS_LAST_SYNCED_AT: AppGroupLifecyclePluginStatusProperty(display_name="Last Synced", type="date"),
