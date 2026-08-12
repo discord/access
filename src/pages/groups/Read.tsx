@@ -121,9 +121,12 @@ export default function ReadGroup() {
 
   // App-group lifecycle hooks run in a background task after the response, so a group that was
   // just created or edited gets here before its plugin has reported anything. Poll until it does.
-  // A ref rather than a captured value: react-query re-evaluates refetchInterval after each fetch,
-  // and the signal comes from data fetched further down this component.
-  const reconcilePollingRef = React.useRef(false);
+  //
+  // State, not a ref: the signal is derived from data fetched further down this component, so it
+  // is only known after the first render. react-query re-reads refetchInterval when its options
+  // change, and a ref mutation does not re-render — so a ref here would set the flag and never be
+  // looked at again.
+  const [reconcilePollInterval, setReconcilePollInterval] = React.useState<number | false>(false);
   const reconcilePollStartedAtRef = React.useRef<number | null>(null);
 
   const {data, isError, isLoading} = useGroupById(
@@ -131,7 +134,7 @@ export default function ReadGroup() {
       pathParams: {groupId: id ?? ''},
     },
     {
-      refetchInterval: () => (reconcilePollingRef.current ? RECONCILE_POLL_INTERVAL_MS : false),
+      refetchInterval: reconcilePollInterval,
     },
   );
 
@@ -161,16 +164,23 @@ export default function ReadGroup() {
     (group as any)?.plugin_data?.[lifecyclePluginId]?.status,
   );
 
+  // Restart the window when the page moves to a different group.
+  React.useEffect(() => {
+    reconcilePollStartedAtRef.current = null;
+  }, [id]);
+
   React.useEffect(() => {
     if (!reconcilePending) {
       reconcilePollStartedAtRef.current = null;
-      reconcilePollingRef.current = false;
+      setReconcilePollInterval(false);
       return;
     }
     reconcilePollStartedAtRef.current ??= Date.now();
-    // Bounded: each poll re-renders, so this re-evaluates and eventually stops on its own.
-    reconcilePollingRef.current = Date.now() - reconcilePollStartedAtRef.current < RECONCILE_POLL_WINDOW_MS;
-  });
+    // Bounded, and `data` is a dependency so each completed poll re-checks the window and the
+    // polling stops on its own. Re-setting the same value is a no-op render, so this can't loop.
+    const withinWindow = Date.now() - reconcilePollStartedAtRef.current < RECONCILE_POLL_WINDOW_MS;
+    setReconcilePollInterval(withinWindow ? RECONCILE_POLL_INTERVAL_MS : false);
+  }, [reconcilePending, data]);
 
   // Owners and members are no longer inlined on the group payload. Owners (and
   // the app's owner groups, for app groups) are small and fetched whole;
