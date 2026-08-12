@@ -24,11 +24,8 @@ from api.models import (
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins.app_group_lifecycle import (
-    AppGroupLifecycleHook,
-    get_active_group_members,
-    invoke_app_group_lifecycle_hook,
-)
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, get_active_group_members
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -325,11 +322,8 @@ class DeleteGroup:
         await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        await invoke_app_group_lifecycle_hook(
-            AppGroupLifecycleHook.GROUP_DELETED,
-            session=db.session,
-            group=group,
-            members=lifecycle_hook_members,
+        await defer_or_invoke_lifecycle_hook(
+            AppGroupLifecycleHook.GROUP_DELETED, group=group, members=lifecycle_hook_members
         )
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")

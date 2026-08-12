@@ -27,10 +27,10 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_app_group_lifecycle_plugin_to_invoke,
-    invoke_app_group_lifecycle_hook,
 )
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
@@ -324,9 +324,8 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        await invoke_app_group_lifecycle_hook(
+                        await defer_or_invoke_lifecycle_hook(
                             AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
-                            session=db.session,
                             group=group,
                             members=members_losing_access,
                         )
@@ -468,9 +467,8 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        await invoke_app_group_lifecycle_hook(
+                        await defer_or_invoke_lifecycle_hook(
                             AppGroupLifecycleHook.GROUP_MEMBERS_ADDED,
-                            session=db.session,
                             group=group,
                             members=members_gaining_access,
                         )

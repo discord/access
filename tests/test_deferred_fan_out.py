@@ -34,6 +34,7 @@ from api.operations._fan_out import (
     end_deferred_fan_out,
     run_deferred_fan_out,
 )
+from api.operations._lifecycle_fan_out import _deferred_lifecycle, run_deferred_lifecycle
 from api.plugins.notifications import get_notification_hook
 from api.routers._fan_out import defer_fan_out
 from api.services import okta
@@ -111,15 +112,20 @@ async def test_defer_fan_out_registers_background_task_and_manages_contextvar() 
     agen = defer_fan_out(bg)
 
     await agen.__anext__()  # run up to the yield (the "request")
-    # A drain is registered and the collector is bound while the request runs.
-    assert len(bg.tasks) == 1
-    assert bg.tasks[0].func.__qualname__ == run_deferred_fan_out.__qualname__
+    # Both drains are registered and both collectors are bound while the request runs.
+    assert len(bg.tasks) == 2
+    # Lifecycle first — the Okta calls it would otherwise queue behind are already in flight, so
+    # this keeps the hooks racing them rather than trailing them (see `defer_fan_out`).
+    assert bg.tasks[0].func.__qualname__ == run_deferred_lifecycle.__qualname__
+    assert bg.tasks[1].func.__qualname__ == run_deferred_fan_out.__qualname__
     assert _deferred_fan_out.get() is not None
+    assert _deferred_lifecycle.get() is not None
 
     with pytest.raises(StopAsyncIteration):
         await agen.__anext__()  # finalize (post-response teardown)
-    # The collector is unbound afterwards.
+    # The collectors are unbound afterwards.
     assert _deferred_fan_out.get() is None
+    assert _deferred_lifecycle.get() is None
 
 
 async def test_defer_fan_out_drains_inline_on_endpoint_error(caplog: pytest.LogCaptureFixture) -> None:

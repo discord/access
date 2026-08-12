@@ -3,10 +3,10 @@ from typing import Any
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_app_group_lifecycle_plugin_to_invoke,
-    invoke_app_group_lifecycle_hook,
     is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
 )
@@ -79,9 +79,8 @@ class ModifyGroupPluginData:
         # plugin failure. Fire it only on a real configuration change (checked above), and
         # only when the caller hasn't opted to fire a consolidated hook itself.
         if config_changed and self.fire_lifecycle_hook:
-            await invoke_app_group_lifecycle_hook(
+            await defer_or_invoke_lifecycle_hook(
                 AppGroupLifecycleHook.GROUP_UPDATED,
-                session=db.session,
                 group=self.group,
                 old_name=old_name,
                 old_description=old_description,

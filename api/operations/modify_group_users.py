@@ -26,7 +26,8 @@ from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import coalesce_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
-from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
+from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -473,9 +474,8 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for removed members
             for affected_group, members in members_lost_by_group.items():
-                await invoke_app_group_lifecycle_hook(
+                await defer_or_invoke_lifecycle_hook(
                     AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
-                    session=db.session,
                     group=affected_group,
                     members=members,
                 )
@@ -691,8 +691,8 @@ class ModifyGroupUsers:
 
             # Invoke app group lifecycle plugin hooks for added members
             for affected_group, members in members_gained_by_group.items():
-                await invoke_app_group_lifecycle_hook(
-                    AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, session=db.session, group=affected_group, members=members
+                await defer_or_invoke_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_MEMBERS_ADDED, group=affected_group, members=members
                 )
 
             # Approve any pending access requests for access granted by this operation

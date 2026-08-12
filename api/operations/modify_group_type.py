@@ -20,6 +20,7 @@ from api.models import (
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
+from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_active_group_members,
@@ -130,6 +131,12 @@ class ModifyGroupType:
                 # external group goes away, so the hook is told who was in it. Passed explicitly
                 # for the same reason as on the delete path: it makes the payload identical on both,
                 # rather than something a plugin could read off the group here and not there.
+                #
+                # This is also the one lifecycle fire that cannot be deferred: this is the last
+                # moment the group *is* an app group. A deferred replay re-loads by id, and by then
+                # the app_group row is deleted -- the group would come back as a plain OktaGroup
+                # with no app and no plugin, and the fire would be dropped without a trace. Keep
+                # this call on `invoke_app_group_lifecycle_hook` directly.
                 await invoke_app_group_lifecycle_hook(
                     AppGroupLifecycleHook.GROUP_DELETED,
                     session=db.session,
@@ -296,9 +303,7 @@ class ModifyGroupType:
             # with group_deleted which fires when converting away from AppGroup).
             # Skipped when the caller opts to fire it itself once all fields are applied.
             if type(self.group_changes) is AppGroup and self.fire_created_hook:
-                await invoke_app_group_lifecycle_hook(
-                    AppGroupLifecycleHook.GROUP_CREATED, session=db.session, group=group
-                )
+                await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
 
         # Audit logging if type changed
         if group.type != old_group_type:
