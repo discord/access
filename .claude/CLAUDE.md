@@ -586,6 +586,21 @@ invoking plugin's id, so a plugin can't reach another plugin's namespace — see
 `AppGroupLifecycleContext` in `api/plugins/app_group_lifecycle.py`, whose docstrings carry the
 per-capability contract. `examples/plugins/` holds the reference implementations.
 
+**App-group-lifecycle hooks are deferred to the post-response drain.** Request-path fires go through
+`defer_or_invoke_lifecycle_hook` (`api/operations/_lifecycle_fan_out.py`), which records the fire as
+plain data — ids and scalars, never ORM references — for `run_deferred_lifecycle` to replay after the
+response, against a session that module opens and owns under its own `_session_scope`. Binding the
+scope is load-bearing: `ctx.set_group_description` delegates to `ModifyGroupDetails`, which reaches
+for the ambient `db.session`, and a mismatch would land its writes in a transaction nobody commits.
+Replay re-loads the group by id, so a hook always sees committed truth and a group that has since
+been deleted (or converted out of being an app group) is skipped. Outside an opted-in request —
+CLI, syncer, MCP, a direct `execute()` — it invokes inline. New fires should call
+`defer_or_invoke_lifecycle_hook`, with one exception: `ModifyGroupType`'s `group_deleted` fires while
+the row is still an app group and the `app_group` row is deleted immediately after, so it must stay
+on `invoke_app_group_lifecycle_hook` or it would be dropped silently. Because create/update responses
+no longer carry status a hook writes, a plugin declares `pending_values` on the status property
+holding its reconcile state and the group page refreshes until the value moves off them.
+
 **Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification
 raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group
 requests — is dispatched through `defer_notification` (`api/operations/_fan_out.py`), which spawns

@@ -37,6 +37,12 @@ deliberate, not incidental: a rolled-back group expires the entire identity map,
 across an iteration boundary is unusable — the same hazard described under `lazy="raise_on_sql"` in
 `.claude/CLAUDE.md`.
 
+This cronjob is also what makes the request path's post-response lifecycle drain
+(`api/operations/_lifecycle_fan_out.py`) safe to lose. A pod killed between a response and its drain
+drops that fire; because `sync_group` is per-group and idempotent, the next run re-converges it. The
+cost of a dropped fire is reconciliation latency, not divergence — so if this job is disabled or
+failing, that safety net is gone.
+
 ## Notification cadence
 
 Relevant when working on notification plugin code. Cadence is controlled by the cronjob
