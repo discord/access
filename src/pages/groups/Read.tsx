@@ -47,11 +47,17 @@ import MarkdownDescription from '../../components/MarkdownDescription';
 import {groupBy, displayGroupType, displayUserName} from '../../helpers';
 import {
   useAppById,
+  useAppGroupLifecyclePluginGroupStatusProps,
   useAppGroupsById,
   useGroupById,
   useGroupMemberDetailsById,
   useGroupMembersByIdPut,
 } from '../../api/apiComponents';
+import {
+  isPluginStatusPending,
+  RECONCILE_POLL_INTERVAL_MS,
+  RECONCILE_POLL_WINDOW_MS,
+} from '../../components/pluginStatus';
 import {
   AppDetail,
   AppGroupForAppDetail,
@@ -113,9 +119,21 @@ export default function ReadGroup() {
   const [removeOwnDirectAccessDialogParameters, setRemoveOwnDirectAccessDialogParameters] =
     React.useState<RemoveOwnDirectAccessDialogParameters>({} as RemoveOwnDirectAccessDialogParameters);
 
-  const {data, isError, isLoading} = useGroupById({
-    pathParams: {groupId: id ?? ''},
-  });
+  // App-group lifecycle hooks run in a background task after the response, so a group that was
+  // just created or edited gets here before its plugin has reported anything. Poll until it does.
+  // A ref rather than a captured value: react-query re-evaluates refetchInterval after each fetch,
+  // and the signal comes from data fetched further down this component.
+  const reconcilePollingRef = React.useRef(false);
+  const reconcilePollStartedAtRef = React.useRef<number | null>(null);
+
+  const {data, isError, isLoading} = useGroupById(
+    {
+      pathParams: {groupId: id ?? ''},
+    },
+    {
+      refetchInterval: () => (reconcilePollingRef.current ? RECONCILE_POLL_INTERVAL_MS : false),
+    },
+  );
 
   const group = data ?? ({} as GroupDetail);
 
@@ -131,6 +149,28 @@ export default function ReadGroup() {
   );
 
   const app = appData ?? ({} as AppDetail);
+
+  const lifecyclePluginId = (app as any)?.app_group_lifecycle_plugin ?? '';
+  const {data: lifecycleStatusProperties} = useAppGroupLifecyclePluginGroupStatusProps(
+    {pathParams: {pluginId: lifecyclePluginId}},
+    {enabled: !!lifecyclePluginId},
+  );
+
+  const reconcilePending = isPluginStatusPending(
+    lifecycleStatusProperties,
+    (group as any)?.plugin_data?.[lifecyclePluginId]?.status,
+  );
+
+  React.useEffect(() => {
+    if (!reconcilePending) {
+      reconcilePollStartedAtRef.current = null;
+      reconcilePollingRef.current = false;
+      return;
+    }
+    reconcilePollStartedAtRef.current ??= Date.now();
+    // Bounded: each poll re-renders, so this re-evaluates and eventually stops on its own.
+    reconcilePollingRef.current = Date.now() - reconcilePollStartedAtRef.current < RECONCILE_POLL_WINDOW_MS;
+  });
 
   // Owners and members are no longer inlined on the group payload. Owners (and
   // the app's owner groups, for app groups) are small and fetched whole;
