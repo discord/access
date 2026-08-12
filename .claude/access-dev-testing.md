@@ -43,8 +43,33 @@ container. CI runs the suite twice — SQLite then Postgres.
 Test data is created via factories in `tests/factories.py`. Don't write raw ORM inserts in
 tests — use factories.
 
-Frontend test infrastructure exists (vitest + React Testing Library, runnable via `npm test`)
-but no tests have been written yet.
+Frontend tests are vitest + React Testing Library: `npm test` watches, `npx vitest run` is the
+one-shot CI form. Coverage is partial — a handful of suites under `src/`, concentrated on pure
+helpers and form logic rather than page rendering — so treat an untested component as normal here
+and add a suite alongside a change rather than assuming one exists to update.
+
+## The generated API client must not drift
+
+`src/api/` is generated from the backend's OpenAPI spec and is checked in. The
+`openapi-client-drift` CI job regenerates it and fails if the result differs, so **any change to a
+Pydantic response/request schema needs the client regenerated in the same commit** — including a
+single new optional field. Never hand-edit `apiSchemas.ts` or `apiComponents.ts`.
+
+Locally, `npm run codegen` reads the spec from a running dev backend at port 6060. To regenerate
+without one (and exactly as CI does), dump the spec offline first:
+
+```bash
+uv run python -c "
+import json
+from api.app import create_app
+with open('openapi.json', 'w') as f:
+    json.dump(create_app(testing=True).openapi(), f)
+"
+OPENAPI_SPEC_FILE=openapi.json npm run codegen && npx prettier --write 'src/api/**/*.{ts,tsx}'
+```
+
+`create_app(testing=True)` needs no DB or env. The prettier pass matches what the pre-commit hook
+does, so skipping it shows up as spurious drift.
 
 ## Database migrations
 
