@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Protocol, cast
 
 import pytest
@@ -31,6 +32,7 @@ from tests.factories import (
     OktaGroupTagMapFactory,
     OktaUserFactory,
     OktaUserGroupMemberFactory,
+    RoleGroupFactory,
 )
 from tests.helpers import db_count
 from tests.request_factories import CreateAppBodyFactory, UpdateAppBodyFactory
@@ -168,6 +170,79 @@ async def test_get_app_groups_paginated(client: AsyncClient, db: Db, user: OktaU
     if member_group_id in by_id:
         assert by_id[member_group_id]["member_count"] == 1
         assert by_id[member_group_id]["owner_count"] == 0
+
+
+async def test_get_app_groups_counts_distinct_users(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """member_count / owner_count count distinct users, not membership rows. A
+    user holding a direct grant plus grants via one or more roles has several
+    active rows for the group but renders as one row in the group's member list,
+    so counting rows double-counted them on the app page."""
+    app = await AppFactory.create_async()
+    app_group = await AppGroupFactory.create_async(app_id=app.id)
+    role_a = await RoleGroupFactory.create_async()
+    role_b = await RoleGroupFactory.create_async()
+
+    # Direct member and owner, plus the same access via two roles.
+    multi = await OktaUserFactory.create_async()
+    # Access via a single role only.
+    role_only = await OktaUserFactory.create_async()
+
+    await ModifyGroupUsers(
+        group=app_group, members_to_add=[multi.id], owners_to_add=[multi.id], sync_to_okta=False
+    ).execute()
+    for role in (role_a, role_b):
+        await ModifyGroupUsers(group=role, members_to_add=[multi.id, role_only.id], sync_to_okta=False).execute()
+        await ModifyRoleGroups(
+            role_group=role,
+            groups_to_add=[app_group.id],
+            owner_groups_to_add=[app_group.id],
+            sync_to_okta=False,
+        ).execute()
+
+    app_id = app.id
+    app_group_id = app_group.id
+    db.session.expunge_all()
+
+    # Sanity check: the group really does have more rows than distinct users.
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == app_group_id)
+            .where(OktaUserGroupMember.is_owner.is_(False)),
+        )
+        > 2
+    )
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = await client.get(url)
+    assert rep.status_code == 200, rep.text
+    group = {g["id"]: g for g in rep.json()["items"]}[app_group_id]
+    assert group["member_count"] == 2
+    assert group["owner_count"] == 2
+
+
+async def test_get_app_groups_counts_exclude_deleted_users(client: AsyncClient, db: Db, url_for: Any) -> None:
+    """Rows belonging to a deleted user don't count — the group's member list
+    only renders active users, so counting them left the app page's count higher
+    than the list it links to."""
+    app = await AppFactory.create_async()
+    app_group = await AppGroupFactory.create_async(app_id=app.id)
+    active = await OktaUserFactory.create_async()
+    deleted = await OktaUserFactory.create_async(deleted_at=datetime.now(timezone.utc))
+
+    await ModifyGroupUsers(group=app_group, members_to_add=[active.id], sync_to_okta=False).execute()
+    await OktaUserGroupMemberFactory.create_async(user_id=deleted.id, group_id=app_group.id, is_owner=False)
+
+    app_id = app.id
+    app_group_id = app_group.id
+    db.session.expunge_all()
+
+    url = url_for("api-apps.app_groups_by_id", app_id=app_id)
+    rep = await client.get(url)
+    assert rep.status_code == 200, rep.text
+    group = {g["id"]: g for g in rep.json()["items"]}[app_group_id]
+    assert group["member_count"] == 1
 
 
 async def test_get_app_groups_search_by_user(client: AsyncClient, db: Db, url_for: Any) -> None:

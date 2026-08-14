@@ -6,7 +6,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, distinct, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -136,9 +136,19 @@ async def get_app_groups(
         ids = [g.id for g in groups]
         counts: dict[tuple[str, bool], int] = {}
         if ids:
+            # Count distinct users, not membership rows: a user can hold several
+            # active rows for one group (a direct grant plus role-granted ones),
+            # and the group's member list renders one row per user. Join the
+            # active user so a deleted user's rows don't count either — same
+            # semantics as `total` on `GET /api/groups/{id}/member-details`.
             rows = (
                 await db.execute(
-                    select(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner, func.count())
+                    select(
+                        OktaUserGroupMember.group_id,
+                        OktaUserGroupMember.is_owner,
+                        func.count(distinct(OktaUserGroupMember.user_id)),
+                    )
+                    .join(OktaUser, and_(OktaUser.id == OktaUserGroupMember.user_id, OktaUser.deleted_at.is_(None)))
                     .where(OktaUserGroupMember.group_id.in_(ids))
                     .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
                     .group_by(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner)
