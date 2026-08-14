@@ -136,11 +136,6 @@ async def get_app_groups(
         ids = [g.id for g in groups]
         counts: dict[tuple[str, bool], int] = {}
         if ids:
-            # Count distinct users, not membership rows: a user can hold several
-            # active rows for one group (a direct grant plus role-granted ones),
-            # and the group's member list renders one row per user. Join the
-            # active user so a deleted user's rows don't count either — same
-            # semantics as `total` on `GET /api/groups/{id}/member-details`.
             rows = (
                 await db.execute(
                     select(
