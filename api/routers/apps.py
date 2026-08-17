@@ -6,7 +6,7 @@ from typing import Annotated, Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi_pagination.ext.sqlalchemy import apaginate
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, distinct, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 from starlette.requests import Request
 
@@ -138,7 +138,12 @@ async def get_app_groups(
         if ids:
             rows = (
                 await db.execute(
-                    select(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner, func.count())
+                    select(
+                        OktaUserGroupMember.group_id,
+                        OktaUserGroupMember.is_owner,
+                        func.count(distinct(OktaUserGroupMember.user_id)),
+                    )
+                    .join(OktaUser, and_(OktaUser.id == OktaUserGroupMember.user_id, OktaUser.deleted_at.is_(None)))
                     .where(OktaUserGroupMember.group_id.in_(ids))
                     .where(or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()))
                     .group_by(OktaUserGroupMember.group_id, OktaUserGroupMember.is_owner)
