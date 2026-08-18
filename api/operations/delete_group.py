@@ -24,7 +24,11 @@ from api.models import (
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
-from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleHook,
+    get_active_group_members,
+    invoke_app_group_lifecycle_hook,
+)
 from api.services import okta
 from api.schemas import AuditLogSchema, EventType
 
@@ -104,6 +108,13 @@ class DeleteGroup:
             )
             .where(OktaUserGroupMember.group_id == group.id)
         )
+
+        # Capture the membership the group_deleted hook receives, before the bulk UPDATE below
+        # ends it. A plugin that provisions users individually needs to know who it provisioned in
+        # order to deprovision them, and cannot recover it afterwards. Distinct from
+        # `direct_members_to_remove_ids`, which drops role-granted members -- those hold the access
+        # too, so the hook has to see them.
+        lifecycle_hook_members = await get_active_group_members(db.session, group.id)
 
         direct_members_to_remove_ids = [
             m.user_id
@@ -314,6 +325,8 @@ class DeleteGroup:
         await db.session.commit()
 
         # Invoke app group lifecycle plugin hook, if configured
-        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
+        await invoke_app_group_lifecycle_hook(
+            AppGroupLifecycleHook.GROUP_DELETED, group=group, members=lifecycle_hook_members
+        )
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")

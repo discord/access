@@ -162,6 +162,42 @@ def _active_membership(keyed_column: InstrumentedAttribute[str]) -> Select[tuple
     )
 
 
+async def get_active_group_members(session: AsyncSession, group_id: str) -> list[OktaUser]:
+    """The users who currently hold membership in a group.
+
+    The single definition of "this group's membership" that the plugin interface exposes, shared by
+    ``AppGroupLifecycleContext.list_group_members`` and by the ``members`` payload the operations
+    hand to ``group_deleted``. Keep it shared: a hook that reads membership one way during a sync
+    and is handed it another way during a delete would silently disagree with itself.
+
+    Takes the session explicitly rather than reaching for `db.session`, because a context holds its
+    own captured session -- see ``AppGroupLifecycleContext.__init__``.
+
+    Args:
+        session: The session to query on.
+        group_id: The group whose membership to read.
+
+    Returns:
+        Active, non-owner members, ordered by email. Owners are excluded: they administer the group
+        rather than hold the access it grants. A user holding membership both directly and through
+        a role appears once. Soft-deleted users are excluded.
+    """
+    return list(
+        (
+            await session.scalars(
+                select(OktaUser)
+                .where(
+                    OktaUser.id.in_(
+                        _active_membership(OktaUserGroupMember.user_id).where(OktaUserGroupMember.group_id == group_id)
+                    )
+                )
+                .where(OktaUser.deleted_at.is_(None))
+                .order_by(OktaUser.email)
+            )
+        ).all()
+    )
+
+
 class AppGroupLifecycleContext:
     """The capability surface an app group lifecycle hook may use to talk to Access.
 
@@ -325,22 +361,7 @@ class AppGroupLifecycleContext:
                 capability inside the apps the plugin is responsible for.
         """
         await self._require_own_group(group)
-        return list(
-            (
-                await self._session.scalars(
-                    select(OktaUser)
-                    .where(
-                        OktaUser.id.in_(
-                            _active_membership(OktaUserGroupMember.user_id).where(
-                                OktaUserGroupMember.group_id == group.id
-                            )
-                        )
-                    )
-                    .where(OktaUser.deleted_at.is_(None))
-                    .order_by(OktaUser.email)
-                )
-            ).all()
-        )
+        return await get_active_group_members(self._session, group.id)
 
     async def find_user_groups(self, user: OktaUser, *, app: App | None = None) -> list[AppGroup]:
         """The app groups ``user`` currently holds membership in, among this plugin's apps.
@@ -911,7 +932,13 @@ class AppGroupLifecyclePluginSpec:
         """
 
     @hookspec
-    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(
+        self,
+        ctx: AppGroupLifecycleContext,
+        group: AppGroup,
+        members: list[OktaUser],
+        plugin_id: str | None,
+    ) -> None:
         """
         Handle group deletion.
 
@@ -921,6 +948,15 @@ class AppGroupLifecyclePluginSpec:
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
             group: The app group that was deleted.
+            members: The users who held membership when the group stopped being this plugin's to
+                     manage, captured before the deletion ended those memberships. Passed rather
+                     than looked up because by the time this fires `ctx.list_group_members(group)`
+                     is empty on the delete path -- and, worse, is *not* empty on the type-change
+                     path, so a hook reading it would behave differently depending on why the
+                     group went away. Where the external system attaches one combined permission
+                     set to a user rather than one per group, recompute each member's union over
+                     `ctx.find_user_groups(user)` and write the reduced set, rather than deleting
+                     the user outright.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
