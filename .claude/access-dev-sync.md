@@ -23,10 +23,10 @@ membership. `_sync_all_app_groups` in `api/cli.py` invokes the `sync_group` hook
 group, and **each group is its own unit of work** — loaded, handed to its plugin, then committed or
 rolled back by `invoke_app_group_lifecycle_hook`.
 
-Keep that boundary per-group. Batching it back up for throughput would put failure isolation back on
-the plugins (a plugin's own loop swallowing failures is how the job used to exit 0 having reconciled
-nothing) and would let advisory locks accumulate across a batch, which overlapping runs iterating in
-different orders can deadlock on.
+Keep that boundary per-group. Batching it back up for throughput would put failure isolation on the
+plugins, where a plugin's own loop swallowing failures lets the job exit 0 having reconciled nothing,
+and would let advisory locks accumulate across a batch, which overlapping runs iterating in different
+orders can deadlock on.
 
 Note the loop holds plain column values and re-loads each group inside the iteration. That is
 deliberate, not incidental: a rolled-back group expires the entire identity map, so anything held

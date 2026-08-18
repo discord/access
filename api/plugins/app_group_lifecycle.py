@@ -165,11 +165,10 @@ def _active_membership(keyed_column: InstrumentedAttribute[str]) -> Select[tuple
 class AppGroupLifecycleContext:
     """The capability surface an app group lifecycle hook may use to talk to Access.
 
-    Replaces the raw ``AsyncSession`` the Access 1.x lifecycle hooks received. A plugin gets exactly
-    these verbs and nothing else: no session, no query builder, no ``api.operations`` import, no
-    ``api.services.okta`` import. Every method is already bound to the invoking plugin's id, so
-    plugin code never threads ``plugin_id`` through a capability call and cannot read or write
-    another plugin's ``plugin_data`` namespace.
+    A hook gets exactly these verbs and nothing else: no session, no query builder, no
+    ``api.operations`` import, no ``api.services.okta`` import. Every method is bound to the
+    invoking plugin's id, so plugin code never threads ``plugin_id`` through a capability call and
+    cannot read or write another plugin's ``plugin_data`` namespace.
 
     Lifetime is one instance per hook invocation, constructed host-side by
     ``invoke_app_group_lifecycle_hook``. **Transaction policy belongs to the host: a hook must not
@@ -178,6 +177,12 @@ class AppGroupLifecycleContext:
     """
 
     def __init__(self, *, session: AsyncSession, plugin_id: str) -> None:
+        """Build the context for one hook invocation.
+
+        Args:
+            session: The session the host's transaction runs on. Never exposed to the plugin.
+            plugin_id: The plugin being invoked. Every capability call is bound to it.
+        """
         # Captured eagerly rather than resolved lazily from `db.session` on each use. `db.session` is
         # an async_scoped_session proxy; once the scope is removed the next access builds a brand-new
         # AsyncSession, so a lazy lookup could silently switch sessions mid-hook and land writes in a
@@ -200,16 +205,21 @@ class AppGroupLifecycleContext:
         """Serialize this hook against concurrent runs of the same plugin locking the same ``key``,
         for the remainder of the host's transaction.
 
-        Takes a Postgres transaction-level advisory lock. There is deliberately **no release**: the
-        lock is held until the host commits or rolls back after the hook, and that is precisely what
-        makes a check-then-write pair inside one hook atomic against a concurrent hook run. (Hence a
-        plain ``await`` rather than an ``async with`` block, which would advertise a scope this
-        cannot honor.) Keys are namespaced by plugin id, so two plugins choosing the same string do
-        not contend. Blocks until the lock is available.
+        Takes a Postgres transaction-level advisory lock, and blocks until it is available. There
+        is deliberately **no release**: the lock is held until the host commits or rolls back after
+        the hook, and that is precisely what makes a check-then-write pair inside one hook atomic
+        against a concurrent hook run. (Hence a plain ``await`` rather than an ``async with`` block,
+        which would advertise a scope this cannot honor.) The lock is held across whatever I/O the
+        rest of the hook performs, so keep the locked region tight and give external clients a
+        timeout.
 
         A no-op on non-Postgres backends (e.g. the SQLite test DB), where the relevant paths are
-        single-writer. Note the lock is held across whatever I/O the rest of the hook performs, so
-        keep the locked region tight and give external clients a timeout.
+        single-writer.
+
+        Args:
+            key: What to serialize on, typically an identifier for the external resource being
+                 claimed. Namespaced by plugin id, so two plugins choosing the same string do not
+                 contend.
         """
         bind = self._session.get_bind()
         if bind is None or bind.dialect.name != "postgresql":
@@ -231,21 +241,27 @@ class AppGroupLifecycleContext:
         exclude_group: AppGroup | None = None,
         limit: int | None = None,
     ) -> list[AppGroup]:
-        """Active app groups whose status for this plugin records
-        ``status_property_name == status_property_value``.
+        """Find the app groups whose status for this plugin records a given value.
 
-        Scoped to apps configured with this plugin id -- one external system can back several Access
-        apps and they all name the same plugin -- and to non-deleted apps and groups.
-        ``exclude_group`` drops one group from the result, normally the group being reconciled. The
+        The uniqueness and ownership lookup a plugin needs to answer "does another Access group
+        already claim this external resource?". Scoped to apps configured with this plugin id --
+        one external system can back several Access apps and they all name the same plugin. The
         predicate is pushed into SQL as a JSON path lookup on the stored status, so this stays a
         point lookup rather than a scan of every plugin-managed group.
 
-        The value is compared **as text**: a status stored as a number or boolean will not match a
-        Python ``int``/``bool`` here (JSONB renders a boolean as ``"true"`` where ``str(True)`` is
-        ``"True"``), so pass the string form.
+        Args:
+            status_property_name: The status property to match on.
+            status_property_value: The value it must equal, compared **as text**: a status stored
+                                   as a number or boolean will not match a Python ``int``/``bool``
+                                   (JSONB renders a boolean as ``"true"`` where ``str(True)`` is
+                                   ``"True"``), so pass the string form.
+            exclude_group: Drop one group from the result, normally the group being reconciled.
+            limit: Return at most this many matches. Omit for all of them.
 
-        Each returned group arrives with ``.app`` loaded; every other relationship is
-        ``lazy="raise_on_sql"`` and must not be touched.
+        Returns:
+            Active app groups, each with ``.app`` loaded; every other relationship is
+            ``lazy="raise_on_sql"`` and must not be touched. Soft-deleted apps and groups are
+            excluded.
         """
         path = (self._plugin_id, "status", status_property_name)
         stmt = (
@@ -368,30 +384,70 @@ class AppGroupLifecycleContext:
 
     def _data(self, app_or_group: App | AppGroup) -> AppGroupLifecyclePluginData:
         """This plugin's slice of ``plugin_data``, validated. Reading and writing go through here so
-        the bound ``plugin_id`` is the only namespace reachable from a context."""
+        the bound ``plugin_id`` is the only namespace reachable from a context.
+
+        Args:
+            app_or_group: The app or group whose ``plugin_data`` to slice.
+
+        Returns:
+            This plugin's configuration and status, empty dicts where unset.
+
+        Raises:
+            ValueError: If the stored slice is not a dict, or its configuration/status is not.
+        """
         return _get_data_for_plugin(app_or_group.plugin_data, self._plugin_id)
 
     def _store(self, app_or_group: App | AppGroup, data: AppGroupLifecyclePluginData) -> None:
         """Write the slice back and mark the object for persistence. `plugin_data` is a
         change-tracked mutable JSON column, but the explicit ``add`` keeps a freshly-loaded or
-        re-attached instance in the unit of work -- and means a plugin never touches the session."""
+        re-attached instance in the unit of work -- and means a plugin never touches the session.
+
+        Args:
+            app_or_group: The app or group to write to.
+            data: This plugin's configuration and status, replacing its whole slice.
+        """
         app_or_group.plugin_data[self._plugin_id] = asdict(data)
         self._session.add(app_or_group)
 
     def get_config(self, app_or_group: App | AppGroup, config_property_name: str, default: Any | None = None) -> Any:
-        """This plugin's configuration value on an app or group."""
+        """Read this plugin's configuration on an app or group.
+
+        Args:
+            app_or_group: The app or group carrying the configuration.
+            config_property_name: The configuration property to read.
+            default: Returned when the property is unset.
+
+        Returns:
+            The stored value, or ``default``.
+        """
         return self._data(app_or_group).configuration.get(config_property_name, default)
 
     def set_config(self, app_or_group: App | AppGroup, config_property_name: str, value: Any) -> None:
-        """Write this plugin's configuration on an app or group -- e.g. to backfill config inferred
-        from the external system during reconciliation. Persisted by the host's post-hook commit and
-        discarded if the hook raises."""
+        """Write this plugin's configuration on an app or group.
+
+        For configuration a reconcile infers from the external system and backfills. Persisted by
+        the host's post-hook commit, and discarded if the hook raises.
+
+        Args:
+            app_or_group: The app or group to write the configuration to.
+            config_property_name: The configuration property to write.
+            value: The value to store. Must be JSON-serializable.
+        """
         data = self._data(app_or_group)
         data.configuration[config_property_name] = value
         self._store(app_or_group, data)
 
     def get_status(self, app_or_group: App | AppGroup, status_property_name: str, default: Any | None = None) -> Any:
-        """This plugin's status value on an app or group."""
+        """Read this plugin's status on an app or group.
+
+        Args:
+            app_or_group: The app or group carrying the status.
+            status_property_name: The status property to read.
+            default: Returned when the property is unset.
+
+        Returns:
+            The stored value, or ``default``.
+        """
         return self._data(app_or_group).status.get(status_property_name, default)
 
     def set_status(
@@ -404,16 +460,22 @@ class AppGroupLifecycleContext:
     ) -> None:
         """Write this plugin's status on an app or group. Persisted by the host's post-hook commit.
 
-        Pass ``durable_on_failure=True`` for **diagnostic** status a plugin needs to survive its own
-        failure -- a sync status, an error string, a last-synced timestamp. The host re-applies those
-        writes in a fresh transaction after rolling back a failed hook, so an operator can still see
-        why reconciliation failed.
+        Args:
+            app_or_group: The app or group to write the status to.
+            status_property_name: The status property to write.
+            value: The value to store. Must be JSON-serializable.
+            durable_on_failure: Whether the write must outlive a failure of this hook.
 
-        Leave it ``False`` (the default) for anything that is an **ownership or identity token**: an
-        external group id, a mapping id. Those are only sound when committed in the same transaction
-        as the check that justified them -- typically under ``lock()`` -- and replaying them after a
-        rollback drops that guarantee, which would let two Access groups claim the same external
-        group.
+                Pass ``True`` for **diagnostic** status: a sync status, an error string, a
+                last-synced timestamp. The host re-applies those writes in a fresh transaction
+                after rolling back a failed hook, so an operator can still see why reconciliation
+                failed instead of a group stuck with no explanation.
+
+                Leave it ``False`` (the default) for anything that is an **ownership or identity
+                token**: an external group id, a mapping id. Those are only sound when committed in
+                the same transaction as the check that justified them -- typically under
+                ``lock()`` -- and replaying one in a fresh transaction after the lock has released
+                drops that guarantee, letting two Access groups claim the same external group.
         """
         data = self._data(app_or_group)
         data.status[status_property_name] = value
@@ -434,22 +496,27 @@ class AppGroupLifecycleContext:
         """Host-only. Re-apply the status writes a failed hook marked ``durable_on_failure``, in a
         fresh transaction, so an operator can still see why reconciliation failed.
 
-        The nested rollback that precedes this call expired every instance the plugin *modified*,
-        which is exactly the set of rows a status write targets: a column read on one raises
-        MissingGreenlet and a relationship read raises InvalidRequestError. The recorded writes
-        therefore carry only the entity type, its id, and a plain value, and each target row is
-        re-loaded here. (Instances the plugin never touched survive the rollback now that the hook
-        runs inside a SAVEPOINT, but that does not help these targets, and the fallback branch for
-        a hook that commits still rolls the whole session back.)
+        The rollback that precedes this call has expired every instance the plugin *modified* --
+        exactly the set of rows a status write targets. A column read on one of them raises
+        MissingGreenlet and a relationship read raises InvalidRequestError, so the recorded writes
+        carry only the entity type, its id, and a plain value, and each target row is re-loaded
+        here. The nested rollback spares instances the plugin never touched, but that does not help
+        these targets, and the fallback branch for a hook that commits rolls the whole session back
+        regardless.
 
-        `select(...).execution_options(populate_existing=True)` rather than `session.get`: `get` would
-        *refresh* the expired identity-map instance and raise ObjectDeletedError if the row is gone,
-        where a select simply yields no rows and we skip that target. It also leaves the caller's
-        instance usable again, which a bare rollback does not.
+        `select(...).execution_options(populate_existing=True)` rather than `session.get`: `get`
+        *refreshes* the expired identity-map instance and raises ObjectDeletedError if the row is
+        gone, where a select simply yields no rows and we skip that target. It also leaves the
+        caller's instance usable again, which a bare rollback does not.
 
-        Best-effort: a failure here is logged and swallowed. The surrounding operation already
-        committed its own work before the hook fired, and a plugin's diagnostic status must never be
-        the thing that breaks a request.
+        Best-effort: a failure here is logged and swallowed. The surrounding operation has already
+        committed its own work by the time the hook fires, and a plugin's diagnostic status must
+        never be the thing that breaks a request.
+
+        Args:
+            hook_method: The hook that failed. ``GROUP_DELETED`` skips the re-apply entirely -- see
+                         below.
+            context: A description of the hook invocation, for log messages.
         """
         # group_deleted fires while the row is on its way out (ModifyGroupType fires it *before*
         # deleting the app_group row, DeleteGroup before the soft delete). Nothing will read that
@@ -498,10 +565,14 @@ class AppGroupLifecycleContext:
         hooks (which would recurse), and it does not commit (the host commits after the hook; a
         commit here would release any advisory lock this hook holds).
 
-        Note the Okta push is not rolled back with the surrounding transaction, so a hook that fails
+        The Okta push is not rolled back with the surrounding transaction, so a hook that fails
         after this call leaves Okta briefly ahead of Access. Reconciliation is expected to be
-        idempotent and re-enforce on the next pass; the alternative -- committing here -- breaks the
-        lock.
+        idempotent and re-enforce on the next pass; the alternative -- committing here -- breaks
+        the lock.
+
+        Args:
+            group: The app group to describe.
+            description: The description to set, replacing whatever is there.
         """
         # Deferred: api.operations imports api.plugins, so a module-level import would cycle.
         from api.operations import ModifyGroupDetails
@@ -519,8 +590,20 @@ class AppGroupLifecycleContext:
     # never touch the session.
 
     async def create_push_mapping_and_new_group(self, group: AppGroup, okta_app_id: str, target_group_name: str) -> str:
-        """Create a push mapping with a new target group name, so Okta creates both its target group
-        and the downstream app group and links them in one step. Returns the push mapping id."""
+        """Create a push mapping with a new target group name, so Okta creates both its target
+        group and the downstream external group and links them in one step.
+
+        Args:
+            group: The Access group to push from.
+            okta_app_id: The Okta app to create the mapping in.
+            target_group_name: The name Okta gives the target group it creates.
+
+        Returns:
+            The id of the push mapping created.
+
+        Raises:
+            Exception: If Okta accepts the request but returns no mapping id.
+        """
         result = await okta.create_group_push_mapping(
             appId=okta_app_id, sourceGroupId=group.id, targetGroupName=target_group_name
         )
@@ -529,9 +612,24 @@ class AppGroupLifecycleContext:
     async def create_push_mapping_for_existing_group(
         self, group: AppGroup, okta_app_id: str, external_id_field_name: str, external_id: str
     ) -> str:
-        """Link an Access group to an already-imported Okta target group by id (the adoption path).
-        Raises MissingOktaTargetError if Okta has not imported it yet (defer and retry), or
-        AmbiguousOktaTargetError if more than one target matches (a misconfiguration)."""
+        """Link an Access group to an already-imported Okta target group -- the adoption path.
+
+        Args:
+            group: The Access group to push from.
+            okta_app_id: The Okta app to create the mapping in.
+            external_id_field_name: The Okta target group profile attribute carrying the external
+                                    system's id.
+            external_id: The external id identifying the target group to link to.
+
+        Returns:
+            The id of the push mapping created.
+
+        Raises:
+            MissingOktaTargetError: If Okta has not imported the target group yet. Defer and retry.
+            AmbiguousOktaTargetError: If more than one target group matches; a misconfiguration
+                that will not self-heal.
+            Exception: If Okta accepts the request but returns no mapping id.
+        """
         target_group_id = await self._okta_target_group_id(external_id_field_name, external_id)
         if not target_group_id:
             raise MissingOktaTargetError(
@@ -546,8 +644,22 @@ class AppGroupLifecycleContext:
     async def discover_existing_push_mapping_and_target_group_external_id(
         self, group: AppGroup, okta_app_id: str, target_group_external_id_field: str
     ) -> tuple[str, str] | None:
-        """Find an existing push mapping for this group and recover the external id from the Okta
-        target group profile. Returns ``(push_mapping_id, external_id)``, or None if unlinked."""
+        """Find this group's existing push mapping and recover the external id from the Okta target
+        group's profile.
+
+        Args:
+            group: The Access group whose mapping to look up.
+            okta_app_id: The Okta app the mapping lives in.
+            target_group_external_id_field: The Okta target group profile attribute carrying the
+                                            external system's id.
+
+        Returns:
+            ``(push_mapping_id, external_id)``, or None if the group is not linked.
+
+        Raises:
+            Exception: If the mapping exists but has no id or no target group id.
+            ValueError: If the target group's profile does not carry the external id field.
+        """
         mappings = await okta.list_group_push_mappings(okta_app_id, sourceGroupId=group.id)
         # Okta allows at most one mapping per app, source, and target.
         mapping = next(iter(mappings), None)
@@ -580,15 +692,33 @@ class AppGroupLifecycleContext:
         return mapping_id, external_id
 
     async def delete_push_mapping(self, okta_app_id: str, mapping_id: str, delete_target_group: bool = False) -> None:
-        """Delete (unlink) a push mapping. With ``delete_target_group=True`` Okta also deletes the
-        downstream target group it created; otherwise only the mapping goes and the target group is
-        left in place."""
+        """Delete (unlink) a push mapping.
+
+        Args:
+            okta_app_id: The Okta app the mapping lives in.
+            mapping_id: The push mapping to delete.
+            delete_target_group: When True, Okta also deletes the downstream target group it
+                                 created. When False, only the mapping goes and the target group is
+                                 left in place.
+        """
         await okta.delete_group_push_mapping(
             appId=okta_app_id, mappingId=mapping_id, deleteTargetGroup=delete_target_group
         )
 
     @staticmethod
     def _mapping_id(result: dict[str, Any]) -> str:
+        """The mapping id out of an Okta push-mapping creation response.
+
+        Args:
+            result: The response body Okta returned.
+
+        Returns:
+            The push mapping id.
+
+        Raises:
+            Exception: If Okta accepted the request but returned no id, which would otherwise be
+                recorded as a mapping that cannot be looked up or deleted.
+        """
         mapping_id = result.get("id")
         if not mapping_id:
             raise Exception(f"Okta push mapping creation returned no id: {result}")
@@ -596,11 +726,20 @@ class AppGroupLifecycleContext:
 
     @staticmethod
     async def _okta_target_group_id(external_id_profile_field_name: str, external_id: str) -> str | None:
-        """The Okta target group whose profile records ``external_id``, or None if not imported yet.
+        """Resolve an external id to the Okta target group whose profile records it.
 
-        Raises AmbiguousOktaTargetError on more than one match: that is a misconfiguration (e.g. a
-        stale plus a re-imported target sharing an external id) which will not self-heal, so it must
-        not be conflated with the not-yet-imported case that simply defers.
+        Args:
+            external_id_profile_field_name: The Okta group profile attribute carrying the external
+                                            system's id.
+            external_id: The external id to resolve.
+
+        Returns:
+            The Okta group id, or None if Okta has not imported the group yet.
+
+        Raises:
+            AmbiguousOktaTargetError: On more than one match. That is a misconfiguration (e.g. a
+                stale plus a re-imported target sharing an external id) which will not self-heal,
+                so it must not be conflated with the not-yet-imported case that simply defers.
         """
         search = f'type eq "APP_GROUP" and profile.{external_id_profile_field_name} eq "{external_id}"'
         matches = await okta.list_groups(query_params={"search": search})
@@ -619,7 +758,12 @@ class AppGroupLifecyclePluginSpec:
 
     @hookspec
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
-        """Return the metadata for this plugin implementation."""
+        """Identify this plugin implementation.
+
+        Returns:
+            This plugin's metadata. Its id, display name, and description must each be unique
+            across the loaded plugins.
+        """
 
     # Configuration hooks
 
@@ -628,11 +772,14 @@ class AppGroupLifecyclePluginSpec:
         self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """
-        Return the schema for app configuration plugin data, a mapping of property IDs to descriptors.
+        Declare the schema for app-level configuration plugin data.
 
         Args:
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+
+        Returns:
+            A mapping of configuration property IDs to descriptors, or None to decline.
         """
 
     @hookspec
@@ -654,7 +801,7 @@ class AppGroupLifecyclePluginSpec:
         self, plugin_id: str | None, app_config: dict[str, Any]
     ) -> dict[str, AppGroupLifecyclePluginConfigProperty] | None:
         """
-        Return the schema for app group configuration plugin data, a mapping of property IDs to descriptors.
+        Declare the schema for app-group-level configuration plugin data.
 
         Args:
             plugin_id: If provided, only the plugin matching this ID should respond.
@@ -664,6 +811,9 @@ class AppGroupLifecyclePluginSpec:
                         Empty when no app context is supplied. An implementation that
                         doesn't need it may omit this parameter from its signature; pluggy
                         only passes the arguments the implementation declares.
+
+        Returns:
+            A mapping of configuration property IDs to descriptors, or None to decline.
         """
 
     @hookspec
@@ -694,11 +844,14 @@ class AppGroupLifecyclePluginSpec:
         self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """
-        Return the schema for app-level status plugin data, a mapping of property IDs to descriptors.
+        Declare the schema for app-level status plugin data.
 
         Args:
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+
+        Returns:
+            A mapping of status property IDs to descriptors, or None to decline.
         """
 
     @hookspec
@@ -706,11 +859,14 @@ class AppGroupLifecyclePluginSpec:
         self, plugin_id: str | None
     ) -> dict[str, AppGroupLifecyclePluginStatusProperty] | None:
         """
-        Return the schema for group-level status plugin data, a mapping of property IDs to descriptors.
+        Declare the schema for group-level status plugin data.
 
         Args:
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
+
+        Returns:
+            A mapping of status property IDs to descriptors, or None to decline.
         """
 
     # Group lifecycle hooks
@@ -810,7 +966,12 @@ class AppGroupLifecyclePluginSpec:
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
             group: The app group from which members were removed.
-            members: The list of users that were removed from the group.
+            members: The list of users that were removed from the group. This is the delta, not
+                     the membership that remains. Where the external system attaches one combined
+                     permission set per user rather than one per group, recompute the union over
+                     `ctx.find_user_groups(user)` and write the reduced set, rather than revoking
+                     this group's grants outright -- the user may still hold them via another
+                     group.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
@@ -823,27 +984,39 @@ class AppGroupLifecyclePluginSpec:
         Invoked by the `access sync-app-groups` CLI command once per active app group of every app
         with this plugin configured, each in its own transaction -- so one group's failure cannot
         strand the groups behind it, and a plugin does not implement its own batch loop or error
-        isolation.
+        isolation. Let the exception propagate to report a failure; the CLI counts it and exits
+        non-zero.
 
         Args:
             ctx: The plugin capability context, bound to this plugin's id. Every Access
                  interaction goes through it -- locks, lookups, configuration and status
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
+                 `ctx.list_group_members(group)` is the group's current membership.
             group: The app group to reconcile. `group.app` is eager-loaded; every other
                    relationship is `lazy="raise_on_sql"` and must be reached through `ctx`
-                   rather than read off `group` -- see the note on widening this below.
+                   rather than read off `group`, which raises.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
 
-        A hook that needs a wider object graph than the one above should have the caller
-        (`_sync_all_app_groups` in `api/cli.py`) eager-load it, the way request-path
-        operations do for the notification hooks; reaching for a lazy load here raises.
+        A hook needing an object graph the context cannot reach should have the caller
+        (`_sync_all_app_groups` in `api/cli.py`) eager-load it, the way request-path operations do
+        for the notification hooks.
         """
 
 
 def get_app_group_lifecycle_hook() -> pluggy.HookRelay:
-    """Get the hook relay for app group lifecycle plugins."""
+    """Get the hook relay for app group lifecycle plugins.
+
+    Loads the registered plugins on first call and caches the relay.
+
+    Returns:
+        The pluggy hook relay to call hooks through.
+
+    Raises:
+        RuntimeError: If a plugin registers a synchronous implementation of a hook the
+            application awaits (see ``verify_async_impls``).
+    """
     global _cached_app_group_lifecycle_hook
 
     if _cached_app_group_lifecycle_hook is not None:
@@ -936,17 +1109,23 @@ async def invoke_app_group_lifecycle_hook(
     success, and on failure rolls back and then re-applies the status writes the plugin marked
     ``durable_on_failure`` (see ``AppGroupLifecycleContext.set_status``).
 
-    The hook runs inside a **SAVEPOINT**, so a plugin failure discards the plugin's writes
-    without expiring the caller's ORM state. Callers may therefore keep reading their own
-    instances across a fire; see the rollback branch below for why that was not true before,
-    and for the one case (a hook that commits) where it still is not.
+    The hook runs inside a **SAVEPOINT**, so a plugin failure discards the plugin's writes without
+    expiring the caller's ORM state. Callers may therefore keep reading their own instances across a
+    fire. The one exception is a hook that commits -- which this interface forbids -- since that
+    ends the savepoint and forces the fallback to a full session rollback; see the rollback branch
+    below.
 
-    Returns the exceptions the hook implementations raised, empty on success, so a batch caller can
-    count failures. Never propagates, so a misbehaving plugin can't abort the surrounding operation.
+    Args:
+        hook_method: The lifecycle hook to fire.
+        group: The group the hook is about. Its lifecycle plugin, read from ``group.app``, decides
+               which plugin is invoked and what the context is bound to.
+        **kwargs: Forwarded to the hook alongside ``ctx`` and ``group`` -- ``members=`` for the
+                  membership hooks, ``old_name=``/``old_description=`` for ``group_updated``.
 
-    ``kwargs`` are forwarded to the hook alongside ``ctx`` and ``group`` — e.g.
-    ``members=`` for the membership hooks, ``old_name=``/``old_description=`` for
-    ``group_updated``.
+    Returns:
+        The exceptions the hook implementations raised, empty on success, so a batch caller can
+        count failures. Never propagates, so a misbehaving plugin can't abort the surrounding
+        operation.
     """
     plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
     if plugin_id is None:
@@ -959,9 +1138,9 @@ async def invoke_app_group_lifecycle_hook(
     # SessionTransaction._restore_snapshot, expiring every instance in the identity map;
     # `expire_on_commit=False` does not apply. On an AsyncSession the caller's next attribute
     # read -- including a primary key, which refreshes rather than returning the identity key --
-    # then needs sync IO and raises MissingGreenlet. That is how one plugin's failure took down
-    # the operation that fired the hook. A *nested* rollback passes dirty_only=True and expires
-    # only what the plugin itself modified, so the caller's objects stay usable.
+    # then needs sync IO and raises MissingGreenlet, which takes down the operation that fired the
+    # hook. A *nested* rollback passes dirty_only=True and expires only what the plugin itself
+    # modified, so the caller's objects stay usable.
     #
     # begin_nested() flushes before emitting the SAVEPOINT: _take_snapshot() calls
     # session.flush() for any origin that is not BEGIN/AUTOBEGIN. That flush is what makes this
@@ -988,9 +1167,9 @@ async def invoke_app_group_lifecycle_hook(
             await savepoint.rollback()
         else:
             # A hook that committed ended the savepoint itself, so there is nothing to roll back
-            # to; fall back to a session rollback rather than silently skipping it. That path is
-            # exactly the pre-savepoint behavior, cascading expiry and all, and it is reachable
-            # only from a plugin that commits, which this interface now forbids.
+            # to; fall back to a session rollback rather than silently skipping it. That path
+            # cascades the expiry described above to the caller's instances, and is reachable only
+            # from a plugin that commits, which this interface forbids.
             await db.session.rollback()
         await ctx._reapply_durable_status(hook_method, context=context)
         # Returned, not raised: _sync_all_app_groups in api/cli.py counts these to set the
@@ -1209,7 +1388,7 @@ def validate_app_group_lifecycle_plugin_group_config(
 
 
 def raise_http_for_plugin_filtering_error(error: AppGroupLifecyclePluginFilteringError) -> NoReturn:
-    """Map a hook-filtering failure onto the right HTTP status; never returns.
+    """Map a hook-filtering failure onto the right HTTP status. Never returns.
 
     `AppGroupLifecyclePluginFilteringError` covers two very different situations, and the
     caller cannot be told the same thing about both:
@@ -1221,7 +1400,15 @@ def raise_http_for_plugin_filtering_error(error: AppGroupLifecyclePluginFilterin
       rather than letting the plain Exception become an unhandled stack trace.
 
     Use this from any router that can see this error, whether raised by a validation
-    helper below or propagated out of an operation."""
+    helper below or propagated out of an operation.
+
+    Args:
+        error: The filtering failure to map.
+
+    Raises:
+        HTTPException: Always -- 400 for an unknown plugin id, 500 for a registered plugin whose
+            hook did not answer with exactly one response.
+    """
     if error.plugin_id not in [plugin.id for plugin in get_app_group_lifecycle_plugins()]:
         raise HTTPException(400, f"The plugin {error.plugin_id} is not known")
     raise HTTPException(500, f"Misconfigured app group lifecycle plugin '{error.plugin_id}': {error}") from error
@@ -1242,7 +1429,19 @@ def validate_group_plugin_config_or_raise(
     them differently (a freshly-built group can't lazy-load its app, and a group request
     has no group yet). Callers editing an existing group also pass its current
     plugin_data as `old_plugin_data` so the host can reject changes to immutable config
-    fields; omit it when the group does not exist yet."""
+    fields; omit it when the group does not exist yet.
+
+    Args:
+        plugin_data: The group-level plugin_data to validate.
+        app_plugin_data: The owning app's plugin_data, for validating against app-level settings.
+        plugin_id: The app's configured lifecycle plugin, or None for no plugin.
+        old_plugin_data: The group's current plugin_data, on update, so edits to immutable config
+                         properties are rejected. Omit on create.
+
+    Raises:
+        HTTPException: 400 if the config is invalid or malformed, or if the plugin id is unknown;
+            500 if a registered plugin's validation hook misbehaves.
+    """
     if plugin_id is None:
         return
 
@@ -1264,7 +1463,16 @@ def validate_app_plugin_config_or_raise(plugin_data: dict[str, Any], plugin_id: 
 
     The app-level counterpart of `validate_group_plugin_config_or_raise`. It takes no
     app-context or `old_plugin_data` arguments: app config has no parent to validate
-    against, and immutable app config properties are not a concept the hook exposes."""
+    against, and immutable app config properties are not a concept the hook exposes.
+
+    Args:
+        plugin_data: The app-level plugin_data to validate.
+        plugin_id: The app's configured lifecycle plugin, or None for no plugin.
+
+    Raises:
+        HTTPException: 400 if the config is invalid or malformed, or if the plugin id is unknown;
+            500 if a registered plugin's validation hook misbehaves.
+    """
     if plugin_id is None:
         return
 

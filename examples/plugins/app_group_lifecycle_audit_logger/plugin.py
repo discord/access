@@ -286,9 +286,9 @@ class AuditLoggerPlugin:
         # Update app-level status. `ctx.set_status` marks the object for persistence itself, so the
         # plugin never touches the session; the host commits after the hook returns.
         #
-        # Note this is now written once per group rather than once per app, so the last group of an
-        # app to sync wins. It still means "this app was last swept at T", which is what the status
-        # property describes.
+        # Written once per group, so for an app with several groups the last one to sync wins. The
+        # value still means "this app was last swept at T", which is what the status property
+        # describes.
         ctx.set_status(group.app, "last_sync_at", datetime.now(UTC).isoformat())
 
     # Helper methods
@@ -300,7 +300,18 @@ class AuditLoggerPlugin:
         app: App | None = None,
         group: AppGroup | None = None,
     ) -> None:
-        """Log a message at the level specified in the app's plugin configuration."""
+        """Log a message at the level specified in the app's plugin configuration.
+
+        Args:
+            ctx: The plugin capability context, used to read the configured level and tag.
+            message: The message to log.
+            app: The app whose log level applies. Derived from ``group`` when omitted.
+            group: The group the message is about, whose custom tag is prefixed to it.
+
+        Raises:
+            ValueError: If neither ``app`` nor ``group`` is given, leaving no configuration to
+                read the log level from.
+        """
         if app is None:
             if group is None:
                 raise ValueError("Either app or group must be provided")
@@ -313,15 +324,27 @@ class AuditLoggerPlugin:
         logger.log(level, f"[AUDIT_LOGGER]{f'[{custom_tag}]' if custom_tag else ''} {message}")
 
     def _is_enabled(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> bool:
-        """Check if the plugin is enabled for this group."""
+        """Check whether audit logging is enabled for a group.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group to check.
+
+        Returns:
+            True only when the app and the group are both enabled; either can switch it off.
+        """
         return ctx.get_config(group.app, "enabled", True) and ctx.get_config(group, "enabled", True)
 
     def _increment_event_count(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> None:
-        """Increment the event count in the status.
+        """Increment the group's and the app's event counts, and stamp the group's last-event time.
 
         Stays synchronous: the context's status accessors mutate ``plugin_data`` in memory and mark
-        the object for persistence, so the async hooks call this directly. The host commits after the
-        hook returns -- a plugin never commits, and never touches the session.
+        the object for persistence, so the async hooks call this directly. The host commits after
+        the hook returns -- a plugin never commits, and never touches the session.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group the event was about. Its app is counted too.
         """
         # Update group-level status
         current_count = ctx.get_status(group, "events_logged") or 0

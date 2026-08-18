@@ -36,13 +36,14 @@ class ModifyGroupDetails:
         self.validate_app_group_prefix = validate_app_group_prefix
         # Callers that also modify plugin config in the same request (put_group)
         # set this False so a single group_updated fire covers both changes rather
-        # than reconciling twice. Defaults to True to preserve standalone behavior.
+        # than reconciling twice. Defaults to True, so a standalone edit notifies.
         self.fire_lifecycle_hook = fire_lifecycle_hook
         # Callers running *inside* an app-group-lifecycle hook set this False: a commit
         # there would release any advisory lock the hook holds (Postgres advisory locks
         # are transaction-scoped) and publish the surrounding operation's in-flight work
         # -- ModifyGroupType fires group_deleted before deleting the app_group row. The
-        # host commits after the hook returns. Defaults to True for every other caller.
+        # host commits after the hook returns. Defaults to True, so every other caller
+        # commits its own work.
         self.commit_db_changes = commit_db_changes
 
     async def execute(self) -> OktaGroup:

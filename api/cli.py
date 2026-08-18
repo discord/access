@@ -379,14 +379,16 @@ async def notify(owner: bool, role_owner: bool) -> None:
 
 async def _sync_all_app_groups() -> int:
     """Invoke the `sync_group` hook once per active app group of every app with a lifecycle
-    plugin configured. Returns the number of groups that failed to sync.
+    plugin configured.
 
     Each group is loaded, handed to its plugin, and committed as its own unit of work, so one
-    group's failure can't strand the groups after it. That isolation lives here rather than in
-    each plugin: a plugin implementing its own batch loop would have to reproduce this, and the
-    previous per-app shape also meant a whole app's groups shared one transaction, letting
-    advisory locks accumulate across groups (two overlapping runs iterating in different orders
-    could deadlock on lock pairs).
+    group's failure can't strand the groups after it. That isolation lives here rather than in each
+    plugin, which would otherwise have to reproduce it. Keep the boundary per-group: batching an
+    app's groups into one transaction would also let advisory locks accumulate across the batch,
+    which two overlapping runs iterating in different orders can deadlock on.
+
+    Returns:
+        The number of groups that failed to sync, which the CLI command turns into its exit status.
     """
     from api.extensions import db
     from api.models import App, AppGroup
@@ -394,9 +396,9 @@ async def _sync_all_app_groups() -> int:
 
     click.echo("Starting app group lifecycle plugin sync")
 
-    # Scan for plain column values rather than ORM instances. Rolling back a failed group below
-    # expires *every* instance in the session's identity map -- `dirty_only` is False for a
-    # top-level rollback, and `expire_on_commit=False` does not apply -- and re-reading an expired
+    # Scan for plain column values rather than ORM instances. A failed group below can roll the
+    # whole session back, expiring *every* instance in its identity map -- `dirty_only` is False for
+    # a top-level rollback, and `expire_on_commit=False` does not apply -- and re-reading an expired
     # attribute on an AsyncSession raises MissingGreenlet instead of quietly refreshing. Holding
     # only strings across that boundary keeps the loop's own bookkeeping (and its error messages)
     # independent of session state.
@@ -426,8 +428,8 @@ async def _sync_all_app_groups() -> int:
         # Eager-load `group.app`, which the `sync_group` hookspec promises and which
         # invoke_app_group_lifecycle_hook itself reads to resolve the plugin id. The relationship
         # is lazy="raise_on_sql", so reading it off an unloaded group raises instead of querying.
-        # Loaded per iteration rather than once up front because a preceding group's rollback
-        # expires the whole identity map; `populate_existing` because the durable-status re-apply
+        # Loaded per iteration rather than once up front because a preceding group's rollback can
+        # expire the whole identity map; `populate_existing` because the durable-status re-apply
         # commits its own transaction, and instances loaded before that commit are not expired by
         # it (expire_on_commit=False), so a re-visited row could otherwise be served stale.
         group = (

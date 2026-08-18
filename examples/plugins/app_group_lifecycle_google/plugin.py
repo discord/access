@@ -65,7 +65,14 @@ def _is_group_absent_error(error: HttpError) -> bool:
     The Groups API returns 403 (PERMISSION_DENIED, "...or it may not exist") rather than
     404 for a group the caller can't see -- including one that simply doesn't exist yet.
     Treating both as "absent" lets reconcile create the group instead of erroring; a
-    genuine permission problem then surfaces on the subsequent create call."""
+    genuine permission problem then surfaces on the subsequent create call.
+
+    Args:
+        error: The error the Groups API raised.
+
+    Returns:
+        True if the group should be treated as not existing.
+    """
     return getattr(getattr(error, "resp", None), "status", None) in (403, 404)
 
 
@@ -101,7 +108,16 @@ class GoogleGroupManagerPlugin:
         return email[: -len(suffix)]
 
     def _validate_email_against_pattern(self, prefix: str, pattern: str | None) -> str | None:
-        """Return an error message if the prefix violates the pattern, else None."""
+        """Check an email prefix against an operator-configured pattern.
+
+        Args:
+            prefix: The email local part to check.
+            pattern: The app's configured regex, or None for no constraint.
+
+        Returns:
+            An error message, or None when the prefix is acceptable. A malformed pattern also
+            yields None -- it is reported at app-config validation, not here.
+        """
         if not pattern:
             return None
         try:
@@ -305,8 +321,16 @@ class GoogleGroupManagerPlugin:
     async def _patch_google_group(
         self, google_group_id: str, *, display_name: str | None = None, description: str | None = None
     ) -> None:
-        """Patch a Google group's mutable properties. groupKey (email) is immutable, so only
-        displayName/description are patchable; pass only the fields to change. No-op if none."""
+        """Patch a Google group's mutable properties.
+
+        Args:
+            google_group_id: The Cloud Identity group to patch.
+            display_name: The display name to set, or None to leave it alone.
+            description: The description to set, or None to leave it alone.
+
+        groupKey (the email) is immutable in the Cloud Identity API, so it is not patchable here.
+        A call with neither field is a no-op.
+        """
         body: dict[str, Any] = {}
         if display_name is not None:
             body["displayName"] = display_name
@@ -336,7 +360,14 @@ class GoogleGroupManagerPlugin:
             raise
 
     async def _look_up_google_group_id(self, email: str) -> str | None:
-        """Resolve an email to its bare Cloud Identity group id, or None if no such group."""
+        """Resolve an email to its Cloud Identity group id.
+
+        Args:
+            email: The full group email to look up.
+
+        Returns:
+            The bare group id, or None if no such group is visible.
+        """
         try:
             result = await asyncio.to_thread(lambda: self._groups_api.lookup(groupKey_id=email).execute())
         except HttpError as e:
@@ -349,13 +380,21 @@ class GoogleGroupManagerPlugin:
     # ---- Status setters ----
 
     def _mark(self, ctx: AppGroupLifecycleContext, group: AppGroup, status: str, error: str | None = None) -> None:
-        """Record this reconcile's outcome. Synchronous: the context mutates plugin_data in memory
-        and marks the group for persistence, and the host commits after the hook returns.
+        """Record this reconcile's outcome on the group.
+
+        Synchronous: the context mutates plugin_data in memory and marks the group for persistence,
+        and the host commits after the hook returns.
 
         These are diagnostics, so they opt into `durable_on_failure`: the host re-applies them in a
         fresh transaction after a failed hook, which is what lets an operator see *why* reconcile
         failed rather than a group stuck with no explanation. Contrast the ownership tokens written
         elsewhere in this plugin, which deliberately do not -- see _claim_group_id.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+            status: One of the SYNC_* values.
+            error: The failure detail to surface in the UI, or None on success.
         """
         if error:
             logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
@@ -370,11 +409,23 @@ class GoogleGroupManagerPlugin:
     # ---- Reconcile ----
 
     async def _get_owned_group_id(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
-        """The Google group id this Access group already owns (claimed on a prior reconcile),
-        if it still exists. The recorded id is an ownership token -- it is written only after
-        the ownership check passes (see _claim_group_id) -- so a live cached id needs no
-        re-check. Clears the cached id and returns None if the group was deleted out of band,
-        so the caller re-resolves/recreates. Returns None when nothing is cached."""
+        """The Google group id this Access group owns, if it still exists.
+
+        The recorded id is an ownership token -- written only after the ownership check passes,
+        see _claim_group_id -- so a live cached id needs no re-check.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+
+        Returns:
+            The owned Cloud Identity group id, or None when nothing is recorded or the recorded
+            group was deleted out of band. In the latter case the cached id is cleared too, so the
+            caller re-resolves or recreates.
+
+        Raises:
+            HttpError: If the lookup fails for any reason other than the group being absent.
+        """
         cached = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not cached:
             return None
@@ -410,7 +461,17 @@ class GoogleGroupManagerPlugin:
 
         The claimed id is an ownership token, so it is written WITHOUT `durable_on_failure`: it is
         only sound when committed in the transaction that held the lock during the check. Letting
-        the host replay it after a rollback would reopen exactly the race this method closes."""
+        the host replay it after a rollback would reopen exactly the race this method closes.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group claiming ownership.
+            candidate_id: The Cloud Identity group id to claim.
+            email: The group's email, for the error message on refusal.
+
+        Returns:
+            ``candidate_id`` once recorded, or None when another Access group already owns it.
+        """
         if ctx.get_status(group, STATUS_GOOGLE_GROUP_ID) == candidate_id:
             return candidate_id
         await ctx.lock(candidate_id)
@@ -428,10 +489,21 @@ class GoogleGroupManagerPlugin:
         return candidate_id
 
     async def _get_email_from_status(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
-        """Recover the group email from a cached id when the Access-side config is absent
-        (adoption path). Returns the full email, or None when there is no cached id or the cached
-        group was deleted out of band (mirrors _owned_group_id's absent-error handling, so a
-        vanished group defers rather than hard-erroring reconcile)."""
+        """Recover the group email from a recorded id, for the adoption path where the
+        Access-side config is absent.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+
+        Returns:
+            The full group email, or None when nothing is recorded or the recorded group was
+            deleted out of band. Mirrors _get_owned_group_id's absent-error handling, so a vanished
+            group defers rather than hard-erroring reconcile.
+
+        Raises:
+            HttpError: If the lookup fails for any reason other than the group being absent.
+        """
         google_group_id = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not google_group_id:
             return None
@@ -445,9 +517,16 @@ class GoogleGroupManagerPlugin:
         return (live.get("groupKey") or {}).get("id")
 
     async def _reconcile(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> None:
-        """Idempotent: resolve/adopt/create the Google group, enforce its properties,
-        link via Okta push, and record sync status. Commits sync_status inside the hook
-        so it survives the host's post-hook rollback on error."""
+        """Resolve, adopt, or create the Google group; enforce its properties; link it via Okta
+        push; and record the sync status. Idempotent, so every create/update/sync path runs it.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group to reconcile.
+
+        The sync status is written with `durable_on_failure`, so the host re-applies it after
+        rolling back a failed hook and an operator still sees why reconcile failed. See _mark.
+        """
         if not self._is_enabled(ctx, group):
             return
 
@@ -586,10 +665,21 @@ class GoogleGroupManagerPlugin:
     async def _adopt_or_enforce(
         self, ctx: AppGroupLifecycleContext, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
     ) -> str | None:
-        """For an existing live Google group: adopt missing Access-side values from it,
-        or enforce present values onto it. The email (groupKey) is immutable in the Cloud
-        Identity API and host-blocked from changing, so it is never patched here. Returns
-        an error string or None."""
+        """For an existing live Google group, adopt missing Access-side values from it, or enforce
+        present values onto it.
+
+        The email (groupKey) is immutable in the Cloud Identity API and host-blocked from changing,
+        so it is never patched here.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group being reconciled.
+            google_group_id: The Cloud Identity group backing it.
+            google_group: That group's current state, as returned by the Groups API.
+
+        Returns:
+            An error message when the two sides conflict irreconcilably, else None.
+        """
         configured_email_prefix = self._get_configured_email_prefix(ctx, group)
         configured_display_name = self._get_configured_display_name(ctx, group)
         google_email = (google_group.get("groupKey") or {}).get("id", "") or ""
