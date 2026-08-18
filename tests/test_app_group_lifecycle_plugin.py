@@ -11,7 +11,7 @@ This includes tests for:
 
 from dataclasses import asdict
 from unittest.mock import MagicMock
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Generator
 
 import pytest
@@ -23,7 +23,7 @@ from sqlalchemy.orm import joinedload
 
 from api.config import settings
 from api.extensions import Db
-from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
+from api.models import App, AppGroup, OktaUser, OktaUserGroupMember, RoleGroupMap
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecycleContext,
@@ -942,6 +942,234 @@ class TestContextFindGroupsByStatus:
 
         # Missing plugin entries are treated as empty configuration.
         assert is_plugin_config_changed({}, {}, DummyPlugin.ID) is False
+
+
+class TestContextMembershipQueries:
+    """`ctx.list_group_members` and `ctx.find_user_groups` — the membership reads a plugin needs
+    when it provisions users itself rather than delegating to Okta group push. Neither is
+    answerable off the objects a hook is handed: `sync_group` gets a group with only `.app`
+    eager-loaded, and `group_members_removed` gets the removed delta rather than the membership
+    that remains.
+    """
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+    async def _app_with_groups(
+        self,
+        db: Db,
+        app_name: str,
+        group_suffixes: list[str],
+        *,
+        plugin_id: str | None = DummyPlugin.ID,
+    ) -> tuple[App, list[AppGroup]]:
+        test_app = AppFactory.build(name=app_name, app_group_lifecycle_plugin=plugin_id)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        groups = [
+            AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}{suffix}")
+            for suffix in group_suffixes
+        ]
+        db.session.add_all([test_app, *groups])
+        await db.session.commit()
+        return test_app, groups
+
+    async def _member(
+        self,
+        db: Db,
+        user: OktaUser,
+        group: AppGroup,
+        *,
+        is_owner: bool = False,
+        ended_at: datetime | None = None,
+        role_group_map_id: str | None = None,
+    ) -> None:
+        db.session.add(
+            OktaUserGroupMember(
+                user_id=user.id,
+                group_id=group.id,
+                is_owner=is_owner,
+                ended_at=ended_at,
+                role_group_map_id=role_group_map_id,
+            )
+        )
+        await db.session.commit()
+
+    async def _user(self, db: Db, email: str) -> OktaUser:
+        user = OktaUserFactory.build(email=email)
+        db.session.add(user)
+        await db.session.commit()
+        return user
+
+    # ---- list_group_members ----
+
+    async def test_returns_active_members_excluding_owners(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Owners administer the group; members hold the access it grants, and only members are
+        what an external system is provisioned with."""
+        _, (group,) = await self._app_with_groups(db, "MembersApp", ["G"])
+        member = await self._user(db, "member@example.com")
+        owner = await self._user(db, "owner@example.com")
+        await self._member(db, member, group)
+        await self._member(db, owner, group, is_owner=True)
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["member@example.com"]
+
+    async def test_excludes_ended_memberships_and_deleted_users(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Both temporal filters apply: an expired membership row and a soft-deleted user are
+        equally not access the external system should keep provisioned."""
+        _, (group,) = await self._app_with_groups(db, "MembersExpiredApp", ["G"])
+        current = await self._user(db, "current@example.com")
+        expired = await self._user(db, "expired@example.com")
+        departed = await self._user(db, "departed@example.com")
+        await self._member(db, current, group)
+        await self._member(db, expired, group, ended_at=datetime.now(UTC) - timedelta(days=1))
+        await self._member(db, departed, group)
+        departed.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["current@example.com"]
+
+    async def test_membership_held_twice_yields_one_user(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """A direct grant and a role-granted membership co-exist as two rows (the longer duration
+        wins, they are not collapsed), and a plugin provisioning one user per email must not see
+        the same user twice."""
+        _, (group,) = await self._app_with_groups(db, "MembersDupeApp", ["G"])
+        role = RoleGroupFactory.build()
+        db.session.add(role)
+        await db.session.commit()
+        mapping = RoleGroupMap(role_group_id=role.id, group_id=group.id, is_owner=False)
+        db.session.add(mapping)
+        await db.session.commit()
+        user = await self._user(db, "both@example.com")
+        await self._member(db, user, group)
+        await self._member(db, user, group, role_group_map_id=mapping.id)
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["both@example.com"]
+
+    async def test_rejects_a_group_belonging_to_another_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The context is bound to one plugin id so plugin code cannot reach past its own apps, and
+        a caller-supplied group is the one argument that could otherwise sidestep that binding."""
+        _, (foreign,) = await self._app_with_groups(db, "MembersForeignApp", ["G"], plugin_id="a_different_plugin")
+        member = await self._user(db, "foreign@example.com")
+        await self._member(db, member, foreign)
+
+        with pytest.raises(ValueError, match=DummyPlugin.ID):
+            await self._ctx(db).list_group_members(foreign)
+
+    async def test_rejects_a_group_whose_app_has_no_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """An app with no lifecycle plugin is nobody's to reconcile, so it is not this plugin's
+        either -- "unconfigured" must not read as "unclaimed, therefore fair game"."""
+        _, (unconfigured,) = await self._app_with_groups(db, "MembersNoPluginApp", ["G"], plugin_id=None)
+        member = await self._user(db, "unconfigured@example.com")
+        await self._member(db, member, unconfigured)
+
+        with pytest.raises(ValueError, match=DummyPlugin.ID):
+            await self._ctx(db).list_group_members(unconfigured)
+
+    async def test_group_with_no_members_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        _, (group,) = await self._app_with_groups(db, "MembersEmptyApp", ["G"])
+        assert await self._ctx(db).list_group_members(group) == []
+
+    # ---- find_user_groups ----
+
+    async def test_spans_every_app_configured_with_this_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The union case: one external system backs several Access apps, and a user's grants are
+        the union across every group they are in, so the search cannot stop at the owning app."""
+        _, (group_a,) = await self._app_with_groups(db, "UserGroupsOne", ["A"])
+        _, (group_b,) = await self._app_with_groups(db, "UserGroupsTwo", ["B"])
+        user = await self._user(db, "union@example.com")
+        await self._member(db, user, group_a)
+        await self._member(db, user, group_b)
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert {g.id for g in found} == {group_a.id, group_b.id}
+
+    async def test_excludes_other_plugins_and_soft_deleted_rows(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Scoped to this plugin's apps -- another plugin's groups are not this plugin's to
+        provision -- and both `deleted_at` filters apply."""
+        _, (keeper,) = await self._app_with_groups(db, "UserGroupsKeep", ["K"])
+        _, (foreign,) = await self._app_with_groups(db, "UserGroupsOther", ["O"], plugin_id="a_different_plugin")
+        deleted_app, (in_deleted_app,) = await self._app_with_groups(db, "UserGroupsGoneApp", ["G"])
+        _, (deleted_group,) = await self._app_with_groups(db, "UserGroupsGoneGroup", ["D"])
+        user = await self._user(db, "scoped@example.com")
+        for group in (keeper, foreign, in_deleted_app, deleted_group):
+            await self._member(db, user, group)
+        deleted_app.deleted_at = datetime.now(UTC)
+        deleted_group.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert [g.id for g in found] == [keeper.id]
+
+    async def test_excludes_ownership_and_ended_memberships(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Symmetric with `list_group_members`: owning a group is not holding its access, and an
+        expired row is not current membership. Both would over-provision the union."""
+        _, (member_of, owner_of, expired_in) = await self._app_with_groups(
+            db, "UserGroupsFilters", ["Member", "Owner", "Expired"]
+        )
+        user = await self._user(db, "filters@example.com")
+        await self._member(db, user, member_of)
+        await self._member(db, user, owner_of, is_owner=True)
+        await self._member(db, user, expired_in, ended_at=datetime.now(UTC) - timedelta(days=1))
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert [g.id for g in found] == [member_of.id]
+
+    async def test_app_narrows_to_one_app(self, db: Db, test_plugin: DummyPlugin) -> None:
+        app_one, (group_a,) = await self._app_with_groups(db, "UserGroupsScopeOne", ["A"])
+        _, (group_b,) = await self._app_with_groups(db, "UserGroupsScopeTwo", ["B"])
+        user = await self._user(db, "narrowed@example.com")
+        await self._member(db, user, group_a)
+        await self._member(db, user, group_b)
+
+        assert [g.id for g in await self._ctx(db).find_user_groups(user, app=app_one)] == [group_a.id]
+
+    async def test_membership_held_twice_yields_one_group(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Same duplicate-row hazard as `list_group_members`, from the other direction: a group the
+        user reaches both directly and through a role must appear once, or a plugin summing grants
+        per group double-counts it."""
+        _, (group,) = await self._app_with_groups(db, "UserGroupsDupe", ["G"])
+        role = RoleGroupFactory.build()
+        db.session.add(role)
+        await db.session.commit()
+        mapping = RoleGroupMap(role_group_id=role.id, group_id=group.id, is_owner=False)
+        db.session.add(mapping)
+        await db.session.commit()
+        user = await self._user(db, "dupe@example.com")
+        await self._member(db, user, group)
+        await self._member(db, user, group, role_group_map_id=mapping.id)
+
+        assert [g.id for g in await self._ctx(db).find_user_groups(user)] == [group.id]
+
+    async def test_returned_groups_have_app_loaded_on_a_cold_session(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`AppGroup.app` is lazy="raise_on_sql", and reading it is the obvious next thing a plugin
+        does with a result (the app carries the app-level config that says how to provision). A warm
+        session would hide a missing eager-load, since many-to-one resolves from the identity map
+        without SQL.
+        """
+        _, (group,) = await self._app_with_groups(db, "UserGroupsCold", ["C"])
+        user = await self._user(db, "cold@example.com")
+        await self._member(db, user, group)
+
+        db.session.expunge_all()
+        user = (await db.session.scalars(select(OktaUser).where(OktaUser.email == "cold@example.com"))).one()
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert len(found) == 1
+        assert found[0].app.name == "UserGroupsCold"  # must not raise
+
+    async def test_user_in_no_groups_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        await self._app_with_groups(db, "UserGroupsNone", ["G"])
+        user = await self._user(db, "nobody@example.com")
+        assert await self._ctx(db).find_user_groups(user) == []
 
 
 class TestPluginValidation:

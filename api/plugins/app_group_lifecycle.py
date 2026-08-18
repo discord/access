@@ -5,12 +5,12 @@ from typing import Any, Literal, NoReturn
 
 import pluggy
 from fastapi import HTTPException
-from sqlalchemy import select, text
+from sqlalchemy import Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import InstrumentedAttribute, joinedload
 
 from api.extensions import db
-from api.models import App, AppGroup, OktaUser
+from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.services import okta
 
@@ -133,6 +133,35 @@ class _StatusWrite:
     value: Any
 
 
+def _active_membership(keyed_column: InstrumentedAttribute[str]) -> Select[tuple[str]]:
+    """A subquery over the currently-held, non-owner rows of ``okta_user_group_member``, selecting
+    one side of the membership for the caller to match with ``IN``.
+
+    Membership is what an external system provisions and ownership is who administers the group in
+    Access, so owner rows are excluded; ``ended_at`` carries the temporal filter every query on this
+    table must apply. The caller adds the predicate on the other side.
+
+    Selecting one column into an ``IN``, rather than joining the membership table and
+    de-duplicating with ``DISTINCT``, for two reasons. A user can hold the same group both
+    directly and through a role, so the join multiplies rows; and ``SELECT DISTINCT`` over the
+    entity would have to compare ``AppGroup.plugin_data`` / ``OktaUser.profile``, which are ``JSON``
+    rather than ``JSONB`` on any non-Postgres backend and have no equality operator there. Both
+    composite indexes on this table lead with a keyed side and then ``is_owner``, ``ended_at``, so
+    this stays an index lookup.
+
+    Args:
+        keyed_column: The column to select -- ``OktaUserGroupMember.user_id`` to find a group's
+                      members, ``OktaUserGroupMember.group_id`` to find a user's groups.
+
+    Returns:
+        A SELECT of that column, usable as the right-hand side of an ``IN``.
+    """
+    return select(keyed_column).where(
+        OktaUserGroupMember.is_owner.is_(False),
+        or_(OktaUserGroupMember.ended_at.is_(None), OktaUserGroupMember.ended_at > func.now()),
+    )
+
+
 class AppGroupLifecycleContext:
     """The capability surface an app group lifecycle hook may use to talk to Access.
 
@@ -232,6 +261,107 @@ class AppGroupLifecycleContext:
             stmt = stmt.where(AppGroup.id != exclude_group.id)
         if limit is not None:
             stmt = stmt.limit(limit)
+        return list((await self._session.scalars(stmt)).unique().all())
+
+    async def _require_own_group(self, group: AppGroup) -> None:
+        """Guard that ``group`` belongs to an app configured with this plugin.
+
+        The context is bound to one plugin id so that plugin code cannot reach past its own apps.
+        A caller-supplied group is the one argument that could otherwise sidestep that binding, so
+        any capability taking one has to re-establish it. Resolved from the database rather than
+        read off ``group.app``, which is ``lazy="raise_on_sql"`` and would turn an unloaded
+        relationship into an obscure failure in place of this one.
+
+        Args:
+            group: The group to check.
+
+        Raises:
+            ValueError: If the group's app names a different lifecycle plugin, or none at all.
+        """
+        owning_plugin = await self._session.scalar(select(App.app_group_lifecycle_plugin).where(App.id == group.app_id))
+        if owning_plugin != self._plugin_id:
+            raise ValueError(
+                f"Group {group.id} is not configured with the '{self._plugin_id}' app group lifecycle plugin"
+            )
+
+    async def list_group_members(self, group: AppGroup) -> list[OktaUser]:
+        """The users who currently hold membership in ``group``.
+
+        The membership read a plugin needs to converge ``sync_group``. It is a capability rather
+        than an eager-load on the passed-in group because every relationship on ``group`` except
+        ``.app`` is ``lazy="raise_on_sql"``.
+
+        Args:
+            group: The app group whose membership to read. Must belong to an app configured with
+                   this plugin -- in practice a group the plugin was handed by a hook or got back
+                   from ``find_user_groups``.
+
+        Returns:
+            Active, non-owner members, ordered by email. Group *owners* are excluded: they
+            administer the group rather than hold the access it grants. A user who holds
+            membership both directly and through a role has two membership rows and still appears
+            once. Soft-deleted users are excluded. Every relationship on a returned ``OktaUser``
+            is ``lazy="raise_on_sql"`` and must not be touched; its columns are loaded.
+
+        Raises:
+            ValueError: If the group's app is not configured with this plugin. Membership is not
+                stored per-plugin the way ``plugin_data`` is, so nothing but this check keeps the
+                capability inside the apps the plugin is responsible for.
+        """
+        await self._require_own_group(group)
+        return list(
+            (
+                await self._session.scalars(
+                    select(OktaUser)
+                    .where(
+                        OktaUser.id.in_(
+                            _active_membership(OktaUserGroupMember.user_id).where(
+                                OktaUserGroupMember.group_id == group.id
+                            )
+                        )
+                    )
+                    .where(OktaUser.deleted_at.is_(None))
+                    .order_by(OktaUser.email)
+                )
+            ).all()
+        )
+
+    async def find_user_groups(self, user: OktaUser, *, app: App | None = None) -> list[AppGroup]:
+        """The app groups ``user`` currently holds membership in, among this plugin's apps.
+
+        The cross-group read a plugin needs when the external system grants a user one combined
+        permission set rather than one per group: on removal from a group the correct action is to
+        recompute the union over the groups the user still holds and write the reduced set, which
+        the ``members`` delta handed to ``group_members_removed`` cannot express on its own.
+
+        Args:
+            user: The user whose memberships to read.
+            app: Narrow the result to a single app. Omit to span every app configured with this
+                 plugin id -- one external system can back several Access apps, and a user's
+                 grants are the union across all of them.
+
+        Returns:
+            Active app groups, ordered by name, each with ``.app`` loaded; every other
+            relationship is ``lazy="raise_on_sql"`` and must not be touched. Groups the user only
+            *owns* are excluded, matching ``list_group_members``, as are soft-deleted apps and
+            groups. A group reached both directly and through a role appears once.
+        """
+        stmt = (
+            select(AppGroup)
+            .options(joinedload(AppGroup.app))
+            .join(App, AppGroup.app_id == App.id)
+            .where(App.app_group_lifecycle_plugin == self._plugin_id)
+            .where(App.deleted_at.is_(None))
+            .where(AppGroup.deleted_at.is_(None))
+            .where(
+                AppGroup.id.in_(
+                    _active_membership(OktaUserGroupMember.group_id).where(OktaUserGroupMember.user_id == user.id)
+                )
+            )
+            .order_by(AppGroup.name)
+        )
+        if app is not None:
+            stmt = stmt.where(AppGroup.app_id == app.id)
         return list((await self._session.scalars(stmt)).unique().all())
 
     # ---- Configuration and status ----
