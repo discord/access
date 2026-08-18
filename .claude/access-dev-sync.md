@@ -28,6 +28,10 @@ plugins, where a plugin's own loop swallowing failures lets the job exit 0 havin
 and would let advisory locks accumulate across a batch, which overlapping runs iterating in different
 orders can deadlock on.
 
+`examples/kubernetes/cron-job-sync-app-groups.yaml` is the reference deployment, and its comments
+carry the operator-facing version of the reasoning below (why `concurrencyPolicy: Forbid`, why
+`backoffLimit: 0`, why the sweep is hourly). Keep the two in step when this behavior changes.
+
 Note the loop holds plain column values and re-loads each group inside the iteration. That is
 deliberate, not incidental: a rolled-back group expires the entire identity map, so anything held
 across an iteration boundary is unusable — the same hazard described under `lazy="raise_on_sql"` in
