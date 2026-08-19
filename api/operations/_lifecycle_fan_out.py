@@ -71,7 +71,10 @@ class _DeferredFire:
     hook_method: AppGroupLifecycleHook
     group_id: str
     # Ids of the users a membership hook was told about, in the order the operation passed them.
-    member_ids: tuple[str, ...]
+    # `None` means the fire carried no `members` kwarg at all, which is distinct from `()`: an
+    # empty list is a legitimate payload (deleting a group nobody was in) and the hookspec still
+    # requires the argument, so replay has to put it back.
+    member_ids: tuple[str, ...] | None
     # The remaining hook kwargs, all scalars — `old_name` / `old_description` today.
     extra: tuple[tuple[str, Any], ...]
     # GROUP_DELETED fires after the group is already soft-deleted, so its replay must re-load a
@@ -105,15 +108,17 @@ def end_deferred_lifecycle(token: "contextvars.Token[Optional[_Collected]]") -> 
     _deferred_lifecycle.reset(token)
 
 
-def _snapshot_kwargs(kwargs: dict[str, Any]) -> Optional[tuple[tuple[str, ...], tuple[tuple[str, Any], ...]]]:
+def _snapshot_kwargs(
+    kwargs: dict[str, Any],
+) -> Optional[tuple[Optional[tuple[str, ...]], tuple[tuple[str, Any], ...]]]:
     """Split hook kwargs into (member ids, scalar kwargs), or None if something can't be carried.
 
     `members` is the only ORM-bearing kwarg any lifecycle hookspec takes; it becomes a tuple of
-    user ids. Everything else must be a scalar. Returning None rather than raising keeps a future
-    kwarg from breaking a request: the caller falls back to invoking inline, which is correct —
-    just not deferred.
+    user ids, or stays `None` when the fire did not carry one at all. Everything else must be a
+    scalar. Returning None rather than raising keeps a future kwarg from breaking a request: the
+    caller falls back to invoking inline, which is correct — just not deferred.
     """
-    member_ids: tuple[str, ...] = ()
+    member_ids: tuple[str, ...] | None = None
     extra: list[tuple[str, Any]] = []
     for key, value in kwargs.items():
         if key == "members":
@@ -235,7 +240,7 @@ async def run_deferred_lifecycle(collected: _Collected) -> None:
                     logger.info("Skipping %s: the group is gone or is no longer an app group", context)
                     continue
                 kwargs: dict[str, Any] = dict(fire.extra)
-                if fire.member_ids:
+                if fire.member_ids is not None:
                     kwargs["members"] = await _reload_members(session, fire.member_ids)
                 # Never raises on a plugin's behalf; it logs failures and re-applies the plugin's
                 # durable status itself, so its return value is nothing this drain can act on.

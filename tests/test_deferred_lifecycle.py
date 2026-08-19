@@ -28,7 +28,7 @@ from sqlalchemy.orm import joinedload
 
 from api.extensions import Db, _session_scope
 from api.models import AppGroup, OktaGroup, OktaUser
-from api.operations import ModifyGroupType
+from api.operations import DeleteGroup, ModifyGroupType, ModifyGroupUsers
 from api.operations._lifecycle_fan_out import (
     _DeferredFire,
     _snapshot_kwargs,
@@ -97,10 +97,12 @@ class RecordingPlugin:
         self._record("group_updated", group)
 
     @hookimpl
-    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    ) -> None:
         if plugin_id != self.ID:
             return
-        self._record("group_deleted", group)
+        self._record("group_deleted", group, members)
 
     @hookimpl
     async def group_members_added(
@@ -213,9 +215,12 @@ async def test_does_not_defer_a_group_with_no_lifecycle_plugin(
 def test_snapshot_kwargs_refuses_what_it_cannot_carry() -> None:
     """Scalars and `members` are carryable; anything else would be stale or detached by replay."""
     assert _snapshot_kwargs({"old_name": "a", "old_description": "", "unset": None}) == (
-        (),
+        None,
         (("old_name", "a"), ("old_description", ""), ("unset", None)),
     )
+    # An empty members list is not the same as no members kwarg: the hookspec still requires the
+    # argument, so it has to survive the round trip as `()` rather than collapsing to absent.
+    assert _snapshot_kwargs({"members": []}) == ((), ())
     assert _snapshot_kwargs({"some_orm_object": object()}) is None
 
 
@@ -281,7 +286,7 @@ async def test_group_deleted_replays_against_the_soft_deleted_row(
 ) -> None:
     """DeleteGroup soft-deletes before it fires, so this replay must not filter `deleted_at`."""
     group = await _app_group(db, "SoftDeletedApp")
-    await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
+    await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group, members=[])
     assert collector[0].allow_deleted is True
 
     group.deleted_at = datetime.now(UTC)
@@ -289,7 +294,34 @@ async def test_group_deleted_replays_against_the_soft_deleted_row(
 
     await run_deferred_lifecycle(collector)
 
-    assert [(c[0], c[1]) for c in recording_plugin.calls] == [("group_deleted", group.id)]
+    # An empty membership survives as an empty tuple, not as an absent kwarg — the hookspec
+    # requires `members`, so dropping it would fail the call for every empty group.
+    assert [(c[0], c[1], c[3]) for c in recording_plugin.calls] == [("group_deleted", group.id, ())]
+
+
+async def test_deleting_a_group_defers_the_membership_it_captured(
+    db: Db, recording_plugin: RecordingPlugin, collector: list[_DeferredFire], mocker: MockerFixture
+) -> None:
+    """DeleteGroup captures the membership *before* ending it, because a plugin that provisioned
+    users individually cannot recover the list afterwards. Deferral must not cost that: the fire
+    carries the ids it was handed, so re-deriving members from the group at replay time — when the
+    memberships are already ended — would quietly hand the plugin an empty list."""
+    mocker.patch.object(okta, "delete_group")
+    group = await _app_group(db, "DeleteMembersApp")
+    member = OktaUserFactory.build()
+    db.session.add(member)
+    await db.session.commit()
+    await ModifyGroupUsers(group=group.id, members_to_add=[member.id], sync_to_okta=False).execute()
+
+    await DeleteGroup(group=group.id).execute()
+
+    # Queued, not fired, and the membership is already gone by now.
+    assert recording_plugin.calls == []
+    assert collector[0].member_ids == (member.id,)
+
+    await run_deferred_lifecycle(collector)
+
+    assert [(c[0], c[3]) for c in recording_plugin.calls] == [("group_deleted", (member.id,))]
 
 
 async def test_replays_in_the_order_they_were_fired(
