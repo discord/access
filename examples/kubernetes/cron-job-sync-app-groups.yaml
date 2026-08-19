@@ -1,0 +1,68 @@
+---
+# Drives the app-group-lifecycle plugin hooks: invokes each configured plugin's `sync_group`
+# hook once per active app group, reconciling Access groups against the external system the
+# plugin backs them with (see "App Group Lifecycle Plugins" in the README).
+#
+# Only useful when an app group lifecycle plugin is installed. Plugins are baked into the image
+# at build time -- see the INSTALL_*_PLUGIN build args in the Dockerfile -- so the image this
+# CronJob runs must be one built with yours. Without a plugin the command finds no configured
+# apps and exits 0, so it is safe but pointless to schedule.
+#
+# The job attempts every group regardless of individual failures, and exits non-zero if any
+# group failed to sync, so a run that left groups unreconciled shows up as a failed job rather
+# than only in the logs. Each group is its own transaction, so a failure strands nothing behind
+# it and the next run retries it.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app: access
+    owner: security
+  name: access-cronjob-sync-app-groups
+  namespace: access
+spec:
+  # Reconciliation is idempotent, but overlapping runs would contend on the per-group advisory
+  # locks the plugins take, so let a long run finish rather than stacking another on top of it.
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      # No retries: the next scheduled run is the retry, and a failed job is the signal that
+      # some groups did not reconcile.
+      backoffLimit: 0
+      template:
+        spec:
+          containers:
+            - command:
+                - access
+                - sync-app-groups
+              env: # See "Production Setup" in the README for more details on configuring these environment variables
+                - name: ENV
+                  value: production
+                - name: OKTA_DOMAIN
+                  value: mydomain.okta.com # Replace with your Okta domain
+                - name: DATABASE_URI
+                  value: postgresql:// # Replace with your database URI
+                - name: OKTA_API_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      key: OKTA_API_TOKEN
+                      name: access-secrets
+                # Any configuration your app group lifecycle plugin reads from the environment
+                # goes here too. The example Google Workspace plugin
+                # (examples/plugins/app_group_lifecycle_google) reads these two, and picks up
+                # Google credentials from the ambient application-default credentials -- via
+                # Workload Identity on the service account below, rather than a mounted key.
+                # - name: GOOGLE_WORKSPACE_OKTA_APP_ID
+                #   value: 0oa1example2app3id4 # Replace with the Okta app that pushes groups downstream
+                # - name: GOOGLE_WORKSPACE_DOMAIN
+                #   value: mydomain.com # Replace with your Google Workspace domain
+              image: access # Replace with reference to a Docker image build of access in your container registry
+              name: access-cronjob-sync-app-groups
+          restartPolicy: Never
+          serviceAccountName: access
+      ttlSecondsAfterFinished: 1800
+  # Hourly. Event-driven hooks already reconcile on create, update, delete, and membership
+  # change, so this sweep exists to catch drift and to retry groups whose external system was
+  # unreachable -- not to be the primary path. Tighten it if your plugin defers work (e.g.
+  # waiting on Okta to import a pushed group) and you want those groups to settle sooner.
+  schedule: 0 * * * *
