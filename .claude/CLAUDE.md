@@ -569,11 +569,22 @@ notifications, conditional access, `metrics_reporter` (`record_*` etc.; `batch_m
 async context manager), and the app-group-lifecycle *lifecycle* hooks — must be `async def`, and
 `verify_async_impls` fails fast at hook load if one is registered as a plain `def`. Do blocking
 I/O off the event loop: prefer a native async client (`httpx`, an SDK's async client) and fall
-back to `await asyncio.to_thread(...)` only for sync-only dependencies. App-group-lifecycle hooks
-that mutate state receive an `AsyncSession` (await ORM calls on it; `session.add(...)` is sync);
-the pure metadata/config/status/validation hooks stay **sync**. Plugin-contributed
+back to `await asyncio.to_thread(...)` only for sync-only dependencies. The pure
+metadata/config/status/validation hooks stay **sync**. Plugin-contributed
 `access.commands` CLI commands run as ordinary Click commands and must drive their own
 `asyncio.run(...)`. The README's plugin section documents this in full.
+
+**Plugins are self-contained: they integrate with Access only through the plugin interface.** A
+plugin never imports `api.operations` or `api.services`, never builds a query, and never touches a
+session. If a plugin needs something Access can do, add a capability to the interface rather than an
+import that reaches past it — and keep the capability general, not shaped around one plugin's needs.
+Access also owns the transaction: a hook never commits or rolls back, and because the host's
+rollback expires the whole identity map, nothing may read ORM state after a hook fires.
+
+Where a hook needs capabilities rather than plain data, they arrive as a context object bound to the
+invoking plugin's id, so a plugin can't reach another plugin's namespace — see
+`AppGroupLifecycleContext` in `api/plugins/app_group_lifecycle.py`, whose docstrings carry the
+per-capability contract. `examples/plugins/` holds the reference implementations.
 
 **Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification
 raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group

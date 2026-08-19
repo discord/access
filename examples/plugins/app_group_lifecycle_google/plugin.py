@@ -15,26 +15,15 @@ from typing import Any
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from api.models import App, AppGroup
-from api.operations import ModifyGroupDetails
+from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
+    AppGroupLifecycleContext,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
     MissingOktaTargetError,
-    create_push_mapping_and_new_group,
-    create_push_mapping_for_existing_group,
-    delete_push_mapping,
-    discover_existing_push_mapping_and_target_group_external_id,
-    get_config_value,
-    get_status_value,
     hookimpl,
-    set_config_value,
-    set_status_value,
 )
 
 PLUGIN_ID = "google_group_manager"
@@ -76,7 +65,14 @@ def _is_group_absent_error(error: HttpError) -> bool:
     The Groups API returns 403 (PERMISSION_DENIED, "...or it may not exist") rather than
     404 for a group the caller can't see -- including one that simply doesn't exist yet.
     Treating both as "absent" lets reconcile create the group instead of erroring; a
-    genuine permission problem then surfaces on the subsequent create call."""
+    genuine permission problem then surfaces on the subsequent create call.
+
+    Args:
+        error: The error the Groups API raised.
+
+    Returns:
+        True if the group should be treated as not existing.
+    """
     return getattr(getattr(error, "resp", None), "status", None) in (403, 404)
 
 
@@ -99,8 +95,8 @@ class GoogleGroupManagerPlugin:
 
     # ---- Helpers ----
 
-    def _is_enabled(self, group: AppGroup) -> bool:
-        return bool(get_config_value(group.app, CONFIG_ENABLED, PLUGIN_ID, False))
+    def _is_enabled(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> bool:
+        return bool(ctx.get_config(group.app, CONFIG_ENABLED, False))
 
     def _full_email(self, prefix: str) -> str:
         return f"{prefix}@{self._domain}"
@@ -112,7 +108,16 @@ class GoogleGroupManagerPlugin:
         return email[: -len(suffix)]
 
     def _validate_email_against_pattern(self, prefix: str, pattern: str | None) -> str | None:
-        """Return an error message if the prefix violates the pattern, else None."""
+        """Check an email prefix against an operator-configured pattern.
+
+        Args:
+            prefix: The email local part to check.
+            pattern: The app's configured regex, or None for no constraint.
+
+        Returns:
+            An error message, or None when the prefix is acceptable. A malformed pattern also
+            yields None -- it is reported at app-config validation, not here.
+        """
         if not pattern:
             return None
         try:
@@ -123,11 +128,11 @@ class GoogleGroupManagerPlugin:
             return None
         return None
 
-    def _get_configured_email_prefix(self, group: AppGroup) -> str | None:
-        return get_config_value(group, CONFIG_EMAIL, PLUGIN_ID)
+    def _get_configured_email_prefix(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
+        return ctx.get_config(group, CONFIG_EMAIL)
 
-    def _get_configured_display_name(self, group: AppGroup) -> str | None:
-        return get_config_value(group, CONFIG_DISPLAY_NAME, PLUGIN_ID)
+    def _get_configured_display_name(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
+        return ctx.get_config(group, CONFIG_DISPLAY_NAME)
 
     # ---- Metadata ----
 
@@ -316,8 +321,16 @@ class GoogleGroupManagerPlugin:
     async def _patch_google_group(
         self, google_group_id: str, *, display_name: str | None = None, description: str | None = None
     ) -> None:
-        """Patch a Google group's mutable properties. groupKey (email) is immutable, so only
-        displayName/description are patchable; pass only the fields to change. No-op if none."""
+        """Patch a Google group's mutable properties.
+
+        Args:
+            google_group_id: The Cloud Identity group to patch.
+            display_name: The display name to set, or None to leave it alone.
+            description: The description to set, or None to leave it alone.
+
+        groupKey (the email) is immutable in the Cloud Identity API, so it is not patchable here.
+        A call with neither field is a no-op.
+        """
         body: dict[str, Any] = {}
         if display_name is not None:
             body["displayName"] = display_name
@@ -347,7 +360,14 @@ class GoogleGroupManagerPlugin:
             raise
 
     async def _look_up_google_group_id(self, email: str) -> str | None:
-        """Resolve an email to its bare Cloud Identity group id, or None if no such group."""
+        """Resolve an email to its Cloud Identity group id.
+
+        Args:
+            email: The full group email to look up.
+
+        Returns:
+            The bare group id, or None if no such group is visible.
+        """
         try:
             result = await asyncio.to_thread(lambda: self._groups_api.lookup(groupKey_id=email).execute())
         except HttpError as e:
@@ -359,26 +379,54 @@ class GoogleGroupManagerPlugin:
 
     # ---- Status setters ----
 
-    async def _mark(self, session: AsyncSession, group: AppGroup, status: str, error: str | None = None) -> None:
+    def _mark(self, ctx: AppGroupLifecycleContext, group: AppGroup, status: str, error: str | None = None) -> None:
+        """Record this reconcile's outcome on the group.
+
+        Synchronous: the context mutates plugin_data in memory and marks the group for persistence,
+        and the host commits after the hook returns.
+
+        These are diagnostics, so they opt into `durable_on_failure`: the host re-applies them in a
+        fresh transaction after a failed hook, which is what lets an operator see *why* reconcile
+        failed rather than a group stuck with no explanation. Contrast the ownership tokens written
+        elsewhere in this plugin, which deliberately do not -- see _claim_group_id.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+            status: One of the SYNC_* values.
+            error: The failure detail to surface in the UI, or None on success.
+        """
         if error:
             logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
 
-        set_status_value(group, STATUS_SYNC_STATUS, status, PLUGIN_ID)
-        set_status_value(group, STATUS_SYNC_ERROR, error, PLUGIN_ID)
+        ctx.set_status(group, STATUS_SYNC_STATUS, status, durable_on_failure=True)
+        ctx.set_status(group, STATUS_SYNC_ERROR, error, durable_on_failure=True)
         if status == SYNC_SYNCED:
-            set_status_value(group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), PLUGIN_ID)
-        session.add(group)
-        await session.commit()
+            ctx.set_status(
+                group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True
+            )
 
     # ---- Reconcile ----
 
-    async def _get_owned_group_id(self, group: AppGroup) -> str | None:
-        """The Google group id this Access group already owns (claimed on a prior reconcile),
-        if it still exists. The recorded id is an ownership token -- it is written only after
-        the ownership check passes (see _claim_group_id) -- so a live cached id needs no
-        re-check. Clears the cached id and returns None if the group was deleted out of band,
-        so the caller re-resolves/recreates. Returns None when nothing is cached."""
-        cached = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+    async def _get_owned_group_id(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
+        """The Google group id this Access group owns, if it still exists.
+
+        The recorded id is an ownership token -- written only after the ownership check passes,
+        see _claim_group_id -- so a live cached id needs no re-check.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+
+        Returns:
+            The owned Cloud Identity group id, or None when nothing is recorded or the recorded
+            group was deleted out of band. In the latter case the cached id is cleared too, so the
+            caller re-resolves or recreates.
+
+        Raises:
+            HttpError: If the lookup fails for any reason other than the group being absent.
+        """
+        cached = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not cached:
             return None
         try:
@@ -388,24 +436,11 @@ class GoogleGroupManagerPlugin:
             if not _is_group_absent_error(e):
                 raise
             logger.info(f"Cached Google group id {cached} for {group.name} is gone; clearing and re-resolving.")
-            set_status_value(group, STATUS_GOOGLE_GROUP_ID, None, PLUGIN_ID)
+            ctx.set_status(group, STATUS_GOOGLE_GROUP_ID, None)
             return None
 
-    async def _lock_claim(self, session: AsyncSession, candidate_id: str) -> None:
-        """Serialize concurrent claims of the same Google group, closing the check-then-claim race
-        in _claim_group_id. Takes a Postgres transaction-level advisory lock keyed on the candidate
-        id (auto-released at commit/rollback), so a second reconcile claiming the same id blocks
-        until the first commits and can then observe it as owned. A no-op on non-Postgres backends
-        (e.g. the SQLite test DB), where the relevant sync paths are single-writer."""
-        bind = session.get_bind()
-        if bind is None or bind.dialect.name != "postgresql":
-            return
-        # hashtextextended maps the id to the bigint the advisory-lock functions take; key
-        # collisions only cause extra (harmless) serialization.
-        await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": candidate_id})
-
     async def _claim_group_id(
-        self, session: AsyncSession, group: AppGroup, candidate_id: str, email: str | None = None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, candidate_id: str, email: str | None = None
     ) -> str | None:
         """Record candidate_id as this group's owned Google group, but ONLY after confirming no
         other Access group already owns it -- refusing (and marking SYNC_ERROR) rather than
@@ -414,30 +449,62 @@ class GoogleGroupManagerPlugin:
 
         Persisting the id is gated on the ownership check (not the reverse) so a refused group
         never carries another group's id into its status, where group_deleted would later act on
-        it. The check and the claim are serialized by an advisory lock on the candidate id (see
-        _lock_claim) so two concurrent reconciles can't both pass the check for the same group."""
-        if get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID) == candidate_id:
+        it. `ctx.lock` serializes the check against the claim, so two concurrent reconciles can't
+        both pass the check for the same Google group -- the lock is held until the host commits,
+        which is what makes the pair atomic.
+
+        Ownership keys on the recorded google_group_id ALONE, not on whether a push mapping exists
+        yet: the id is recorded only after this check passes, while the push mapping is created
+        later and may defer until Okta imports the group. Were we to also require a push mapping, a
+        second group reconciling during that window would not see the real owner and would
+        double-claim the group.
+
+        The claimed id is an ownership token, so it is written WITHOUT `durable_on_failure`: it is
+        only sound when committed in the transaction that held the lock during the check. Letting
+        the host replay it after a rollback would reopen exactly the race this method closes.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group claiming ownership.
+            candidate_id: The Cloud Identity group id to claim.
+            email: The group's email, for the error message on refusal.
+
+        Returns:
+            ``candidate_id`` once recorded, or None when another Access group already owns it.
+        """
+        if ctx.get_status(group, STATUS_GOOGLE_GROUP_ID) == candidate_id:
             return candidate_id
-        await self._lock_claim(session, candidate_id)
-        owner = await self._get_google_group_owner(session, group, candidate_id)
-        if owner is not None:
-            await self._mark(
-                session,
+        await ctx.lock(candidate_id)
+        owners = await ctx.find_groups_by_status(STATUS_GOOGLE_GROUP_ID, candidate_id, exclude_group=group, limit=1)
+        if owners:
+            self._mark(
+                ctx,
                 group,
                 SYNC_ERROR,
                 f"Google group {email or candidate_id} is already managed by Access group "
-                f"'{owner.name}'; refusing to link it to this one.",
+                f"'{owners[0].name}'; refusing to link it to this one.",
             )
             return None
-        set_status_value(group, STATUS_GOOGLE_GROUP_ID, candidate_id, PLUGIN_ID)
+        ctx.set_status(group, STATUS_GOOGLE_GROUP_ID, candidate_id)
         return candidate_id
 
-    async def _get_email_from_status(self, group: AppGroup) -> str | None:
-        """Recover the group email from a cached id when the Access-side config is absent
-        (adoption path). Returns the full email, or None when there is no cached id or the cached
-        group was deleted out of band (mirrors _owned_group_id's absent-error handling, so a
-        vanished group defers rather than hard-erroring reconcile)."""
-        google_group_id = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+    async def _get_email_from_status(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
+        """Recover the group email from a recorded id, for the adoption path where the
+        Access-side config is absent.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+
+        Returns:
+            The full group email, or None when nothing is recorded or the recorded group was
+            deleted out of band. Mirrors _get_owned_group_id's absent-error handling, so a vanished
+            group defers rather than hard-erroring reconcile.
+
+        Raises:
+            HttpError: If the lookup fails for any reason other than the group being absent.
+        """
+        google_group_id = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not google_group_id:
             return None
         try:
@@ -449,56 +516,27 @@ class GoogleGroupManagerPlugin:
             return None
         return (live.get("groupKey") or {}).get("id")
 
-    async def _get_google_group_owner(
-        self, session: AsyncSession, group: AppGroup, google_group_id: str
-    ) -> AppGroup | None:
-        """Another active Access group that already owns this Google group -- i.e. records its id
-        in status. Used to refuse adopting (and clobbering / double-linking) a Google group already
-        owned elsewhere.
+    async def _reconcile(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> None:
+        """Resolve, adopt, or create the Google group; enforce its properties; link it via Okta
+        push; and record the sync status. Idempotent, so every create/update/sync path runs it.
 
-        Ownership keys on the recorded google_group_id ALONE, not on whether a push mapping exists
-        yet: the id is recorded only after this same ownership check passes (see _claim_group_id),
-        while the push mapping is created later and may defer until Okta imports the group. Were we
-        to also require a push mapping, a second group reconciling during that window would not see
-        the real owner and would double-claim the group.
+        Args:
+            ctx: The plugin capability context.
+            group: The group to reconcile.
 
-        Access state is the source of truth here (not Okta's imported target groups, which lag
-        behind and may not be queryable yet). The search spans every app configured with this
-        plugin, not just this group's app: one Google Workspace can back several Access apps, and
-        those apps all set this same plugin id, so a Google group can be owned by a group in any
-        of them.
-
-        The id predicate is pushed into SQL (a JSON path lookup on the stored status), so this
-        stays a point lookup -- not a scan of every plugin-managed group on each reconcile. It also
-        only runs for a group that isn't yet linked."""
-        google_group_id_path = (PLUGIN_ID, "status", STATUS_GOOGLE_GROUP_ID)
-        return (
-            await session.scalars(
-                select(AppGroup)
-                .join(App, AppGroup.app_id == App.id)
-                .where(App.app_group_lifecycle_plugin == PLUGIN_ID)
-                .where(App.deleted_at.is_(None))
-                .where(AppGroup.id != group.id)
-                .where(AppGroup.deleted_at.is_(None))
-                .where(AppGroup.plugin_data[google_group_id_path].as_string() == google_group_id)
-                .limit(1)
-            )
-        ).first()
-
-    async def _reconcile(self, session: AsyncSession, group: AppGroup) -> None:
-        """Idempotent: resolve/adopt/create the Google group, enforce its properties,
-        link via Okta push, and record sync status. Commits sync_status inside the hook
-        so it survives the host's post-hook rollback on error."""
-        if not self._is_enabled(group):
+        The sync status is written with `durable_on_failure`, so the host re-applies it after
+        rolling back a failed hook and an operator still sees why reconcile failed. See _mark.
+        """
+        if not self._is_enabled(ctx, group):
             return
 
         try:
-            configured_email_prefix = self._get_configured_email_prefix(group)
+            configured_email_prefix = self._get_configured_email_prefix(ctx, group)
             configured_email = self._full_email(configured_email_prefix) if configured_email_prefix else None
 
             # Case 1: Retrieve an existing Google group already claimed by this Access group
             # This should generally be the case in all but the group's first or second reconcile.
-            claimed_google_group_id = await self._get_owned_group_id(group)
+            claimed_google_group_id = await self._get_owned_group_id(ctx, group)
 
             if claimed_google_group_id is None:
                 # Case 2: Retrieve an existing Google group matching the configured email (created out-of-band)
@@ -510,7 +548,7 @@ class GoogleGroupManagerPlugin:
 
                 if candidate_group_id is None:
                     # Case 3: Retrieve an existing mapped Google group (linked in Okta out-of-band)
-                    link = await discover_existing_push_mapping_and_target_group_external_id(
+                    link = await ctx.discover_existing_push_mapping_and_target_group_external_id(
                         group, self._okta_app_id, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL
                     )
                     if link:
@@ -520,8 +558,8 @@ class GoogleGroupManagerPlugin:
                         # email of the linked group doesn't match. This is a conflict that won't self-heal,
                         # so we surface it as an error rather than silently adopting the wrong group.
                         if configured_email is not None and resolved_email != configured_email:
-                            await self._mark(
-                                session,
+                            self._mark(
+                                ctx,
                                 group,
                                 SYNC_ERROR,
                                 f"Existing Okta push mapping targets Google group '{resolved_email}', but this "
@@ -535,12 +573,12 @@ class GoogleGroupManagerPlugin:
 
                 if candidate_group_id is not None:  # group created or mapped out-of-band; try to claim it
                     claimed_google_group_id = await self._claim_group_id(
-                        session, group, candidate_group_id, configured_email or resolved_email
+                        ctx, group, candidate_group_id, configured_email or resolved_email
                     )
                     if claimed_google_group_id is None:
                         return  # owned by another Access group; _claim_group_id marked the error
                     if mapping_id:
-                        set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
+                        ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
 
             if claimed_google_group_id is None:
                 # Case 4: Nothing to adopt -> create via Okta group push. Okta creates its target group AND
@@ -551,22 +589,22 @@ class GoogleGroupManagerPlugin:
                     logger.info(f"Skipping {group.name} due to missing required config.")
                     return
 
-                pattern = get_config_value(group.app, CONFIG_EMAIL_PATTERN, PLUGIN_ID)
+                pattern = ctx.get_config(group.app, CONFIG_EMAIL_PATTERN)
                 pattern_error = self._validate_email_against_pattern(configured_email_prefix, pattern)
                 if pattern_error:
-                    await self._mark(session, group, SYNC_ERROR, pattern_error)
+                    self._mark(ctx, group, SYNC_ERROR, pattern_error)
                     return
 
-                if not get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID):
+                if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
                     logger.info(f"Creating and linking a new Google group for {group.name} via Okta group push...")
                     # Create a push mapping with a new target group name (the email prefix).
                     # You can't specify all the group config (description, email) when creating it via
                     # Okta, so we give the email prefix which is immutable and then reconcile the other
                     # properties later.
-                    mapping_id = await create_push_mapping_and_new_group(
+                    mapping_id = await ctx.create_push_mapping_and_new_group(
                         group, self._okta_app_id, configured_email_prefix
                     )
-                    set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
+                    ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
 
                 # Retrieve Google's ID for the group in order to claim it.
                 google_group_id_to_claim = await self._look_up_google_group_id(configured_email)
@@ -574,11 +612,11 @@ class GoogleGroupManagerPlugin:
                 # defer if it isn't visible, adopting its Cloud Identity id and patching its
                 # metadata on a later reconcile once it appears.
                 if google_group_id_to_claim is None:
-                    await self._mark(session, group, SYNC_PENDING, "Awaiting Google group creation via Okta push")
+                    self._mark(ctx, group, SYNC_PENDING, "Awaiting Google group creation via Okta push")
                     return
 
                 claimed_google_group_id = await self._claim_group_id(
-                    session, group, google_group_id_to_claim, configured_email
+                    ctx, group, google_group_id_to_claim, configured_email
                 )
                 if claimed_google_group_id is None:
                     return  # owned by another Access group; _claim_group_id marked the error
@@ -589,50 +627,61 @@ class GoogleGroupManagerPlugin:
             # display name and description.
             logger.debug(f"Reconciling group properties for {group.name}...")
             google_group = await self._get_google_group(claimed_google_group_id)
-            reconcile_error = await self._adopt_or_enforce(group, claimed_google_group_id, google_group)
+            reconcile_error = await self._adopt_or_enforce(ctx, group, claimed_google_group_id, google_group)
             if reconcile_error is not None:
-                await self._mark(session, group, SYNC_ERROR, reconcile_error)
+                self._mark(ctx, group, SYNC_ERROR, reconcile_error)
                 return
 
             # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
             # target (duplicate imports sharing the email) won't self-heal, so it errors rather
             # than deferring forever. The create-via-push path above already recorded a mapping, so
             # this only runs when adopting an existing group that isn't linked yet.
-            if not get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID):
-                resolved_email = configured_email or await self._get_email_from_status(group)
+            if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
+                resolved_email = configured_email or await self._get_email_from_status(ctx, group)
                 if not resolved_email:
                     logger.info(f"Skipping {group.name} due to missing required config.")
                     return
                 try:
-                    mapping_id = await create_push_mapping_for_existing_group(
+                    mapping_id = await ctx.create_push_mapping_for_existing_group(
                         group, self._okta_app_id, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL, resolved_email
                     )
-                    set_status_value(group, STATUS_PUSH_MAPPING_ID, mapping_id, PLUGIN_ID)
+                    ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
                 except AmbiguousOktaTargetError as e:
-                    await self._mark(session, group, SYNC_ERROR, str(e))
+                    self._mark(ctx, group, SYNC_ERROR, str(e))
                     return
                 except MissingOktaTargetError:
-                    await self._mark(session, group, SYNC_PENDING, "Awaiting Okta import of the Google group")
+                    self._mark(ctx, group, SYNC_PENDING, "Awaiting Okta import of the Google group")
                     return
 
-            await self._mark(session, group, SYNC_SYNCED)
+            self._mark(ctx, group, SYNC_SYNCED)
         except Exception as e:
             logger.exception(f"Reconcile failed for group {group.name}")
             try:
-                await self._mark(session, group, SYNC_ERROR, str(e))
+                self._mark(ctx, group, SYNC_ERROR, str(e))
             except Exception:
                 logger.exception("Failed to persist error status")
             raise
 
     async def _adopt_or_enforce(
-        self, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
     ) -> str | None:
-        """For an existing live Google group: adopt missing Access-side values from it,
-        or enforce present values onto it. The email (groupKey) is immutable in the Cloud
-        Identity API and host-blocked from changing, so it is never patched here. Returns
-        an error string or None."""
-        configured_email_prefix = self._get_configured_email_prefix(group)
-        configured_display_name = self._get_configured_display_name(group)
+        """For an existing live Google group, adopt missing Access-side values from it, or enforce
+        present values onto it.
+
+        The email (groupKey) is immutable in the Cloud Identity API and host-blocked from changing,
+        so it is never patched here.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The Access group being reconciled.
+            google_group_id: The Cloud Identity group backing it.
+            google_group: That group's current state, as returned by the Groups API.
+
+        Returns:
+            An error message when the two sides conflict irreconcilably, else None.
+        """
+        configured_email_prefix = self._get_configured_email_prefix(ctx, group)
+        configured_display_name = self._get_configured_display_name(ctx, group)
         google_email = (google_group.get("groupKey") or {}).get("id", "") or ""
         google_description = google_group.get("description", "") or ""
 
@@ -641,15 +690,13 @@ class GoogleGroupManagerPlugin:
             inferred_email_prefix = self._prefix_from_email(google_email)
             if inferred_email_prefix is None:
                 return f"Live Google group email '{google_email}' is not in domain {self._domain}"
-            set_config_value(group, CONFIG_EMAIL, inferred_email_prefix, PLUGIN_ID)
-            set_config_value(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "", PLUGIN_ID)
+            ctx.set_config(group, CONFIG_EMAIL, inferred_email_prefix)
+            ctx.set_config(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "")
             if not (group.description or "") and google_description:
                 logger.info(f"Backfilling group description from Google to Access for {group.name}...")
-                # Route the Access-side description change through the operation so it updates the
-                # ORM, syncs to Okta, and audit-logs consistently.
-                await ModifyGroupDetails(
-                    group=group, description=google_description, fire_lifecycle_hook=False
-                ).execute()
+                # Route the Access-side description change through the plugin interface, which
+                # updates the ORM and syncs to Okta without committing or re-firing this hook.
+                await ctx.set_group_description(group, google_description)
 
         else:  # enforce Access -> Google
             logger.debug(f"Pushing Access group config to Google for {group.name}...")
@@ -666,24 +713,24 @@ class GoogleGroupManagerPlugin:
     # ---- Lifecycle hooks ----
 
     @hookimpl
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
-        await self._reconcile(session, group)
+        await self._reconcile(ctx, group)
 
     @hookimpl
     async def group_updated(
-        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
-        await self._reconcile(session, group)
+        await self._reconcile(ctx, group)
 
     @hookimpl
-    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
-        if not self._is_enabled(group):
+        if not self._is_enabled(ctx, group):
             return
 
         # Delete only a Google group this Access group provably owns: the recorded
@@ -693,18 +740,18 @@ class GoogleGroupManagerPlugin:
         # collided on the prefix (e.g. one refused adoption, which therefore carries no id here).
         # The cost of being conservative is that a group we created but crashed before recording
         # is orphaned rather than cleaned up; the next reconcile re-resolves and records it.
-        google_group_id = get_status_value(group, STATUS_GOOGLE_GROUP_ID, PLUGIN_ID)
+        google_group_id = ctx.get_status(group, STATUS_GOOGLE_GROUP_ID)
         if not google_group_id:
             logger.info(f"Group {group.name} owns no linked Google group; nothing to delete")
             return
 
-        mapping_id = get_status_value(group, STATUS_PUSH_MAPPING_ID, PLUGIN_ID)
+        mapping_id = ctx.get_status(group, STATUS_PUSH_MAPPING_ID)
         if mapping_id:
             # Best-effort unlink: a failure here must not block deleting the Google group, which is
             # the authoritative cleanup when the Access group is deleted. A leftover mapping points
             # at a now-deleted group, which is harmless and separately cleanable.
             try:
-                await delete_push_mapping(self._okta_app_id, mapping_id)
+                await ctx.delete_push_mapping(self._okta_app_id, mapping_id)
                 logger.info(f"Unlinked Okta push mapping {mapping_id} for Access group {group.name}")
             except Exception:
                 logger.exception(
@@ -715,25 +762,14 @@ class GoogleGroupManagerPlugin:
         logger.info(f"Deleted Google group {google_group_id} for Access group {group.name}")
 
     @hookimpl
-    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+        # The periodic sync is the same idempotent reconcile as the event-driven hooks. The host
+        # invokes this once per group in its own transaction, so there is no batch loop or per-group
+        # error isolation to implement here -- letting the exception propagate is correct, and is
+        # what gets the group counted as failed and the CLI exiting non-zero.
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
-
-        # Swallow per-group failures so one bad group doesn't abort the batch, but count them and
-        # emit an aggregate signal at the end -- otherwise a systemic outage (e.g. Google API down)
-        # leaves the periodic sync exiting cleanly with no top-level indication anything failed.
-        failures = 0
-        groups = app.active_app_groups
-        for group in groups:
-            try:
-                await self._reconcile(session, group)
-            except Exception:
-                failures += 1
-                logger.exception(f"Sync reconcile failed for group {group.name}")
-        if failures:
-            logger.error(
-                f"Google group sync for app {app.name}: {failures} of {len(groups)} groups failed to reconcile"
-            )
+        await self._reconcile(ctx, group)
 
 
 google_group_manager_plugin = GoogleGroupManagerPlugin()

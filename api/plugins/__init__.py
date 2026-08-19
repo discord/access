@@ -1,6 +1,7 @@
 import pluggy
 
 from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleContext,
     AppGroupLifecycleHook,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
@@ -15,10 +16,7 @@ from api.plugins.app_group_lifecycle import (
     get_app_group_lifecycle_plugin_group_status_properties,
     get_app_group_lifecycle_plugin_to_invoke,
     get_app_group_lifecycle_plugins,
-    get_config_value,
-    get_status_value,
     merge_app_lifecycle_plugin_data,
-    set_status_value,
     validate_app_group_lifecycle_plugin_app_config,
     validate_app_group_lifecycle_plugin_group_config,
 )
@@ -53,6 +51,7 @@ def load_plugins() -> None:
 __all__ = [
     # App Group Lifecycle Plugin
     "app_group_lifecycle_plugin_name",
+    "AppGroupLifecycleContext",
     "AppGroupLifecycleHook",
     "AppGroupLifecyclePluginConfigProperty",
     "AppGroupLifecyclePluginFilteringError",
@@ -66,10 +65,7 @@ __all__ = [
     "get_app_group_lifecycle_plugin_group_config_properties",
     "get_app_group_lifecycle_plugin_app_status_properties",
     "get_app_group_lifecycle_plugin_group_status_properties",
-    "get_config_value",
-    "get_status_value",
     "merge_app_lifecycle_plugin_data",
-    "set_status_value",
     "validate_app_group_lifecycle_plugin_app_config",
     "validate_app_group_lifecycle_plugin_group_config",
     "app_group_lifecycle_hook_impl",

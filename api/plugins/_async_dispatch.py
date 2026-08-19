@@ -63,10 +63,11 @@ async def run_hooks_to_completion(coros: list[Any], *, context: str) -> tuple[li
 
     - If the awaiting caller is cancelled (e.g. the client disconnected),
       ``gather`` propagates the cancellation to its children and tears down the
-      in-flight hook coroutines; ``wait`` leaves them running to completion.
-      These hooks fire after the authoritative DB change has committed and only
-      do network I/O (notifications, metrics), so an in-flight send must be
-      allowed to finish.
+      in-flight hook coroutines; ``wait`` leaves them running to completion. A
+      notification or metrics hook fires after the authoritative DB change has
+      committed and only does network I/O, so an in-flight send must be allowed
+      to finish; an app-group-lifecycle hook may be mid-call against an external
+      system, where abandoning it leaves that system half-updated.
     - One implementation failing must never cancel or abandon its siblings —
       ``wait`` runs them all and lets us collect every result and every error.
 

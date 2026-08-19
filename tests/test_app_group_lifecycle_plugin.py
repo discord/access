@@ -10,41 +10,38 @@ This includes tests for:
 """
 
 from dataclasses import asdict
+from unittest.mock import MagicMock
+from datetime import UTC, datetime, timedelta
 from typing import Any, Generator
 
 import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.orm import joinedload
 
 from api.config import settings
 from api.extensions import Db
-from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
+from api.models import App, AppGroup, OktaUser, OktaUserGroupMember, RoleGroupMap
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
+    AppGroupLifecycleContext,
+    AppGroupLifecycleHook,
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
     MissingOktaTargetError,
-    create_push_mapping_and_new_group,
-    create_push_mapping_for_existing_group,
-    delete_push_mapping,
-    discover_existing_push_mapping_and_target_group_external_id,
+    _StatusWrite,
     get_app_group_lifecycle_plugin_app_config_properties,
     get_app_group_lifecycle_plugin_app_status_properties,
     get_app_group_lifecycle_plugin_group_config_properties,
     get_app_group_lifecycle_plugin_group_status_properties,
     get_app_group_lifecycle_plugins,
-    get_config_value,
-    get_status_value,
     hookimpl,
     is_plugin_config_changed,
     merge_app_lifecycle_plugin_data,
-    set_config_value,
-    set_status_value,
     validate_app_group_lifecycle_plugin_app_config,
     validate_app_group_lifecycle_plugin_group_config,
 )
@@ -66,11 +63,11 @@ class DummyPlugin:
         self.group_deleted_calls: list[str] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
         self.members_removed_calls: list[tuple[str, list[str]]] = []
-        # (app id, ["group name:owning app name", ...]) per sync_all_groups call.
-        self.sync_all_groups_calls: list[tuple[str, list[str]]] = []
-        # App names whose sync_all_groups should raise, so tests can exercise the
-        # caller's per-app error isolation.
-        self.sync_all_groups_failures: set[str] = set()
+        # (group id, "owning app name") per sync_group call.
+        self.sync_group_calls: list[tuple[str, str]] = []
+        # Group names whose sync_group should raise, so tests can exercise the caller's
+        # per-group error isolation.
+        self.sync_group_failures: set[str] = set()
         # Group ids whose membership hooks should raise, so tests can exercise the
         # callers' per-group error isolation when one operation affects several groups.
         self.members_added_failures: set[str] = set()
@@ -80,6 +77,9 @@ class DummyPlugin:
         self.group_created_failures: set[str] = set()
         self.group_updated_failures: set[str] = set()
         self.group_deleted_failures: set[str] = set()
+        # (property_name, value, durable_on_failure) triples the group_updated hook writes before
+        # its failure check, so tests can drive the host's durable-status replay.
+        self.status_writes_on_update: list[tuple[str, Any, bool]] = []
 
     @hookimpl
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -199,14 +199,13 @@ class DummyPlugin:
         }
 
     @hookimpl
-    async def group_created(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_created(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        # Await a read through the AsyncSession. The hookspec promises an
-        # AsyncSession; if an operation hands us something else (a broken bridge),
-        # this raises and the call below is never recorded — so the recorded-calls
-        # assertions in these tests fail loudly.
-        (await session.scalars(select(AppGroup))).all()
+        # Await a read through a real capability. If the host hands us a broken context this
+        # raises and the call below is never recorded — so the recorded-calls assertions in these
+        # tests fail loudly.
+        await ctx.find_groups_by_status("probe", "unset")
         # A hook may also read group.app, which is lazy="raise_on_sql". The invoking
         # operation must eager-load AppGroup.app (or seed the identity map) so this
         # resolves without emitting SQL; otherwise it raises here and the recorded-
@@ -219,21 +218,28 @@ class DummyPlugin:
 
     @hookimpl
     async def group_updated(
-        self, session: AsyncSession, group: AppGroup, old_name: str, old_description: str, plugin_id: str | None
+        self,
+        ctx: AppGroupLifecycleContext,
+        group: AppGroup,
+        old_name: str,
+        old_description: str,
+        plugin_id: str | None,
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
+        for property_name, value, durable in self.status_writes_on_update:
+            ctx.set_status(group, property_name, value, durable_on_failure=durable)
         if group.id in self.group_updated_failures:
             raise RuntimeError(f"group_updated failed for {group.id}")
         self.group_updated_calls.append((group.id, old_name, old_description))
 
     @hookimpl
-    async def group_deleted(self, session: AsyncSession, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.group_deleted_failures:
             raise RuntimeError(f"group_deleted failed for {group.id}")
@@ -241,11 +247,11 @@ class DummyPlugin:
 
     @hookimpl
     async def group_members_added(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.members_added_failures:
             raise RuntimeError(f"group_members_added failed for {group.id}")
@@ -253,29 +259,27 @@ class DummyPlugin:
 
     @hookimpl
     async def group_members_removed(
-        self, session: AsyncSession, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
     ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
         _ = group.app.name  # exercise group.app eager-load (see group_created)
         if group.id in self.members_removed_failures:
             raise RuntimeError(f"group_members_removed failed for {group.id}")
         self.members_removed_calls.append((group.id, [m.id for m in members]))
 
     @hookimpl
-    async def sync_all_groups(self, session: AsyncSession, app: App, plugin_id: str | None) -> None:
+    async def sync_group(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
-        (await session.scalars(select(AppGroup))).all()  # exercise the AsyncSession (see group_created)
-        # Walk the app's groups the way a bulk-reconcile plugin does. Both
-        # App.active_app_groups and AppGroup.app are lazy="raise_on_sql", so this
-        # raises unless the caller handed over an App with the collection loaded.
-        groups = app.active_app_groups
-        described = [f"{group.name}:{group.app.name}" for group in groups]
-        if app.name in self.sync_all_groups_failures:
-            raise RuntimeError(f"sync failed for {app.name}")
-        self.sync_all_groups_calls.append((app.id, described))
+        await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
+        # Read `group.app`, which the hookspec promises eager-loaded. It is
+        # lazy="raise_on_sql", so this raises unless the caller loaded it.
+        app_name = group.app.name
+        if group.name in self.sync_group_failures:
+            raise RuntimeError(f"sync failed for {group.name}")
+        self.sync_group_calls.append((group.id, app_name))
 
 
 @pytest.fixture
@@ -694,7 +698,14 @@ class TestPluginConfigAuthorization:
 
 
 class TestPluginHelperFunctions:
-    """Tests for plugin helper functions like get_config_value, set_status_value, etc."""
+    """Tests for the plugin-facing capability surface, `AppGroupLifecycleContext`.
+
+    These go through the context rather than the module-level accessors it delegates to, because the
+    context is what a plugin actually calls -- the accessors take a `plugin_id` the context owns.
+    """
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
 
     async def test_get_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting configuration values from plugin data."""
@@ -705,11 +716,10 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        enabled = get_config_value(test_app, "enabled", DummyPlugin.ID)
-        category = get_config_value(test_app, "category", DummyPlugin.ID)
-
-        assert enabled is True
-        assert category == "test_id_123"
+        ctx = self._ctx(db)
+        assert ctx.get_config(test_app, "enabled") is True
+        assert ctx.get_config(test_app, "category") == "test_id_123"
+        assert ctx.get_config(test_app, "absent", "fallback") == "fallback"
 
     async def test_get_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test getting status values from plugin data."""
@@ -720,11 +730,9 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
-        sync_count = get_status_value(test_app, "sync_count", DummyPlugin.ID)
-
-        assert last_sync == "2025-01-15T10:30:00Z"
-        assert sync_count == 42
+        ctx = self._ctx(db)
+        assert ctx.get_status(test_app, "last_sync") == "2025-01-15T10:30:00Z"
+        assert ctx.get_status(test_app, "sync_count") == 42
 
     async def test_set_status_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting status values in plugin data."""
@@ -732,14 +740,15 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        set_status_value(test_app, "last_sync", "2025-01-15T11:00:00Z", DummyPlugin.ID)
+        # No session.add by the caller: the context does it, so a plugin cannot forget.
+        self._ctx(db).set_status(test_app, "last_sync", "2025-01-15T11:00:00Z")
         await db.session.commit()
 
         # Refresh from DB (expire + sync lazy read would raise under async)
         await db.session.refresh(test_app)
 
-        last_sync = get_status_value(test_app, "last_sync", DummyPlugin.ID)
-        assert last_sync == "2025-01-15T11:00:00Z"
+        assert self._ctx(db).get_status(test_app, "last_sync") == "2025-01-15T11:00:00Z"
+        assert test_app.plugin_data[DummyPlugin.ID]["status"]["last_sync"] == "2025-01-15T11:00:00Z"
 
     async def test_set_config_value(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Test setting configuration values in plugin data."""
@@ -747,11 +756,177 @@ class TestPluginHelperFunctions:
         db.session.add(test_app)
         await db.session.commit()
 
-        set_config_value(test_app, "category", "inferred_id", DummyPlugin.ID)
+        self._ctx(db).set_config(test_app, "category", "inferred_id")
         await db.session.commit()
         await db.session.refresh(test_app)
 
-        assert get_config_value(test_app, "category", DummyPlugin.ID) == "inferred_id"
+        assert self._ctx(db).get_config(test_app, "category") == "inferred_id"
+        assert test_app.plugin_data[DummyPlugin.ID]["configuration"]["category"] == "inferred_id"
+
+    async def test_context_is_bound_to_its_own_plugin_namespace(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """A context can only read and write its own plugin's slice of plugin_data. This is the point
+        of binding plugin_id at construction: a plugin cannot reach another plugin's namespace."""
+        test_app = AppFactory.build(
+            name="TestApp9c",
+            plugin_data={
+                DummyPlugin.ID: {"configuration": {"category": "mine"}},
+                "other_plugin": {"configuration": {"category": "theirs"}},
+            },
+        )
+        db.session.add(test_app)
+        await db.session.commit()
+
+        assert self._ctx(db).get_config(test_app, "category") == "mine"
+
+        self._ctx(db).set_config(test_app, "category", "changed")
+        await db.session.commit()
+        await db.session.refresh(test_app)
+
+        assert test_app.plugin_data[DummyPlugin.ID]["configuration"]["category"] == "changed"
+        assert test_app.plugin_data["other_plugin"]["configuration"]["category"] == "theirs"
+
+    async def test_set_status_records_only_durable_writes(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`durable_on_failure` is what the host replays after a failed hook. Ownership tokens must
+        stay out of that buffer, so only the opted-in writes are recorded."""
+        test_app = AppFactory.build(name="TestApp9d", plugin_data={})
+        db.session.add(test_app)
+        await db.session.commit()
+
+        ctx = self._ctx(db)
+        ctx.set_status(test_app, "sync_status", "error", durable_on_failure=True)
+        ctx.set_status(test_app, "external_group_id", "tok-1")
+
+        assert [(w.entity_type, w.entity_id, w.property_name, w.value) for w in ctx._status_writes] == [
+            ("app", test_app.id, "sync_status", "error")
+        ]
+
+    async def _advisory_locks_held(self, db: Db) -> int:
+        """Advisory locks held by this session's own backend. `pg_advisory_xact_lock` is
+        transaction-scoped and never explicitly released, so they stay visible for the rest of the
+        transaction."""
+        return await db.session.scalar(
+            text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()")
+        )
+
+    async def test_lock_takes_a_namespaced_advisory_lock_on_postgres_only(
+        self, db: Db, test_plugin: DummyPlugin
+    ) -> None:
+        """Postgres-only by design: a transaction-scoped advisory lock there, keyed by plugin id so
+        two plugins choosing the same string don't contend; elsewhere a no-op rather than a raise,
+        since the relevant sync paths there are single-writer. The suite runs against both backends,
+        so each run asserts what its own dialect calls for rather than assuming one of them."""
+        ctx = self._ctx(db)
+
+        if db.session.get_bind().dialect.name != "postgresql":
+            await ctx.lock("some-external-id")  # must not raise
+            return
+
+        assert await self._advisory_locks_held(db) == 0
+        await ctx.lock("external-1")
+        assert await self._advisory_locks_held(db) == 1
+
+        # Same key string from a different plugin takes its own lock rather than contending.
+        await AppGroupLifecycleContext(session=db.session, plugin_id="other_plugin").lock("external-1")
+        assert await self._advisory_locks_held(db) == 2
+
+
+class TestContextFindGroupsByStatus:
+    """`ctx.find_groups_by_status` — the generalized ownership/uniqueness lookup that replaces a
+    plugin building its own cross-app query."""
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+    async def _app_with_group(
+        self,
+        db: Db,
+        app_name: str,
+        group_suffix: str,
+        status: dict[str, Any],
+        *,
+        plugin_id: str | None = DummyPlugin.ID,
+    ) -> tuple[App, AppGroup]:
+        test_app = AppFactory.build(name=app_name, app_group_lifecycle_plugin=plugin_id)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(
+            app_id=test_app.id,
+            is_managed=True,
+            name=f"{prefix}{group_suffix}",
+            plugin_data={DummyPlugin.ID: {"status": status}},
+        )
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        return test_app, group
+
+    async def test_spans_every_app_configured_with_this_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """One external system can back several Access apps, and they all name the same plugin, so a
+        group in any of them can own the external id."""
+        _, group_a = await self._app_with_group(db, "FindAppOne", "A", {"ext_id": "shared"})
+        _, group_b = await self._app_with_group(db, "FindAppTwo", "B", {"ext_id": "shared"})
+
+        found = await self._ctx(db).find_groups_by_status("ext_id", "shared")
+
+        assert {g.id for g in found} == {group_a.id, group_b.id}
+
+    async def test_excludes_other_plugins_and_soft_deleted_rows(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Scoped to this plugin's apps, and both `deleted_at` filters apply."""
+        _, keeper = await self._app_with_group(db, "FindAppKeep", "K", {"ext_id": "target"})
+        await self._app_with_group(db, "FindAppOther", "O", {"ext_id": "target"}, plugin_id="a_different_plugin")
+
+        deleted_app, _ = await self._app_with_group(db, "FindAppGoneApp", "G", {"ext_id": "target"})
+        deleted_app.deleted_at = datetime.now(UTC)
+        _, deleted_group = await self._app_with_group(db, "FindAppGoneGroup", "D", {"ext_id": "target"})
+        deleted_group.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).find_groups_by_status("ext_id", "target")
+
+        assert [g.id for g in found] == [keeper.id]
+
+    async def test_honors_exclude_group_and_limit(self, db: Db, test_plugin: DummyPlugin) -> None:
+        _, group_a = await self._app_with_group(db, "FindAppExclA", "A", {"ext_id": "dupe"})
+        _, group_b = await self._app_with_group(db, "FindAppExclB", "B", {"ext_id": "dupe"})
+
+        assert [g.id for g in await self._ctx(db).find_groups_by_status("ext_id", "dupe", exclude_group=group_a)] == [
+            group_b.id
+        ]
+        assert len(await self._ctx(db).find_groups_by_status("ext_id", "dupe", limit=1)) == 1
+
+    async def test_no_match_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        await self._app_with_group(db, "FindAppNoMatch", "N", {"ext_id": "something-else"})
+        assert await self._ctx(db).find_groups_by_status("ext_id", "unclaimed") == []
+
+    async def test_returned_groups_have_app_loaded_on_a_cold_session(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`AppGroup.app` is lazy="raise_on_sql" and reading it is the obvious next thing a plugin
+        does with a result (e.g. to name the owning app in an error). The eager-load in the query is
+        therefore mandatory, not decorative -- and a warm session would hide a missing one, since
+        many-to-one resolves from the identity map without SQL.
+        """
+        _, group = await self._app_with_group(db, "FindAppCold", "C", {"ext_id": "cold"})
+        expected_app_name = "FindAppCold"
+
+        db.session.expunge_all()
+        found = await self._ctx(db).find_groups_by_status("ext_id", "cold")
+
+        assert len(found) == 1
+        assert found[0].app.name == expected_app_name  # must not raise
+
+    async def test_predicate_is_pushed_into_sql_as_a_json_path(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The id predicate compiles to a JSON path lookup on the stored status, so this stays a point
+        lookup rather than a scan of every plugin-managed group. Compiled against the Postgres dialect
+        because the tuple-index JSON path only renders there.
+        """
+        from sqlalchemy.dialects import postgresql
+
+        stmt = (
+            select(AppGroup)
+            .join(App, AppGroup.app_id == App.id)
+            .where(AppGroup.plugin_data[(DummyPlugin.ID, "status", "ext_id")].as_string() == "x")
+        )
+        compiled = str(stmt.compile(dialect=postgresql.dialect()))
+
+        assert "plugin_data" in compiled
+        assert "#>>" in compiled or "->>" in compiled
 
     def test_is_plugin_config_changed(self, db: Db, test_plugin: DummyPlugin) -> None:
         """Only configuration differences count as a change; status differences do not."""
@@ -767,6 +942,234 @@ class TestPluginHelperFunctions:
 
         # Missing plugin entries are treated as empty configuration.
         assert is_plugin_config_changed({}, {}, DummyPlugin.ID) is False
+
+
+class TestContextMembershipQueries:
+    """`ctx.list_group_members` and `ctx.find_user_groups` — the membership reads a plugin needs
+    when it provisions users itself rather than delegating to Okta group push. Neither is
+    answerable off the objects a hook is handed: `sync_group` gets a group with only `.app`
+    eager-loaded, and `group_members_removed` gets the removed delta rather than the membership
+    that remains.
+    """
+
+    def _ctx(self, db: Db) -> AppGroupLifecycleContext:
+        return AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+    async def _app_with_groups(
+        self,
+        db: Db,
+        app_name: str,
+        group_suffixes: list[str],
+        *,
+        plugin_id: str | None = DummyPlugin.ID,
+    ) -> tuple[App, list[AppGroup]]:
+        test_app = AppFactory.build(name=app_name, app_group_lifecycle_plugin=plugin_id)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        groups = [
+            AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}{suffix}")
+            for suffix in group_suffixes
+        ]
+        db.session.add_all([test_app, *groups])
+        await db.session.commit()
+        return test_app, groups
+
+    async def _member(
+        self,
+        db: Db,
+        user: OktaUser,
+        group: AppGroup,
+        *,
+        is_owner: bool = False,
+        ended_at: datetime | None = None,
+        role_group_map_id: str | None = None,
+    ) -> None:
+        db.session.add(
+            OktaUserGroupMember(
+                user_id=user.id,
+                group_id=group.id,
+                is_owner=is_owner,
+                ended_at=ended_at,
+                role_group_map_id=role_group_map_id,
+            )
+        )
+        await db.session.commit()
+
+    async def _user(self, db: Db, email: str) -> OktaUser:
+        user = OktaUserFactory.build(email=email)
+        db.session.add(user)
+        await db.session.commit()
+        return user
+
+    # ---- list_group_members ----
+
+    async def test_returns_active_members_excluding_owners(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Owners administer the group; members hold the access it grants, and only members are
+        what an external system is provisioned with."""
+        _, (group,) = await self._app_with_groups(db, "MembersApp", ["G"])
+        member = await self._user(db, "member@example.com")
+        owner = await self._user(db, "owner@example.com")
+        await self._member(db, member, group)
+        await self._member(db, owner, group, is_owner=True)
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["member@example.com"]
+
+    async def test_excludes_ended_memberships_and_deleted_users(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Both temporal filters apply: an expired membership row and a soft-deleted user are
+        equally not access the external system should keep provisioned."""
+        _, (group,) = await self._app_with_groups(db, "MembersExpiredApp", ["G"])
+        current = await self._user(db, "current@example.com")
+        expired = await self._user(db, "expired@example.com")
+        departed = await self._user(db, "departed@example.com")
+        await self._member(db, current, group)
+        await self._member(db, expired, group, ended_at=datetime.now(UTC) - timedelta(days=1))
+        await self._member(db, departed, group)
+        departed.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["current@example.com"]
+
+    async def test_membership_held_twice_yields_one_user(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """A direct grant and a role-granted membership co-exist as two rows (the longer duration
+        wins, they are not collapsed), and a plugin provisioning one user per email must not see
+        the same user twice."""
+        _, (group,) = await self._app_with_groups(db, "MembersDupeApp", ["G"])
+        role = RoleGroupFactory.build()
+        db.session.add(role)
+        await db.session.commit()
+        mapping = RoleGroupMap(role_group_id=role.id, group_id=group.id, is_owner=False)
+        db.session.add(mapping)
+        await db.session.commit()
+        user = await self._user(db, "both@example.com")
+        await self._member(db, user, group)
+        await self._member(db, user, group, role_group_map_id=mapping.id)
+
+        found = await self._ctx(db).list_group_members(group)
+
+        assert [u.email for u in found] == ["both@example.com"]
+
+    async def test_rejects_a_group_belonging_to_another_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The context is bound to one plugin id so plugin code cannot reach past its own apps, and
+        a caller-supplied group is the one argument that could otherwise sidestep that binding."""
+        _, (foreign,) = await self._app_with_groups(db, "MembersForeignApp", ["G"], plugin_id="a_different_plugin")
+        member = await self._user(db, "foreign@example.com")
+        await self._member(db, member, foreign)
+
+        with pytest.raises(ValueError, match=DummyPlugin.ID):
+            await self._ctx(db).list_group_members(foreign)
+
+    async def test_rejects_a_group_whose_app_has_no_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """An app with no lifecycle plugin is nobody's to reconcile, so it is not this plugin's
+        either -- "unconfigured" must not read as "unclaimed, therefore fair game"."""
+        _, (unconfigured,) = await self._app_with_groups(db, "MembersNoPluginApp", ["G"], plugin_id=None)
+        member = await self._user(db, "unconfigured@example.com")
+        await self._member(db, member, unconfigured)
+
+        with pytest.raises(ValueError, match=DummyPlugin.ID):
+            await self._ctx(db).list_group_members(unconfigured)
+
+    async def test_group_with_no_members_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        _, (group,) = await self._app_with_groups(db, "MembersEmptyApp", ["G"])
+        assert await self._ctx(db).list_group_members(group) == []
+
+    # ---- find_user_groups ----
+
+    async def test_spans_every_app_configured_with_this_plugin(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """The union case: one external system backs several Access apps, and a user's grants are
+        the union across every group they are in, so the search cannot stop at the owning app."""
+        _, (group_a,) = await self._app_with_groups(db, "UserGroupsOne", ["A"])
+        _, (group_b,) = await self._app_with_groups(db, "UserGroupsTwo", ["B"])
+        user = await self._user(db, "union@example.com")
+        await self._member(db, user, group_a)
+        await self._member(db, user, group_b)
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert {g.id for g in found} == {group_a.id, group_b.id}
+
+    async def test_excludes_other_plugins_and_soft_deleted_rows(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Scoped to this plugin's apps -- another plugin's groups are not this plugin's to
+        provision -- and both `deleted_at` filters apply."""
+        _, (keeper,) = await self._app_with_groups(db, "UserGroupsKeep", ["K"])
+        _, (foreign,) = await self._app_with_groups(db, "UserGroupsOther", ["O"], plugin_id="a_different_plugin")
+        deleted_app, (in_deleted_app,) = await self._app_with_groups(db, "UserGroupsGoneApp", ["G"])
+        _, (deleted_group,) = await self._app_with_groups(db, "UserGroupsGoneGroup", ["D"])
+        user = await self._user(db, "scoped@example.com")
+        for group in (keeper, foreign, in_deleted_app, deleted_group):
+            await self._member(db, user, group)
+        deleted_app.deleted_at = datetime.now(UTC)
+        deleted_group.deleted_at = datetime.now(UTC)
+        await db.session.commit()
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert [g.id for g in found] == [keeper.id]
+
+    async def test_excludes_ownership_and_ended_memberships(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Symmetric with `list_group_members`: owning a group is not holding its access, and an
+        expired row is not current membership. Both would over-provision the union."""
+        _, (member_of, owner_of, expired_in) = await self._app_with_groups(
+            db, "UserGroupsFilters", ["Member", "Owner", "Expired"]
+        )
+        user = await self._user(db, "filters@example.com")
+        await self._member(db, user, member_of)
+        await self._member(db, user, owner_of, is_owner=True)
+        await self._member(db, user, expired_in, ended_at=datetime.now(UTC) - timedelta(days=1))
+
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert [g.id for g in found] == [member_of.id]
+
+    async def test_app_narrows_to_one_app(self, db: Db, test_plugin: DummyPlugin) -> None:
+        app_one, (group_a,) = await self._app_with_groups(db, "UserGroupsScopeOne", ["A"])
+        _, (group_b,) = await self._app_with_groups(db, "UserGroupsScopeTwo", ["B"])
+        user = await self._user(db, "narrowed@example.com")
+        await self._member(db, user, group_a)
+        await self._member(db, user, group_b)
+
+        assert [g.id for g in await self._ctx(db).find_user_groups(user, app=app_one)] == [group_a.id]
+
+    async def test_membership_held_twice_yields_one_group(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """Same duplicate-row hazard as `list_group_members`, from the other direction: a group the
+        user reaches both directly and through a role must appear once, or a plugin summing grants
+        per group double-counts it."""
+        _, (group,) = await self._app_with_groups(db, "UserGroupsDupe", ["G"])
+        role = RoleGroupFactory.build()
+        db.session.add(role)
+        await db.session.commit()
+        mapping = RoleGroupMap(role_group_id=role.id, group_id=group.id, is_owner=False)
+        db.session.add(mapping)
+        await db.session.commit()
+        user = await self._user(db, "dupe@example.com")
+        await self._member(db, user, group)
+        await self._member(db, user, group, role_group_map_id=mapping.id)
+
+        assert [g.id for g in await self._ctx(db).find_user_groups(user)] == [group.id]
+
+    async def test_returned_groups_have_app_loaded_on_a_cold_session(self, db: Db, test_plugin: DummyPlugin) -> None:
+        """`AppGroup.app` is lazy="raise_on_sql", and reading it is the obvious next thing a plugin
+        does with a result (the app carries the app-level config that says how to provision). A warm
+        session would hide a missing eager-load, since many-to-one resolves from the identity map
+        without SQL.
+        """
+        _, (group,) = await self._app_with_groups(db, "UserGroupsCold", ["C"])
+        user = await self._user(db, "cold@example.com")
+        await self._member(db, user, group)
+
+        db.session.expunge_all()
+        user = (await db.session.scalars(select(OktaUser).where(OktaUser.email == "cold@example.com"))).one()
+        found = await self._ctx(db).find_user_groups(user)
+
+        assert len(found) == 1
+        assert found[0].app.name == "UserGroupsCold"  # must not raise
+
+    async def test_user_in_no_groups_returns_empty(self, db: Db, test_plugin: DummyPlugin) -> None:
+        await self._app_with_groups(db, "UserGroupsNone", ["G"])
+        user = await self._user(db, "nobody@example.com")
+        assert await self._ctx(db).find_user_groups(user) == []
 
 
 class TestPluginValidation:
@@ -1191,6 +1594,102 @@ class TestPluginDirectFunctions:
         assert "member_count" in props
         assert props["member_count"].type == "number"
         assert props["member_count"].display_name == "Member Count"
+
+
+class TestContextSetGroupDescription:
+    """`ctx.set_group_description` — the capability that replaces a plugin importing
+    `api.operations.ModifyGroupDetails` directly."""
+
+    async def _app_group(self, db: Db, suffix: str, description: str) -> AppGroup:
+        test_app = AppFactory.build(name=f"TestAppDesc{suffix}", app_group_lifecycle_plugin=DummyPlugin.ID)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description=description)
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        return group
+
+    async def test_updates_the_group_and_pushes_to_okta(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        group = await self._app_group(db, "Push", "")
+        update_group = mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "adopted from the external system")
+
+        assert group.description == "adopted from the external system"
+        update_group.assert_awaited_once()
+
+    async def test_does_not_commit(self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture) -> None:
+        """The host owns the transaction. Committing inside a hook would release any advisory lock the
+        hook holds and publish the surrounding operation's in-flight work."""
+        group = await self._app_group(db, "NoCommit", "original")
+        mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        # Hold the id across the rollback: it expires every instance in the identity map, so a
+        # `group.id` read afterwards would raise MissingGreenlet from the assertion itself.
+        group_id = group.id
+        await ctx.set_group_description(group, "not yet persisted")
+        await db.session.rollback()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert reloaded.description == "original"
+
+    async def test_does_not_refire_the_lifecycle_hook(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """A plugin adopting a description must not recurse back into its own group_updated hook."""
+        group = await self._app_group(db, "NoRefire", "")
+        mocker.patch.object(okta, "update_group")
+        test_plugin.group_updated_calls.clear()
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "adopted")
+
+        assert test_plugin.group_updated_calls == []
+
+    async def test_unchanged_description_still_no_ops_cleanly(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        group = await self._app_group(db, "Same", "identical")
+        mocker.patch.object(okta, "update_group")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+
+        await ctx.set_group_description(group, "identical")
+
+        assert group.description == "identical"
+
+
+class TestModifyGroupDetailsCommitFlag:
+    """`commit_db_changes` defaults True, so the two request-path callers are unaffected."""
+
+    async def test_defaults_to_committing(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        from api.operations import ModifyGroupDetails
+
+        test_app = AppFactory.build(name="TestAppCommitFlag", app_group_lifecycle_plugin=DummyPlugin.ID)
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description="before")
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        mocker.patch.object(okta, "update_group")
+
+        group_id = group.id  # held across the rollback below, which expires the identity map
+        await ModifyGroupDetails(group=group, description="after", fire_lifecycle_hook=False).execute()
+        await db.session.rollback()  # a committed change survives this
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        assert reloaded.description == "after"
 
 
 class TestPluginGroupUpdatedHook:
@@ -2627,62 +3126,186 @@ class TestPluginMembershipHooks:
         assert len(test_plugin.members_added_calls) == 0
 
 
-class TestSyncAllGroupsHook:
-    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the
-    only caller of the `sync_all_groups` hook.
+class TestDurableStatusReplay:
+    """The host replays `set_status(..., durable_on_failure=True)` after a failed hook, so an operator
+    can still see why reconciliation failed -- without replaying ownership tokens, which would be
+    unsound."""
 
-    The hook is handed a whole `App` rather than one group, so these cover the two
-    things that are only true of a batch caller: the App must arrive with the
-    relationships the hookspec promises loaded, and one app's failure must not
-    strand the apps after it.
+    async def _app_group(self, db: Db, suffix: str) -> AppGroup:
+        test_app = AppFactory.build(
+            name=f"TestAppDurable{suffix}",
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{test_app.name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}G", description="before")
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        # Re-load with `app` eager-loaded, the way the request path does: the hook reads `group.app`
+        # and the relationship is lazy="raise_on_sql", so a factory-built instance would raise.
+        return (
+            await db.session.scalars(select(AppGroup).where(AppGroup.id == group.id).options(joinedload(AppGroup.app)))
+        ).one()
+
+    async def test_diagnostics_survive_a_failing_hook_but_tokens_do_not(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """The load-bearing test for the durable/transactional split.
+
+        A plugin's sync status must outlive its own failure, or an operator sees a group stuck with no
+        explanation. An ownership token must NOT: it is only sound when committed in the same
+        transaction as the check that justified it (under `ctx.lock`), and replaying it in a fresh
+        transaction after the lock released would let a second Access group, which has meanwhile
+        passed its own ownership check, claim the same external group. Both then record it, and
+        deleting either would delete the shared external group.
+
+        Fails against a host that replays every recorded write instead of only the opted-in ones.
+        """
+        from api.operations import ModifyGroupDetails
+
+        group = await self._app_group(db, "Split")
+        group_id = group.id
+        mocker.patch.object(okta, "update_group")
+        test_plugin.status_writes_on_update = [
+            ("sync_status", "error", True),  # diagnostic -> replayed
+            ("sync_error", "the external system said no", True),  # diagnostic -> replayed
+            ("external_group_id", "token-should-not-persist", False),  # ownership token -> discarded
+        ]
+        test_plugin.group_updated_failures = {group_id}
+
+        await ModifyGroupDetails(group=group, description="after").execute()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        status = (reloaded.plugin_data or {})[DummyPlugin.ID]["status"]
+        assert status["sync_status"] == "error"
+        assert status["sync_error"] == "the external system said no"
+        assert "external_group_id" not in status
+
+    async def test_nothing_is_replayed_when_the_hook_succeeds(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """On success the ordinary post-hook commit persists everything, tokens included -- the replay
+        path is only for failures."""
+        from api.operations import ModifyGroupDetails
+
+        group = await self._app_group(db, "Success")
+        group_id = group.id
+        mocker.patch.object(okta, "update_group")
+        test_plugin.status_writes_on_update = [
+            ("sync_status", "synced", True),
+            ("external_group_id", "token-persists", False),
+        ]
+
+        await ModifyGroupDetails(group=group, description="after").execute()
+
+        reloaded = (
+            await db.session.scalars(
+                select(AppGroup).where(AppGroup.id == group_id).execution_options(populate_existing=True)
+            )
+        ).one()
+        status = (reloaded.plugin_data or {})[DummyPlugin.ID]["status"]
+        assert status["sync_status"] == "synced"
+        assert status["external_group_id"] == "token-persists"
+
+    async def test_replay_against_a_vanished_row_logs_and_returns(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin
+    ) -> None:
+        """The row can be gone by replay time (rolled out of existence, or deleted concurrently). That
+        must not raise out of the host, since the surrounding operation already committed its work."""
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+        ctx._status_writes.append(
+            _StatusWrite(entity_type="group", entity_id="does-not-exist", property_name="s", value="v")
+        )
+
+        await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_UPDATED, context="test")
+
+    async def test_group_deleted_skips_the_replay(
+        self, db: Db, app: FastAPI, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """group_deleted fires while the row is on its way out -- ModifyGroupType fires it *before*
+        deleting the app_group row. Nothing will read that status again, and committing here would
+        land a commit inside the caller's half-finished conversion."""
+        group = await self._app_group(db, "Deleted")
+        ctx = AppGroupLifecycleContext(session=db.session, plugin_id=DummyPlugin.ID)
+        ctx._status_writes.append(
+            _StatusWrite(entity_type="group", entity_id=group.id, property_name="sync_status", value="error")
+        )
+        commit = mocker.patch.object(db.session, "commit", new_callable=mocker.AsyncMock)
+
+        await ctx._reapply_durable_status(AppGroupLifecycleHook.GROUP_DELETED, context="test")
+
+        commit.assert_not_awaited()
+
+
+class TestSyncGroupHook:
+    """Tests for `_sync_all_app_groups`, the `access sync-app-groups` CLI body and the only caller of
+    the `sync_group` hook.
+
+    The hook now gets one group per invocation, each in its own transaction, so these cover what is
+    only true of the batch caller: every group of every configured app is visited, `group.app`
+    arrives loaded as the hookspec promises, and one group's failure must not strand the groups
+    behind it.
     """
 
     @staticmethod
-    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> App:
+    async def _add_app_with_groups(db: Db, name: str, group_suffixes: list[str]) -> tuple[str, dict[str, str]]:
+        """Returns (app id, {suffix: group id}) as plain strings -- a rolled-back group in the loop
+        under test expires every instance in the identity map, so a test holding ORM objects across
+        that boundary would fail in its own assertions rather than reporting the behaviour."""
         test_app = AppFactory.build(name=name, app_group_lifecycle_plugin=DummyPlugin.ID)
         db.session.add(test_app)
         await db.session.flush()
+        group_ids = {}
         for suffix in group_suffixes:
-            db.session.add(
-                AppGroupFactory.build(
-                    app_id=test_app.id,
-                    name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
-                )
+            group = AppGroupFactory.build(
+                app_id=test_app.id,
+                name=(f"{AppGroup.APP_GROUP_NAME_PREFIX}{name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{suffix}"),
             )
+            db.session.add(group)
+            group_ids[suffix] = group.id
         await db.session.commit()
-        return test_app
+        return test_app.id, group_ids
 
-    async def test_hook_receives_app_with_groups_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
-        # Every App relationship is lazy="raise_on_sql", so a plugin reading
-        # app.active_app_groups (the natural way to bulk reconcile) raises
-        # InvalidRequestError unless the caller eager-loaded it.
+    async def test_every_group_is_synced_with_its_app_loaded(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # `AppGroup.app` is lazy="raise_on_sql", so a plugin reading it (the natural way to reach
+        # app-level config) raises InvalidRequestError unless the caller eager-loaded it.
         from api.cli import _sync_all_app_groups
 
-        test_app = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
+        _, group_ids = await self._add_app_with_groups(db, "SyncApp", ["Beta", "Alpha"])
 
         failures = await _sync_all_app_groups()
 
         assert failures == 0
-        # Ordered by AppGroup.name, and each group's .app resolves off the identity map.
-        assert test_plugin.sync_all_groups_calls == [
-            (test_app.id, ["App-SyncApp-Alpha:SyncApp", "App-SyncApp-Beta:SyncApp"])
+        # Ordered by app name then group name, so a run's sequence is reproducible.
+        assert test_plugin.sync_group_calls == [
+            (group_ids["Alpha"], "SyncApp"),
+            (group_ids["Beta"], "SyncApp"),
         ]
 
-    async def test_apps_after_a_failing_app_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
-        # Rolling back the failed app expires every instance in the identity map, so a
-        # graph loaded before the loop is unusable afterwards: reading a column raises
-        # MissingGreenlet (no greenlet for the implicit refresh) and reading a
-        # relationship raises InvalidRequestError again. Both must be impossible here.
+    async def test_groups_after_a_failing_group_still_sync(self, db: Db, test_plugin: DummyPlugin) -> None:
+        # Rolling back the failed group expires every instance in the identity map, so a graph loaded
+        # before the loop is unusable afterwards: reading a column raises MissingGreenlet (no
+        # greenlet for the implicit refresh) and reading a relationship raises InvalidRequestError
+        # again. Both must be impossible here. This is also the isolation the plugins no longer
+        # implement themselves -- it lives in the caller now.
         from api.cli import _sync_all_app_groups
 
-        await self._add_app_with_groups(db, "SyncAppA", ["One"])
-        app_b = await self._add_app_with_groups(db, "SyncAppB", ["Two"])
-        test_plugin.sync_all_groups_failures.add("SyncAppA")
+        _, a_ids = await self._add_app_with_groups(db, "SyncAppA", ["One", "Two"])
+        _, b_ids = await self._add_app_with_groups(db, "SyncAppB", ["Three"])
+        test_plugin.sync_group_failures.add("App-SyncAppA-One")
 
         failures = await _sync_all_app_groups()
 
         assert failures == 1
-        assert test_plugin.sync_all_groups_calls == [(app_b.id, ["App-SyncAppB-Two:SyncAppB"])]
+        # The failing group's siblings and the following app's groups all still sync.
+        assert test_plugin.sync_group_calls == [
+            (a_ids["Two"], "SyncAppA"),
+            (b_ids["Three"], "SyncAppB"),
+        ]
 
     async def test_apps_without_a_plugin_are_not_synced(self, db: Db, test_plugin: DummyPlugin) -> None:
         # The Access app seeded by the db fixture has no lifecycle plugin configured.
@@ -2694,7 +3317,7 @@ class TestSyncAllGroupsHook:
         failures = await _sync_all_app_groups()
 
         assert failures == 0
-        assert test_plugin.sync_all_groups_calls == []
+        assert test_plugin.sync_group_calls == []
 
     # The two below cover the command wrapper rather than the helper: the failure count has to
     # reach the process exit status, or a cronjob run that reconciled nothing still reports
@@ -2708,29 +3331,30 @@ class TestSyncAllGroupsHook:
     # happens to pass on a given driver. `raise SystemExit` propagating out of asyncio.run to
     # Click is Python's behavior, not this repo's; what needs guarding is the `if failures`.
 
-    async def test_command_exits_non_zero_when_an_app_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_command_exits_non_zero_when_a_group_failed(self, db: Db, test_plugin: DummyPlugin) -> None:
         from api.cli import sync_app_groups
 
-        await self._add_app_with_groups(db, "SyncExitA", ["One"])
-        await self._add_app_with_groups(db, "SyncExitB", ["Two"])
-        test_plugin.sync_all_groups_failures.add("SyncExitA")
+        _, a_groups = await self._add_app_with_groups(db, "SyncExitA", ["One"])
+        _, b_groups = await self._add_app_with_groups(db, "SyncExitB", ["Two"])
+        test_plugin.sync_group_failures.add("App-SyncExitA-One")
 
         with pytest.raises(SystemExit) as exc_info:
             await sync_app_groups.callback.__wrapped__()
 
         assert exc_info.value.code == 1
-        # Every app is still attempted; only the exit status reflects the failure.
-        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitB-Two:SyncExitB"]]
+        # Every group is still attempted; only the exit status reflects the failure.
+        assert test_plugin.sync_group_calls == [(b_groups["Two"], "SyncExitB")]
+        assert a_groups["One"] not in [call[0] for call in test_plugin.sync_group_calls]
 
-    async def test_command_exits_zero_when_every_app_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
+    async def test_command_exits_zero_when_every_group_syncs(self, db: Db, test_plugin: DummyPlugin) -> None:
         from api.cli import sync_app_groups
 
-        await self._add_app_with_groups(db, "SyncExitOk", ["One"])
+        _, groups = await self._add_app_with_groups(db, "SyncExitOk", ["One"])
 
         # Must not raise SystemExit: a clean run has to leave the exit status at 0.
         await sync_app_groups.callback.__wrapped__()
 
-        assert [call[1] for call in test_plugin.sync_all_groups_calls] == [["App-SyncExitOk-One:SyncExitOk"]]
+        assert test_plugin.sync_group_calls == [(groups["One"], "SyncExitOk")]
 
 
 class TestPluginAuditLogging:
@@ -3435,6 +4059,13 @@ _OKTA_APP_ID = "test-okta-app-123"
 _EXTERNAL_ID_FIELD = "googleGroupEmail"
 
 
+def _push_ctx() -> AppGroupLifecycleContext:
+    """A context over a stand-in session: the Okta group-push capabilities do network I/O only and
+    never touch it. Going through the context rather than the module-level helpers keeps the tested
+    surface the one plugins actually use, and covers the delegation."""
+    return AppGroupLifecycleContext(session=MagicMock(), plugin_id="google_group_manager")
+
+
 def _push_source_group(mocker: MockerFixture) -> Any:
     """A minimal stand-in for the Access group a push mapping sources from."""
     group = mocker.Mock()
@@ -3455,7 +4086,7 @@ async def test_create_push_mapping_for_existing_group_links_by_resolved_target(m
         "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
     )
 
-    mapping_id = await create_push_mapping_for_existing_group(
+    mapping_id = await _push_ctx().create_push_mapping_for_existing_group(
         group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
     )
 
@@ -3477,7 +4108,7 @@ async def test_create_push_mapping_for_existing_group_raises_when_target_not_imp
     create = mocker.patch("api.plugins.app_group_lifecycle.okta.create_group_push_mapping")
 
     with pytest.raises(MissingOktaTargetError):
-        await create_push_mapping_for_existing_group(
+        await _push_ctx().create_push_mapping_for_existing_group(
             _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
         )
     create.assert_not_called()
@@ -3496,7 +4127,7 @@ async def test_create_push_mapping_for_existing_group_raises_on_ambiguous_target
     create = mocker.patch("api.plugins.app_group_lifecycle.okta.create_group_push_mapping")
 
     with pytest.raises(AmbiguousOktaTargetError):
-        await create_push_mapping_for_existing_group(
+        await _push_ctx().create_push_mapping_for_existing_group(
             _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD, "sec@test-company.com"
         )
     create.assert_not_called()
@@ -3511,7 +4142,7 @@ async def test_create_push_mapping_and_new_group_creates_by_name(mocker: MockerF
         "api.plugins.app_group_lifecycle.okta.create_group_push_mapping", return_value={"id": "map-1"}
     )
 
-    mapping_id = await create_push_mapping_and_new_group(group, _OKTA_APP_ID, "platform-security")
+    mapping_id = await _push_ctx().create_push_mapping_and_new_group(group, _OKTA_APP_ID, "platform-security")
 
     assert mapping_id == "map-1"
     create.assert_called_once_with(appId=_OKTA_APP_ID, sourceGroupId="grp-1", targetGroupName="platform-security")
@@ -3529,14 +4160,16 @@ async def test_discover_existing_push_mapping_returns_mapping_id_and_external_id
     tgt.group.profile.actual_instance.additional_properties = {_EXTERNAL_ID_FIELD: "found@test-company.com"}
     mocker.patch("api.plugins.app_group_lifecycle.okta.get_group", return_value=tgt)
 
-    result = await discover_existing_push_mapping_and_target_group_external_id(group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD)
+    result = await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+        group, _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+    )
 
     assert result == ("map-9", "found@test-company.com")
 
 
 async def test_discover_existing_push_mapping_returns_none_when_no_mapping(mocker: MockerFixture) -> None:
     mocker.patch("api.plugins.app_group_lifecycle.okta.list_group_push_mappings", return_value=[])
-    result = await discover_existing_push_mapping_and_target_group_external_id(
+    result = await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
         _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
     )
     assert result is None
@@ -3547,6 +4180,6 @@ async def test_delete_push_mapping_unlinks_without_deleting_target_by_default(mo
     # callers that also want the target removed pass delete_target_group=True.
     delete = mocker.patch("api.plugins.app_group_lifecycle.okta.delete_group_push_mapping")
 
-    await delete_push_mapping(_OKTA_APP_ID, "map-1")
+    await _push_ctx().delete_push_mapping(_OKTA_APP_ID, "map-1")
 
     delete.assert_called_once_with(appId=_OKTA_APP_ID, mappingId="map-1", deleteTargetGroup=False)
