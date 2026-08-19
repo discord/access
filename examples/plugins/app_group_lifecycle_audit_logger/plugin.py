@@ -217,7 +217,13 @@ class AuditLoggerPlugin:
         self._increment_event_count(ctx, group)
 
     @hookimpl
-    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(
+        self,
+        ctx: AppGroupLifecycleContext,
+        group: AppGroup,
+        members: list[OktaUser],
+        plugin_id: str | None,
+    ) -> None:
         """Handle group deletion."""
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
@@ -225,7 +231,10 @@ class AuditLoggerPlugin:
         if not self._is_enabled(ctx, group):
             return
 
-        self._log(ctx, f"Group deleted: {group.name} (app: {group.app.name})", group=group)
+        # `members` is who held membership when the group stopped being this plugin's. Reading it
+        # back off the group here would log nobody: the deletion already ended those memberships.
+        who = ", ".join(m.email for m in members) or "no members"
+        self._log(ctx, f"Group deleted: {group.name} (app: {group.app.name}), held by {who}", group=group)
 
         # Update status
         self._increment_event_count(ctx, group)

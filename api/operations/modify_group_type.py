@@ -20,7 +20,11 @@ from api.models import (
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
 from api.operations.modify_role_groups import ModifyRoleGroups
-from api.plugins.app_group_lifecycle import AppGroupLifecycleHook, invoke_app_group_lifecycle_hook
+from api.plugins.app_group_lifecycle import (
+    AppGroupLifecycleHook,
+    get_active_group_members,
+    invoke_app_group_lifecycle_hook,
+)
 from api.schemas import AuditLogSchema, EventType
 
 
@@ -120,7 +124,17 @@ class ModifyGroupType:
                 # Invoke group_deleted hook before the AppGroup row is removed so the
                 # plugin can still access group.app and status values (e.g. to delete
                 # the linked external group).
-                await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group)
+                #
+                # The memberships survive a type change, unlike a delete, so these users keep their
+                # Access membership -- but the group stops being this plugin's to manage and its
+                # external group goes away, so the hook is told who was in it. Passed explicitly
+                # for the same reason as on the delete path: it makes the payload identical on both,
+                # rather than something a plugin could read off the group here and not there.
+                await invoke_app_group_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_DELETED,
+                    group=group,
+                    members=await get_active_group_members(db.session, group.id),
+                )
 
                 # Remove app tag map for this group that is no longer attached to an app
                 await db.session.execute(

@@ -23,7 +23,15 @@ from sqlalchemy.orm import joinedload
 
 from api.config import settings
 from api.extensions import Db
-from api.models import App, AppGroup, OktaUser, OktaUserGroupMember, RoleGroupMap
+from api.models import (
+    AccessRequestStatus,
+    App,
+    AppGroup,
+    OktaUser,
+    OktaUserGroupMember,
+    RoleGroupMap,
+)
+from api.operations import DeleteGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
     AppGroupLifecycleContext,
@@ -46,7 +54,14 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaGroupFactory, OktaUserFactory, RoleGroupFactory
+from tests.factories import (
+    AccessRequestFactory,
+    AppFactory,
+    AppGroupFactory,
+    OktaGroupFactory,
+    OktaUserFactory,
+    RoleGroupFactory,
+)
 
 
 class DummyPlugin:
@@ -61,6 +76,10 @@ class DummyPlugin:
         self.group_created_configs: list[dict[str, Any]] = []
         self.group_updated_calls: list[tuple[str, str, str]] = []
         self.group_deleted_calls: list[str] = []
+        # (group id, member emails) and the membership the context reports at hook time, so a test
+        # can tell the passed-in snapshot apart from what the hook could look up for itself.
+        self.group_deleted_members: list[tuple[str, list[str]]] = []
+        self.group_deleted_ctx_members: list[tuple[str, list[str]]] = []
         self.members_added_calls: list[tuple[str, list[str]]] = []
         self.members_removed_calls: list[tuple[str, list[str]]] = []
         # (group id, "owning app name") per sync_group call.
@@ -236,7 +255,9 @@ class DummyPlugin:
         self.group_updated_calls.append((group.id, old_name, old_description))
 
     @hookimpl
-    async def group_deleted(self, ctx: AppGroupLifecycleContext, group: AppGroup, plugin_id: str | None) -> None:
+    async def group_deleted(
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, members: list[OktaUser], plugin_id: str | None
+    ) -> None:
         if plugin_id is not None and plugin_id != self.ID:
             return
         await ctx.find_groups_by_status("probe", "unset")  # exercise the context (see group_created)
@@ -244,6 +265,8 @@ class DummyPlugin:
         if group.id in self.group_deleted_failures:
             raise RuntimeError(f"group_deleted failed for {group.id}")
         self.group_deleted_calls.append(group.id)
+        self.group_deleted_members.append((group.id, [m.email for m in members]))
+        self.group_deleted_ctx_members.append((group.id, [m.email for m in await ctx.list_group_members(group)]))
 
     @hookimpl
     async def group_members_added(
@@ -3355,6 +3378,157 @@ class TestSyncGroupHook:
         await sync_app_groups.callback.__wrapped__()
 
         assert test_plugin.sync_group_calls == [(groups["One"], "SyncExitOk")]
+
+
+class TestGroupDeletedMembers:
+    """`group_deleted` receives the membership the group had when it stopped being the plugin's to
+    manage. A plugin that provisions users individually needs it to deprovision them, and cannot
+    recover it after the fact -- on the delete path the memberships are already ended, and on the
+    type-change path they are not, so a hook looking it up itself would behave differently
+    depending on why the group went away.
+    """
+
+    async def _app_group(self, db: Db, app_name: str, group_suffix: str = "G") -> AppGroup:
+        test_app = AppFactory.build(
+            name=app_name,
+            app_group_lifecycle_plugin=DummyPlugin.ID,
+            plugin_data={DummyPlugin.ID: {"configuration": {"enabled": True}}},
+        )
+        prefix = f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
+        group = AppGroupFactory.build(app_id=test_app.id, is_managed=True, name=f"{prefix}{group_suffix}")
+        db.session.add_all([test_app, group])
+        await db.session.commit()
+        return group
+
+    async def _member(
+        self, db: Db, email: str, group: AppGroup, *, is_owner: bool = False, role_group_map_id: str | None = None
+    ) -> OktaUser:
+        user = OktaUserFactory.build(email=email)
+        db.session.add(user)
+        await db.session.commit()
+        db.session.add(
+            OktaUserGroupMember(
+                user_id=user.id, group_id=group.id, is_owner=is_owner, role_group_map_id=role_group_map_id
+            )
+        )
+        await db.session.commit()
+        return user
+
+    async def _convert_to_okta_group(self, client: AsyncClient, url_for: Any, group: AppGroup, name: str) -> None:
+        response = await client.put(
+            url_for("api-groups.group_by_id", group_id=group.id),
+            json={"type": "okta_group", "name": name, "description": "Converted"},
+        )
+        assert response.status_code == 200, response.text
+
+    async def test_delete_hands_the_hook_the_members_it_can_no_longer_look_up(
+        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """The point of the argument: by the time the hook fires, DeleteGroup has already end-dated
+        every membership, so a hook that asked the context would deprovision nobody."""
+        group = await self._app_group(db, "DeletedMembersApp")
+        await self._member(db, "held@example.com", group)
+
+        await DeleteGroup(group=group, sync_to_okta=False).execute()
+
+        assert test_plugin.group_deleted_members == [(group.id, ["held@example.com"])]
+        # ...and the same hook asking for itself sees nothing, which is why this is passed.
+        assert test_plugin.group_deleted_ctx_members == [(group.id, [])]
+
+    async def test_includes_role_granted_members_and_excludes_owners(
+        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """Role-granted members hold the access the external system provisioned just as directly
+        as a direct grant, so deprovisioning has to see them. Owners administer the group instead
+        of holding its access, so they are not provisioned and must not be."""
+        group = await self._app_group(db, "DeletedRoleMembersApp")
+        role = RoleGroupFactory.build()
+        db.session.add(role)
+        await db.session.commit()
+        mapping = RoleGroupMap(role_group_id=role.id, group_id=group.id, is_owner=False)
+        db.session.add(mapping)
+        await db.session.commit()
+
+        await self._member(db, "direct@example.com", group)
+        await self._member(db, "via-role@example.com", group, role_group_map_id=mapping.id)
+        await self._member(db, "owner@example.com", group, is_owner=True)
+
+        await DeleteGroup(group=group, sync_to_okta=False).execute()
+
+        assert test_plugin.group_deleted_members == [(group.id, ["direct@example.com", "via-role@example.com"])]
+
+    async def test_members_survive_the_operations_intervening_commits(
+        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        """DeleteGroup captures the members early, then commits several more times before the hook
+        fires -- rejecting pending requests, ending tag mappings. The snapshot has to still be
+        readable at the end; an expired instance would raise MissingGreenlet inside the hook, where
+        the failure is logged and swallowed and the notification silently lost."""
+        group = await self._app_group(db, "DeletedPendingApp")
+        requester = await self._member(db, "requester@example.com", group)
+        db.session.add(
+            AccessRequestFactory.build(
+                requester_user_id=requester.id,
+                requested_group_id=group.id,
+                request_ownership=False,
+                request_reason="pending at deletion",
+                status=AccessRequestStatus.PENDING,
+            )
+        )
+        await db.session.commit()
+        group_id = group.id
+
+        await DeleteGroup(group=group, sync_to_okta=False).execute()
+
+        assert test_plugin.group_deleted_members == [(group_id, ["requester@example.com"])]
+
+    async def test_type_change_hands_the_hook_the_same_members(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """Converting away from an AppGroup keeps the memberships in Access, but the group stops
+        being this plugin's and its external group goes away, so the hook is still told who was in
+        it."""
+        mocker.patch.object(okta, "update_group")
+        group = await self._app_group(db, "ConvertedMembersApp")
+        await self._member(db, "kept@example.com", group)
+
+        await self._convert_to_okta_group(client, url_for, group, "ConvertedKeepsMembers")
+
+        assert test_plugin.group_deleted_members == [(group.id, ["kept@example.com"])]
+
+    async def test_both_paths_agree_for_identical_membership(
+        self, client: AsyncClient, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture, url_for: Any
+    ) -> None:
+        """The reason this is an argument rather than a lookup. The two fire sites end membership at
+        different points, so a hook reading it off the group would see one thing on delete and
+        another on type change. Pin that the payload does not depend on which happened.
+        """
+        mocker.patch.object(okta, "update_group")
+        deleted = await self._app_group(db, "AgreeDeleteApp")
+        converted = await self._app_group(db, "AgreeConvertApp")
+        # Captured up front: ModifyGroupType expunges the session, so `converted` is detached by
+        # the time the assertions run.
+        deleted_id, converted_id = deleted.id, converted.id
+        for label, group in (("del", deleted), ("conv", converted)):
+            await self._member(db, f"a-{label}@example.com", group)
+            await self._member(db, f"b-{label}@example.com", group)
+            await self._member(db, f"owner-{label}@example.com", group, is_owner=True)
+
+        await DeleteGroup(group=deleted, sync_to_okta=False).execute()
+        await self._convert_to_okta_group(client, url_for, converted, "AgreeConverted")
+
+        by_group = dict(test_plugin.group_deleted_members)
+        assert by_group[deleted_id] == ["a-del@example.com", "b-del@example.com"]
+        assert by_group[converted_id] == ["a-conv@example.com", "b-conv@example.com"]
+
+    async def test_group_with_no_members_gets_an_empty_list(
+        self, db: Db, test_plugin: DummyPlugin, mocker: MockerFixture
+    ) -> None:
+        group = await self._app_group(db, "DeletedEmptyApp")
+
+        await DeleteGroup(group=group, sync_to_okta=False).execute()
+
+        assert test_plugin.group_deleted_members == [(group.id, [])]
 
 
 class TestPluginAuditLogging:
