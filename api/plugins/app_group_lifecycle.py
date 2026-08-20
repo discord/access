@@ -116,6 +116,15 @@ class AppGroupLifecyclePluginStatusProperty:
     # Leave it unset for a property with no transient state, and for terminal states: an error
     # value is not pending, and polling on one spins until the operator or the sync-app-groups
     # cronjob changes something.
+    #
+    # Declaring this takes on an obligation: **write a status on every reconcile outcome**,
+    # including the ones where the hook decides there is nothing to do. The UI also treats "this
+    # plugin declares pending values but has written no status at all" as in-progress, because
+    # that is exactly what a freshly created group looks like before its first hook lands -- and
+    # a hook that returns early without writing is indistinguishable from one that has not run.
+    # A group left with empty status therefore polls for the whole window on every page view.
+    # Give those early returns a terminal status of their own (the Google example plugin uses a
+    # `skipped` sync state) rather than a bare return.
     pending_values: tuple[Any, ...] | None = None
 
     def __post_init__(self) -> None:
@@ -790,7 +799,36 @@ class AppGroupLifecycleContext:
 
 
 class AppGroupLifecyclePluginSpec:
-    """Plugin specification for managing app group lifecycles."""
+    """Plugin specification for managing app group lifecycles.
+
+    **Write the lifecycle hooks as reconciliations, not as applications of the delta.** On the HTTP
+    request path Access runs them after the response has been sent, against a group re-loaded at
+    run time, so three things follow that inline execution used to hide:
+
+    - A hook observes *current committed state*, not the state at the moment it fired. The
+      before/after arguments on ``group_updated`` are snapshots taken when the change happened; by
+      the time the hook runs, a later request may have changed the group again, so ``old_name`` and
+      ``group.name`` do not necessarily bracket a single rename.
+    - Fires from *different* requests are not ordered relative to each other. Each request drains
+      its own fires in order, but two concurrent requests drain concurrently, so "added" and
+      "removed" for the same user can arrive in either order. A hook needing mutual exclusion
+      should take ``ctx.lock`` on a key of its choosing; that is the only mechanism that holds
+      across workers.
+    - Delivery is not guaranteed. A worker killed between the response and the drain drops the
+      fire, and a request that fails after queuing one drops it deliberately rather than report a
+      change that was rolled back.
+
+    So treat the delta arguments (``members``, ``old_name``, ``old_description``) as a hint about
+    what changed, and derive what to do from the group and the external system's current state.
+
+    Recovery is whatever ``sync_group`` reconciles. It is optional and Access does not police what
+    it does, so a plugin that implements it as a full, idempotent reconciliation converges after a
+    dropped fire and one that does not, does not. Two gaps no ``sync_group`` can close: the sweep
+    skips soft-deleted groups, so a dropped ``group_deleted`` is unrecoverable, and it sees only
+    current membership, so a plugin that revokes by delta cannot recover a lost
+    ``group_members_removed``. A plugin that cannot converge without the events -- an audit or
+    notification plugin, say -- should expect gaps rather than assume exactly-once delivery.
+    """
 
     @hookspec
     def get_plugin_metadata(self) -> AppGroupLifecyclePluginMetadata | None:
@@ -940,8 +978,10 @@ class AppGroupLifecyclePluginSpec:
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
             group: The app group after the update.
-            old_name: The group's name before the update.
-            old_description: The group's description before the update.
+            old_name: The group's name before the update. A snapshot from when the change
+                      happened, not necessarily the value immediately preceding ``group.name`` --
+                      see the delivery contract on this class.
+            old_description: The group's description before the update, with the same caveat.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
@@ -995,7 +1035,9 @@ class AppGroupLifecyclePluginSpec:
                  writes, Okta group push. Mutations are only persisted through `ctx`, and a
                  hook must not commit or roll back: the host owns the transaction.
             group: The app group to which members were added.
-            members: The list of users that were added to the group.
+            members: The list of users that were added to the group. A hint about what
+                     changed; reconcile against current state rather than applying it
+                     blindly (see the delivery contract on this class).
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
@@ -1022,7 +1064,8 @@ class AppGroupLifecyclePluginSpec:
                      permission set per user rather than one per group, recompute the union over
                      `ctx.find_user_groups(user)` and write the reduced set, rather than revoking
                      this group's grants outright -- the user may still hold them via another
-                     group.
+                     group. Note this delta is the one thing `sync_group` cannot recover if the
+                     fire is dropped, since a sweep sees only current membership.
             plugin_id: If provided, only the plugin matching this ID should respond.
                        If None, all plugins may respond.
         """
