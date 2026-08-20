@@ -13,6 +13,7 @@ from sqlalchemy import (
     JSON,
     TypeDecorator,
     Unicode,
+    UniqueConstraint,
     func,
     text,
 )
@@ -1326,3 +1327,53 @@ class AppTagMap(Base):
         lazy="raise_on_sql",
         innerjoin=True,
     )
+
+
+class PendingAppGroupDeletion(Base):
+    """A `group_deleted` hook Access still owes a plugin.
+
+    The one lifecycle hook with no plugin-side recovery path. `sync_group` sweeps live app groups,
+    so a soft-deleted one is invisible to it: if the hook never reaches the plugin -- a worker
+    killed before the post-response drain ran, or a hook that raised and was swallowed -- the
+    external group and its members stay alive with nothing scanning for them, while Access believes
+    the access was revoked.
+
+    So the delivery is recorded rather than inferred. The row is written in the same transaction as
+    the soft delete, which is what makes it survive the failure it exists for, and dropped once the
+    hook succeeds. `sync-app-groups` retries whatever is left.
+
+    Deliberately carries `member_ids` rather than re-deriving them at retry time: the memberships
+    are already ended by then, and a plugin that provisions users individually needs to know who to
+    deprovision (see the capture in `DeleteGroup`).
+
+    Only covers `DeleteGroup`. Converting a group away from an app group also fires `group_deleted`,
+    but hard-deletes the `app_group` row immediately after, so there is no `AppGroup` left to hand a
+    retry -- which is why that fire stays inline.
+    """
+
+    # See https://stackoverflow.com/a/60840921
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        autoincrement=True,
+        primary_key=True,
+    )
+    # To okta_group, not app_group: the base row is the one guaranteed to outlive a soft delete.
+    group_id: Mapped[str] = mapped_column(Unicode(50), ForeignKey("okta_group.id"), nullable=False)
+    # Resolved at delete time. An app reconfigured onto a different plugin afterwards must not
+    # redirect a delivery the old plugin is owed.
+    plugin_id: Mapped[str] = mapped_column(Unicode(255), nullable=False)
+    # Ids of the users who held the group when it was deleted, in the order the operation saw them.
+    member_ids: Mapped[List[str]] = mapped_column(
+        mutable_json_type(dbtype=JSON().with_variant(JSONB, "postgresql"), nested=True),
+        nullable=False,
+        server_default="[]",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(NaiveUTCDateTime(), nullable=False, default=func.now())
+    # Retry bookkeeping. `attempts` is what bounds the sweep: past the cap the row is left in place,
+    # with its last error, as the record of a delivery that needs a human rather than another retry.
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_attempt_at: Mapped[Optional[datetime]] = mapped_column(NaiveUTCDateTime())
+    last_error: Mapped[Optional[str]] = mapped_column(Unicode(1024))
+
+    __table_args__ = (UniqueConstraint("group_id", "plugin_id", name="group_id_plugin_id"),)

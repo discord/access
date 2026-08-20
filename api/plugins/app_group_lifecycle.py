@@ -832,8 +832,11 @@ class AppGroupLifecyclePluginSpec:
     ``group_deleted`` is held to a different standard for that reason. The sweep skips soft-deleted
     groups, so no amount of reconciliation would revisit one, and a delete that never arrived would
     leave the external group and its members alive while Access shows the access as revoked. So
-    Access does not defer it: both fire sites run it inline, on the request, where the only way to
-    lose it is a hook that raises.
+    Access does not defer it: both fire sites run it inline, on the request. Beyond that, Access
+    records the delivery it owes alongside the soft delete and ``sync-app-groups`` re-fires the hook
+    until it succeeds -- so **``group_deleted`` may be delivered more than once, and must be
+    idempotent.** Deleting an external group that is already gone is a success, not an error; raise
+    only for a failure worth retrying.
     """
 
     @hookspec

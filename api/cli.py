@@ -468,12 +468,83 @@ async def _sync_all_app_groups() -> int:
     return failures
 
 
+async def _redeliver_pending_group_deletions() -> int:
+    """Re-fire `group_deleted` for deletes whose hook never landed. Returns the failure count.
+
+    `DeleteGroup` records what it owes the plugin in the same transaction as the soft delete, so a
+    hook that raised -- or a worker that died mid-request -- leaves a row here. Nothing else would
+    ever revisit these groups: the sweep above skips soft-deleted ones by design, which is why the
+    delete is tracked rather than reconciled.
+
+    Runs before the sweep so an orphaned external group is cleaned up at the earliest opportunity
+    rather than waiting behind every live group's reconcile.
+    """
+    from api.extensions import db
+    from api.operations._lifecycle_outbox import (
+        load_deletion_target,
+        outstanding_deletions,
+        record_delivery_failure,
+        settle_pending_deletion,
+    )
+    from api.plugins.app_group_lifecycle import (
+        AppGroupLifecycleHook,
+        get_app_group_lifecycle_plugin_to_invoke,
+        invoke_app_group_lifecycle_hook,
+    )
+
+    pending_rows = await outstanding_deletions(db.session)
+    if len(pending_rows) == 0:
+        return 0
+
+    click.echo(f"Found {len(pending_rows)} undelivered group deletion(s)")
+    failures = 0
+    for pending in pending_rows:
+        group, members = await load_deletion_target(db.session, pending)
+        if group is None:
+            # No app group left to hand the hook -- converted away, or hard-deleted. Nothing to
+            # deliver and nothing that will change, so stop tracking it.
+            click.echo(f"  - Dropping delivery for group {pending.group_id}: no longer an app group")
+            await settle_pending_deletion(db.session, pending.group_id, pending.plugin_id)
+            continue
+
+        current_plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+        if current_plugin_id != pending.plugin_id:
+            # The app was pointed at a different plugin after the delete. Firing would tell the
+            # wrong plugin to delete a group it never created, and the owed plugin is no longer
+            # reachable through this group, so leave the row for an operator.
+            failures += 1
+            click.echo(
+                f"  ✗ Cannot deliver group_deleted for '{group.name}': it is owed to plugin "
+                f"'{pending.plugin_id}' but the app now uses '{current_plugin_id}'",
+                err=True,
+            )
+            continue
+
+        exceptions = await invoke_app_group_lifecycle_hook(
+            AppGroupLifecycleHook.GROUP_DELETED, session=db.session, group=group, members=members
+        )
+        if exceptions:
+            failures += 1
+            await record_delivery_failure(db.session, pending, str(exceptions[0]))
+            click.echo(
+                f"  ✗ Failed to deliver group_deleted for '{group.name}' (attempt {pending.attempts}): {exceptions[0]}",
+                err=True,
+            )
+            continue
+
+        await settle_pending_deletion(db.session, pending.group_id, pending.plugin_id)
+        click.echo(f"  ✓ Delivered group_deleted for '{group.name}'")
+
+    return failures
+
+
 @cli.command("sync-app-groups")
 @_with_app_context
 async def sync_app_groups() -> None:
     """Invoke the periodic group-sync hook for every group of every app with an app group lifecycle
-    plugin configured."""
-    failures = await _sync_all_app_groups()
+    plugin configured, after re-delivering any `group_deleted` hook that never landed."""
+    failures = await _redeliver_pending_group_deletions()
+    failures += await _sync_all_app_groups()
     if failures:
         # Every group is attempted regardless, but the command must still exit non-zero:
         # this runs as a periodic job, so a run that left groups unreconciled has to be
