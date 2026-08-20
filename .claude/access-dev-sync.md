@@ -47,16 +47,18 @@ property of the plugin, not of the host, so be careful not to overstate it:
   ✓ for every group and exits 0. Nothing in the hookspec makes `sync_group` subsume the event
   hooks; the Google example plugin routes it to the same `_reconcile()`, which is where
   "re-converges it" comes from, and that is a property of that implementation.
-- **Deletes are structurally out of reach.** The sweep filters `AppGroup.deleted_at.is_(None)`
-  (`api/cli.py`), so a soft-deleted group is invisible to it. A dropped `group_deleted` leaves the
-  external group and its members alive with nothing scanning for them. This predates deferral — an
-  inline hook that raised was already unrecoverable — but the drain widens the window.
+- **Deletes are structurally out of reach**, which is why `group_deleted` is not deferred at all.
+  The sweep filters `AppGroup.deleted_at.is_(None)` (`api/cli.py`), so a soft-deleted group is
+  invisible to it: a dropped `group_deleted` would leave the external group and its members alive
+  with nothing scanning for them, while Access shows the access as revoked. Both fire sites
+  therefore run the hook inline, on the request. (An inline hook that *raises* is still logged and
+  swallowed, so delivery is not guaranteed even so — but it is not traded away for latency.)
 - **Membership removals are deltas.** `group_members_removed` carries who lost access; `sync_group`
   sees only who currently has it. A plugin whose external system takes revoke calls rather than a
   desired-state write cannot recover a lost removal from a sweep.
 
 So: if this job is disabled or failing, plugins that reconcile full state stop converging, and
-plugins that don't were never covered. The contract this places on plugin authors is on
+plugins that don't were never covered. Deletes are unaffected either way — they never relied on it. The contract this places on plugin authors is on
 `AppGroupLifecyclePluginSpec`.
 
 ## Notification cadence

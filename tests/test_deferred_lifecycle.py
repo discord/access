@@ -28,7 +28,7 @@ from sqlalchemy.orm import joinedload
 
 from api.extensions import Db, _session_scope
 from api.models import AppGroup, OktaGroup, OktaUser
-from api.operations import DeleteGroup, ModifyGroupType, ModifyGroupUsers
+from api.operations import DeleteGroup, ModifyGroupType, ModifyGroupUsers, ModifyRoleGroups
 from api.operations._lifecycle_fan_out import (
     _deferred_lifecycle,
     _DeferredFire,
@@ -46,7 +46,7 @@ from api.plugins.app_group_lifecycle import (
     hookimpl,
 )
 from api.services import okta
-from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory
+from tests.factories import AppFactory, AppGroupFactory, OktaUserFactory, RoleGroupFactory
 
 
 class RecordingPlugin:
@@ -283,47 +283,79 @@ async def test_replay_skips_a_group_converted_out_of_being_an_app_group(
     assert recording_plugin.calls == []
 
 
-async def test_group_deleted_replays_against_the_soft_deleted_row(
+async def test_group_deleted_is_never_deferred_even_with_a_collector_bound(
     db: Db, recording_plugin: RecordingPlugin, collector: list[_DeferredFire]
 ) -> None:
-    """DeleteGroup soft-deletes before it fires, so this replay must not filter `deleted_at`."""
-    group = await _app_group(db, "SoftDeletedApp")
+    """Deferral trades a lost fire for a faster response, and for a delete there is nothing on the
+    other side of that trade: replay re-loads by id and a deleted group no longer resolves, while
+    `sync_group` sweeps only live groups — so the fire would vanish with nothing revisiting it, and
+    the external group would outlive the Access one. Both fire sites call the host directly; the
+    guard is what stops a new delete path regressing that."""
+    group = await _app_group(db, "InlineDeleteApp")
+
     await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_DELETED, group=group, members=[])
-    assert collector[0].allow_deleted is True
 
-    group.deleted_at = datetime.now(UTC)
-    await db.session.commit()
-
-    await run_deferred_lifecycle(collector)
-
-    # An empty membership survives as an empty tuple, not as an absent kwarg — the hookspec
-    # requires `members`, so dropping it would fail the call for every empty group.
+    assert collector == []
+    # An empty membership still arrives as an empty list rather than a missing argument.
     assert [(c[0], c[1], c[3]) for c in recording_plugin.calls] == [("group_deleted", group.id, ())]
 
 
-async def test_deleting_a_group_defers_the_membership_it_captured(
+async def test_deleting_a_group_fires_inline_with_the_membership_it_captured(
     db: Db, recording_plugin: RecordingPlugin, collector: list[_DeferredFire], mocker: MockerFixture
 ) -> None:
     """DeleteGroup captures the membership *before* ending it, because a plugin that provisioned
-    users individually cannot recover the list afterwards. Deferral must not cost that: the fire
-    carries the ids it was handed, so re-deriving members from the group at replay time — when the
-    memberships are already ended — would quietly hand the plugin an empty list."""
+    users individually cannot recover the list afterwards. The hook runs inline, on the request,
+    and still receives that captured list rather than the (by then empty) current membership."""
     mocker.patch.object(okta, "delete_group")
     group = await _app_group(db, "DeleteMembersApp")
     member = OktaUserFactory.build()
     db.session.add(member)
     await db.session.commit()
     await ModifyGroupUsers(group=group.id, members_to_add=[member.id], sync_to_okta=False).execute()
+    collector.clear()  # the setup's group_members_added fire is deferred, and is not what's under test
 
     await DeleteGroup(group=group.id).execute()
 
-    # Queued, not fired, and the membership is already gone by now.
-    assert recording_plugin.calls == []
-    assert collector[0].member_ids == (member.id,)
+    assert [f.hook_method for f in collector] == []
+    assert [(c[0], c[3]) for c in recording_plugin.calls] == [("group_deleted", (member.id,))]
+
+
+async def test_a_user_removed_and_re_added_in_one_request_replays_in_that_order(
+    db: Db, recording_plugin: RecordingPlugin, collector: list[_DeferredFire], mocker: MockerFixture
+) -> None:
+    """`ModifyRoleGroups` takes groups_to_add and groups_to_remove independently and does not
+    dedupe them, so one call can both remove a user's access to a group and grant it back. The
+    fires must reach the plugin in the order the DB applied them -- removals commit first, so they
+    are collected first -- and the drain is sequential, so the plugin is never handed the pair
+    concurrently or reversed. Across *separate* requests no such ordering exists; that is the
+    contract on AppGroupLifecyclePluginSpec, and why a plugin needing exclusion takes ctx.lock.
+    """
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "remove_user_from_group")
+    group = await _app_group(db, "ReAddApp")
+    member = OktaUserFactory.build()
+    role = RoleGroupFactory.build()
+    db.session.add_all([member, role])
+    await db.session.commit()
+    await ModifyGroupUsers(group=role.id, members_to_add=[member.id], sync_to_okta=False).execute()
+    await ModifyRoleGroups(role_group=role.id, groups_to_add=[group.id], sync_to_okta=False).execute()
+    collector.clear()
+    recording_plugin.calls.clear()
+
+    # Same group named on both sides of one call.
+    await ModifyRoleGroups(
+        role_group=role.id, groups_to_remove=[group.id], groups_to_add=[group.id], sync_to_okta=False
+    ).execute()
+
+    assert [f.hook_method for f in collector] == [
+        AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
+        AppGroupLifecycleHook.GROUP_MEMBERS_ADDED,
+    ]
 
     await run_deferred_lifecycle(collector)
 
-    assert [(c[0], c[3]) for c in recording_plugin.calls] == [("group_deleted", (member.id,))]
+    assert [c[0] for c in recording_plugin.calls] == ["group_members_removed", "group_members_added"]
+    assert all(c[3] == (member.id,) for c in recording_plugin.calls)
 
 
 async def test_replays_in_the_order_they_were_fired(

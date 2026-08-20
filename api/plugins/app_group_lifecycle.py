@@ -816,18 +816,24 @@ class AppGroupLifecyclePluginSpec:
       across workers.
     - Delivery is not guaranteed. A worker killed between the response and the drain drops the
       fire, and a request that fails after queuing one drops it deliberately rather than report a
-      change that was rolled back.
+      change that was rolled back. ``group_deleted`` is the exception: it runs inline, on the
+      request, because nothing sweeps a deleted group afterwards -- see below.
 
     So treat the delta arguments (``members``, ``old_name``, ``old_description``) as a hint about
     what changed, and derive what to do from the group and the external system's current state.
 
     Recovery is whatever ``sync_group`` reconciles. It is optional and Access does not police what
     it does, so a plugin that implements it as a full, idempotent reconciliation converges after a
-    dropped fire and one that does not, does not. Two gaps no ``sync_group`` can close: the sweep
-    skips soft-deleted groups, so a dropped ``group_deleted`` is unrecoverable, and it sees only
+    dropped fire and one that does not, does not. One gap it cannot close either way: it sees only
     current membership, so a plugin that revokes by delta cannot recover a lost
     ``group_members_removed``. A plugin that cannot converge without the events -- an audit or
     notification plugin, say -- should expect gaps rather than assume exactly-once delivery.
+
+    ``group_deleted`` is held to a different standard for that reason. The sweep skips soft-deleted
+    groups, so no amount of reconciliation would revisit one, and a delete that never arrived would
+    leave the external group and its members alive while Access shows the access as revoked. So
+    Access does not defer it: both fire sites run it inline, on the request, where the only way to
+    lose it is a hook that raises.
     """
 
     @hookspec

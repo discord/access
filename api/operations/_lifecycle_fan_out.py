@@ -26,23 +26,28 @@ skipped instead of reconciled against a row that no longer exists.
 Outside an opted-in request — CLI, syncer, MCP, a direct `execute()` in tests —
 `defer_or_invoke_lifecycle_hook` invokes inline, exactly as a direct call would.
 
-A fire can be lost -- a worker killed between the response and the drain, or a request that fails
-after queuing one (see `defer_fan_out`, which drops them rather than report a change that was
-rolled back). What that costs depends on the plugin, and the host cannot promise otherwise:
+`group_deleted` is deliberately **not** deferred, at either of its fire sites. Deferral trades the
+chance of losing a fire against a faster response, and that trade is only defensible when something
+comes back for the work later. Nothing does for a delete: `sync_group` sweeps live app groups, so a
+soft-deleted one is invisible to it, and a dropped delete leaves the external group and its members
+alive while Access shows the access as revoked. Deleting a group is rare and nobody is waiting on
+it, so it stays on the request. `defer_or_invoke_lifecycle_hook` enforces this rather than trusting
+call sites to remember.
+
+For every other hook a fire can be lost -- a worker killed between the response and the drain, or a
+request that fails after queuing one (see `defer_fan_out`, which drops them rather than report a
+change that was rolled back). What that costs depends on the plugin, and the host cannot promise
+otherwise:
 
 - A plugin whose `sync_group` is a full, idempotent reconciliation re-converges on the next
   `sync-app-groups` run, so a lost fire costs latency. That is the shape the interface asks for
   and what `app_group_lifecycle_google` does.
 - `sync_group` is optional and Access does not police what it does. A plugin that omits it, or
   implements it as something other than a full reconciliation, does not recover.
-- Two gaps no `sync_group` can close. The sweep filters `AppGroup.deleted_at.is_(None)`, so a
-  soft-deleted group is invisible to it and a dropped `group_deleted` leaves the external group
-  alive with nothing scanning for it. And a sweep sees only current membership, so a plugin that
-  revokes by delta cannot recover a lost `group_members_removed`.
+- One gap no `sync_group` can close even then: a sweep sees only current membership, so a plugin
+  that revokes by delta cannot recover a lost `group_members_removed`.
 
-The `group_deleted` gap predates deferral -- an inline hook that raised was logged and swallowed,
-and equally unrecoverable -- but deferral widens the window. The contract this places on plugin
-authors lives on `AppGroupLifecyclePluginSpec`.
+The contract this places on plugin authors lives on `AppGroupLifecyclePluginSpec`.
 """
 
 from __future__ import annotations
@@ -91,9 +96,6 @@ class _DeferredFire:
     member_ids: tuple[str, ...] | None
     # The remaining hook kwargs, all scalars — `old_name` / `old_description` today.
     extra: tuple[tuple[str, Any], ...]
-    # GROUP_DELETED fires after the group is already soft-deleted, so its replay must re-load a
-    # row that `deleted_at.is_(None)` would filter out.
-    allow_deleted: bool
 
 
 _Collected = list[_DeferredFire]
@@ -159,7 +161,13 @@ async def defer_or_invoke_lifecycle_hook(
     result, and it never defers.
     """
     collected = _deferred_lifecycle.get()
-    if collected is None:
+    # GROUP_DELETED is never deferred, wherever it is fired from. Replay re-loads the group by id
+    # and a deleted group no longer resolves, so a deferred delete would be dropped in silence --
+    # and unlike every other hook, nothing would ever revisit it, since `sync_group` sweeps only
+    # live groups. Both fire sites call `invoke_app_group_lifecycle_hook` directly; this is here so
+    # that a new delete path reaching for the deferring helper gets the safe behaviour rather than
+    # a hook that quietly never runs.
+    if collected is None or hook_method == AppGroupLifecycleHook.GROUP_DELETED:
         return await invoke_app_group_lifecycle_hook(hook_method, session=db.session, group=group, **kwargs)
 
     # Resolve the plugin now, on a group that is still live and eager-loaded. Deferring a fire for
@@ -184,14 +192,13 @@ async def defer_or_invoke_lifecycle_hook(
             group_id=group.id,
             member_ids=member_ids,
             extra=extra,
-            allow_deleted=hook_method == AppGroupLifecycleHook.GROUP_DELETED,
         )
     )
     return []
 
 
 async def _reload_group(session: AsyncSession, fire: _DeferredFire) -> Optional[AppGroup]:
-    """Re-load the fire's group, or None if it is no longer an app group to reconcile.
+    """Re-load the fire's group, or None if there is no longer a live app group to reconcile.
 
     Selecting `AppGroup` rather than polymorphic `OktaGroup` makes the "still an app group" check
     fall out of the query: a group converted away from an app group has had its `app_group` row
@@ -199,16 +206,20 @@ async def _reload_group(session: AsyncSession, fire: _DeferredFire) -> Optional[
     `get_app_group_lifecycle_plugin_to_invoke` reads, which is `lazy="raise_on_sql"`.
     `populate_existing` because this session outlives individual hook transactions and
     `expire_on_commit=False` leaves instances loaded before a commit unexpired.
+
+    Filtering `deleted_at` is safe precisely because `group_deleted` never gets here -- see the
+    guard in `defer_or_invoke_lifecycle_hook`. Every hook that does is about a group that should
+    still exist, so a soft-deleted row means the work is moot.
     """
-    stmt = (
-        select(AppGroup)
-        .where(AppGroup.id == fire.group_id)
-        .options(joinedload(AppGroup.app))
-        .execution_options(populate_existing=True)
-    )
-    if not fire.allow_deleted:
-        stmt = stmt.where(AppGroup.deleted_at.is_(None))
-    return (await session.scalars(stmt)).one_or_none()
+    return (
+        await session.scalars(
+            select(AppGroup)
+            .where(AppGroup.id == fire.group_id)
+            .where(AppGroup.deleted_at.is_(None))
+            .options(joinedload(AppGroup.app))
+            .execution_options(populate_existing=True)
+        )
+    ).one_or_none()
 
 
 async def _reload_members(session: AsyncSession, member_ids: tuple[str, ...]) -> list[OktaUser]:
