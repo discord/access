@@ -26,9 +26,23 @@ skipped instead of reconciled against a row that no longer exists.
 Outside an opted-in request — CLI, syncer, MCP, a direct `execute()` in tests —
 `defer_or_invoke_lifecycle_hook` invokes inline, exactly as a direct call would.
 
-Losing a deferred fire (a pod killed between the response and the drain) costs reconciliation
-latency, not correctness: the `sync-app-groups` cronjob re-runs `sync_group` over every
-plugin-managed group and re-converges whatever was missed.
+A fire can be lost -- a worker killed between the response and the drain, or a request that fails
+after queuing one (see `defer_fan_out`, which drops them rather than report a change that was
+rolled back). What that costs depends on the plugin, and the host cannot promise otherwise:
+
+- A plugin whose `sync_group` is a full, idempotent reconciliation re-converges on the next
+  `sync-app-groups` run, so a lost fire costs latency. That is the shape the interface asks for
+  and what `app_group_lifecycle_google` does.
+- `sync_group` is optional and Access does not police what it does. A plugin that omits it, or
+  implements it as something other than a full reconciliation, does not recover.
+- Two gaps no `sync_group` can close. The sweep filters `AppGroup.deleted_at.is_(None)`, so a
+  soft-deleted group is invisible to it and a dropped `group_deleted` leaves the external group
+  alive with nothing scanning for it. And a sweep sees only current membership, so a plugin that
+  revokes by delta cannot recover a lost `group_members_removed`.
+
+The `group_deleted` gap predates deferral -- an inline hook that raised was logged and swallowed,
+and equally unrecoverable -- but deferral widens the window. The contract this places on plugin
+authors lives on `AppGroupLifecyclePluginSpec`.
 """
 
 from __future__ import annotations

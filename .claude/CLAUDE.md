@@ -595,11 +595,19 @@ for the ambient `db.session`, and a mismatch would land its writes in a transact
 Replay re-loads the group by id, so a hook always sees committed truth and a group that has since
 been deleted (or converted out of being an app group) is skipped. Outside an opted-in request —
 CLI, syncer, MCP, a direct `execute()` — it invokes inline. New fires should call
-`defer_or_invoke_lifecycle_hook`, with one exception: `ModifyGroupType`'s `group_deleted` fires while
-the row is still an app group and the `app_group` row is deleted immediately after, so it must stay
-on `invoke_app_group_lifecycle_hook` or it would be dropped silently. Because create/update responses
-no longer carry status a hook writes, a plugin declares `pending_values` on the status property
-holding its reconcile state and the group page refreshes until the value moves off them.
+`defer_or_invoke_lifecycle_hook`, **after** the commit that makes the change durable — the fire
+carries its `members` delta verbatim, and a request that fails afterwards drops its queued fires
+rather than report a rollback as fact. One exception to deferring at all: `ModifyGroupType`'s
+`group_deleted` fires while the row is still an app group and the `app_group` row is deleted
+immediately after, so it must stay on `invoke_app_group_lifecycle_hook` or it would be dropped
+silently. Because create/update responses no longer carry status a hook writes, a plugin declares
+`pending_values` on the status property holding its reconcile state and the group page refreshes
+until the value moves off them.
+
+Deferral is a **semantic** change to the plugin interface, not just a scheduling one: hooks observe
+re-loaded state, are unordered across requests, and can be lost. `AppGroupLifecyclePluginSpec`'s
+docstring is the contract, and `sync_group` recovers only what a given plugin implements it to —
+never a dropped `group_deleted` (the sweep skips soft-deleted groups) or a lost membership delta.
 
 **Request-path notification hooks receive read-only, detached ORM snapshots.** Every notification
 raised from an HTTP request — the `*_created` and `*_completed` hooks for access, role, and group

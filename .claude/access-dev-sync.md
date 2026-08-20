@@ -37,11 +37,27 @@ deliberate, not incidental: a rolled-back group expires the entire identity map,
 across an iteration boundary is unusable — the same hazard described under `lazy="raise_on_sql"` in
 `.claude/CLAUDE.md`.
 
-This cronjob is also what makes the request path's post-response lifecycle drain
-(`api/operations/_lifecycle_fan_out.py`) safe to lose. A pod killed between a response and its drain
-drops that fire; because `sync_group` is per-group and idempotent, the next run re-converges it. The
-cost of a dropped fire is reconciliation latency, not divergence — so if this job is disabled or
-failing, that safety net is gone.
+This cronjob is also the recovery path for the request path's post-response lifecycle drain
+(`api/operations/_lifecycle_fan_out.py`), which can lose a fire — a worker killed between a response
+and its drain, or a request that fails after queuing one. How much it actually recovers is a
+property of the plugin, not of the host, so be careful not to overstate it:
+
+- `sync_group` is **optional**. `verify_async_impls` only checks that hooks a plugin *does*
+  implement are `async def`, so a plugin omitting it loads clean and `_sync_all_app_groups` prints
+  ✓ for every group and exits 0. Nothing in the hookspec makes `sync_group` subsume the event
+  hooks; the Google example plugin routes it to the same `_reconcile()`, which is where
+  "re-converges it" comes from, and that is a property of that implementation.
+- **Deletes are structurally out of reach.** The sweep filters `AppGroup.deleted_at.is_(None)`
+  (`api/cli.py`), so a soft-deleted group is invisible to it. A dropped `group_deleted` leaves the
+  external group and its members alive with nothing scanning for them. This predates deferral — an
+  inline hook that raised was already unrecoverable — but the drain widens the window.
+- **Membership removals are deltas.** `group_members_removed` carries who lost access; `sync_group`
+  sees only who currently has it. A plugin whose external system takes revoke calls rather than a
+  desired-state write cannot recover a lost removal from a sweep.
+
+So: if this job is disabled or failing, plugins that reconcile full state stop converging, and
+plugins that don't were never covered. The contract this places on plugin authors is on
+`AppGroupLifecyclePluginSpec`.
 
 ## Notification cadence
 
