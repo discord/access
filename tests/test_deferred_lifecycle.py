@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from typing import Any, Generator
 
 import pytest
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI
 from okta.models.group import Group
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
@@ -30,6 +30,7 @@ from api.extensions import Db, _session_scope
 from api.models import AppGroup, OktaGroup, OktaUser
 from api.operations import DeleteGroup, ModifyGroupType, ModifyGroupUsers
 from api.operations._lifecycle_fan_out import (
+    _deferred_lifecycle,
     _DeferredFire,
     _snapshot_kwargs,
     begin_deferred_lifecycle,
@@ -37,6 +38,7 @@ from api.operations._lifecycle_fan_out import (
     end_deferred_lifecycle,
     run_deferred_lifecycle,
 )
+from api.routers._fan_out import defer_fan_out
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleContext,
     AppGroupLifecycleHook,
@@ -413,6 +415,35 @@ async def test_drain_leaves_no_session_bound_to_its_scope(
     await run_deferred_lifecycle(collector)
 
     assert _session_scope.get() == scope_before
+
+
+# --- the endpoint-error path ---
+
+
+async def test_endpoint_error_drops_lifecycle_fires_without_running_them(
+    db: Db, recording_plugin: RecordingPlugin
+) -> None:
+    """A failing request must not tell a plugin about a change it rolled back.
+
+    Replay re-loads the group, but a membership fire carries its `members` list verbatim, so a
+    rolled-back removal would still arrive as fact and a plugin acting on it would deprovision
+    someone who still has access. The Okta/notification fan-out keeps draining inline here; only
+    the lifecycle fires are dropped.
+    """
+    bg = BackgroundTasks()
+    agen = defer_fan_out(bg)
+    await agen.__anext__()
+
+    group = await _app_group(db, "EndpointErrorApp")
+    await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+    collected = _deferred_lifecycle.get()
+    assert collected is not None and len(collected) == 1
+
+    with pytest.raises(ValueError):
+        await agen.athrow(ValueError("endpoint boom"))
+
+    assert recording_plugin.calls == []
+    assert collected == []
 
 
 # --- through the router ---------------------------------------------------------

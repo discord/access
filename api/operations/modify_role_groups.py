@@ -244,6 +244,11 @@ class ModifyRoleGroups:
         # prepared after the final commit and dispatched alongside async_tasks.
         approved_access_requests: list[AccessRequest] = []
         approved_role_requests: list[RoleRequest] = []
+        # App groups whose membership changed, and who gained or lost it. Accumulated during the
+        # loops below and handed to the lifecycle hooks after the commit that makes each change
+        # durable -- see the comments at the collection sites.
+        members_lost_by_group: dict[OktaGroup, list[OktaUser]] = {}
+        members_gained_by_group: dict[OktaGroup, list[OktaUser]] = {}
 
         # First remove all groups from the role including those that we wish to add.
         # That way we can easily extend time-bounded group memberships and audit when
@@ -311,7 +316,10 @@ class ModifyRoleGroups:
                     removed_members_with_other_access_ids
                 )
 
-                # Invoke app group lifecycle plugin hooks for removed members
+                # Collect the membership the lifecycle hook is told about. Fired after the
+                # commit below, not here: a deferred fire carries this member list verbatim, so
+                # firing before the change is durable would let the post-response drain report a
+                # removal that a later failure rolled back.
                 if len(okta_members_to_remove_ids) > 0:
                     # Use the eager-loaded group (with `app`) rather than a bare
                     # db.session.get, so the hook path can read `group.app`.
@@ -324,11 +332,7 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        await defer_or_invoke_lifecycle_hook(
-                            AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
-                            group=group,
-                            members=members_losing_access,
-                        )
+                        members_lost_by_group[group] = list(members_losing_access)
 
                 if self.sync_to_okta:
                     for member_id in okta_members_to_remove_ids:
@@ -371,6 +375,14 @@ class ModifyRoleGroups:
 
         # Commit all changes so far
         await db.session.commit()
+
+        # Now that the removals are durable, tell the lifecycle plugin about them.
+        for affected_group, lost_members in members_lost_by_group.items():
+            await defer_or_invoke_lifecycle_hook(
+                AppGroupLifecycleHook.GROUP_MEMBERS_REMOVED,
+                group=affected_group,
+                members=lost_members,
+            )
 
         # Add new groups to role and owner groups to role
         if len(groups_to_add) > 0 or len(owner_groups_to_add) > 0:
@@ -456,7 +468,8 @@ class ModifyRoleGroups:
                 existing_member_ids = set(existing_members_with_access)
                 members_gaining_access_ids = set(members_to_add_ids) - existing_member_ids
 
-                # Invoke app group lifecycle plugin hooks for added members
+                # Collected and fired after the commit below, for the reason given on the
+                # removal path above.
                 if len(members_gaining_access_ids) > 0:
                     group = groups_added_by_id[role_associated_group_map.group_id]
                     if get_app_group_lifecycle_plugin_to_invoke(group) is not None:
@@ -467,11 +480,7 @@ class ModifyRoleGroups:
                                 .where(OktaUser.deleted_at.is_(None))
                             )
                         ).all()
-                        await defer_or_invoke_lifecycle_hook(
-                            AppGroupLifecycleHook.GROUP_MEMBERS_ADDED,
-                            group=group,
-                            members=members_gaining_access,
-                        )
+                        members_gained_by_group[group] = list(members_gaining_access)
 
                 for member in active_role_memberships:
                     # Add user to okta group members
@@ -543,6 +552,14 @@ class ModifyRoleGroups:
 
             # Commit changes so far, so we can reference OktaUserGroupMember in approved AccessRequests
             await db.session.commit()
+
+            # Now that the additions are durable, tell the lifecycle plugin about them.
+            for affected_group, gained_members in members_gained_by_group.items():
+                await defer_or_invoke_lifecycle_hook(
+                    AppGroupLifecycleHook.GROUP_MEMBERS_ADDED,
+                    group=affected_group,
+                    members=gained_members,
+                )
 
             # Approve any pending access requests for access granted by this operation
             pending_requests_query = (

@@ -51,9 +51,11 @@ async def defer_fan_out(background_tasks: BackgroundTasks) -> AsyncGenerator[Non
     try:
         yield
     except Exception:
-        # Still worth running: a deferred fire re-loads its group, so it reconciles whatever the
-        # failed request did manage to commit, and skips itself if that turned out to be nothing.
-        await run_deferred_lifecycle(lifecycle)
+        # Lifecycle fires are dropped rather than replayed. Replay re-loads the *group*, but a
+        # membership fire's `members` list is carried verbatim, so a removal the failing request
+        # rolled back would still reach the plugin as fact -- and a plugin acting on that
+        # deprovisions someone who still has access. Losing the fire only delays reconciliation;
+        # reporting a change that never happened does not undo itself.
         lifecycle.clear()
         await run_deferred_fan_out(collected)
         collected.clear()
