@@ -46,6 +46,7 @@ if str(plugin_dir) not in sys.path:
 from plugin import (  # noqa: E402
     CONFIG_DISPLAY_NAME,
     CONFIG_EMAIL,
+    CONFIG_ENABLED,
     PLUGIN_ID,
     STATUS_GOOGLE_GROUP_ID,
     STATUS_PUSH_MAPPING_ID,
@@ -53,6 +54,7 @@ from plugin import (  # noqa: E402
     STATUS_SYNC_STATUS,
     SYNC_ERROR,
     SYNC_PENDING,
+    SYNC_SKIPPED,
     SYNC_SYNCED,
     GoogleGroupManagerPlugin,
 )
@@ -691,6 +693,32 @@ async def test_reconcile_skips_when_disabled(
     discover = ctx_mock.discover_existing_push_mapping_and_target_group_external_id
     await plugin_instance._reconcile(ctx_mock, group)
     discover.assert_not_called()
+    # Recorded, not silent: an empty status is indistinguishable from "the hook has not run yet",
+    # and the group page polls for the whole refresh window on every view when it sees one.
+    ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+
+
+async def test_reconcile_marks_skipped_when_config_is_missing(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    """The other way a group ends up unmanaged: enabled for the app, but with no email config to
+    resolve a Google group from. Common for groups that predate plugin enablement, since only the
+    create path enforces the config."""
+    group = _group(mocker)
+    ctx_mock.get_config.side_effect = lambda _entity, key, *a, **k: True if key == CONFIG_ENABLED else None
+    ctx_mock.get_status.return_value = None
+    ctx_mock.find_groups_by_status.return_value = []
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.return_value = None
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+    assert (
+        SYNC_SKIPPED
+        not in (
+            GoogleGroupManagerPlugin.get_plugin_group_status_properties(plugin_instance, plugin_id=PLUGIN_ID) or {}
+        )[STATUS_SYNC_STATUS].pending_values
+    )
 
 
 async def test_reconcile_marks_pending_when_google_group_not_yet_created(

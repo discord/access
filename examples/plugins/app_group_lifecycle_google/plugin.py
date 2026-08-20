@@ -49,6 +49,11 @@ STATUS_LAST_SYNCED_AT = "last_synced_at"
 SYNC_SYNCED = "synced"
 SYNC_PENDING = "pending"
 SYNC_ERROR = "error"
+# Terminal, like SYNC_ERROR: this group is deliberately not managed by the plugin (disabled
+# for the app, or missing the config needed to resolve a Google group). Recorded rather than
+# left blank because a group with no status at all reads as "the hook has not run yet" -- see
+# `pending_values` on AppGroupLifecyclePluginStatusProperty.
+SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
 
@@ -412,6 +417,18 @@ class GoogleGroupManagerPlugin:
                 group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True
             )
 
+    def _mark_skipped(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str) -> None:
+        """Record that this reconcile deliberately did nothing.
+
+        A bare return would leave the group's status empty, which the UI cannot tell apart from a
+        hook that has not run yet -- so it would poll the group on every page view for the whole
+        refresh window. The detailed reason goes to the log; the status just says the group is not
+        being managed.
+        """
+        logger.info(f"Skipping {group.name}: {reason}")
+        ctx.set_status(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+        ctx.set_status(group, STATUS_SYNC_ERROR, None, durable_on_failure=True)
+
     # ---- Reconcile ----
 
     async def _get_owned_group_id(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> str | None:
@@ -534,6 +551,7 @@ class GoogleGroupManagerPlugin:
         rolling back a failed hook and an operator still sees why reconcile failed. See _mark.
         """
         if not self._is_enabled(ctx, group):
+            self._mark_skipped(ctx, group, "the Google plugin is not enabled for this app")
             return
 
         try:
@@ -592,7 +610,7 @@ class GoogleGroupManagerPlugin:
                 # step. This avoids waiting for Okta to import a made in Google first (which involves
                 # a manually-triggered fetch). Config is required to create a new group.
                 if not configured_email_prefix or not configured_email:
-                    logger.info(f"Skipping {group.name} due to missing required config.")
+                    self._mark_skipped(ctx, group, "missing the email config needed to create a Google group")
                     return
 
                 pattern = ctx.get_config(group.app, CONFIG_EMAIL_PATTERN)
@@ -645,7 +663,7 @@ class GoogleGroupManagerPlugin:
             if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
                 resolved_email = configured_email or await self._get_email_from_status(ctx, group)
                 if not resolved_email:
-                    logger.info(f"Skipping {group.name} due to missing required config.")
+                    self._mark_skipped(ctx, group, "no resolvable email for the adopted Google group")
                     return
                 try:
                     mapping_id = await ctx.create_push_mapping_for_existing_group(
