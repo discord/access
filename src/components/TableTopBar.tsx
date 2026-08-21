@@ -20,6 +20,12 @@ export function renderUserOption(props: React.HTMLAttributes<HTMLLIElement>, opt
   );
 }
 
+// Width of the table search fields, also matched by the global search in the topbar.
+export const TABLE_SEARCH_WIDTH = 320;
+
+// Horizontal padding (in theme spacing units) of the top bar the search field sits in.
+export const TABLE_TOP_BAR_PADDING_X = 2;
+
 export function TableTopBarAutocomplete({
   defaultValue,
   filterOptions = (x) => x,
@@ -30,7 +36,7 @@ export function TableTopBarAutocomplete({
       key={defaultValue}
       defaultValue={defaultValue}
       size="small"
-      sx={{width: 320}}
+      sx={{width: TABLE_SEARCH_WIDTH}}
       freeSolo
       filterOptions={filterOptions}
       renderInput={(params) => <TextField {...params} label="Search" autoFocus />}
@@ -52,7 +58,7 @@ export default function TableTopBar({title, link, children}: TableTopBarProps) {
       direction="row"
       paddingTop={2}
       paddingBottom={1}
-      paddingX={2}
+      paddingX={TABLE_TOP_BAR_PADDING_X}
       gap={4}
       justifyContent="space-between"
       flexWrap="wrap"
