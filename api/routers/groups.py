@@ -223,10 +223,10 @@ async def put_group(
     db: DbSession,
     current_user_id: CurrentUserId,
 ) -> GroupDetail:
+    from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
     from api.plugins.app_group_lifecycle import (
         AppGroupLifecycleHook,
         get_app_group_lifecycle_plugin_to_invoke,
-        invoke_app_group_lifecycle_hook,
     )
 
     fields_set = body.model_fields_set
@@ -446,9 +446,9 @@ async def put_group(
     # lifecycle plugin, so nothing is fired here for that case.
     name_or_desc_changed = group.name != old_name or (group.description or "") != old_description
     if type_changed and isinstance(group, AppGroup):
-        await invoke_app_group_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
+        await defer_or_invoke_lifecycle_hook(AppGroupLifecycleHook.GROUP_CREATED, group=group)
     elif not type_changed and (name_or_desc_changed or config_changed):
-        await invoke_app_group_lifecycle_hook(
+        await defer_or_invoke_lifecycle_hook(
             AppGroupLifecycleHook.GROUP_UPDATED,
             group=group,
             old_name=old_name,

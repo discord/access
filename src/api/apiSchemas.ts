@@ -966,6 +966,7 @@ export type PluginStatusProp = {
    * @default text
    */
   type?: 'text' | 'number' | 'date' | 'boolean';
+  pending_values?: any[] | null;
 };
 
 /**

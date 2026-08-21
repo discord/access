@@ -37,6 +37,30 @@ deliberate, not incidental: a rolled-back group expires the entire identity map,
 across an iteration boundary is unusable — the same hazard described under `lazy="raise_on_sql"` in
 `.claude/CLAUDE.md`.
 
+This cronjob is also the recovery path for the request path's post-response lifecycle drain
+(`api/operations/_lifecycle_fan_out.py`), which can lose a fire — a worker killed between a response
+and its drain, or a request that fails after queuing one. How much it actually recovers is a
+property of the plugin, not of the host, so be careful not to overstate it:
+
+- `sync_group` is **optional**. `verify_async_impls` only checks that hooks a plugin *does*
+  implement are `async def`, so a plugin omitting it loads clean and `_sync_all_app_groups` prints
+  ✓ for every group and exits 0. Nothing in the hookspec makes `sync_group` subsume the event
+  hooks; the Google example plugin routes it to the same `_reconcile()`, which is where
+  "re-converges it" comes from, and that is a property of that implementation.
+- **Deletes are structurally out of reach**, which is why `group_deleted` is not deferred at all.
+  The sweep filters `AppGroup.deleted_at.is_(None)` (`api/cli.py`), so a soft-deleted group is
+  invisible to it: a dropped `group_deleted` would leave the external group and its members alive
+  with nothing scanning for them, while Access shows the access as revoked. Both fire sites
+  therefore run the hook inline, on the request. (An inline hook that *raises* is still logged and
+  swallowed, so delivery is not guaranteed even so — but it is not traded away for latency.)
+- **Membership removals are deltas.** `group_members_removed` carries who lost access; `sync_group`
+  sees only who currently has it. A plugin whose external system takes revoke calls rather than a
+  desired-state write cannot recover a lost removal from a sweep.
+
+So: if this job is disabled or failing, plugins that reconcile full state stop converging, and
+plugins that don't were never covered. Deletes are unaffected either way — they never relied on it. The contract this places on plugin authors is on
+`AppGroupLifecyclePluginSpec`.
+
 ## Notification cadence
 
 Relevant when working on notification plugin code. Cadence is controlled by the cronjob

@@ -215,6 +215,10 @@ class DummyPlugin:
                 help_text="Number of members in the external group",
                 type="number",
             ),
+            "sync_state": AppGroupLifecyclePluginStatusProperty(
+                display_name="Sync State",
+                pending_values=("reconciling",),
+            ),
         }
 
     @hookimpl
@@ -348,6 +352,22 @@ def test_config_property_suffix_rejected_on_non_text() -> None:
         AppGroupLifecyclePluginConfigProperty(display_name="X", type="number", suffix="@example.com")
 
 
+def test_status_property_pending_values_default_to_none_and_serialize() -> None:
+    prop = AppGroupLifecyclePluginStatusProperty(display_name="Sync Status")
+    assert prop.pending_values is None
+    assert asdict(prop)["pending_values"] is None
+
+    declared = AppGroupLifecyclePluginStatusProperty(display_name="Sync Status", pending_values=("pending",))
+    assert asdict(declared)["pending_values"] == ("pending",)
+
+
+def test_status_property_rejects_empty_pending_values() -> None:
+    # An empty tuple can never match, so it silently disables the polling the plugin asked for --
+    # the same silently-inert mistake the suffix guard above catches.
+    with pytest.raises(ValueError, match="at least one value"):
+        AppGroupLifecyclePluginStatusProperty(display_name="Sync Status", pending_values=())
+
+
 def test_plugin_schema_models_mirror_their_dataclasses() -> None:
     # The Pydantic wire models mirror the plugin dataclasses; routes serialize via
     # asdict() -> model_validate(), and Pydantic silently drops unknown keys, so a field added to
@@ -454,6 +474,10 @@ class TestPluginAPIEndpoints:
 
         data = response.json()
         assert "member_count" in data
+        # pending_values reaches the client: it is what tells the group page whether to keep
+        # refreshing while the plugin converges.
+        assert data["member_count"]["pending_values"] is None
+        assert data["sync_state"]["pending_values"] == ["reconciling"]
 
     async def test_get_nonexistent_plugin(self, client: AsyncClient, db: Db, url_for: Any) -> None:
         """Test that requesting a non-existent plugin returns 404."""

@@ -324,9 +324,19 @@ class DeleteGroup:
         )
         await db.session.commit()
 
-        # Invoke app group lifecycle plugin hook, if configured
+        # Invoke app group lifecycle plugin hook, if configured.
+        #
+        # Fired inline, unlike every other hook on the request path. Deferral trades a lost fire for
+        # a faster response on the argument that `sync_group` re-converges afterwards -- and that
+        # argument does not hold here: the sweep skips soft-deleted groups, so nothing would ever
+        # look at this one again. A dropped delete leaves the external group and its members alive
+        # while Access shows the access as revoked, which is not a latency cost. Deleting a group is
+        # also rare and not latency-sensitive, so there is little to trade away.
         await invoke_app_group_lifecycle_hook(
-            AppGroupLifecycleHook.GROUP_DELETED, group=group, members=lifecycle_hook_members
+            AppGroupLifecycleHook.GROUP_DELETED,
+            session=db.session,
+            group=group,
+            members=lifecycle_hook_members,
         )
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")
