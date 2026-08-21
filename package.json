@@ -13,6 +13,7 @@
     "@mui/x-date-pickers": "^6.18.4",
     "@sentry/react": "^8.34.0",
     "@tanstack/react-query": "^5.101.0",
+    "confetti-cannon": "^2.3.2",
     "dayjs": "^1.11.10",
     "env-cmd": "^10.1.0",
     "react": "^18.0.0",
@@ -96,6 +97,7 @@
     "*.{js,ts,jsx,tsx}": "prettier --write"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "uuid": "^14.0.2"
   }
 }

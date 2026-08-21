@@ -58,6 +58,8 @@ import ReadUser from './pages/users/Read';
 import {useCurrentUser} from './authentication';
 import ReadRequest from './pages/requests/Read';
 import ReadRoleRequest from './pages/role_requests/Read';
+import ConfettiToggleButton from './components/confetti/ConfettiToggleButton';
+import {ConfettiProvider, useConfetti} from './components/confetti/ConfettiContext';
 
 import {appName} from './config/accessConfig';
 
@@ -120,14 +122,17 @@ function ThemeToggle({setThemeMode, condensed}: {setThemeMode: (theme: PaletteMo
   );
   const currentTheme = useTheme();
   const systemTheme = useMediaQuery('(prefers-color-scheme: dark)') ? 'dark' : 'light';
+  const {registerThemeToggleClick} = useConfetti();
 
   const handleThemeOverride = (theme: PaletteMode) => {
+    registerThemeToggleClick();
     setThemeMode(theme);
     localStorage.setItem('user-set-color-scheme', theme);
     setStoredTheme(theme);
   };
 
   const handleSystemDefault = () => {
+    registerThemeToggleClick();
     setThemeMode(systemTheme);
     localStorage.removeItem('user-set-color-scheme');
     setStoredTheme(null);
@@ -287,8 +292,9 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
         <List component="nav">
           <NavItems open={open} />
         </List>
-        <Stack marginTop="auto" p={2}>
+        <Stack marginTop="auto" p={2} direction={open ? 'row' : 'column'} spacing={1} alignItems="center">
           <ThemeToggle setThemeMode={setThemeMode} condensed={!open} />
+          <ConfettiToggleButton />
         </Stack>
       </Drawer>
       <Box
@@ -461,7 +467,9 @@ function AppState({source, theme, setMode}: AppStateProps) {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Dashboard setThemeMode={setMode} />
+      <ConfettiProvider>
+        <Dashboard setThemeMode={setMode} />
+      </ConfettiProvider>
     </ThemeProvider>
   );
 }
