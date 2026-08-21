@@ -24,9 +24,11 @@ from api.models import (
 )
 from api.operations.reject_access_request import RejectAccessRequest
 from api.operations.reject_role_request import RejectRoleRequest
+from api.operations._lifecycle_outbox import record_pending_deletion, settle_pending_deletion
 from api.plugins.app_group_lifecycle import (
     AppGroupLifecycleHook,
     get_active_group_members,
+    get_app_group_lifecycle_plugin_to_invoke,
     invoke_app_group_lifecycle_hook,
 )
 from api.services import okta
@@ -115,6 +117,13 @@ class DeleteGroup:
         # `direct_members_to_remove_ids`, which drops role-granted members -- those hold the access
         # too, so the hook has to see them.
         lifecycle_hook_members = await get_active_group_members(db.session, group.id)
+
+        # Record that the plugin is owed a `group_deleted`, in the same transaction as the soft
+        # delete above. Committed together, the record survives the failures that would otherwise
+        # lose the hook -- it raising, or the worker dying mid-request -- and nothing else would
+        # ever revisit this group, since `sync_group` sweeps only live ones. Settled below once the
+        # hook succeeds; `sync-app-groups` retries whatever is left.
+        await record_pending_deletion(db.session, group, lifecycle_hook_members)
 
         direct_members_to_remove_ids = [
             m.user_id
@@ -332,11 +341,14 @@ class DeleteGroup:
         # look at this one again. A dropped delete leaves the external group and its members alive
         # while Access shows the access as revoked, which is not a latency cost. Deleting a group is
         # also rare and not latency-sensitive, so there is little to trade away.
-        await invoke_app_group_lifecycle_hook(
+        lifecycle_plugin_id = get_app_group_lifecycle_plugin_to_invoke(group)
+        exceptions = await invoke_app_group_lifecycle_hook(
             AppGroupLifecycleHook.GROUP_DELETED,
             session=db.session,
             group=group,
             members=lifecycle_hook_members,
         )
+        if lifecycle_plugin_id is not None and not exceptions:
+            await settle_pending_deletion(db.session, group.id, lifecycle_plugin_id)
 
         await defer_or_drain_fan_out(okta_tasks, f"DeleteGroup for group {self.group_id}")

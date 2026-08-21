@@ -58,7 +58,18 @@ property of the plugin, not of the host, so be careful not to overstate it:
   desired-state write cannot recover a lost removal from a sweep.
 
 So: if this job is disabled or failing, plugins that reconcile full state stop converging, and
-plugins that don't were never covered. Deletes are unaffected either way — they never relied on it. The contract this places on plugin authors is on
+plugins that don't were never covered.
+
+Deletes are the exception, and are handled by a separate phase of the same command rather than by
+`sync_group`. `DeleteGroup` records the `group_deleted` it owes the plugin in a
+`PendingAppGroupDeletion` row, in the same transaction as the soft delete, and drops it once the
+hook succeeds. `_redeliver_pending_group_deletions` (`api/cli.py`) runs before the group sweep and
+re-fires whatever is left, so a hook that raised — or a worker that died mid-request — still gets
+delivered. Consequences worth knowing: `group_deleted` is **at-least-once**, so plugin
+implementations must be idempotent; a row past `MAX_DELIVERY_ATTEMPTS` stops being retried but is
+deliberately left in place, since it is the record that an external group may still exist; and a
+delete owed to a plugin the app has since been repointed away from is never delivered, because
+firing would tell the wrong plugin to delete a group it never created. The contract this places on plugin authors is on
 `AppGroupLifecyclePluginSpec`.
 
 ## Notification cadence
