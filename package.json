@@ -97,6 +97,7 @@
     "*.{js,ts,jsx,tsx}": "prettier --write"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "uuid": "^14.0.2"
   }
 }
