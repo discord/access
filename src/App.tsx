@@ -216,8 +216,6 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <MenuIcon />
           </IconButton>
           <Box sx={{flexGrow: 1}} />
-          {/* Search plus the account icon line up with the table search fields below: the Container
-              gutter and the Toolbar's right padding match, so we only add back TableTopBar's paddingX. */}
           <Box
             sx={(theme) => ({
               display: 'flex',
