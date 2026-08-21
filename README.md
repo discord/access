@@ -197,6 +197,14 @@ OIDC_OVERWRITE_REDIRECT_URI=https://<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>/oidc/au
 ALLOWED_HOSTS=<YOUR_ACCESS_DEPLOYMENT_DOMAIN_NAME>
 ```
 
+Signed-out users who follow a link into Access — say a group page you sent
+someone so they can request membership — are sent through the IdP and returned
+to the page they asked for, query string and all, rather than dropped on the
+home page. The same holds when a session expires while the app is open: the
+browser is handed to the IdP and comes back to whatever page the user was on.
+Only same-origin paths are accepted as a return target, so the flow can't be
+used to bounce anyone to a third-party host.
+
 #### Cloudflare Access
 
 To use Cloudflare Access authentication, set up a
