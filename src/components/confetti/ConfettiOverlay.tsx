@@ -7,10 +7,10 @@ import {
   Environment,
   SpriteCanvas,
   SpriteCanvasHandle,
-  SpriteProp,
   useConfettiCannon,
 } from 'confetti-cannon';
 
+import SPRITES from './sprites';
 import {getTypingOrigin, isTypingTarget, Point} from './typingTargets';
 
 // confetti-cannon scales its drawing by `global.devicePixelRatio` — a Node-ism
@@ -19,23 +19,6 @@ import {getTypingOrigin, isTypingTarget, Point} from './typingTargets';
 // module is only loaded once the cannon is switched on, so nothing else in the
 // app is touched.
 (globalThis as {global?: typeof globalThis}).global ??= globalThis;
-
-// confetti-cannon pre-renders its confetti onto an offscreen sprite sheet, one
-// row per shape and one column per color, so every shape has to arrive as an
-// image. Inline SVG data URIs keep them in the bundle. The shapes are solid
-// black because colorizing rewrites every pixel's color and keeps only the
-// alpha channel, which is where the shape actually lives.
-const spriteDataUri = (shape: string) =>
-  `data:image/svg+xml;utf8,${encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" width="8" height="8" viewBox="0 0 8 8">${shape}</svg>`,
-  )}`;
-
-const SPRITES: SpriteProp[] = [
-  spriteDataUri('<rect width="8" height="8" fill="#000"/>'),
-  spriteDataUri('<circle cx="4" cy="4" r="4" fill="#000"/>'),
-  spriteDataUri('<rect y="2" width="8" height="4" rx="2" fill="#000"/>'),
-  spriteDataUri('<polygon points="4,0 8,8 0,8" fill="#000"/>'),
-];
 
 const MIN_CONFETTI_SIZE = 6;
 const MAX_CONFETTI_SIZE = 14;
