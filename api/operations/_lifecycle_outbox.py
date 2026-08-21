@@ -63,8 +63,9 @@ async def record_pending_deletion(session: AsyncSession, group: OktaGroup, membe
     if plugin_id is None:
         return
 
-    # A group can only be deleted once, but an operation retried against an already-soft-deleted
-    # group (or a re-delete after an undelete) must not trip the (group_id, plugin_id) uniqueness.
+    # `DeleteGroup` does not filter `deleted_at` when it loads the group, so deleting an
+    # already-soft-deleted one runs the whole operation again and lands here. Reuse the row rather
+    # than tripping the (group_id, plugin_id) uniqueness.
     existing = (
         await session.scalars(
             select(PendingAppGroupDeletion)
@@ -73,7 +74,13 @@ async def record_pending_deletion(session: AsyncSession, group: OktaGroup, membe
         )
     ).one_or_none()
     if existing is not None:
+        # A fresh delete is a fresh obligation, so the retry budget resets with it. Carrying the old
+        # count over would let a row that had already exhausted it stay excluded from the sweep
+        # forever -- the new delete would never be delivered, and nothing would say so.
         existing.member_ids = [member.id for member in members]
+        existing.attempts = 0
+        existing.last_attempt_at = None
+        existing.last_error = None
         return
 
     session.add(
@@ -149,9 +156,21 @@ async def load_deletion_target(
     return group, [by_id[member_id] for member_id in member_ids if member_id in by_id]
 
 
-async def record_delivery_failure(session: AsyncSession, pending: PendingAppGroupDeletion, error: str) -> None:
-    """Count a failed attempt against the retry budget and keep the reason."""
-    pending.attempts += 1
+async def record_delivery_failure(
+    session: AsyncSession, pending: PendingAppGroupDeletion, error: str, *, count_attempt: bool = True
+) -> None:
+    """Record why a delivery did not happen, and by default count it against the retry budget.
+
+    Pass ``count_attempt=False`` when the hook was never actually called -- the sweep declined to
+    fire it -- so the reason is durable and visible on the row without ageing it out of
+    ``outstanding_deletions``. That distinction matters for a blocked delivery: it needs a human
+    rather than another attempt, and a misconfiguration that quietly stopped being reported after
+    ten runs would be worse than one reported every run.
+
+    ``last_attempt_at`` is set either way; for a blocked row it reads as when the sweep last looked.
+    """
+    if count_attempt:
+        pending.attempts += 1
     pending.last_attempt_at = datetime.now(timezone.utc).replace(tzinfo=None)
     pending.last_error = error[:1024]
     session.add(pending)

@@ -284,7 +284,45 @@ async def test_the_sweep_refuses_to_deliver_to_a_different_plugin(
 
     assert failures == 1
     assert delete_plugin.deleted == []
-    assert len(await _pending(db)) == 1
+    rows = await _pending(db)
+    assert len(rows) == 1
+    # The reason is durable, so it outlives this run's stderr...
+    assert rows[0].last_error is not None and "some_other_plugin" in rows[0].last_error
+    # ...but no attempt was made, so the budget is untouched. Counting one would age a live
+    # misconfiguration out of the sweep after MAX_DELIVERY_ATTEMPTS runs and stop reporting it.
+    assert rows[0].attempts == 0
+
+
+async def test_re_deleting_a_group_resets_the_retry_budget(
+    db: Db, delete_plugin: DeleteRecordingPlugin, mocker: MockerFixture
+) -> None:
+    """`DeleteGroup` does not filter `deleted_at`, so an already-deleted group can be deleted again
+    and reuses the existing row. That second delete is a fresh obligation: carried-over attempts
+    would leave a row that had already exhausted its budget excluded from the sweep forever, so the
+    new delete would never be delivered and nothing would say so."""
+    from api.cli import _redeliver_pending_group_deletions
+
+    mocker.patch.object(okta, "delete_group")
+    delete_plugin.fail = True
+    group = await _app_group(db, "ReDeletedApp")
+    await DeleteGroup(group=group.id).execute()
+    rows = await _pending(db)
+    rows[0].attempts = MAX_DELIVERY_ATTEMPTS
+    rows[0].last_error = "an older failure"
+    await db.session.commit()
+
+    # The same group deleted again.
+    await DeleteGroup(group=group.id).execute()
+
+    rows = await _pending(db)
+    assert len(rows) == 1
+    assert (rows[0].attempts, rows[0].last_error, rows[0].last_attempt_at) == (0, None, None)
+
+    # And so it is eligible for the sweep again, rather than silently past its budget.
+    delete_plugin.fail = False
+    delete_plugin.deleted.clear()
+    assert await _redeliver_pending_group_deletions() == 0
+    assert [d[0] for d in delete_plugin.deleted] == [group.id]
 
 
 async def test_nothing_owed_is_a_no_op(db: Db, delete_plugin: DeleteRecordingPlugin) -> None:

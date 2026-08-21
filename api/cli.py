@@ -512,12 +512,15 @@ async def _redeliver_pending_group_deletions() -> int:
             # The app was pointed at a different plugin after the delete. Firing would tell the
             # wrong plugin to delete a group it never created, and the owed plugin is no longer
             # reachable through this group, so leave the row for an operator.
+            #
+            # The reason is recorded on the row so it outlives this run's stderr, but deliberately
+            # without counting an attempt: nothing was delivered, and this needs a human rather
+            # than another try. Burning the budget would age the row out of the sweep and stop
+            # reporting a misconfiguration that is still unresolved.
             failures += 1
-            click.echo(
-                f"  ✗ Cannot deliver group_deleted for '{group.name}': it is owed to plugin "
-                f"'{pending.plugin_id}' but the app now uses '{current_plugin_id}'",
-                err=True,
-            )
+            blocked = f"Owed to plugin '{pending.plugin_id}' but the app now uses '{current_plugin_id}'; not delivered"
+            await record_delivery_failure(db.session, pending, blocked, count_attempt=False)
+            click.echo(f"  ✗ Cannot deliver group_deleted for '{group.name}': {blocked}", err=True)
             continue
 
         exceptions = await invoke_app_group_lifecycle_hook(
