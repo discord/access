@@ -95,4 +95,18 @@ describe('prefillablePluginData', () => {
     expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, {})).toEqual({});
     expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, undefined)).toEqual({});
   });
+
+  it('narrows to only the matching plugin key when multiple are stored', () => {
+    // Guards against an implementation that returns the whole storedPluginData
+    // object whenever storedPluginData[pluginId] != null; the single-key fixture
+    // above cannot distinguish that from the correct {[pluginId]: configuration}
+    // narrowing.
+    const multiStored = {
+      'plugin-a': {configuration: {channel: '#eng'}},
+      'plugin-b': {configuration: {region: 'us'}},
+    };
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, multiStored)).toEqual({
+      'plugin-a': {configuration: {channel: '#eng'}},
+    });
+  });
 });

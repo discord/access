@@ -63,7 +63,12 @@ const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
 const ROLE_GROUP_PREFIX = 'Role-';
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = {
+// Exported so the reopen prefill computed in Read.tsx can be built against
+// exactly what this form offers, rather than against
+// accessConfig.ACCESS_TIME_LABELS (used elsewhere in Read.tsx for the
+// resolve/approve form), which an operator may configure differently; doing
+// so would risk prefilling a value this form's own select doesn't list.
+export const UNTIL_ID_TO_LABELS: Record<string, string> = {
   '43200': '12 Hours',
   '432000': '5 Days',
   '1209600': 'Two Weeks',
@@ -88,7 +93,13 @@ interface CreateGroupRequestForm {
   plugin_data?: Record<string, any>;
 }
 
-/** Prefill payload used when reopening an expired group request. */
+/**
+ * Prefill payload used when reopening an expired group request.
+ *
+ * A single object here, unlike the loose per-field props the access-request
+ * and role-request reopen views take: nine fields makes loose props unwieldy
+ * for this view specifically, not a pattern change for the other two.
+ */
 export interface GroupRequestPrefill {
   type: 'okta_group' | 'app_group' | 'role_group';
   app?: AppDetail;
@@ -109,7 +120,12 @@ interface CreateRequestButtonProps {
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
   return (
-    <Tooltip title="Request that a new group or role be created.">
+    <Tooltip
+      title={
+        props.reopen
+          ? 'Resubmit this expired group request with the same details.'
+          : 'Request that a new group or role be created.'
+      }>
       <span>
         <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<GroupRequestIcon />}>
           {props.reopen ? 'Reopen Request' : 'Create Request'}
@@ -136,7 +152,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     props.prefill?.type ?? 'okta_group',
   );
   const [selectedApp, setSelectedApp] = React.useState<AppDetail | null>(props.prefill?.app ?? null);
-  const [appSearchInput, setAppSearchInput] = React.useState('');
+  // Also seeded from the prefill: the app Autocomplete's options come from a
+  // 10-item search seeded with an empty string, so a prefilled `selectedApp`
+  // may not be among them, which MUI logs as an invalid Autocomplete value.
+  // Seeding the search input with the prefilled app's name makes the search
+  // return it. (The multi-tag Autocomplete below has the same issue with no
+  // equally clean fix, and is intentionally left as-is.)
+  const [appSearchInput, setAppSearchInput] = React.useState(props.prefill?.app?.name ?? '');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [nameInput, setNameInput] = React.useState(props.prefill?.name ?? '');
   const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>(props.prefill?.tags ?? []);
@@ -271,6 +293,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   return (
     <FormContainer<CreateGroupRequestForm>
       defaultValues={{
+        // Mirrors the state seeded from props.prefill above (see the comment
+        // on the `groupType` state); react-hook-form's defaultValues and the
+        // plain useState above it both need the same prefill, one for
+        // controlled-field defaults and one for the plain logic that gates
+        // rendering and detection.
         type: props.prefill?.type ?? 'okta_group',
         app: props.prefill?.app,
         name: props.prefill?.name,

@@ -269,6 +269,8 @@ export default function ReadRoleRequest() {
   // Role requests must be submitted by an owner of the role, so reopen is
   // offered to current role owners rather than only the original requester.
   const canReopen = isExpiredRequest(roleRequest) && canManageGroup(currentUser, roleRequest.requester_role);
+  // Unlike `requestedUntil` above, this passes `timeLimit` so the prefill
+  // respects a tag limit that may have tightened since the original request.
   const reopenPrefill = reconstructRequestedUntil({
     createdAt: roleRequest.created_at,
     endingAt: roleRequest.request_ending_at,
