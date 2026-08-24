@@ -51,6 +51,7 @@ import {
   minTagTime,
   minTagTimeGroups,
   ownerCantAddSelf,
+  reconstructRequestedUntil,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
@@ -195,17 +196,12 @@ export default function ReadRoleRequest() {
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(roleRequest.request_ending_at);
-  // round the delta to adjust based on partial seconds
-  const requestedUntilDelta =
-    roleRequest.request_ending_at == null
-      ? null
-      : Math.round(requestEndingAt.diff(dayjs(roleRequest.created_at), 'second') / 100) * 100;
-  const requestedUntil =
-    requestedUntilDelta == null
-      ? 'indefinite'
-      : requestedUntilDelta in UNTIL_ID_TO_LABELS
-        ? requestedUntilDelta.toString()
-        : 'custom';
+  // No timeLimit here either; see the comment in requests/Read.tsx.
+  const {until: requestedUntil, deltaSeconds: requestedUntilDelta} = reconstructRequestedUntil({
+    createdAt: roleRequest.created_at,
+    endingAt: roleRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+  });
 
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships

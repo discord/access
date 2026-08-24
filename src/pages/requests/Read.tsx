@@ -47,6 +47,7 @@ import {
   displayUserName,
   minTagTime,
   minTagTimeGroups,
+  reconstructRequestedUntil,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
@@ -178,17 +179,13 @@ export default function ReadRequest() {
   const ownRequest = accessRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(accessRequest.request_ending_at);
-  // round the delta to adjust based on partial seconds
-  const requestedUntilDelta =
-    accessRequest.request_ending_at == null
-      ? null
-      : Math.round(requestEndingAt.diff(dayjs(accessRequest.created_at), 'second') / 100) * 100;
-  const requestedUntil =
-    requestedUntilDelta == null
-      ? 'indefinite'
-      : requestedUntilDelta in UNTIL_ID_TO_LABELS
-        ? requestedUntilDelta.toString()
-        : 'custom';
+  // No timeLimit: the clamp for a tag limit that dropped below the original ask
+  // is applied separately below, via autofill_until / requestedUntilAdjusted.
+  const {until: requestedUntil, deltaSeconds: requestedUntilDelta} = reconstructRequestedUntil({
+    createdAt: accessRequest.created_at,
+    endingAt: accessRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+  });
 
   const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
 
