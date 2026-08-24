@@ -1,3 +1,5 @@
+import dayjs, {Dayjs} from 'dayjs';
+
 import {
   OktaUserDetail,
   OktaUserSummary,
@@ -203,4 +205,73 @@ export function isExpiredRequest(request: ExpirableRequest): boolean {
     (request.resolver ?? null) === null &&
     request.resolution_reason === EXPIRED_REQUEST_REASON
   );
+}
+
+export interface ReconstructedUntil {
+  /** An option id from `untilLabels`, or 'indefinite', or 'custom'. */
+  until: string;
+  /** Only set when `until` is 'custom'. A Dayjs, because that is what DatePickerElement consumes. */
+  customUntil?: Dayjs;
+  /**
+   * The raw rounded duration in seconds, or null when there was no end date.
+   * Always unclamped, even when `until` was clamped by `timeLimit`. Exposed so
+   * callers that need the delta for their own logic (the read views' separate
+   * tag-limit clamp) do not recompute it.
+   */
+  deltaSeconds: number | null;
+}
+
+/** The largest numeric option in `untilLabels` that fits within `timeLimit` seconds. */
+function largestAllowedUntil(untilLabels: Record<string, string>, timeLimit: number): string {
+  const allowed = Object.keys(untilLabels)
+    .filter((key) => !isNaN(Number(key)) && Number(key) <= timeLimit)
+    .sort((a, b) => Number(a) - Number(b));
+  return allowed.at(-1) ?? 'custom';
+}
+
+/**
+ * Recover the duration a request originally asked for, re-based from today.
+ *
+ * Requests store an absolute `request_ending_at`, so a request that expired
+ * because its window lapsed has a stored date in the past that cannot be
+ * re-submitted as-is. Diffing against `created_at` recovers the *duration* the
+ * requester picked: an exact match in `untilLabels` round-trips to that option,
+ * and anything else was a custom date, so it is re-offered as one based from
+ * now.
+ *
+ * `timeLimit` (seconds, from a tag constraint) is OPTIONAL and defaults to no
+ * clamping. Pass it only where you want the result restricted to what the tag
+ * currently allows. The two Read.tsx call sites deliberately pass nothing,
+ * because they apply their own clamp separately when building form
+ * defaultValues; passing it there would double-clamp.
+ */
+export function reconstructRequestedUntil(args: {
+  createdAt?: string | null;
+  endingAt?: string | null;
+  untilLabels: Record<string, string>;
+  timeLimit?: number | null;
+}): ReconstructedUntil {
+  const {createdAt, endingAt, untilLabels, timeLimit} = args;
+
+  if (endingAt == null) {
+    // A tag time limit forbids indefinite access, so clamp rather than offer it.
+    if (timeLimit != null) {
+      return {until: largestAllowedUntil(untilLabels, timeLimit), deltaSeconds: null};
+    }
+    return {until: 'indefinite', deltaSeconds: null};
+  }
+
+  // Round to the nearest 100s to absorb the sub-second drift between the form
+  // computing the date and the row being written.
+  const deltaSeconds = Math.round(dayjs(endingAt).diff(dayjs(createdAt), 'second') / 100) * 100;
+
+  if (timeLimit != null && deltaSeconds > timeLimit) {
+    return {until: largestAllowedUntil(untilLabels, timeLimit), deltaSeconds};
+  }
+
+  if (deltaSeconds.toString() in untilLabels) {
+    return {until: deltaSeconds.toString(), deltaSeconds};
+  }
+
+  return {until: 'custom', customUntil: dayjs().add(deltaSeconds, 'second'), deltaSeconds};
 }
