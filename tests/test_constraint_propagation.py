@@ -53,6 +53,56 @@ async def test_owner_association_blocks_self_add_to_role(db: Db, mocker: MockerF
     assert len(memberships) == 0
 
 
+async def test_owner_association_requires_reason_to_add_role_member(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """A role that OWNS a group tagged require_owner_reason: True, with no
+    member association to any tagged group. Adding a member to the role
+    without a reason must be rejected; with a reason it must succeed. This
+    isolates the owner-association branch of CheckForReason.execute_for_group
+    -- the only other test touching this path (test_require_reason_modify_group_users)
+    is confounded because its role is simultaneously a member of a
+    require_member_reason group and an owner of a require_owner_reason group,
+    so either source alone would make it pass even if this branch regressed."""
+    mocker.patch.object(okta, "add_user_to_group")
+    role, _ = await _role_associated_with_tagged_group(
+        db, constraints={Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: True}, is_owner=True
+    )
+    db.session.add(user)
+    await db.session.commit()
+
+    # Without a reason, the add is rejected.
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], current_user_id=user.id, sync_to_okta=False).execute()
+
+    memberships = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).all()
+    assert len(memberships) == 0
+
+    # With a reason, the same add succeeds -- proving the rejection above came
+    # from the reason constraint, not from some other cause.
+    await ModifyGroupUsers(
+        group=role,
+        members_to_add=[user.id],
+        current_user_id=user.id,
+        sync_to_okta=False,
+        created_reason="need this for on-call rotation",
+    ).execute()
+
+    memberships = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).all()
+    assert len(memberships) == 1
+
+
 async def test_member_association_blocks_self_add_to_role(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
     """Parity with today: a role that is a MEMBER of a group with
     disallow_self_add_membership still blocks."""
