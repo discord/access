@@ -210,7 +210,12 @@ export function isExpiredRequest(request: ExpirableRequest): boolean {
 export interface ReconstructedUntil {
   /** An option id from `untilLabels`, or 'indefinite', or 'custom'. */
   until: string;
-  /** Only set when `until` is 'custom'. A Dayjs, because that is what DatePickerElement consumes. */
+  /**
+   * Set whenever `until` is 'custom' — including the clamped case, where it
+   * is a valid date set to exactly the tag's `timeLimit` from now, so a form
+   * fed this result always has something to show in the date picker. A
+   * Dayjs, because that is what DatePickerElement consumes.
+   */
   customUntil?: Dayjs;
   /**
    * The raw rounded duration in seconds, or null when there was no end date.
@@ -221,12 +226,25 @@ export interface ReconstructedUntil {
   deltaSeconds: number | null;
 }
 
-/** The largest numeric option in `untilLabels` that fits within `timeLimit` seconds. */
-function largestAllowedUntil(untilLabels: Record<string, string>, timeLimit: number): string {
+/**
+ * The clamped result for a tag `timeLimit`: the largest numeric option that
+ * fits, or a custom date at exactly the limit when no option is small enough.
+ */
+function clampedToTimeLimit(
+  untilLabels: Record<string, string>,
+  timeLimit: number,
+  deltaSeconds: number | null,
+): ReconstructedUntil {
   const allowed = Object.keys(untilLabels)
     .filter((key) => !isNaN(Number(key)) && Number(key) <= timeLimit)
     .sort((a, b) => Number(a) - Number(b));
-  return allowed.at(-1) ?? 'custom';
+  const largest = allowed.at(-1);
+  if (largest != null) {
+    return {until: largest, deltaSeconds};
+  }
+  // No option fits the limit; offer a custom date at exactly the limit rather
+  // than a 'custom' selection with nothing in the picker.
+  return {until: 'custom', customUntil: dayjs().add(timeLimit, 'second'), deltaSeconds};
 }
 
 /**
@@ -256,7 +274,7 @@ export function reconstructRequestedUntil(args: {
   if (endingAt == null) {
     // A tag time limit forbids indefinite access, so clamp rather than offer it.
     if (timeLimit != null) {
-      return {until: largestAllowedUntil(untilLabels, timeLimit), deltaSeconds: null};
+      return clampedToTimeLimit(untilLabels, timeLimit, null);
     }
     return {until: 'indefinite', deltaSeconds: null};
   }
@@ -266,7 +284,7 @@ export function reconstructRequestedUntil(args: {
   const deltaSeconds = Math.round(dayjs(endingAt).diff(dayjs(createdAt), 'second') / 100) * 100;
 
   if (timeLimit != null && deltaSeconds > timeLimit) {
-    return {until: largestAllowedUntil(untilLabels, timeLimit), deltaSeconds};
+    return clampedToTimeLimit(untilLabels, timeLimit, deltaSeconds);
   }
 
   if (deltaSeconds.toString() in untilLabels) {

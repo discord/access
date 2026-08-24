@@ -87,7 +87,10 @@ describe('reconstructRequestedUntil', () => {
     expect(result.until).toBe('custom');
     expect(result.deltaSeconds).toBe(fiftyDays);
     // Re-based from now, not the original absolute date, which is in the past.
-    expect(result.customUntil!.diff(dayjs(), 'day')).toBe(50);
+    // Tolerance in seconds: the helper's dayjs() and this assertion's dayjs()
+    // are different instants, and diff() floors, so an exact day comparison
+    // flakes whenever the two land in different milliseconds.
+    expect(Math.abs(result.customUntil!.diff(dayjs(), 'second') - fiftyDays)).toBeLessThanOrEqual(2);
   });
 
   it('clamps to the largest allowed option when a time limit is now tighter', () => {
@@ -120,5 +123,31 @@ describe('reconstructRequestedUntil', () => {
       until: '7776000',
       deltaSeconds: 7776000,
     });
+  });
+
+  it('is unaffected by a time limit looser than the delta, returning the exact option unclamped', () => {
+    const createdAt = '2026-01-01T00:00:00';
+    const endingAt = dayjs(createdAt).add(432000, 'second').toISOString();
+
+    // Tag limit (90 days) is far looser than the 5-day ask, so the exact
+    // option match wins, same as if no timeLimit had been passed at all.
+    expect(reconstructRequestedUntil({createdAt, endingAt, untilLabels: LABELS, timeLimit: 7776000})).toEqual({
+      until: '432000',
+      deltaSeconds: 432000,
+    });
+  });
+
+  it('offers a custom date at exactly the limit when no option is small enough', () => {
+    const createdAt = '2026-01-01T00:00:00';
+    const endingAt = dayjs(createdAt).add(7776000, 'second').toISOString();
+    const oneHour = 60 * 60;
+
+    // Tightest tag limit (1 hour) is below even the smallest option (12
+    // hours), so there is nothing in untilLabels to clamp to.
+    const result = reconstructRequestedUntil({createdAt, endingAt, untilLabels: LABELS, timeLimit: oneHour});
+
+    expect(result.until).toBe('custom');
+    expect(result.deltaSeconds).toBe(7776000);
+    expect(Math.abs(result.customUntil!.diff(dayjs(), 'second') - oneHour)).toBeLessThanOrEqual(2);
   });
 });
