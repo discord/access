@@ -47,6 +47,7 @@ import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
+import PropagationNoteView from './PropagationNoteView';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -187,13 +188,7 @@ export default function ReadTag() {
                           Tag Constraints
                         </Typography>
                       </Stack>
-                      <Typography variant="body2" sx={{marginTop: '4px'}}>
-                        These constraints{' '}
-                        <Box component="span" sx={{fontWeight: 'bold'}}>
-                          {tag.propagate_to_roles ? 'do' : 'do not'}
-                        </Box>{' '}
-                        apply to roles that own or are members of groups with this tag.
-                      </Typography>
+                      <PropagationNoteView propagateToRoles={Boolean(tag.propagate_to_roles)} />
                     </TableCell>
                   </TableRow>
                   <TableRow>
