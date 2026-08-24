@@ -267,6 +267,7 @@ async def sync(
     from api.services import okta
     from api.syncer import (
         expire_access_requests,
+        expire_group_requests,
         expire_role_requests,
         sync_group_memberships,
         sync_group_ownerships,
@@ -311,6 +312,7 @@ async def sync(
                 )
             await expire_access_requests()
             await expire_role_requests()
+            await expire_group_requests()
     finally:
         await okta.stop_pooled_client()
 

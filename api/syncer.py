@@ -22,6 +22,7 @@ from api.models import (
     AccessRequestStatus,
     App,
     AppGroup,
+    GroupRequest,
     OktaGroup,
     OktaUser,
     OktaUserGroupMember,
@@ -36,6 +37,7 @@ from api.operations import (
     DeleteUser,
     ModifyGroupUsers,
     RejectAccessRequest,
+    RejectGroupRequest,
     RejectRoleRequest,
     UnmanageGroup,
 )
@@ -630,6 +632,41 @@ async def expire_role_requests() -> None:
     await _expire_each(older_than_request, reject, "role request")
 
     logger.info("Role request expiration finished.")
+
+
+async def expire_group_requests() -> None:
+    """Close pending group requests that aged out.
+
+    Age cutoff only, deliberately. Unlike an access or role request, a group
+    request past its requested_ownership_ending_at is not moot: its primary
+    payload is "create this group", and the resolver can edit
+    resolved_ownership_ending_at before approving, so no dead-on-arrival grant
+    can result. See test_no_expire_group_request_with_lapsed_ownership_window.
+
+    Uses its own cutoff because a group request's approver may need to negotiate
+    a name and pick tags rather than just answer yes/no.
+    """
+    logger.info("Group request expiration started.")
+    max_age_seconds = settings.max_group_request_age_seconds
+
+    older_than_max = (
+        await db.session.scalars(
+            select(GroupRequest)
+            .where(GroupRequest.status == AccessRequestStatus.PENDING)
+            .where(GroupRequest.resolved_at.is_(None))
+            .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+        )
+    ).all()
+    await _expire_each(
+        older_than_max,
+        lambda request_id: RejectGroupRequest(
+            group_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute(),
+        "group request",
+    )
+
+    logger.info("Group request expiration finished.")
 
 
 async def expiring_access_notifications_user() -> None:
