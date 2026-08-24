@@ -27,6 +27,7 @@ from api.models import (
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
@@ -35,6 +36,7 @@ from api.operations import (
     DeleteUser,
     ModifyGroupUsers,
     RejectAccessRequest,
+    RejectRoleRequest,
     UnmanageGroup,
 )
 from api.plugins import NotificationHook, send_notification
@@ -585,6 +587,49 @@ async def expire_access_requests() -> None:
     await _expire_each(older_than_request, reject, "access request")
 
     logger.info("Access request expiration finished.")
+
+
+async def expire_role_requests() -> None:
+    """Close pending role requests that aged out or whose window has lapsed.
+
+    Shares MAX_ACCESS_REQUEST_AGE_SECONDS with access requests; both are a
+    yes/no on granting access, so they get the same fuse. The lapsed-window
+    path matters here for the same reason it does for access requests:
+    approving a role request past its request_ending_at would create an
+    already-expired RoleGroupMap.
+    """
+    logger.info("Role request expiration started.")
+    MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+
+    def reject(request_id: str) -> Awaitable[RoleRequest]:
+        return RejectRoleRequest(
+            role_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute()
+
+    older_than_max = (
+        await db.session.scalars(
+            select(RoleRequest)
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+            .where(
+                RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
+            )
+        )
+    ).all()
+    await _expire_each(older_than_max, reject, "role request")
+
+    older_than_request = (
+        await db.session.scalars(
+            select(RoleRequest)
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+            .where(RoleRequest.request_ending_at < func.now())
+        )
+    ).all()
+    await _expire_each(older_than_request, reject, "role request")
+
+    logger.info("Role request expiration finished.")
 
 
 async def expiring_access_notifications_user() -> None:
