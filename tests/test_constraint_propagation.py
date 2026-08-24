@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
@@ -8,6 +10,7 @@ from api.services import okta
 from tests.factories import (
     OktaGroupFactory,
     OktaGroupTagMapFactory,
+    OktaUserFactory,
     RoleGroupFactory,
     TagFactory,
 )
@@ -146,3 +149,53 @@ async def test_gate_off_allows_self_add_to_role(db: Db, mocker: MockerFixture, u
         )
     ).all()
     assert len(memberships) == 1
+
+
+async def test_member_time_limit_reaches_role_members(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    mocker.patch.object(okta, "add_user_to_group")
+    role, _ = await _role_associated_with_tagged_group(
+        db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False
+    )
+    actor = OktaUserFactory.build()
+    db.session.add_all([user, actor])
+    await db.session.commit()
+
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], current_user_id=actor.id, sync_to_okta=False).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=86400)
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_owner_time_limit_reaches_members_of_an_owning_role(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """The new control: a role that OWNS a group is capped by that group's
+    OWNER time limit."""
+    mocker.patch.object(okta, "add_user_to_group")
+    role, _ = await _role_associated_with_tagged_group(
+        db, constraints={Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 3600}, is_owner=True
+    )
+    actor = OktaUserFactory.build()
+    db.session.add_all([user, actor])
+    await db.session.commit()
+
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], current_user_id=actor.id, sync_to_okta=False).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=3600)
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
