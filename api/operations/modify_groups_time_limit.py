@@ -154,10 +154,10 @@ class ModifyGroupsTimeLimit:
                 .where(
                     or_(
                         OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > membership_time_limit_from_now,
+                        OktaUserGroupMember.ended_at > ownership_time_limit_from_now,
                     )
                 )
-                .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
+                .values({OktaUserGroupMember.ended_at: ownership_time_limit_from_now})
                 .execution_options(synchronize_session="fetch")
             )
             await db.session.commit()

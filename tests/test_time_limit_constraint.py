@@ -1265,3 +1265,175 @@ async def test_time_limit_add_app_tags(
         == 2
     )
     assert await db_count(db.session, select(RoleGroupMap).where(RoleGroupMap.ended_at.is_(None))) == 0
+
+
+async def test_owner_only_time_limit_caps_role_derived_ownership(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """A tag setting only an owner time limit still caps role-derived ownerships.
+
+    The ownership branch of `ModifyGroupsTimeLimit` used to reach for
+    `membership_time_limit_from_now` when capping the ownerships a role grants
+    to its associated groups. That name is only bound by the membership branch,
+    so an owner-only tag raised `UnboundLocalError` here.
+    """
+    # Deliberately no MEMBER_TIME_LIMIT_CONSTRAINT_KEY -- an owner-only tag is
+    # the case that leaves the membership limit unset.
+    tag = TagFactory.build(constraints={Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS})
+    db.session.add_all([tag, okta_group, role_group, user])
+    await db.session.commit()
+
+    # A role propagates its *members* outward, so the ownership `okta_group`
+    # receives from the role is derived from the user's role membership.
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(role_group=role_group, owner_groups_to_add=[okta_group.id], sync_to_okta=False).execute()
+
+    role_owner_map_id = await db.session.scalar(
+        select(RoleGroupMap.id)
+        .where(RoleGroupMap.role_group_id == role_group.id)
+        .where(RoleGroupMap.group_id == okta_group.id)
+        .where(RoleGroupMap.is_owner.is_(True))
+    )
+    assert role_owner_map_id is not None
+
+    # Baseline: nothing is time-bounded before the tag is applied.
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_not(None))) == 0
+
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    # Capture values before the PUT -- it expires the fixture-loaded objects
+    # on the shared session.
+    role_group_id, user_id = role_group.id, user.id
+    data: dict[str, Any] = {
+        "type": role_group.type,
+        "name": role_group.name,
+        "description": role_group.description,
+        "tags_to_add": [tag.id],
+    }
+    rep = await client.put(url_for("api-groups.group_by_id", group_id=role_group_id), json=data)
+    assert rep.status_code == 200
+    assert update_group_spy.call_count == 1
+
+    # The ownership the role grants `okta_group` is capped at the owner limit.
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.role_group_map_id == role_owner_map_id,
+                OktaUserGroupMember.is_owner.is_(True),
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+            ),
+        )
+        == 1
+    )
+
+    # The tag sets no member limit, so the user's role membership stays indefinite.
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.group_id == role_group_id,
+                OktaUserGroupMember.user_id == user_id,
+                OktaUserGroupMember.is_owner.is_(False),
+                OktaUserGroupMember.ended_at.is_(None),
+            ),
+        )
+        == 1
+    )
+
+
+async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    okta_group: OktaGroup,
+    role_group: RoleGroup,
+    user: OktaUser,
+    url_for: Any,
+) -> None:
+    """Role-derived ownerships are capped at the owner limit, not the member one.
+
+    The companion to the owner-only case above: when both limits are set but
+    differ, using `membership_time_limit_from_now` here silently capped
+    role-derived ownerships at the wrong limit instead of raising.
+    """
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: SEVEN_DAYS_IN_SECONDS,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: ONE_DAY_IN_SECONDS,
+        }
+    )
+    db.session.add_all([tag, okta_group, role_group, user])
+    await db.session.commit()
+
+    await ModifyGroupUsers(
+        group=role_group, members_to_add=[user.id], owners_to_add=[user.id], sync_to_okta=False
+    ).execute()
+    await ModifyRoleGroups(
+        role_group=role_group,
+        groups_to_add=[okta_group.id],
+        owner_groups_to_add=[okta_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    role_owner_map_id = await db.session.scalar(
+        select(RoleGroupMap.id)
+        .where(RoleGroupMap.role_group_id == role_group.id)
+        .where(RoleGroupMap.group_id == okta_group.id)
+        .where(RoleGroupMap.is_owner.is_(True))
+    )
+    role_member_map_id = await db.session.scalar(
+        select(RoleGroupMap.id)
+        .where(RoleGroupMap.role_group_id == role_group.id)
+        .where(RoleGroupMap.group_id == okta_group.id)
+        .where(RoleGroupMap.is_owner.is_(False))
+    )
+    assert role_owner_map_id is not None
+    assert role_member_map_id is not None
+
+    update_group_spy = mocker.patch.object(okta, "update_group")
+
+    data: dict[str, Any] = {
+        "type": role_group.type,
+        "name": role_group.name,
+        "description": role_group.description,
+        "tags_to_add": [tag.id],
+    }
+    rep = await client.put(url_for("api-groups.group_by_id", group_id=role_group.id), json=data)
+    assert rep.status_code == 200
+    assert update_group_spy.call_count == 1
+
+    # Ownership derived from the role is capped at the 1-day owner limit...
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.role_group_map_id == role_owner_map_id,
+                OktaUserGroupMember.is_owner.is_(True),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+            ),
+        )
+        == 1
+    )
+    # ...while membership derived from the role keeps the 7-day member limit.
+    assert (
+        await db_count(
+            db.session,
+            select(OktaUserGroupMember).where(
+                OktaUserGroupMember.role_group_map_id == role_member_map_id,
+                OktaUserGroupMember.is_owner.is_(False),
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
+            ),
+        )
+        == 1
+    )

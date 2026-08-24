@@ -114,7 +114,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {group.name} because the associated group {member_group.name} "
+                            + f"member to {group.name} because the associated group {owner_group.name} "
                             + "has group tags which restricts self-adding ownership",
                         )
         return True, ""
