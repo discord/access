@@ -24,7 +24,7 @@ from api.models import (
     RoleRequest,
     Tag,
 )
-from api.models.tag import coalesce_constraints
+from api.models.tag import coalesce_constraints, effective_constraint
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
@@ -191,10 +191,7 @@ async def list_role_requests(
                             .where(RoleRequest.request_ownership.is_(True))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
                 tagged_member_requests = [
                     rr
@@ -220,10 +217,7 @@ async def list_role_requests(
                             .where(RoleRequest.request_ownership.is_(False))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
 
                 blocked_request_ids: list[str] = []
@@ -272,11 +266,17 @@ async def list_role_requests(
                 owned_groups_no_self_owner = [
                     g.id
                     for g in owned_groups
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in g.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, g)
                 ]
+                # NOT swapped to effective_constraint: `owned_groups` has no type
+                # filter, so `g` can be a RoleGroup here (a role owner's own
+                # role), and this constraint key -- unlike the OWNERSHIP one
+                # above -- does propagate onto roles (see OWNER_SIDE_COUNTERPART
+                # in api/models/tag.py). effective_constraint would then read
+                # `active_role_associated_group_{member,owner}_mappings`, which
+                # this query does not eager-load, raising InvalidRequestError.
+                # Left on the old helper pending eager-load work; see task-6
+                # report.
                 owned_groups_no_self_member = [
                     g.id
                     for g in owned_groups

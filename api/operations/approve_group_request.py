@@ -22,7 +22,7 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.app_group import get_access_owners
-from api.models.tag import coalesce_ended_at
+from api.models.tag import effective_ended_at
 from api.operations._fan_out import defer_notification
 from api.operations.constraints.check_for_self_add import CheckForSelfAdd
 from api.operations.create_group import CreateGroup
@@ -277,8 +277,6 @@ class ApproveGroupRequest:
         ).first()
         assert created_group_with_tags is not None
 
-        tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
-
         # Determine the initial ending time: prefer resolved, fall back to requested
         initial_ending_at = (
             group_request.resolved_ownership_ending_at
@@ -286,11 +284,8 @@ class ApproveGroupRequest:
             else group_request.requested_ownership_ending_at
         )
 
-        coalesced_ownership_ending_at = coalesce_ended_at(
-            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=initial_ending_at,
-            group_is_managed=True,
+        coalesced_ownership_ending_at = effective_ended_at(
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, created_group_with_tags, initial_ending_at
         )
 
         # Update the group request with the coalesced value to ensure consistency

@@ -24,7 +24,7 @@ from api.models import (
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
-from api.models.tag import coalesce_ended_at
+from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
@@ -390,11 +390,8 @@ class ModifyRoleGroups:
             for group in groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as members
-                membership_ended_at = coalesce_ended_at(
-                    constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-                    tags=[tag_map.active_tag for tag_map in group.active_group_tags],
-                    initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=group.is_managed,
+                membership_ended_at = effective_ended_at(
+                    Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, group, self.groups_added_ended_at
                 )
                 membership_to_add = RoleGroupMap(
                     group_id=group.id,
@@ -412,11 +409,8 @@ class ModifyRoleGroups:
             for owner_group in owner_groups_to_add:
                 # Handle group time limit constraints when roles are added to groups
                 # with tagged time limits as owners
-                ownership_ended_at = coalesce_ended_at(
-                    constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-                    tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
-                    initial_ended_at=self.groups_added_ended_at,
-                    group_is_managed=owner_group.is_managed,
+                ownership_ended_at = effective_ended_at(
+                    Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, owner_group, self.groups_added_ended_at
                 )
                 ownership_to_add = RoleGroupMap(
                     group_id=owner_group.id,
