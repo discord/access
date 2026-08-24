@@ -57,6 +57,7 @@ interface CreateRequestButtonProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
   expired?: boolean;
 }
 
@@ -67,11 +68,13 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
         <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<AccessRequestIcon />}>
           {props.group == null
             ? 'Create Request'
-            : props.renew
-              ? 'Renew'
-              : props.owner
-                ? 'Request Ownership'
-                : 'Request Membership'}
+            : props.reopen
+              ? 'Reopen Request'
+              : props.renew
+                ? 'Renew'
+                : props.owner
+                  ? 'Request Ownership'
+                  : 'Request Membership'}
         </Button>
       </span>
     </Tooltip>
@@ -169,6 +172,10 @@ interface CreateRequestContainerProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 interface CreateRequestForm {
   group: GroupDetail;
@@ -322,7 +329,12 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     <FormContainer<CreateRequestForm>
       defaultValues={{
         group: props.group,
-        until: accessConfig.DEFAULT_ACCESS_TIME,
+        until: props.until ?? accessConfig.DEFAULT_ACCESS_TIME,
+        // `customUntil` is typed string on CreateRequestForm but holds a Dayjs at
+        // runtime: DatePickerElement produces one and the submit handler casts it
+        // back (`as unknown as Dayjs`, above). Match that existing convention.
+        customUntil: props.customUntil as unknown as string,
+        reason: props.reason,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>
@@ -478,6 +490,9 @@ interface CreateRequestDialogProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
@@ -515,9 +530,14 @@ interface CreateRequestProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
   expired?: boolean;
   open?: boolean;
   setOpen?: (open: boolean) => void;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -552,6 +572,7 @@ export default function CreateRequest(props: CreateRequestProps) {
           group={props.group}
           owner={props.owner}
           renew={props.renew}
+          reopen={props.reopen}
           expired={props.expired}
         />
       )}
