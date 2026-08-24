@@ -165,3 +165,42 @@ export function groupMemberships(
 ): Record<string, Array<OktaUserGroupMemberDetail>> {
   return groupBy(memberships ?? [], (membership) => membership.active_user?.id ?? '');
 }
+
+/**
+ * The resolution_reason the backend writes when the sync cronjob closes a
+ * request for age or for a lapsed window. Mirrors `EXPIRED_REQUEST_REASON` in
+ * `api/syncer.py`, which is the producer.
+ *
+ * Expiration is deliberately not modelled as its own status or column, so this
+ * string plus a null resolver is how the UI recognizes it. Keep the two in
+ * sync; `tests/test_expired_reason_constant.py` fails if they drift.
+ */
+export const EXPIRED_REQUEST_REASON = 'Closed because the request expired';
+
+export interface ExpirableRequest {
+  status?: string | null;
+  resolver?: {id?: string} | null;
+  resolution_reason?: string | null;
+}
+
+/**
+ * True when a request was closed by the expiration sweep rather than by a
+ * person or by another system path.
+ *
+ * A null resolver alone is not enough: user deletion, group deletion, group
+ * unmanaging, and a conditional-access plugin denial all close requests with no
+ * resolver too. The reason string is what separates expiration from those, and
+ * in particular from a policy denial, which must never be offered a one-click
+ * reopen.
+ *
+ * Checks `resolver`, NOT `resolver_user_id`: AccessRequestDetail and
+ * RoleRequestDetail expose both, but GroupRequestDetail exposes only `resolver`,
+ * so keying off the id would silently never match on group requests.
+ */
+export function isExpiredRequest(request: ExpirableRequest): boolean {
+  return (
+    request.status === 'REJECTED' &&
+    (request.resolver ?? null) === null &&
+    request.resolution_reason === EXPIRED_REQUEST_REASON
+  );
+}
