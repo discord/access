@@ -1680,3 +1680,42 @@ async def test_reject_role_request_notify_false_suppresses_completion(
 
     assert (await db.session.get(RoleRequest, role_request.id)).status == AccessRequestStatus.REJECTED
     assert completed_spy.call_count == 0
+
+
+async def test_role_request_assignee_admin_branch_loads_role_target_propagation(
+    client: AsyncClient, db: Db, url_for: Any
+) -> None:
+    """The Access-admin branch of the `assignee_user_id` role-requests list
+    evaluates `effective_constraint(DISALLOW_SELF_ADD_MEMBERSHIP, ...)` over
+    every pending request's `requested_group`. That key is in
+    `OWNER_SIDE_COUNTERPART`, so for a `RoleGroup` target the helper reads the
+    role's `active_role_associated_group_*_mappings` -- all `raise_on_sql`.
+    Without those loaders the endpoint 500s, and it does so whether or not the
+    role carries any tags, because propagation is consulted unconditionally.
+
+    A `RoleGroup` can become a `RoleRequest.requested_group` in production via
+    `ModifyGroupType` converting a group that already has a pending request."""
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
+    assert admin is not None
+    admin_id = admin.id
+
+    requester = await OktaUserFactory.create_async()
+    requester_role = await RoleGroupFactory.create_async()
+    # The request target is itself a role -- the shape `ModifyGroupType`
+    # produces when it converts a group with a pending role request.
+    target_role = await RoleGroupFactory.create_async()
+
+    await RoleRequestFactory.create_async(
+        requester_user_id=requester.id,
+        requester_role_id=requester_role.id,
+        requested_group_id=target_role.id,
+        request_ownership=False,
+    )
+
+    db.session.expire_all()
+
+    list_url = url_for("api-role-requests.role_requests")
+    rep = await client.get(list_url, params={"assignee_user_id": admin_id, "status": "PENDING"})
+    assert rep.status_code == 200

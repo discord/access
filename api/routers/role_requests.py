@@ -186,6 +186,23 @@ async def list_role_requests(
                                         joinedload(OktaGroupTagMap.active_tag)
                                     ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request). `effective_constraint`
+                                    # then consults propagation -- unconditionally, tags
+                                    # or not -- and reads these `raise_on_sql`
+                                    # relationships. Loaded for both the owner-side and
+                                    # member-side queries so the eager-load set doesn't
+                                    # depend on which constraint key happens to be passed.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
@@ -212,6 +229,23 @@ async def list_role_requests(
                                         joinedload(OktaGroupTagMap.active_tag)
                                     ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request). `effective_constraint`
+                                    # then consults propagation -- unconditionally, tags
+                                    # or not -- and reads these `raise_on_sql`
+                                    # relationships. Loaded for both the owner-side and
+                                    # member-side queries so the eager-load set doesn't
+                                    # depend on which constraint key happens to be passed.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
