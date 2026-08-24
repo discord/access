@@ -3,7 +3,7 @@ from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
 from api.models import OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import effective_constraint, effective_constraints
+from api.models.tag import blocking_source, constraint_source_clause, effective_constraint, effective_constraints
 from tests.factories import (
     AppFactory,
     AppGroupFactory,
@@ -230,3 +230,24 @@ async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
     (entry,) = effective_constraints(loaded)
     (source,) = entry["sources"]
     assert source["origin"] == "app"
+
+
+async def test_blocking_source_names_the_member_association(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True}, is_owner=False)
+    source = blocking_source(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
+    assert source is not None
+    assert source.origin == "member_association"
+    assert "which this role is a member of" in constraint_source_clause(source)
+    assert source.source_group_name in constraint_source_clause(source)
+
+
+async def test_blocking_source_names_the_owner_association(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True}, is_owner=True)
+    source = blocking_source(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
+    assert source is not None
+    assert source.origin == "owner_association"
+    assert "which this role owns" in constraint_source_clause(source)
+
+
+async def test_constraint_source_clause_falls_back_for_direct_tags(db: Db) -> None:
+    assert constraint_source_clause(None) == "due to group tags"

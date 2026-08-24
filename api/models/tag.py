@@ -170,6 +170,28 @@ def effective_ended_at(
     return min(constraint_ended_at, initial_ended_at.replace(tzinfo=UTC))
 
 
+def blocking_source(constraint_key: str, group: OktaGroup) -> Optional[ConstraintSource]:
+    """The first source contributing a truthy value for `constraint_key`.
+
+    Used to name the cause in an error message. Sound for the boolean
+    constraints because their coalesce is `OR` -- any truthy source on its own
+    explains the block.
+    """
+    for source in constraint_sources(constraint_key, group):
+        if source.value:
+            return source
+    return None
+
+
+def constraint_source_clause(source: Optional[ConstraintSource]) -> str:
+    """Trailing clause naming where a constraint came from."""
+    if source is None or source.source_group_name is None:
+        return "due to group tags"
+    if source.origin == "member_association":
+        return f"due to tags on {source.source_group_name}, which this role is a member of"
+    return f"due to tags on {source.source_group_name}, which this role owns"
+
+
 def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
     """Every constraint in force on `group`, with its coalesced value and sources.
 
