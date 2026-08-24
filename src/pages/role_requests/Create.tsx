@@ -203,7 +203,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
     ? filterUntilLabels(timeLimit)
     : ['1209600', UNTIL_OPTIONS];
-  const [until, setUntil] = React.useState(untilLabels[0]);
+  // Seeded from the prefill, not just from `defaultValues`: the custom-date
+  // picker below is gated on this state, so a 'custom' prefill would otherwise
+  // show a Custom selection with no date field -- and submit the hidden seeded
+  // date without the picker's `required` validation ever running.
+  const [until, setUntil] = React.useState(props.until ?? untilLabels[0]);
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
   const complete = (

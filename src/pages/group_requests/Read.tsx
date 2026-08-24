@@ -209,9 +209,6 @@ export default function ReadGroupRequest() {
   const requestedAppId = groupRequest.requested_app_id ?? null;
   const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
 
-  // Anyone may request a group, so reopen is offered to any authenticated
-  // viewer; it is a shortcut for the create form they could already open.
-  const canReopen = isExpiredRequest(groupRequest);
   // Compute against the create form's own option map (CREATE_FORM_UNTIL_ID_TO_LABELS,
   // imported from Create.tsx), not the UNTIL_ID_TO_LABELS above (which is this
   // file's resolve/approve-form map, sourced from accessConfig.ACCESS_TIME_LABELS
@@ -242,6 +239,18 @@ export default function ReadGroupRequest() {
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
+
+  // Anyone may request a group, so reopen is offered to any authenticated
+  // viewer; it is a shortcut for the create form they could already open.
+  //
+  // The one exception is an app_group request whose app no longer resolves:
+  // strippedRequestedName then falls back to the full stored name, and the
+  // create form re-prepends the prefix of whichever app the user picks, yielding
+  // `App-Bar-App-Foo-Reporting`. That submits a valid-looking but wrong name, so
+  // suppress the affordance rather than prefill it; a fresh request by hand
+  // still works.
+  const reopenNameIsSafe = requestedGroupType !== 'app_group' || (requestedAppData?.name ?? null) !== null;
+  const canReopen = isExpiredRequest(groupRequest) && reopenNameIsSafe;
   // The lifecycle plugin configured on the target app (null if none).
   const requestPluginId = pluginIdForApp(requestedAppData);
 
