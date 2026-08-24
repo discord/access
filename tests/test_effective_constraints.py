@@ -3,7 +3,7 @@ from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
 from api.models import OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import effective_constraint
+from api.models.tag import effective_constraint, effective_constraints
 from tests.factories import (
     OktaGroupFactory,
     OktaGroupTagMapFactory,
@@ -144,3 +144,27 @@ async def test_non_role_group_reads_only_its_own_tags(db: Db) -> None:
         )
     ).one()
     assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) == 86400
+
+
+async def test_effective_constraints_omits_unset_constraints(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    result = effective_constraints(role)
+    assert [entry["constraint"] for entry in result] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    assert result[0]["value"] == 86400
+    assert result[0]["name"] == Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY].name
+
+
+async def test_effective_constraints_reports_association_source(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    (entry,) = effective_constraints(role)
+    (source,) = entry["sources"]
+    assert source["origin"] == "member_association"
+    assert source["source_group_name"] is not None
+
+
+async def test_effective_constraints_is_empty_when_nothing_applies(db: Db) -> None:
+    role = RoleGroupFactory.build()
+    db.session.add(role)
+    await db.session.commit()
+    loaded = await _load_role(db, role.id)
+    assert effective_constraints(loaded) == []

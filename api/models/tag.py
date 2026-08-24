@@ -168,3 +168,39 @@ def effective_ended_at(
     if initial_ended_at is None:
         return constraint_ended_at
     return min(constraint_ended_at, initial_ended_at.replace(tzinfo=UTC))
+
+
+def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
+    """Every constraint in force on `group`, with its coalesced value and sources.
+
+    Backs both the API response and the UI panel, so display and enforcement
+    read the same data. Unlike `effective_constraint`, this reads
+    `OktaGroupTagMap.active_app_tag_mapping` for provenance -- callers must
+    eager-load it (see `api/routers/_eager.py`).
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources = constraint_sources(constraint_key, group, include_provenance=True)
+        if not sources:
+            continue
+        value = None
+        for source in sources:
+            value = source.value if value is None else constraint.coalesce(value, source.value)
+        entries.append(
+            {
+                "constraint": constraint_key,
+                "name": constraint.name,
+                "value": value,
+                "sources": [
+                    {
+                        "tag_id": source.tag.id,
+                        "tag_name": source.tag.name,
+                        "origin": source.origin,
+                        "source_group_id": source.source_group_id,
+                        "source_group_name": source.source_group_name,
+                    }
+                    for source in sources
+                ],
+            }
+        )
+    return entries
