@@ -5,6 +5,9 @@ from api.extensions import Db
 from api.models import OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import effective_constraint, effective_constraints
 from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
+    AppTagMapFactory,
     OktaGroupFactory,
     OktaGroupTagMapFactory,
     RoleGroupFactory,
@@ -29,6 +32,26 @@ async def _load_role(db: Db, role_id: str) -> RoleGroup:
                 .joinedload(OktaGroupTagMap.active_tag),
             )
             .where(RoleGroup.id == role_id)
+        )
+    ).one()
+
+
+async def _load_group_with_provenance(db: Db, group_id: str) -> OktaGroup:
+    """Load a group with everything `effective_constraints` reads, including
+    `active_app_tag_mapping` -- the relationship `_own_tag_sources` uses to
+    distinguish a tag applied directly to the group ("direct") from one
+    inherited via the group's `App` ("app"). `_load_role` above does NOT load
+    this relationship, since `effective_constraint` (no provenance) never
+    reads it; calling `effective_constraints` on a group loaded via
+    `_load_role` would raise on this `lazy="raise_on_sql"` relationship."""
+    return (
+        await db.session.scalars(
+            select(OktaGroup)
+            .options(
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_app_tag_mapping),
+            )
+            .where(OktaGroup.id == group_id)
         )
     ).one()
 
@@ -168,3 +191,42 @@ async def test_effective_constraints_is_empty_when_nothing_applies(db: Db) -> No
     await db.session.commit()
     loaded = await _load_role(db, role.id)
     assert effective_constraints(loaded) == []
+
+
+async def test_effective_constraints_direct_tag_has_direct_origin(db: Db) -> None:
+    """A tag applied straight to a group (no `AppTagMap` linkage) is reported
+    with `origin == "direct"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is None`."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "direct"
+
+
+async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
+    """A tag applied to an `App` and inherited by one of its `AppGroup`s is
+    reported with `origin == "app"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is not None`. The inherited group-tag row
+    (`OktaGroupTagMap`) points at the `AppTagMap` row via `app_tag_map_id`;
+    that linkage is what makes `active_app_tag_mapping` non-null."""
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build()
+    app_group.app_id = app.id
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, tag])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, app_group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "app"
