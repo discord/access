@@ -83,10 +83,28 @@ interface CreateGroupRequestForm {
   ownershipUntil?: string;
   customOwnershipUntil?: string;
   reason?: string;
+  // Registered dynamically by AppGroupLifecyclePluginConfigurationForm as
+  // `plugin_data.<pluginId>.configuration.<prop>`; declared so it can be seeded.
+  plugin_data?: Record<string, any>;
+}
+
+/** Prefill payload used when reopening an expired group request. */
+export interface GroupRequestPrefill {
+  type: 'okta_group' | 'app_group' | 'role_group';
+  app?: AppDetail;
+  name: string;
+  description?: string;
+  ownershipUntil?: string;
+  customOwnershipUntil?: Dayjs;
+  reason?: string;
+  /** Full tag objects, not ids: the form's selectedTags state holds objects. */
+  tags: TagDetail[];
+  pluginData?: Record<string, any>;
 }
 
 interface CreateRequestButtonProps {
   setOpen(open: boolean): void;
+  reopen?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
@@ -94,7 +112,7 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
     <Tooltip title="Request that a new group or role be created.">
       <span>
         <Button variant="contained" onClick={() => props.setOpen(true)} endIcon={<GroupRequestIcon />}>
-          Create Request
+          {props.reopen ? 'Reopen Request' : 'Create Request'}
         </Button>
       </span>
     </Tooltip>
@@ -104,18 +122,27 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
 interface CreateRequestContainerProps {
   currentUser: OktaUserDetail;
   setOpen(open: boolean): void;
+  // Prefill, used when reopening an expired request.
+  prefill?: GroupRequestPrefill;
 }
 
 function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
-  const [groupType, setGroupType] = React.useState<'okta_group' | 'app_group' | 'role_group'>('okta_group');
-  const [selectedApp, setSelectedApp] = React.useState<AppDetail | null>(null);
+  // Seeded from the prefill when reopening an expired request. `groupType` in
+  // particular gates whether the app selector renders, and `nameInput` feeds the
+  // "App-…-" prefix detection, so neither can be left at its empty default.
+  const [groupType, setGroupType] = React.useState<'okta_group' | 'app_group' | 'role_group'>(
+    props.prefill?.type ?? 'okta_group',
+  );
+  const [selectedApp, setSelectedApp] = React.useState<AppDetail | null>(props.prefill?.app ?? null);
   const [appSearchInput, setAppSearchInput] = React.useState('');
   const [tagSearchInput, setTagSearchInput] = React.useState('');
-  const [nameInput, setNameInput] = React.useState('');
-  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>([]);
-  const [ownershipUntil, setOwnershipUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [nameInput, setNameInput] = React.useState(props.prefill?.name ?? '');
+  const [selectedTags, setSelectedTags] = React.useState<Array<TagDetail>>(props.prefill?.tags ?? []);
+  const [ownershipUntil, setOwnershipUntil] = React.useState(
+    props.prefill?.ownershipUntil ?? accessConfig.DEFAULT_ACCESS_TIME,
+  );
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -243,7 +270,17 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   return (
     <FormContainer<CreateGroupRequestForm>
-      defaultValues={{type: 'okta_group', ownershipUntil: '1209600'}}
+      defaultValues={{
+        type: props.prefill?.type ?? 'okta_group',
+        app: props.prefill?.app,
+        name: props.prefill?.name,
+        description: props.prefill?.description,
+        ownershipUntil: props.prefill?.ownershipUntil ?? '1209600',
+        // Typed string, holds a Dayjs at runtime; same convention as the other forms.
+        customOwnershipUntil: props.prefill?.customOwnershipUntil as unknown as string,
+        reason: props.prefill?.reason,
+        plugin_data: props.prefill?.pluginData ?? {},
+      }}
       onSuccess={(formData) => submit(formData)}>
       <DialogTitle> Create Group Request</DialogTitle>
       <DialogContent>
@@ -407,6 +444,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 interface CreateRequestDialogProps {
   currentUser: OktaUserDetail;
   setOpen(open: boolean): void;
+  // Prefill, used when reopening an expired request.
+  prefill?: GroupRequestPrefill;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
@@ -419,8 +458,11 @@ function CreateRequestDialog(props: CreateRequestDialogProps) {
 
 interface CreateRequestProps {
   currentUser: OktaUserDetail;
+  reopen?: boolean;
   open?: boolean;
   setOpen?: (open: boolean) => void;
+  // Prefill, used when reopening an expired request.
+  prefill?: GroupRequestPrefill;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -430,8 +472,8 @@ export default function CreateRequest(props: CreateRequestProps) {
 
   return (
     <>
-      {props.setOpen == null && <CreateRequestButton setOpen={setOpen} />}
-      {open && <CreateRequestDialog currentUser={props.currentUser} setOpen={setOpen} />}
+      {props.setOpen == null && <CreateRequestButton setOpen={setOpen} reopen={props.reopen} />}
+      {open && <CreateRequestDialog currentUser={props.currentUser} setOpen={setOpen} prefill={props.prefill} />}
     </>
   );
 }

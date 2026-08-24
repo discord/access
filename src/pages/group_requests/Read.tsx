@@ -64,13 +64,14 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName, minTagTime, isExpiredRequest, reconstructRequestedUntil} from '../../helpers';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
-import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import {pluginIdForApp, extractRequestedPluginData, prefillablePluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
+import CreateRequest from './Create';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -207,6 +208,16 @@ export default function ReadGroupRequest() {
   const requestedGroupType = groupRequest.requested_group_type ?? 'okta_group';
   const requestedAppId = groupRequest.requested_app_id ?? null;
   const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
+
+  // Anyone may request a group, so reopen is offered to any authenticated
+  // viewer; it is a shortcut for the create form they could already open.
+  const canReopen = isExpiredRequest(groupRequest);
+  const reopenOwnershipUntil = reconstructRequestedUntil({
+    createdAt: groupRequest.created_at,
+    endingAt: groupRequest.requested_ownership_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+    timeLimit: null,
+  });
 
   const [typesSeeded, setTypesSeeded] = React.useState(false);
   React.useEffect(() => {
@@ -1036,6 +1047,25 @@ export default function ReadGroupRequest() {
                         <b>Reason:</b>{' '}
                         {groupRequest.resolution_reason ? groupRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {canReopen ? (
+                        <Box sx={{mt: 2}}>
+                          <CreateRequest
+                            currentUser={currentUser}
+                            reopen
+                            prefill={{
+                              type: requestedGroupType as 'okta_group' | 'app_group' | 'role_group',
+                              app: requestedAppData,
+                              name: groupRequest.requested_group_name ?? '',
+                              description: groupRequest.requested_group_description ?? '',
+                              ownershipUntil: reopenOwnershipUntil.until,
+                              customOwnershipUntil: reopenOwnershipUntil.customUntil,
+                              reason: groupRequest.request_reason ?? '',
+                              tags: requestedTags,
+                              pluginData: prefillablePluginData(requestedAppData, groupRequest.requested_plugin_data),
+                            }}
+                          />
+                        </Box>
+                      ) : null}
                       {groupRequest.status === 'APPROVED' && approvedDetails.length > 0 && (
                         <Box sx={{mt: 1}}>
                           <Typography variant="body1" sx={{mb: 0.5}}>
