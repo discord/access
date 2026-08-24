@@ -62,6 +62,7 @@ interface CreateRequestButtonProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
@@ -80,11 +81,13 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
           disabled={!props.enabled}>
           {props.group == null
             ? 'Create Request'
-            : props.renew
-              ? 'Renew'
-              : props.owner
-                ? 'Request Ownership'
-                : 'Request Membership'}
+            : props.reopen
+              ? 'Reopen Request'
+              : props.renew
+                ? 'Renew'
+                : props.owner
+                  ? 'Request Ownership'
+                  : 'Request Membership'}
         </Button>
       </span>
     </Tooltip>
@@ -102,6 +105,10 @@ interface CreateRequestContainerProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 interface CreateRequestForm {
   role: RoleGroupDetail;
@@ -295,7 +302,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       defaultValues={{
         role: props.role,
         group: props.group,
-        until: '1209600',
+        until: props.until ?? '1209600',
+        // Typed string, holds a Dayjs at runtime; same convention as the access form.
+        customUntil: props.customUntil as unknown as string,
+        reason: props.reason,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>
@@ -490,6 +500,9 @@ interface CreateRequestDialogProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
@@ -510,8 +523,13 @@ interface CreateRequestProps {
   group?: OktaGroupDetail | AppGroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
   open?: boolean;
   setOpen?: (open: boolean) => void;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -538,6 +556,7 @@ export default function CreateRequest(props: CreateRequestProps) {
           group={props.group as GroupDetail | undefined}
           owner={props.owner}
           renew={props.renew}
+          reopen={props.reopen}
         />
       )}
       {open ? (
