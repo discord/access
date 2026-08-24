@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
-from api.operations import ModifyGroupUsers
+from api.operations import ModifyGroupsTimeLimit, ModifyGroupUsers
 from api.services import okta
 from tests.factories import (
     OktaGroupFactory,
@@ -199,3 +199,97 @@ async def test_owner_time_limit_reaches_members_of_an_owning_role(
     assert membership.ended_at is not None
     expected = datetime.now(UTC) + timedelta(seconds=3600)
     assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_retroactive_capping_reaches_existing_role_members(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    """A pre-existing, uncapped membership in a role is capped when a
+    time-limited tag lands on a group the role is a member of."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    actor = OktaUserFactory.build()
+    db.session.add_all([group, role, tag, user, actor])
+    await db.session.commit()
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    await ModifyGroupsTimeLimit(groups=[group.id], tags=[tag.id]).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+
+
+async def test_retroactive_capping_reaches_existing_members_of_an_owning_role(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """The owner-association direction: a role that OWNS a group is capped,
+    on its own pre-existing user memberships, by that group's OWNER time
+    limit when a time-limited tag lands on the group. A member limit is also
+    set on the tag (large enough to be a no-op for this scenario, since the
+    role is never a *member* of the group) purely so the group carries both
+    constraint keys, matching how tags are configured in practice."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 999_999,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 3600,
+        }
+    )
+    actor = OktaUserFactory.build()
+    db.session.add_all([group, role, tag, user, actor])
+    await db.session.commit()
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=True))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    await ModifyGroupsTimeLimit(groups=[group.id], tags=[tag.id]).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=3600)
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_retroactive_capping_respects_the_gate(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, propagate_to_roles=False)
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    await ModifyGroupsTimeLimit(groups=[group.id], tags=[tag.id]).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is None

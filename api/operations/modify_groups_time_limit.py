@@ -39,6 +39,14 @@ class ModifyGroupsTimeLimit:
         if len(groups) == 0:
             return
 
+        # Only tags that propagate contribute a limit to associated roles.
+        propagating_tags = [t for t in tags if t.propagate_to_roles]
+        # A role that is a MEMBER of these groups is capped by their member
+        # limit; a role that OWNS them is capped by their owner limit. Both
+        # land on the role's own user memberships.
+        role_member_limit = coalesce_constraints(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, propagating_tags)
+        role_owner_limit = coalesce_constraints(Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, propagating_tags)
+
         # Determine the minimum time allowed for group membership and ownership by current group tags
         membership_seconds_limit = coalesce_constraints(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, tags)
         ownership_seconds_limit = coalesce_constraints(Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, tags)
@@ -161,3 +169,48 @@ class ModifyGroupsTimeLimit:
                 .execution_options(synchronize_session="fetch")
             )
             await db.session.commit()
+
+        # Retroactive capping: a time-limited tag landing on a group must also
+        # reach the existing user memberships of any role already associated
+        # with that group -- not just future grants. This is independent of
+        # whether the group's own membership/ownership limits (above) applied.
+        # Compute the full set of affected roles once per direction and issue
+        # a single bulk update per direction; this operation commits, so
+        # per-role updates would commit once per role.
+        group_ids = [g.id for g in groups]
+        for is_owner_association, seconds_limit in (
+            (False, role_member_limit),
+            (True, role_owner_limit),
+        ):
+            if seconds_limit is None:
+                continue
+            limit_from_now = datetime.now(UTC) + timedelta(seconds=seconds_limit)
+            associated_role_ids = (
+                await db.session.scalars(
+                    select(RoleGroupMap.role_group_id)
+                    .where(RoleGroupMap.group_id.in_(group_ids))
+                    .where(RoleGroupMap.is_owner.is_(is_owner_association))
+                    .where(
+                        or_(
+                            RoleGroupMap.ended_at.is_(None),
+                            RoleGroupMap.ended_at > func.now(),
+                        )
+                    )
+                )
+            ).all()
+            if len(associated_role_ids) == 0:
+                continue
+            await db.session.execute(
+                update(OktaUserGroupMember)
+                .where(OktaUserGroupMember.group_id.in_(associated_role_ids))
+                .where(OktaUserGroupMember.is_owner.is_(False))
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > limit_from_now,
+                    )
+                )
+                .values({OktaUserGroupMember.ended_at: limit_from_now})
+                .execution_options(synchronize_session="fetch")
+            )
+        await db.session.commit()
