@@ -32,3 +32,19 @@ def test_trusted_hosts() -> None:
         "a.example.com",
         "*.example.com",
     ]
+
+
+def test_max_group_request_age_seconds() -> None:
+    # Unset falls back to the access-request cutoff, so operators who never set
+    # it get the behavior they already had.
+    assert Settings(MAX_ACCESS_REQUEST_AGE_SECONDS=1234).max_group_request_age_seconds == 1234
+    # An explicit value wins.
+    assert (
+        Settings(MAX_ACCESS_REQUEST_AGE_SECONDS=1234, MAX_GROUP_REQUEST_AGE_SECONDS=9999).max_group_request_age_seconds
+        == 9999
+    )
+    # 0 means "expire immediately" and must not be swallowed into the fallback.
+    assert (
+        Settings(MAX_ACCESS_REQUEST_AGE_SECONDS=1234, MAX_GROUP_REQUEST_AGE_SECONDS=0).max_group_request_age_seconds
+        == 0
+    )

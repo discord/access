@@ -117,6 +117,12 @@ class Settings(BaseSettings):
     USER_DISPLAY_CUSTOM_ATTRIBUTES: str = "Title,Manager"
     USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None
     MAX_ACCESS_REQUEST_AGE_SECONDS: int = 7 * 24 * 60 * 60
+    # Group requests get their own cutoff: their approver may need to negotiate a
+    # name and pick tags rather than just answer yes/no, which plausibly wants a
+    # longer fuse than a membership request. Unset falls back to
+    # MAX_ACCESS_REQUEST_AGE_SECONDS via `max_group_request_age_seconds`, so
+    # operators who never set it keep the behavior they already had.
+    MAX_GROUP_REQUEST_AGE_SECONDS: Optional[int] = None
 
     # Cloudflare Access
     CLOUDFLARE_APPLICATION_AUDIENCE: Optional[str] = None
@@ -238,6 +244,14 @@ class Settings(BaseSettings):
             return []
         return [s.strip() for s in self.APP_GROUP_DELETER_ID.split(",") if s.strip()]
 
+    @property
+    def max_group_request_age_seconds(self) -> int:
+        # Explicit `is None` rather than `or`: an operator setting 0 means "expire
+        # immediately", which `or` would silently replace with the access default.
+        if self.MAX_GROUP_REQUEST_AGE_SECONDS is None:
+            return self.MAX_ACCESS_REQUEST_AGE_SECONDS
+        return self.MAX_GROUP_REQUEST_AGE_SECONDS
+
 
 def _build_settings() -> Settings:
     s = Settings()
@@ -342,6 +356,7 @@ DATABASE_USES_PUBLIC_IP = settings.DATABASE_USES_PUBLIC_IP
 USER_DISPLAY_CUSTOM_ATTRIBUTES = settings.USER_DISPLAY_CUSTOM_ATTRIBUTES
 USER_SEARCH_CUSTOM_ATTRIBUTES = settings.USER_SEARCH_CUSTOM_ATTRIBUTES or ",".join(settings.user_search_attrs)
 MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+MAX_GROUP_REQUEST_AGE_SECONDS = settings.max_group_request_age_seconds
 CLOUDFLARE_APPLICATION_AUDIENCE = settings.CLOUDFLARE_APPLICATION_AUDIENCE
 CLOUDFLARE_TEAM_DOMAIN = settings.CLOUDFLARE_TEAM_DOMAIN
 SECRET_KEY = settings.SECRET_KEY
