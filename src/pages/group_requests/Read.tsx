@@ -71,7 +71,7 @@ import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
 import {pluginIdForApp, extractRequestedPluginData, prefillablePluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
-import CreateRequest from './Create';
+import CreateRequest, {UNTIL_ID_TO_LABELS as CREATE_FORM_UNTIL_ID_TO_LABELS} from './Create';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -212,10 +212,16 @@ export default function ReadGroupRequest() {
   // Anyone may request a group, so reopen is offered to any authenticated
   // viewer; it is a shortcut for the create form they could already open.
   const canReopen = isExpiredRequest(groupRequest);
+  // Compute against the create form's own option map (CREATE_FORM_UNTIL_ID_TO_LABELS,
+  // imported from Create.tsx), not the UNTIL_ID_TO_LABELS above (which is this
+  // file's resolve/approve-form map, sourced from accessConfig.ACCESS_TIME_LABELS
+  // and operator-configurable). Reopen hands its prefill to that create form, so
+  // the prefilled value must only ever be one that form's select actually lists;
+  // timeLimit is always null here because the create form applies no tag clamp.
   const reopenOwnershipUntil = reconstructRequestedUntil({
     createdAt: groupRequest.created_at,
     endingAt: groupRequest.requested_ownership_ending_at,
-    untilLabels: UNTIL_ID_TO_LABELS,
+    untilLabels: CREATE_FORM_UNTIL_ID_TO_LABELS,
     timeLimit: null,
   });
 
@@ -1055,7 +1061,12 @@ export default function ReadGroupRequest() {
                             prefill={{
                               type: requestedGroupType as 'okta_group' | 'app_group' | 'role_group',
                               app: requestedAppData,
-                              name: groupRequest.requested_group_name ?? '',
+                              // The un-prefixed suffix, not the full stored name: the
+                              // create form's Name field holds only the suffix (it
+                              // renders "App-<app>-"/"Role-" as static Typography
+                              // beside it) and re-prepends the prefix on submit, so
+                              // passing the full name here would double it up.
+                              name: strippedRequestedName,
                               description: groupRequest.requested_group_description ?? '',
                               ownershipUntil: reopenOwnershipUntil.until,
                               customOwnershipUntil: reopenOwnershipUntil.customUntil,
