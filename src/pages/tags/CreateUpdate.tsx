@@ -188,7 +188,11 @@ function TagDialog(props: TagDialogProps) {
                 ? 'yes'
                 : 'no'
               : 'no',
-          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ? 'yes' : 'no') : 'yes',
+          // `?? true` rather than a bare truthiness check: the field is
+          // optional in the generated type and the server default is `true`,
+          // so an absent value must prefill "yes", not "no" -- otherwise
+          // opening and saving an older tag silently turns propagation off.
+          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ?? true ? 'yes' : 'no') : 'yes',
         }}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>{createOrUpdateText} Tag</DialogTitle>

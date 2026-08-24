@@ -19,32 +19,43 @@ import {EffectiveConstraintDetail, EffectiveConstraintSourceDetail} from '../api
 
 const TIME_LIMIT_CONSTRAINTS = ['member_time_limit', 'owner_time_limit'];
 
+const SECONDS_PER_DAY = 86400;
+
+function timeLimitLabel(seconds: number): string {
+  // Sub-day limits are real — the constraint validator only requires a
+  // positive integer — and rounding one to the nearest day would render
+  // "0 days", which reads as "no access at all".
+  if (seconds < SECONDS_PER_DAY) {
+    return '<1 day';
+  }
+  // Values aren't guaranteed to divide evenly by a day (an operator can set
+  // any number of seconds), and an unrounded quotient renders an ugly,
+  // falsely-precise fraction.
+  const days = Math.round(seconds / SECONDS_PER_DAY);
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
 function constraintLabel(entry: EffectiveConstraintDetail): string {
-  if (TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
-    // `value` is typed `void` by the generator (a known quirk — see
-    // apiSchemas.ts), but is a number of seconds at runtime. Round to the
-    // nearest day: constraint values aren't guaranteed to divide evenly by
-    // 86400 (e.g. a CLI-driven cap), and an unrounded quotient renders an
-    // ugly, falsely-precise fraction of a day.
-    const days = Math.round(Number(entry.value) / 86400);
-    return `${entry.name} — ${days} days`;
+  const value = entry.value;
+  if (typeof value === 'number' && TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
+    return `${entry.name} — ${timeLimitLabel(value)}`;
   }
   // Booleans are simple flags: their presence in the list is the information,
   // so appending "— Yes" would be noise.
-  if (typeof entry.value === 'boolean') {
+  if (typeof value === 'boolean') {
     return entry.name;
   }
-  return `${entry.name} — ${entry.value}`;
+  return `${entry.name} — ${value}`;
 }
 
 function originLabel(source: EffectiveConstraintSourceDetail): string {
   switch (source.origin) {
     case 'app':
-      return `via app ${source.source_group_name ?? ''}`.trim();
+      return `via app ${source.source_name ?? ''}`.trim();
     case 'member_association':
-      return `via membership in ${source.source_group_name}`;
+      return `via membership in ${source.source_name}`;
     case 'owner_association':
-      return `via ownership of ${source.source_group_name}`;
+      return `via ownership of ${source.source_name}`;
     case 'direct':
       return 'direct';
     default:
@@ -83,7 +94,7 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
                   <TableCell>{constraintLabel(entry)}</TableCell>
                   <TableCell>
                     {(entry.sources ?? []).map((source, index) => (
-                      <div key={`${source.tag_id}-${source.origin}-${source.source_group_id ?? index}`}>
+                      <div key={`${source.tag_id}-${source.origin}-${source.source_id ?? index}`}>
                         <Link component={RouterLink} to={`/tags/${source.tag_name}`}>
                           {source.tag_name}
                         </Link>

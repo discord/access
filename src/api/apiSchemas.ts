@@ -432,7 +432,7 @@ export type DeleteMessage = {
 export type EffectiveConstraintDetail = {
   constraint: string;
   name: string;
-  value: void;
+  value: number | boolean;
   sources?: EffectiveConstraintSourceDetail[];
 };
 
@@ -440,8 +440,8 @@ export type EffectiveConstraintSourceDetail = {
   tag_id: string;
   tag_name: string;
   origin: string;
-  source_group_id?: string | null;
-  source_group_name?: string | null;
+  source_id?: string | null;
+  source_name?: string | null;
 };
 
 export type GroupDetail =
@@ -1467,8 +1467,9 @@ export type TagDetail = {
 
 /**
  * Tag list-endpoint item. Slim field set (id, name, description,
- * enabled, constraints, created_at, updated_at) — does not hydrate
- * `active_group_tags`, which would be an N+1 across the page.
+ * enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+ * not hydrate `active_group_tags`, which would be an N+1 across the page,
+ * nor `propagated_to_groups`, which needs a per-tag join.
  */
 export type TagListItem = {
   id: string;

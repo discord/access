@@ -431,9 +431,46 @@ Time limits are stored in seconds but surfaced to users in days. Reason constrai
 direct adds and role adds, not only to access requests. **Only enabled tags apply** —
 disabled tags still exist in the DB but their constraints are short-circuited.
 
+A tag also carries a seventh, non-constraint knob: **`propagate_to_roles`** (bool, default
+`true`). It controls whether the tag's constraints reach roles associated with a tagged group,
+as described below.
+
 Operators typically define named tags (e.g. SOX, Quarterly Renewal) with specific constraint
 configurations. Read the tag definitions directly for current details — they change and any
 summary here would become stale.
+
+### Propagation to associated roles
+
+A role confers access on its **members**, so a tag on a group reaches the **member side** of
+any role associated with that group — computed at read time, never denormalized. Which key a
+role reads depends on the direction of the association:
+
+- a role that is a **member** of group G reads **the same** constraint key on G's tags;
+- a role that **owns** G reads the **owner-side counterpart** key.
+
+Nothing propagates onto a role's *own* owner side: owning a role confers none of the role's
+grants. `OWNER_SIDE_COUNTERPART` in `api/models/tag.py` encodes both the mapping and — via its
+key set — which constraints propagate at all. The three pairs cover all six constraints:
+
+| Member-side key (propagates) | Owner-side counterpart |
+|------------------------------|------------------------|
+| `MEMBER_TIME_LIMIT_CONSTRAINT_KEY` | `OWNER_TIME_LIMIT_CONSTRAINT_KEY` |
+| `REQUIRE_MEMBER_REASON_CONSTRAINT_KEY` | `REQUIRE_OWNER_REASON_CONSTRAINT_KEY` |
+| `DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY` | `DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY` |
+
+Propagated values coalesce with the role's own tags under the same rules as the table above, so
+a role holding both a member and an owner association to one tagged group takes the minimum (or
+the OR) across both directions. Propagation applies only when the tag is **enabled** and
+`propagate_to_roles` is set, and only to managed source groups and managed roles.
+
+Read constraints through the helpers in `api/models/tag.py` — `effective_constraint`,
+`effective_ended_at`, `effective_constraints`, `blocking_source` — rather than
+`coalesce_constraints`, which sees a group's own tags only. They read
+`RoleGroup.active_role_associated_group_member_mappings` /
+`..._owner_mappings` (and, through those, the source groups' `active_group_tags` →
+`active_tag`), all `lazy="raise_on_sql"`: **every call site must eager-load that stack**, and
+must do so regardless of whether the group has any tags, since propagation is consulted
+unconditionally.
 
 **`disallow_self_add_membership`** prevents owners from directly adding themselves as members
 to any group carrying this constraint — not just roles. Common scenarios where this surfaces:
