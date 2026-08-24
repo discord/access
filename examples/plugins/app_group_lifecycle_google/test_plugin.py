@@ -1,5 +1,6 @@
 """Tests for the Google Groups Lifecycle Plugin."""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -60,6 +61,10 @@ from plugin import (  # noqa: E402
 )
 
 from api.models import App, AppGroup  # noqa: E402
+from api.plugins.app_group_lifecycle import (  # noqa: E402
+    DanglingPushMappingError,
+    UnresolvableOktaTargetError,
+)
 
 
 @pytest.fixture
@@ -192,6 +197,69 @@ def test_validate_group_config_enforces_app_email_pattern(plugin_instance: Googl
         {"email": "sec-platform", "display_name": "X"}, app_config, PLUGIN_ID
     )
     assert errors == {}
+
+
+def test_mark_helpers_route_log_levels_by_who_must_act(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock, caplog: Any
+) -> None:
+    """The log level is a routing decision: only _mark_error means an Access admin has to act, so
+    only it logs at ERROR. A single combined helper could not do this -- it would have to infer the
+    level from whether a detail was passed, and pending/skipped both carry one."""
+    group = _group(mocker)
+
+    with caplog.at_level(logging.DEBUG, logger="plugin"):
+        plugin_instance._mark_synced(ctx_mock, group)
+        plugin_instance._mark_pending(ctx_mock, group, "waiting on Okta")
+        plugin_instance._mark_skipped(ctx_mock, group, "no email configured")
+        plugin_instance._mark_skipped(ctx_mock, group)  # nothing to act on -> DEBUG, no detail
+        plugin_instance._mark_error(ctx_mock, group, "okta link is broken")
+
+    assert {r.levelno for r in caplog.records} == {logging.DEBUG, logging.INFO, logging.ERROR}
+    # Exactly one ERROR, and it is the admin-actionable one.
+    errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert errors == ["Google group reconciliation failed for group App-Google-Platform-Security: okta link is broken"]
+    # A successful reconcile stays out of an INFO-level log entirely.
+    assert [r.levelno for r in caplog.records if "Reconciled" in r.getMessage()] == [logging.DEBUG]
+    # Pending and skipped are both INFO -- progress and misconfiguration, neither an admin's problem.
+    # A reason-less skip is the exception: nothing to act on, so it drops to DEBUG.
+    assert sorted(r.getMessage() for r in caplog.records if r.levelno == logging.INFO) == [
+        "Deferring App-Google-Platform-Security: waiting on Okta",
+        "Skipping App-Google-Platform-Security: no email configured",
+    ]
+    assert [r.levelno for r in caplog.records if "not managed by this plugin" in r.getMessage()] == [logging.DEBUG]
+    ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_ERROR, None, durable_on_failure=True)
+
+
+async def test_reconcile_clears_a_stale_detail_on_recovery(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # A group that failed and then recovered must not keep showing the old explanation. Starts from
+    # real recorded failure state and asserts against the group's own plugin_data, rather than
+    # asserting a mock was called with None.
+    group = _group(
+        mocker,
+        group_config={"email": "sec", "display_name": "Sec"},
+        status={
+            STATUS_SYNC_STATUS: SYNC_ERROR,
+            STATUS_SYNC_ERROR: "something went wrong on an earlier pass",
+            STATUS_GOOGLE_GROUP_ID: "ggid-1",
+            STATUS_PUSH_MAPPING_ID: "map-1",
+        },
+    )
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
+        "enabled": True,
+        "email": "sec",
+        "display_name": "Sec",
+    }.get(key, default)
+    mocker.patch.object(plugin_instance, "_get_owned_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value={"groupKey": {"id": "sec@test-company.com"}})
+    mocker.patch.object(plugin_instance, "_adopt_or_enforce", return_value=None)
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    status = group.plugin_data[PLUGIN_ID]["status"]
+    assert status[STATUS_SYNC_STATUS] == SYNC_SYNCED
+    assert status[STATUS_SYNC_ERROR] is None  # the stale explanation is gone, not merely overwritten
 
 
 def _group(
@@ -609,12 +677,13 @@ async def test_reconcile_flags_error_on_domain_mismatch_adoption(
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
 
 
-async def test_reconcile_errors_when_existing_mapping_email_mismatches_config(
+async def test_reconcile_skips_when_existing_mapping_email_mismatches_config(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
 ) -> None:
     # An out-of-band push mapping points at a different Google group than the group's configured
-    # email -> a conflict that won't self-heal, so reconcile surfaces a sync error rather than
-    # adopting the wrong group.
+    # email -> a conflict that won't self-heal, so reconcile refuses to adopt the wrong group. The
+    # group's own config is one of the two ways out, so this is SKIPPED (the owner's to fix) rather
+    # than SYNC_ERROR (an admin's), and the reason is recorded for them to read.
     group = _group(mocker, group_config={"email": "platform-security", "display_name": "Platform Security"})
     ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
         "enabled": True,
@@ -633,8 +702,8 @@ async def test_reconcile_errors_when_existing_mapping_email_mismatches_config(
 
     await plugin_instance._reconcile(ctx_mock, group)
 
-    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
-    # The error names both the mapped and the configured email.
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+    # The reason names both the mapped and the configured email.
     error_msgs = [c.args[2] for c in set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR]
     assert error_msgs
     assert "someone-else@test-company.com" in error_msgs[0]
@@ -642,6 +711,158 @@ async def test_reconcile_errors_when_existing_mapping_email_mismatches_config(
     # It bails before trying to claim/adopt; only the configured-email lookup ran (not the mapped one).
     claim.assert_not_called()
     lookup.assert_called_once()
+
+
+async def test_reconcile_skips_when_mapped_target_group_has_no_email(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # An out-of-band push mapping whose Okta target group Okta created via group push: it carries
+    # no googleGroupEmail and never will, because Okta writes that attribute only on import and
+    # does not backfill push-created targets. Unlike the awaiting-import case this cannot self-heal,
+    # so reconcile records it instead of deferring -- and does NOT re-raise, since there is
+    # nothing for the host to retry. It is SKIPPED, not SYNC_ERROR: setting this group's email
+    # config resolves it, so it belongs to the group's owners rather than to Access admins.
+    group = _group(mocker, group_config={})
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {"enabled": True}.get(key, default)
+    ctx_mock.get_status.side_effect = lambda *_a, **_k: None
+    lookup = mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.side_effect = UnresolvableOktaTargetError(
+        "target group has no 'googleGroupEmail'", mapping_id="map-7", target_group_name="platform-sec"
+    )
+    set_status = ctx_mock.set_status
+    claim = mocker.patch.object(plugin_instance, "_claim_group_id")
+
+    await plugin_instance._reconcile(ctx_mock, group)  # must not raise
+
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+    error_msgs = [c.args[2] for c in set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR]
+    assert error_msgs
+    # The reason is always recorded in the sync-error field even though the status is SKIPPED --
+    # it is the only place the group's owners see what to fix. And it must name the one action
+    # that fixes this: setting the email config. The host's neutral message is not passed through.
+    assert "googleGroupEmail" in error_msgs[0]
+    assert f"'{CONFIG_EMAIL}'" in error_msgs[0]
+    assert "test-company.com" in error_msgs[0]
+    # It names the target group, which is the only thing telling the owner WHICH address to
+    # configure; without it they could link this group to an unrelated Google group.
+    assert "platform-sec" in error_msgs[0]
+    # The discovered mapping is still recorded, so a later pass doesn't create a duplicate.
+    set_status.assert_any_call(group, STATUS_PUSH_MAPPING_ID, "map-7")
+    # It bails before adopting anything; no Google group was resolved to claim.
+    claim.assert_not_called()
+    lookup.assert_not_called()
+
+
+async def test_reconcile_errors_when_unresolvable_target_and_email_is_configured(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # Case 3 is also reached when an email IS configured and the Google lookup simply found
+    # nothing, e.g. the linked Google group was deleted out of band. That is not a configuration
+    # gap -- the owner already did the one thing a skip would ask of them -- so it must be an
+    # admin-facing error, not the quietest state the plugin has.
+    group = _group(mocker, group_config={"email": "sec", "display_name": "Sec"})
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
+        "enabled": True,
+        "email": "sec",
+        "display_name": "Sec",
+    }.get(key, default)
+    ctx_mock.get_status.side_effect = lambda *_a, **_k: None
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.side_effect = UnresolvableOktaTargetError(
+        "target group has no 'googleGroupEmail'", mapping_id="map-7", target_group_name="platform-sec"
+    )
+    set_status = ctx_mock.set_status
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
+    error_msgs = [c.args[2] for c in set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR]
+    assert error_msgs
+    # It names the configured address that resolved to nothing, and does NOT tell the owner to set
+    # the email config they have already set.
+    assert "sec@test-company.com" in error_msgs[0]
+    assert "Set this group's" not in error_msgs[0]
+
+
+async def test_recorded_mapping_id_prevents_creating_a_duplicate_on_the_next_pass(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # The follow-on pass after an unresolvable skip, which is the whole point of recording the
+    # mapping id. Once the owner configures the address, Case 2 resolves the Google group and the
+    # recorded mapping must be reused. Without it the mapping step would look the target up by
+    # googleGroupEmail -- the attribute a push-created target never has -- and park the group on
+    # SYNC_PENDING forever instead of linking it.
+    group = _group(mocker, group_config={"email": "platform-sec", "display_name": "Sec"})
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
+        "enabled": True,
+        "email": "platform-sec",
+        "display_name": "Sec",
+    }.get(key, default)
+    ctx_mock.get_status.side_effect = lambda _obj, key, default=None: {
+        STATUS_PUSH_MAPPING_ID: "map-7",  # recorded by the earlier skip
+    }.get(key, default)
+    mocker.patch.object(plugin_instance, "_get_owned_group_id", return_value=None)
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_claim_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_get_google_group", return_value={"groupKey": {"id": "x"}})
+    mocker.patch.object(plugin_instance, "_adopt_or_enforce", return_value=None)
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    ctx_mock.create_push_mapping_for_existing_group.assert_not_awaited()
+    ctx_mock.create_push_mapping_and_new_group.assert_not_awaited()
+    ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SYNCED, durable_on_failure=True)
+
+
+async def test_sync_group_raises_so_a_failed_group_fails_the_batch_run(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # _reconcile records an admin-actionable failure as status instead of raising, so the batch
+    # sync would otherwise count the group as a success and the CLI would exit 0. sync_group
+    # re-raises on SYNC_ERROR specifically; SKIPPED and PENDING must not fail the run.
+    group = _group(mocker)
+    mocker.patch.object(plugin_instance, "_reconcile")
+
+    ctx_mock.get_status.side_effect = lambda _obj, key, default=None: {
+        STATUS_SYNC_STATUS: SYNC_ERROR,
+        STATUS_SYNC_ERROR: "the okta link is broken",
+    }.get(key, default)
+    with pytest.raises(Exception, match="the okta link is broken"):
+        await plugin_instance.sync_group(ctx_mock, group, PLUGIN_ID)
+
+    for quiet in (SYNC_SKIPPED, SYNC_PENDING, SYNC_SYNCED):
+        ctx_mock.get_status.side_effect = lambda _obj, key, default=None, _s=quiet: {
+            STATUS_SYNC_STATUS: _s,
+            STATUS_SYNC_ERROR: "detail",
+        }.get(key, default)
+        await plugin_instance.sync_group(ctx_mock, group, PLUGIN_ID)  # must not raise
+
+
+async def test_reconcile_errors_when_push_mapping_target_group_is_gone(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    # The push mapping outlived its Okta target group. Nothing downstream is resolvable through a
+    # broken link and it cannot self-heal, so reconcile reports it instead of re-raising a raw SDK
+    # 404 on every periodic pass. Crucially the mapping id is NOT recorded: it is unusable, and
+    # recording it would make a later pass believe this group is already linked.
+    group = _group(mocker, group_config={})
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {"enabled": True}.get(key, default)
+    ctx_mock.get_status.side_effect = lambda *_a, **_k: None
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value=None)
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.side_effect = DanglingPushMappingError(
+        "target group gone", mapping_id="map-7", target_group_id="okta-tgt-gone"
+    )
+    set_status = ctx_mock.set_status
+    claim = mocker.patch.object(plugin_instance, "_claim_group_id")
+
+    await plugin_instance._reconcile(ctx_mock, group)  # must not raise
+
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
+    error_msgs = [c.args[2] for c in set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR]
+    assert error_msgs and "okta-tgt-gone" in error_msgs[0]
+    # A broken mapping must never be recorded as this group's link.
+    assert not [c for c in set_status.call_args_list if c.args[1] == STATUS_PUSH_MAPPING_ID]
+    claim.assert_not_called()
 
 
 async def test_reconcile_grandfathers_unchanged_legacy_email(
@@ -686,16 +907,22 @@ async def test_reconcile_grandfathers_unchanged_legacy_email(
 
 
 async def test_reconcile_skips_when_disabled(
-    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock, caplog: Any
 ) -> None:
     group = _group(mocker)
     ctx_mock.get_config.side_effect = lambda *_a, **_k: False  # enabled = False
     discover = ctx_mock.discover_existing_push_mapping_and_target_group_external_id
-    await plugin_instance._reconcile(ctx_mock, group)
+    with caplog.at_level(logging.DEBUG, logger="plugin"):
+        await plugin_instance._reconcile(ctx_mock, group)
     discover.assert_not_called()
     # Recorded, not silent: an empty status is indistinguishable from "the hook has not run yet",
     # and the group page polls for the whole refresh window on every view when it sees one.
     ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+    # An app that does not use this plugin is not something anyone acts on, so this skip carries
+    # no detail and stays out of an INFO-level log. Skips that DO need an owner's attention still
+    # record a reason.
+    ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_ERROR, None, durable_on_failure=True)
+    assert [r.levelno for r in caplog.records] == [logging.DEBUG]
 
 
 async def test_reconcile_marks_skipped_when_config_is_missing(
@@ -713,6 +940,9 @@ async def test_reconcile_marks_skipped_when_config_is_missing(
     await plugin_instance._reconcile(ctx_mock, group)
 
     ctx_mock.set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
+    # The reason names the config the owner has to set, not just that the group was skipped.
+    reasons = [c.args[2] for c in ctx_mock.set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR]
+    assert reasons and f"'{CONFIG_EMAIL}'" in reasons[0]
     assert (
         SYNC_SKIPPED
         not in (
@@ -817,7 +1047,7 @@ async def test_reconcile_marks_error_and_reraises_on_unexpected_failure(
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
 
 
-async def test_reconcile_create_path_rejects_pattern_violation(
+async def test_reconcile_create_path_skips_on_pattern_violation(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
 ) -> None:
     group = _group(mocker, group_config={"email": "platform", "display_name": "P"}, description="d")
@@ -836,7 +1066,7 @@ async def test_reconcile_create_path_rejects_pattern_violation(
     await plugin_instance._reconcile(ctx_mock, group)
 
     create.assert_not_called()
-    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
 
 
 async def test_reconcile_creates_when_no_group_exists(
@@ -925,7 +1155,7 @@ async def test_reconcile_refuses_google_group_owned_by_another_access_group(
     plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
 ) -> None:
     # A group whose email resolves to a Google group already managed by another Access group --
-    # in a *different* app sharing this plugin -- must be flagged error, not adopted/clobbered.
+    # in a *different* app sharing this plugin -- must be refused, not adopted/clobbered.
     group = _group(mocker, group_config={"email": "shared", "display_name": "Shared"})
     ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
         "enabled": True,
@@ -957,7 +1187,7 @@ async def test_reconcile_refuses_google_group_owned_by_another_access_group(
     enforce.assert_not_called()
     ctx_mock.create_push_mapping_for_existing_group.assert_not_awaited()
     ctx_mock.create_push_mapping_and_new_group.assert_not_awaited()
-    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
+    set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
     # The owning group's name is plumbed into the error.
     error_msg = next(c.args[2] for c in set_status.call_args_list if c.args[1] == STATUS_SYNC_ERROR)
     assert "App-Other-Owner" in error_msg
@@ -984,7 +1214,9 @@ async def test_reconcile_does_not_persist_id_when_owned_by_another_group(
 
     status = group.plugin_data[PLUGIN_ID]["status"]
     assert status.get(STATUS_GOOGLE_GROUP_ID) is None  # id of the group we don't own was NOT recorded
-    assert status.get(STATUS_SYNC_STATUS) == SYNC_ERROR
+    assert status.get(STATUS_SYNC_STATUS) == SYNC_SKIPPED
+    # The reason must reach the group's owners, who resolve it by changing their email config.
+    assert "App-Other-Owner" in status.get(STATUS_SYNC_ERROR)
 
 
 async def test_reconcile_runs_owner_check_in_config_absent_adoption(
@@ -1012,7 +1244,7 @@ async def test_reconcile_runs_owner_check_in_config_absent_adoption(
     status = group.plugin_data[PLUGIN_ID]["status"]
     assert status.get(STATUS_GOOGLE_GROUP_ID) is None  # neither the id...
     assert status.get(STATUS_PUSH_MAPPING_ID) is None  # ...nor the link's mapping was adopted
-    assert status.get(STATUS_SYNC_STATUS) == SYNC_ERROR
+    assert status.get(STATUS_SYNC_STATUS) == SYNC_SKIPPED
 
 
 async def test_claim_locks_before_checking_ownership(

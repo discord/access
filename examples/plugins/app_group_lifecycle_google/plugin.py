@@ -22,7 +22,9 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginConfigProperty,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
+    DanglingPushMappingError,
     MissingOktaTargetError,
+    UnresolvableOktaTargetError,
     hookimpl,
 )
 
@@ -49,10 +51,16 @@ STATUS_LAST_SYNCED_AT = "last_synced_at"
 SYNC_SYNCED = "synced"
 SYNC_PENDING = "pending"
 SYNC_ERROR = "error"
-# Terminal, like SYNC_ERROR: this group is deliberately not managed by the plugin (disabled
-# for the app, or missing the config needed to resolve a Google group). Recorded rather than
-# left blank because a group with no status at all reads as "the hook has not run yet" -- see
-# `pending_values` on AppGroupLifecyclePluginStatusProperty.
+# Terminal, like SYNC_ERROR: this group has not converged and the next move belongs to an Access
+# *user*, not to an admin. Covers the app having the plugin disabled, and every condition a group's
+# owner can resolve by editing its plugin configuration -- a missing email, a prefix violating the
+# app's pattern, an address already claimed by another Access group, a push mapping whose target
+# cannot be identified. Note this does not always mean nothing is linked: the plugin may still hold
+# a push mapping id or a claimed Google group id for a skipped group. Deliberately NOT SYNC_ERROR,
+# which is reserved for what only an Access admin can fix, so a misconfigured group reaches its
+# owners instead of paging admins. Recorded rather than left blank because a group with no status
+# at all reads as "the hook has not run yet" -- see `pending_values` on
+# AppGroupLifecyclePluginStatusProperty.
 SYNC_SKIPPED = "skipped"
 
 OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
@@ -62,6 +70,16 @@ OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL = "googleGroupEmail"
 GOOGLE_LOCAL_PART_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
 logger = logging.getLogger(__name__)
+
+
+class GoogleGroupSyncError(Exception):
+    """Raised by sync_group when a reconcile finished in SYNC_ERROR.
+
+    _reconcile records an admin-actionable failure and returns rather than raising, so its status
+    and explanation survive the host's commit. The batch sync still has to count the group as
+    failed: `api/cli.py` tallies a failure only when the hook returns an exception, so without this
+    a run that left groups in SYNC_ERROR would exit 0 and look clean. Conditions the plugin does
+    not consider failures -- SYNC_SKIPPED and SYNC_PENDING -- deliberately do not raise."""
 
 
 def _is_group_absent_error(error: HttpError) -> bool:
@@ -245,14 +263,14 @@ class GoogleGroupManagerPlugin:
             STATUS_GOOGLE_GROUP_ID: AppGroupLifecyclePluginStatusProperty(display_name="Google Group ID", type="text"),
             STATUS_SYNC_STATUS: AppGroupLifecyclePluginStatusProperty(
                 display_name="Sync Status",
-                help_text="synced, pending, or error",
+                help_text="synced, pending, skipped, or error",
                 type="text",
                 # SYNC_PENDING is this plugin's "not converged yet" state -- it is waiting on Okta
                 # to import or push a group -- so the UI keeps refreshing while a group sits on it.
                 # SYNC_ERROR is deliberately absent: it is terminal until the next reconcile.
                 pending_values=(SYNC_PENDING,),
             ),
-            STATUS_SYNC_ERROR: AppGroupLifecyclePluginStatusProperty(display_name="Sync Error", type="text"),
+            STATUS_SYNC_ERROR: AppGroupLifecyclePluginStatusProperty(display_name="Sync Status Details", type="text"),
             STATUS_LAST_SYNCED_AT: AppGroupLifecyclePluginStatusProperty(display_name="Last Synced", type="date"),
         }
 
@@ -390,8 +408,10 @@ class GoogleGroupManagerPlugin:
 
     # ---- Status setters ----
 
-    def _mark(self, ctx: AppGroupLifecycleContext, group: AppGroup, status: str, error: str | None = None) -> None:
-        """Record this reconcile's outcome on the group.
+    def _write_sync_status(
+        self, ctx: AppGroupLifecycleContext, group: AppGroup, status: str, detail: str | None
+    ) -> None:
+        """Persist this reconcile's outcome. Use one of the _mark_* helpers rather than this.
 
         Synchronous: the context mutates plugin_data in memory and marks the group for persistence,
         and the host commits after the hook returns.
@@ -405,29 +425,88 @@ class GoogleGroupManagerPlugin:
             ctx: The plugin capability context.
             group: The group being reconciled.
             status: One of the SYNC_* values.
-            error: The failure detail to surface in the UI, or None on success.
+            detail: The explanation to surface in the UI, or None when there is nothing to explain.
         """
-        if error:
-            logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
-
         ctx.set_status(group, STATUS_SYNC_STATUS, status, durable_on_failure=True)
-        ctx.set_status(group, STATUS_SYNC_ERROR, error, durable_on_failure=True)
-        if status == SYNC_SYNCED:
-            ctx.set_status(
-                group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True
-            )
+        ctx.set_status(group, STATUS_SYNC_ERROR, detail, durable_on_failure=True)
 
-    def _mark_skipped(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str) -> None:
-        """Record that this reconcile deliberately did nothing.
+    # One helper per outcome, each owning its own log level. The level is a routing decision, not a
+    # formatting one: only _mark_error means "an Access admin has to do something", so only it logs
+    # at ERROR. Deriving the level from whether a detail string was passed -- as a single combined
+    # helper must -- inevitably miscategorises, because pending and skipped carry a detail too.
+
+    def _mark_synced(self, ctx: AppGroupLifecycleContext, group: AppGroup) -> None:
+        """Record a successful reconcile. Carries no detail: there is nothing to explain, and any
+        stale explanation from a previous pass must be cleared. Logs at DEBUG: a converged group is
+        the outcome this loop exists to produce, so it is not news.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+        """
+        logger.debug(f"Reconciled {group.name}.")
+        self._write_sync_status(ctx, group, SYNC_SYNCED, None)
+        ctx.set_status(group, STATUS_LAST_SYNCED_AT, datetime.now(timezone.utc).isoformat(), durable_on_failure=True)
+
+    def _mark_pending(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str) -> None:
+        """Record that this reconcile is waiting on Okta or Google to converge.
+
+        Transient and self-healing -- a later pass picks it up -- so it is progress, not a fault,
+        and logs at INFO. SYNC_PENDING is the one status the UI treats as "keep refreshing"; see
+        `pending_values` in get_plugin_group_status_properties.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+            reason: What is being waited on, surfaced in the UI.
+        """
+        logger.info(f"Deferring {group.name}: {reason}")
+        self._write_sync_status(ctx, group, SYNC_PENDING, reason)
+
+    def _mark_skipped(self, ctx: AppGroupLifecycleContext, group: AppGroup, reason: str | None = None) -> None:
+        """Record that this group is not being managed, and why if there is anything to say.
 
         A bare return would leave the group's status empty, which the UI cannot tell apart from a
         hook that has not run yet -- so it would poll the group on every page view for the whole
-        refresh window. The detailed reason goes to the log; the status just says the group is not
-        being managed.
+        refresh window.
+
+        Used for every condition an Access *user* can resolve by editing this group's plugin
+        configuration, and the reason is always recorded for those: it is the only place the
+        responsible group owner sees what to fix. Such a condition is deliberately not SYNC_ERROR
+        -- that state means the plugin hit something only an Access admin can fix -- and a
+        misconfigured group is not an operational failure of the plugin, so it logs at INFO.
+
+        Omit the reason when nothing is wrong and nobody needs to act: a group whose app does not
+        use this plugin is skipped permanently and by design. It logs at DEBUG and leaves the
+        details field empty rather than restating a non-event at INFO on every pass.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+            reason: Operator-facing explanation, surfaced to the group's owners in the UI. Write it
+                as a standalone sentence naming the fix. None when there is nothing to act on.
         """
-        logger.info(f"Skipping {group.name}: {reason}")
-        ctx.set_status(group, STATUS_SYNC_STATUS, SYNC_SKIPPED, durable_on_failure=True)
-        ctx.set_status(group, STATUS_SYNC_ERROR, None, durable_on_failure=True)
+        if reason:
+            logger.info(f"Skipping {group.name}: {reason}")
+        else:
+            logger.debug(f"Skipping {group.name}: not managed by this plugin.")
+        self._write_sync_status(ctx, group, SYNC_SKIPPED, reason)
+
+    def _mark_error(self, ctx: AppGroupLifecycleContext, group: AppGroup, error: str) -> None:
+        """Record a reconcile failure that only an Access admin can resolve.
+
+        The one helper that logs at ERROR, keeping this plugin's ERROR output to the conditions
+        someone with Okta/infrastructure access has to act on: a broken Okta link, a duplicate
+        import, an unexpected fault. Anything an Access user can fix by editing the group's
+        configuration belongs in _mark_skipped instead.
+
+        Args:
+            ctx: The plugin capability context.
+            group: The group being reconciled.
+            error: Operator-facing failure detail, surfaced in the UI.
+        """
+        logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
+        self._write_sync_status(ctx, group, SYNC_ERROR, error)
 
     # ---- Reconcile ----
 
@@ -466,7 +545,7 @@ class GoogleGroupManagerPlugin:
         self, ctx: AppGroupLifecycleContext, group: AppGroup, candidate_id: str, email: str | None = None
     ) -> str | None:
         """Record candidate_id as this group's owned Google group, but ONLY after confirming no
-        other Access group already owns it -- refusing (and marking SYNC_ERROR) rather than
+        other Access group already owns it -- refusing (and marking SYNC_SKIPPED) rather than
         clobbering / double-linking a group owned elsewhere. Returns the id on success, or None
         when refused. A no-op confirmation when we already hold this id.
 
@@ -500,12 +579,12 @@ class GoogleGroupManagerPlugin:
         await ctx.lock(candidate_id)
         owners = await ctx.find_groups_by_status(STATUS_GOOGLE_GROUP_ID, candidate_id, exclude_group=group, limit=1)
         if owners:
-            self._mark(
+            self._mark_skipped(
                 ctx,
                 group,
-                SYNC_ERROR,
                 f"Google group {email or candidate_id} is already managed by Access group "
-                f"'{owners[0].name}'; refusing to link it to this one.",
+                f"'{owners[0].name}'. Change this group's '{CONFIG_EMAIL}' configuration to a "
+                "different address to link it.",
             )
             return None
         ctx.set_status(group, STATUS_GOOGLE_GROUP_ID, candidate_id)
@@ -548,10 +627,10 @@ class GoogleGroupManagerPlugin:
             group: The group to reconcile.
 
         The sync status is written with `durable_on_failure`, so the host re-applies it after
-        rolling back a failed hook and an operator still sees why reconcile failed. See _mark.
+        rolling back a failed hook and an operator still sees why reconcile failed. See _write_sync_status.
         """
         if not self._is_enabled(ctx, group):
-            self._mark_skipped(ctx, group, "the Google plugin is not enabled for this app")
+            self._mark_skipped(ctx, group)
             return
 
         try:
@@ -572,9 +651,72 @@ class GoogleGroupManagerPlugin:
 
                 if candidate_group_id is None:
                     # Case 3: Retrieve an existing mapped Google group (linked in Okta out-of-band)
-                    link = await ctx.discover_existing_push_mapping_and_target_group_external_id(
-                        group, self._okta_app_id, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL
-                    )
+                    try:
+                        link = await ctx.discover_existing_push_mapping_and_target_group_external_id(
+                            group, self._okta_app_id, OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL
+                        )
+                    except DanglingPushMappingError as e:
+                        # The mapping outlived its Okta target group, so there is nothing to resolve
+                        # through it and no amount of retrying helps. Report it and stop. The mapping
+                        # id is deliberately NOT recorded: it is unusable, and storing it would make
+                        # a later reconcile treat this group as already linked.
+                        self._mark_error(
+                            ctx,
+                            group,
+                            f"This group's Okta push mapping points at target group {e.target_group_id}, "
+                            "which no longer exists in Okta, so its Google group cannot be reached. "
+                            "Remove the stale mapping in Okta and re-push this group to relink it.",
+                        )
+                        return
+                    except UnresolvableOktaTargetError as e:
+                        # The mapping exists, but its Okta target group carries no googleGroupEmail
+                        # and never will: Okta writes that attribute only when it imports a group
+                        # from Google, and does not backfill a target it created via group push.
+                        # Nothing to wait for, so this is reported rather than deferred.
+                        #
+                        # Record the mapping unconditionally. Discovery looks mappings up by THIS
+                        # group's source id, so it is definitively this group's link. Withholding it
+                        # would dead-end the recovery path: once the owner configures the address,
+                        # the mapping-creation step below resolves its target by searching for the
+                        # googleGroupEmail attribute, which is precisely what this target will never
+                        # have, so the group would sit PENDING forever instead of linking.
+                        #
+                        # The residual risk is an owner who configures an address belonging to some
+                        # OTHER Google group: this mapping still pushes members to the target it
+                        # already has, while Access claims and reports the configured one. Naming
+                        # the target group in the message below is the mitigation -- Okta names a
+                        # push-created target after the name it was pushed with, so it tells the
+                        # owner exactly which prefix to use.
+                        ctx.set_status(group, STATUS_PUSH_MAPPING_ID, e.mapping_id)
+
+                        if configured_email is None:
+                            # Nothing configured: the owner has not linked this group yet, and
+                            # naming the target group tells them which address to configure.
+                            target = f" It targets '{e.target_group_name}'." if e.target_group_name else ""
+                            self._mark_skipped(
+                                ctx,
+                                group,
+                                "This group's Okta push mapping points at a target group with no "
+                                f"{OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL}, so its Google group cannot be "
+                                f"identified automatically.{target} Set this group's '{CONFIG_EMAIL}' "
+                                f"configuration to that address prefix (the part before @{self._domain}) "
+                                "to link it.",
+                            )
+                            return
+                        # An email IS configured and still resolved to nothing in Google, so this is
+                        # not a configuration gap: the Google group the config names is missing while
+                        # the mapping points somewhere unidentifiable. Neither the owner nor a retry
+                        # can settle that, so it goes to the admins.
+                        self._mark_error(
+                            ctx,
+                            group,
+                            f"No Google group exists at the configured address {configured_email}, and "
+                            "this group's Okta push mapping points at a target group with no "
+                            f"{OKTA_GOOGLE_GROUP_PROFILE_FIELD_EMAIL}, so the mapped group cannot be "
+                            "identified either. Check whether the Google group was deleted, and whether "
+                            "the Okta push mapping still points where it should.",
+                        )
+                        return
                     if link:
                         mapping_id, resolved_email = link
                     if resolved_email:
@@ -582,13 +724,12 @@ class GoogleGroupManagerPlugin:
                         # email of the linked group doesn't match. This is a conflict that won't self-heal,
                         # so we surface it as an error rather than silently adopting the wrong group.
                         if configured_email is not None and resolved_email != configured_email:
-                            self._mark(
+                            self._mark_skipped(
                                 ctx,
                                 group,
-                                SYNC_ERROR,
                                 f"Existing Okta push mapping targets Google group '{resolved_email}', but this "
-                                f"group is configured for '{configured_email}'. Resolve the conflict in Okta or update the "
-                                "group's configured email.",
+                                f"group is configured for '{configured_email}'. Update this group's "
+                                f"'{CONFIG_EMAIL}' configuration to match, or resolve the conflict in Okta.",
                             )
                             return
 
@@ -600,7 +741,7 @@ class GoogleGroupManagerPlugin:
                         ctx, group, candidate_group_id, configured_email or resolved_email
                     )
                     if claimed_google_group_id is None:
-                        return  # owned by another Access group; _claim_group_id marked the error
+                        return  # owned by another Access group; _claim_group_id recorded the skip
                     if mapping_id:
                         ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
 
@@ -610,13 +751,19 @@ class GoogleGroupManagerPlugin:
                 # step. This avoids waiting for Okta to import a made in Google first (which involves
                 # a manually-triggered fetch). Config is required to create a new group.
                 if not configured_email_prefix or not configured_email:
-                    self._mark_skipped(ctx, group, "missing the email config needed to create a Google group")
+                    self._mark_skipped(
+                        ctx,
+                        group,
+                        f"Set this group's '{CONFIG_EMAIL}' configuration to create and link a Google group.",
+                    )
                     return
 
                 pattern = ctx.get_config(group.app, CONFIG_EMAIL_PATTERN)
                 pattern_error = self._validate_email_against_pattern(configured_email_prefix, pattern)
                 if pattern_error:
-                    self._mark(ctx, group, SYNC_ERROR, pattern_error)
+                    self._mark_skipped(
+                        ctx, group, f"{pattern_error}. Update this group's '{CONFIG_EMAIL}' configuration."
+                    )
                     return
 
                 if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
@@ -636,14 +783,14 @@ class GoogleGroupManagerPlugin:
                 # defer if it isn't visible, adopting its Cloud Identity id and patching its
                 # metadata on a later reconcile once it appears.
                 if google_group_id_to_claim is None:
-                    self._mark(ctx, group, SYNC_PENDING, "Awaiting Google group creation via Okta push")
+                    self._mark_pending(ctx, group, "Awaiting Google group creation via Okta push")
                     return
 
                 claimed_google_group_id = await self._claim_group_id(
                     ctx, group, google_group_id_to_claim, configured_email
                 )
                 if claimed_google_group_id is None:
-                    return  # owned by another Access group; _claim_group_id marked the error
+                    return  # owned by another Access group; _claim_group_id recorded the skip
 
             # We hold a live Google group (cached, adopted, or freshly created) -> enforce Access's
             # properties onto it (or backfill from it during adoption). A group Okta just created is
@@ -653,7 +800,7 @@ class GoogleGroupManagerPlugin:
             google_group = await self._get_google_group(claimed_google_group_id)
             reconcile_error = await self._adopt_or_enforce(ctx, group, claimed_google_group_id, google_group)
             if reconcile_error is not None:
-                self._mark(ctx, group, SYNC_ERROR, reconcile_error)
+                self._mark_error(ctx, group, reconcile_error)
                 return
 
             # Ensure the push mapping exists; may defer if Okta hasn't imported yet. An ambiguous
@@ -663,7 +810,17 @@ class GoogleGroupManagerPlugin:
             if not ctx.get_status(group, STATUS_PUSH_MAPPING_ID):
                 resolved_email = configured_email or await self._get_email_from_status(ctx, group)
                 if not resolved_email:
-                    self._mark_skipped(ctx, group, "no resolvable email for the adopted Google group")
+                    # Reached only after a Google group was claimed and reconciled: the re-read to
+                    # recover its address found it gone or without a groupKey. The group IS managed
+                    # and the configuration is not the fix, so this is neither a skip nor an owner's
+                    # problem -- the linked Google group changed underneath us.
+                    self._mark_error(
+                        ctx,
+                        group,
+                        "This group's linked Google group could not be re-read to recover its "
+                        "address, so its Okta push mapping cannot be created. It may have been "
+                        "deleted in Google while this reconcile was running.",
+                    )
                     return
                 try:
                     mapping_id = await ctx.create_push_mapping_for_existing_group(
@@ -671,17 +828,17 @@ class GoogleGroupManagerPlugin:
                     )
                     ctx.set_status(group, STATUS_PUSH_MAPPING_ID, mapping_id)
                 except AmbiguousOktaTargetError as e:
-                    self._mark(ctx, group, SYNC_ERROR, str(e))
+                    self._mark_error(ctx, group, str(e))
                     return
                 except MissingOktaTargetError:
-                    self._mark(ctx, group, SYNC_PENDING, "Awaiting Okta import of the Google group")
+                    self._mark_pending(ctx, group, "Awaiting Okta import of the Google group")
                     return
 
-            self._mark(ctx, group, SYNC_SYNCED)
+            self._mark_synced(ctx, group)
         except Exception as e:
             logger.exception(f"Reconcile failed for group {group.name}")
             try:
-                self._mark(ctx, group, SYNC_ERROR, str(e))
+                self._mark_error(ctx, group, str(e))
             except Exception:
                 logger.exception("Failed to persist error status")
             raise
@@ -794,6 +951,12 @@ class GoogleGroupManagerPlugin:
         if plugin_id is not None and plugin_id != PLUGIN_ID:
             return
         await self._reconcile(ctx, group)
+        # _reconcile reports an admin-actionable failure as status rather than by raising, so that
+        # the explanation survives; re-raise it here so the batch run still counts the group as
+        # failed. The status write is durable, so it outlives the rollback this triggers. Only the
+        # event-driven hooks call _reconcile directly, so a request-path reconcile is unaffected.
+        if ctx.get_status(group, STATUS_SYNC_STATUS) == SYNC_ERROR:
+            raise GoogleGroupSyncError(f"{group.name}: {ctx.get_status(group, STATUS_SYNC_ERROR)}")
 
 
 google_group_manager_plugin = GoogleGroupManagerPlugin()

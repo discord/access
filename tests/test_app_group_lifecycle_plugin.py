@@ -40,7 +40,9 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginFilteringError,
     AppGroupLifecyclePluginMetadata,
     AppGroupLifecyclePluginStatusProperty,
+    DanglingPushMappingError,
     MissingOktaTargetError,
+    UnresolvableOktaTargetError,
     _StatusWrite,
     get_app_group_lifecycle_plugin_app_config_properties,
     get_app_group_lifecycle_plugin_app_status_properties,
@@ -54,6 +56,7 @@ from api.plugins.app_group_lifecycle import (
     validate_app_group_lifecycle_plugin_group_config,
 )
 from api.services import okta
+from api.services.okta_service import OktaResourceNotFoundError
 from tests.factories import (
     AccessRequestFactory,
     AppFactory,
@@ -4363,6 +4366,114 @@ async def test_discover_existing_push_mapping_returns_mapping_id_and_external_id
     )
 
     assert result == ("map-9", "found@test-company.com")
+
+
+async def test_discover_existing_push_mapping_raises_unresolvable_when_target_has_no_external_id(
+    mocker: MockerFixture,
+) -> None:
+    # Okta writes external-id profile attributes only when it IMPORTS a group from the downstream
+    # app. A target group Okta created itself via group push carries only name/description, and a
+    # later import does not backfill it -- so this never self-heals and must not be conflated with
+    # the not-yet-imported case (which defers). The mapping id rides on the exception so the caller
+    # can still record the link it found and avoid creating a duplicate mapping later.
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.list_group_push_mappings",
+        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-9"}],
+    )
+    tgt = mocker.Mock()
+    tgt.group.profile.actual_instance.additional_properties = {}  # push-created: no external id
+    tgt.group.profile.actual_instance.name = "platform-sec"
+    mocker.patch("api.plugins.app_group_lifecycle.okta.get_group", return_value=tgt)
+
+    with pytest.raises(UnresolvableOktaTargetError) as exc_info:
+        await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+            _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+        )
+
+    assert exc_info.value.mapping_id == "map-9"
+    # The target group's name is the only identifying attribute a push-created target carries, so
+    # it rides on the error for the caller to show an operator which downstream group is mapped.
+    assert exc_info.value.target_group_name == "platform-sec"
+    message = str(exc_info.value)
+    assert _EXTERNAL_ID_FIELD in message
+    assert "okta-tgt-9" in message
+    assert "App-Google-Platform-Security" in message
+
+
+async def test_discover_existing_push_mapping_raises_unresolvable_when_profile_is_absent(
+    mocker: MockerFixture,
+) -> None:
+    # Same non-retryable outcome when the profile union has no actual_instance at all, rather
+    # than an instance with empty additional_properties.
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.list_group_push_mappings",
+        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-9"}],
+    )
+    tgt = mocker.Mock()
+    tgt.group.profile = None
+    mocker.patch("api.plugins.app_group_lifecycle.okta.get_group", return_value=tgt)
+
+    with pytest.raises(UnresolvableOktaTargetError):
+        await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+            _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+        )
+
+
+async def test_discover_existing_push_mapping_raises_unresolvable_when_actual_instance_is_absent(
+    mocker: MockerFixture,
+) -> None:
+    # Third shape of "no external id": the profile object exists but its anyOf union resolved to
+    # nothing, so there is no actual_instance to read additional_properties off. Distinct from a
+    # None profile, and the guard has to survive both.
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.list_group_push_mappings",
+        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-9"}],
+    )
+    tgt = mocker.Mock()
+    tgt.group.profile.actual_instance = None
+    mocker.patch("api.plugins.app_group_lifecycle.okta.get_group", return_value=tgt)
+
+    with pytest.raises(UnresolvableOktaTargetError) as exc_info:
+        await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+            _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+        )
+
+    # Nothing to name the target group with, so the caller gets None rather than a bogus name.
+    assert exc_info.value.target_group_name is None
+
+
+async def test_unresolvable_okta_target_error_is_a_value_error() -> None:
+    # The condition raised a bare ValueError before these typed errors existed, and the helper's
+    # docstring documented that. Operator plugins catching ValueError here must keep working.
+    assert issubclass(UnresolvableOktaTargetError, ValueError)
+
+
+async def test_discover_existing_push_mapping_raises_dangling_when_target_group_is_gone(
+    mocker: MockerFixture,
+) -> None:
+    # The mapping still references a target group that Okta no longer has (deleted out of band).
+    # The 404 arrives as OktaResourceNotFoundError -- classified for every call by the service
+    # wrapper, not just list endpoints -- and is re-raised as a typed, non-retryable error so
+    # callers can say what is actually wrong instead of surfacing a raw SDK 404 string.
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.list_group_push_mappings",
+        return_value=[{"id": "map-9", "sourceGroupId": "grp-1", "targetGroupId": "okta-tgt-gone"}],
+    )
+    mocker.patch(
+        "api.plugins.app_group_lifecycle.okta.get_group",
+        side_effect=OktaResourceNotFoundError("Okta HTTP 404 Not Found"),
+    )
+
+    with pytest.raises(DanglingPushMappingError) as exc_info:
+        await _push_ctx().discover_existing_push_mapping_and_target_group_external_id(
+            _push_source_group(mocker), _OKTA_APP_ID, _EXTERNAL_ID_FIELD
+        )
+
+    assert exc_info.value.mapping_id == "map-9"
+    assert exc_info.value.target_group_id == "okta-tgt-gone"
+    message = str(exc_info.value)
+    assert "okta-tgt-gone" in message
+    assert "App-Google-Platform-Security" in message
 
 
 async def test_discover_existing_push_mapping_returns_none_when_no_mapping(mocker: MockerFixture) -> None:
