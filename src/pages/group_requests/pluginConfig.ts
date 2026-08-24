@@ -54,3 +54,24 @@ export function pluginConfigRows(
     return {key, value, changed: hasPrevious && from !== value, from};
   });
 }
+
+/**
+ * The subset of a stored `requested_plugin_data` that is still safe to prefill.
+ *
+ * An app's lifecycle plugin can change after a group request is written. The
+ * stored config is keyed by the plugin id that was configured then, so seeding
+ * it blindly would populate a form section for a plugin the app no longer uses.
+ * Keep the config only when the app's current plugin id still matches; drop it
+ * otherwise and let the rest of the prefill proceed.
+ */
+export function prefillablePluginData(
+  app: AppLike,
+  storedPluginData: Record<string, any> | null | undefined,
+): Record<string, any> {
+  const pluginId = pluginIdForApp(app);
+  if (pluginId == null || storedPluginData == null) {
+    return {};
+  }
+  const configuration = storedPluginData[pluginId];
+  return configuration == null ? {} : {[pluginId]: configuration};
+}

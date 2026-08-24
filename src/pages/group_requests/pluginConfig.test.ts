@@ -1,5 +1,11 @@
 import {describe, it, expect} from 'vitest';
-import {pluginIdForApp, extractRequestedPluginData, visiblePluginConfigEntries, pluginConfigRows} from './pluginConfig';
+import {
+  pluginIdForApp,
+  extractRequestedPluginData,
+  visiblePluginConfigEntries,
+  pluginConfigRows,
+  prefillablePluginData,
+} from './pluginConfig';
 
 describe('pluginIdForApp', () => {
   it('returns the plugin id when the app has one', () => {
@@ -63,5 +69,30 @@ describe('pluginConfigRows', () => {
   it('treats a newly-added key (absent in previous) as changed with an undefined from', () => {
     const rows = pluginConfigRows({region: 'us'}, {});
     expect(rows).toEqual([{key: 'region', value: 'us', changed: true, from: undefined}]);
+  });
+});
+
+describe('prefillablePluginData', () => {
+  const stored = {'plugin-a': {configuration: {channel: '#eng'}}};
+
+  it('keeps the stored config when the app still uses that plugin', () => {
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, stored)).toEqual(stored);
+  });
+
+  it('drops the config when the app switched plugins', () => {
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-b'}, stored)).toEqual({});
+  });
+
+  it('drops the config when the app has no lifecycle plugin', () => {
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: null}, stored)).toEqual({});
+  });
+
+  it('drops the config when there is no app at all', () => {
+    expect(prefillablePluginData(null, stored)).toEqual({});
+  });
+
+  it('returns an empty object for empty or missing stored data', () => {
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, {})).toEqual({});
+    expect(prefillablePluginData({id: 'app1', app_group_lifecycle_plugin: 'plugin-a'}, undefined)).toEqual({});
   });
 });
