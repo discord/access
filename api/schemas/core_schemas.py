@@ -36,6 +36,7 @@ class TagDetail(BaseModel):
     description: Optional[str] = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
     deleted_at: Optional[FlexibleDatetime] = None
@@ -54,6 +55,7 @@ class TagSummary(BaseModel):
     name: str
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
 
 
 class TagListItem(BaseModel):
@@ -67,6 +69,7 @@ class TagListItem(BaseModel):
     description: Optional[str] = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    propagate_to_roles: bool = True
     created_at: FlexibleDatetime
     updated_at: FlexibleDatetime
 

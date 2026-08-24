@@ -421,6 +421,7 @@ export type CreateTagBody = {
    * @default true
    */
   enabled?: boolean;
+  propagate_to_roles?: boolean | null;
 };
 
 export type DeleteMessage = {
@@ -1435,6 +1436,10 @@ export type TagDetail = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -1458,6 +1463,10 @@ export type TagListItem = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1472,6 +1481,10 @@ export type TagSummary = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
 };
 
 /**
@@ -1498,6 +1511,7 @@ export type UpdateTagBody = {
     [key: string]: any;
   } | null;
   enabled?: boolean | null;
+  propagate_to_roles?: boolean | null;
 };
 
 export type AccessRequestAppGroupRef = {
