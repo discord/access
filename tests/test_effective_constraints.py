@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
-from api.models import OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
+from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import blocking_source, constraint_source_clause, effective_constraint, effective_constraints
 from tests.factories import (
     AppFactory,
@@ -43,13 +43,19 @@ async def _load_group_with_provenance(db: Db, group_id: str) -> OktaGroup:
     inherited via the group's `App` ("app"). `_load_role` above does NOT load
     this relationship, since `effective_constraint` (no provenance) never
     reads it; calling `effective_constraints` on a group loaded via
-    `_load_role` would raise on this `lazy="raise_on_sql"` relationship."""
+    `_load_role` would raise on this `lazy="raise_on_sql"` relationship.
+
+    Also loads `AppTagMap.active_app`, matching `group_tag_map_options()` in
+    `api/routers/_eager.py` -- `_own_tag_sources` reads it to populate
+    `source_group_name` for an "app" origin."""
     return (
         await db.session.scalars(
             select(OktaGroup)
             .options(
                 selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_app_tag_mapping),
+                selectinload(OktaGroup.active_group_tags)
+                .joinedload(OktaGroupTagMap.active_app_tag_mapping)
+                .joinedload(AppTagMap.active_app),
             )
             .where(OktaGroup.id == group_id)
         )
@@ -214,7 +220,12 @@ async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
     reported with `origin == "app"` -- the `_own_tag_sources` branch where
     `tag_map.active_app_tag_mapping is not None`. The inherited group-tag row
     (`OktaGroupTagMap`) points at the `AppTagMap` row via `app_tag_map_id`;
-    that linkage is what makes `active_app_tag_mapping` non-null."""
+    that linkage is what makes `active_app_tag_mapping` non-null.
+
+    The source also carries the app's name in `source_group_name` -- for an
+    "app" origin the "source" is the App itself, not a group, so
+    `source_group_id` stays `None` (there's no group to point it at) while
+    the name is still meaningful to show in the UI."""
     app = AppFactory.build()
     app_group = AppGroupFactory.build()
     app_group.app_id = app.id
@@ -230,6 +241,8 @@ async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
     (entry,) = effective_constraints(loaded)
     (source,) = entry["sources"]
     assert source["origin"] == "app"
+    assert source["source_group_name"] == app.name
+    assert source["source_group_id"] is None
 
 
 async def test_blocking_source_names_the_member_association(db: Db) -> None:

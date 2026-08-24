@@ -89,4 +89,27 @@ describe('EffectiveConstraints', () => {
     expect(screen.getByRole('link', {name: 'SOX'})).toHaveAttribute('href', '/tags/SOX');
     expect(screen.getByText(/via membership in App-Foo-Admin/)).toBeInTheDocument();
   });
+
+  it('rounds a time limit that does not divide evenly into days', () => {
+    renderPanel([{...timeLimit, value: 90000}]); // 1.0416... days
+    expect(screen.getByText('Limit time of membership — 1 days')).toBeInTheDocument();
+  });
+
+  it('renders an unrecognized origin as itself, not as a false "direct" claim', () => {
+    renderPanel([
+      {
+        ...timeLimit,
+        sources: [
+          {tag_id: 't1', tag_name: 'SOX', origin: 'some_future_origin', source_group_id: null, source_group_name: null},
+        ],
+      },
+    ]);
+    expect(screen.getByText(/some_future_origin/)).toBeInTheDocument();
+  });
+
+  it('does not crash when a source entry omits `sources` (an optional field per the API contract)', () => {
+    const {container} = renderPanel([{constraint: 'require_member_reason', name: 'Require reason', value: true}]);
+    expect(container).not.toBeEmptyDOMElement();
+    expect(screen.getByText('Require reason')).toBeInTheDocument();
+  });
 });

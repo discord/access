@@ -66,15 +66,21 @@ def _own_tag_sources(constraint_key: str, group: OktaGroup, include_provenance: 
         if not tag.enabled or constraint_key not in tag.constraints:
             continue
         origin = "direct"
+        source_group_name = None
         if include_provenance and tag_map.active_app_tag_mapping is not None:
             origin = "app"
+            # For an "app" origin the "source" is an App, not a group -- there's
+            # no group to point `source_group_id` at, but the app's name is
+            # still meaningful to surface. (The field names are a pre-existing
+            # wart carried over from the group-association origins below.)
+            source_group_name = tag_map.active_app_tag_mapping.active_app.name
         sources.append(
             ConstraintSource(
                 tag=tag,
                 value=tag.constraints[constraint_key],
                 origin=origin,
                 source_group_id=None,
-                source_group_name=None,
+                source_group_name=source_group_name,
             )
         )
     return sources

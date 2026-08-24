@@ -15,26 +15,19 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
+import {EffectiveConstraintDetail, EffectiveConstraintSourceDetail} from '../api/apiSchemas';
+
 const TIME_LIMIT_CONSTRAINTS = ['member_time_limit', 'owner_time_limit'];
 
-interface EffectiveConstraintSource {
-  tag_id: string;
-  tag_name: string;
-  origin: string;
-  source_group_id?: string | null;
-  source_group_name?: string | null;
-}
-
-interface EffectiveConstraint {
-  constraint: string;
-  name: string;
-  value: any;
-  sources: EffectiveConstraintSource[];
-}
-
-function constraintLabel(entry: EffectiveConstraint): string {
+function constraintLabel(entry: EffectiveConstraintDetail): string {
   if (TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
-    return `${entry.name} — ${entry.value / 86400} days`;
+    // `value` is typed `void` by the generator (a known quirk — see
+    // apiSchemas.ts), but is a number of seconds at runtime. Round to the
+    // nearest day: constraint values aren't guaranteed to divide evenly by
+    // 86400 (e.g. a CLI-driven cap), and an unrounded quotient renders an
+    // ugly, falsely-precise fraction of a day.
+    const days = Math.round(Number(entry.value) / 86400);
+    return `${entry.name} — ${days} days`;
   }
   // Booleans are simple flags: their presence in the list is the information,
   // so appending "— Yes" would be noise.
@@ -44,7 +37,7 @@ function constraintLabel(entry: EffectiveConstraint): string {
   return `${entry.name} — ${entry.value}`;
 }
 
-function originLabel(source: EffectiveConstraintSource): string {
+function originLabel(source: EffectiveConstraintSourceDetail): string {
   switch (source.origin) {
     case 'app':
       return `via app ${source.source_group_name ?? ''}`.trim();
@@ -52,12 +45,16 @@ function originLabel(source: EffectiveConstraintSource): string {
       return `via membership in ${source.source_group_name}`;
     case 'owner_association':
       return `via ownership of ${source.source_group_name}`;
-    default:
+    case 'direct':
       return 'direct';
+    default:
+      // An origin we don't have specific copy for. Echo it back rather than
+      // asserting a specific (and possibly wrong) meaning like "direct".
+      return source.origin;
   }
 }
 
-export default function EffectiveConstraints({constraints}: {constraints: EffectiveConstraint[]}) {
+export default function EffectiveConstraints({constraints}: {constraints: EffectiveConstraintDetail[]}) {
   const [expanded, setExpanded] = React.useState(false);
 
   if (constraints.length === 0) {
@@ -85,7 +82,7 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
                 <TableRow key={entry.constraint}>
                   <TableCell>{constraintLabel(entry)}</TableCell>
                   <TableCell>
-                    {entry.sources.map((source, index) => (
+                    {(entry.sources ?? []).map((source, index) => (
                       <div key={`${source.tag_id}-${source.origin}-${source.source_group_id ?? index}`}>
                         <Link component={RouterLink} to={`/tags/${source.tag_name}`}>
                           {source.tag_name}

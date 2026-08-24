@@ -430,9 +430,11 @@ export default function ReadGroup() {
               </Stack>
             </Paper>
           </Grid>
-          <Grid item xs={12}>
-            <EffectiveConstraints constraints={(group as any)?.effective_constraints ?? []} />
-          </Grid>
+          {(group.effective_constraints ?? []).length > 0 && (
+            <Grid item xs={12}>
+              <EffectiveConstraints constraints={group.effective_constraints ?? []} />
+            </Grid>
+          )}
           {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
             <Grid item xs={12}>
               <AppGroupLifecyclePluginData
