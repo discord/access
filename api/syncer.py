@@ -529,7 +529,7 @@ EXPIRED_REQUEST_REASON = "Closed because the request expired"
 
 async def _expire_each(
     requests: Sequence[Any],
-    reject: Callable[[Any], Awaitable[Any]],
+    reject: Callable[[str], Awaitable[Any]],
     label: str,
 ) -> None:
     """Reject each request, isolating failures so one bad row can't abort the sweep.
@@ -546,7 +546,7 @@ async def _expire_each(
     `reject` is therefore called with the id, matching the `Model | str`
     constructor every reject operation already supports.
     """
-    request_ids = [request.id for request in requests]
+    request_ids: list[str] = [request.id for request in requests]
     for request_id in request_ids:
         try:
             await reject(request_id)
@@ -637,17 +637,30 @@ async def expire_role_requests() -> None:
 async def expire_group_requests() -> None:
     """Close pending group requests that aged out.
 
-    Age cutoff only, deliberately. Unlike an access or role request, a group
-    request past its requested_ownership_ending_at is not moot: its primary
-    payload is "create this group", and the resolver can edit
-    resolved_ownership_ending_at before approving, so no dead-on-arrival grant
-    can result. See test_no_expire_group_request_with_lapsed_ownership_window.
+    Age cutoff only, deliberately, and this is a policy call rather than a
+    claim that nothing can go wrong: a group request's payload is the group
+    itself, and destroying that ask over a stale secondary field (the requested
+    ownership window) loses more than it protects. Access and role requests get
+    a second, lapsed-window sweep because for them the window IS the ask.
+
+    Be aware of what that leaves open: ApproveGroupRequest falls back to
+    requested_ownership_ending_at when the approver supplies no resolved value,
+    and coalesce_ended_at passes a past timestamp straight through, so
+    approving a long-stale request can still write an already-expired ownership
+    row and leave the new group unowned. Repairing that belongs in the approve
+    path, not here. See test_no_expire_group_request_with_lapsed_ownership_window.
 
     Uses its own cutoff because a group request's approver may need to negotiate
     a name and pick tags rather than just answer yes/no.
     """
     logger.info("Group request expiration started.")
     max_age_seconds = settings.max_group_request_age_seconds
+
+    def reject(request_id: str) -> Awaitable[GroupRequest]:
+        return RejectGroupRequest(
+            group_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute()
 
     older_than_max = (
         await db.session.scalars(
@@ -657,14 +670,7 @@ async def expire_group_requests() -> None:
             .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
         )
     ).all()
-    await _expire_each(
-        older_than_max,
-        lambda request_id: RejectGroupRequest(
-            group_request=request_id,
-            rejection_reason=EXPIRED_REQUEST_REASON,
-        ).execute(),
-        "group request",
-    )
+    await _expire_each(older_than_max, reject, "group request")
 
     logger.info("Group request expiration finished.")
 

@@ -122,7 +122,11 @@ class Settings(BaseSettings):
     # longer fuse than a membership request. Unset falls back to
     # MAX_ACCESS_REQUEST_AGE_SECONDS via `max_group_request_age_seconds`, so
     # operators who never set it keep the behavior they already had.
-    MAX_GROUP_REQUEST_AGE_SECONDS: Optional[int] = None
+    # Unset falls back to MAX_ACCESS_REQUEST_AGE_SECONDS. An explicit 0 is
+    # honored and means "close every pending group request on each sync run";
+    # ge=0 rejects a negative value, which would otherwise expire future-dated
+    # rows.
+    MAX_GROUP_REQUEST_AGE_SECONDS: Optional[int] = Field(default=None, ge=0)
 
     # Cloudflare Access
     CLOUDFLARE_APPLICATION_AUDIENCE: Optional[str] = None
@@ -356,7 +360,6 @@ DATABASE_USES_PUBLIC_IP = settings.DATABASE_USES_PUBLIC_IP
 USER_DISPLAY_CUSTOM_ATTRIBUTES = settings.USER_DISPLAY_CUSTOM_ATTRIBUTES
 USER_SEARCH_CUSTOM_ATTRIBUTES = settings.USER_SEARCH_CUSTOM_ATTRIBUTES or ",".join(settings.user_search_attrs)
 MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
-MAX_GROUP_REQUEST_AGE_SECONDS = settings.max_group_request_age_seconds
 CLOUDFLARE_APPLICATION_AUDIENCE = settings.CLOUDFLARE_APPLICATION_AUDIENCE
 CLOUDFLARE_TEAM_DOMAIN = settings.CLOUDFLARE_TEAM_DOMAIN
 SECRET_KEY = settings.SECRET_KEY
