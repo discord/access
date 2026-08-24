@@ -185,11 +185,18 @@ class ModifyGroupsTimeLimit:
             if seconds_limit is None:
                 continue
             limit_from_now = datetime.now(UTC) + timedelta(seconds=seconds_limit)
+            # Unmanaged roles are exempt: `effective_ended_at` returns early
+            # for a group that is not managed, and the `cap-role-memberships`
+            # sweep filters `RoleGroup.is_managed`. Join through so this third
+            # enforcement point agrees with the other two.
             associated_role_ids = (
                 await db.session.scalars(
                     select(RoleGroupMap.role_group_id)
+                    .join(RoleGroup, RoleGroup.id == RoleGroupMap.role_group_id)
                     .where(RoleGroupMap.group_id.in_(group_ids))
                     .where(RoleGroupMap.is_owner.is_(is_owner_association))
+                    .where(RoleGroup.deleted_at.is_(None))
+                    .where(RoleGroup.is_managed.is_(True))
                     .where(
                         or_(
                             RoleGroupMap.ended_at.is_(None),

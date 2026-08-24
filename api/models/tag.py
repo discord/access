@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple, Optional
 
-from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag
+from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagConstraint
 
 
 def coalesce_constraints(constraint_key: str, tags: list[Tag]) -> Any:
@@ -55,8 +55,11 @@ class ConstraintSource(NamedTuple):
     value: Any
     # "direct" | "app" | "member_association" | "owner_association"
     origin: str
-    source_group_id: Optional[str]
-    source_group_name: Optional[str]
+    # For a group-association origin these name the source *group*; for an
+    # "app" origin `source_name` is the App's name and `source_id` is None.
+    # Hence the deliberately origin-agnostic names.
+    source_id: Optional[str]
+    source_name: Optional[str]
 
 
 def _own_tag_sources(constraint_key: str, group: OktaGroup, include_provenance: bool) -> list[ConstraintSource]:
@@ -66,21 +69,22 @@ def _own_tag_sources(constraint_key: str, group: OktaGroup, include_provenance: 
         if not tag.enabled or constraint_key not in tag.constraints:
             continue
         origin = "direct"
-        source_group_name = None
+        source_name = None
         if include_provenance and tag_map.active_app_tag_mapping is not None:
             origin = "app"
             # For an "app" origin the "source" is an App, not a group -- there's
-            # no group to point `source_group_id` at, but the app's name is
-            # still meaningful to surface. (The field names are a pre-existing
-            # wart carried over from the group-association origins below.)
-            source_group_name = tag_map.active_app_tag_mapping.active_app.name
+            # no group to point `source_id` at, but the app's name is still
+            # meaningful to surface. `active_app` filters `deleted_at`, so it is
+            # None for a soft-deleted app; fall back to no name rather than
+            # raising, as every other `active_*` read here does.
+            source_name = getattr(tag_map.active_app_tag_mapping.active_app, "name", None)
         sources.append(
             ConstraintSource(
                 tag=tag,
                 value=tag.constraints[constraint_key],
                 origin=origin,
-                source_group_id=None,
-                source_group_name=source_group_name,
+                source_id=None,
+                source_name=source_name,
             )
         )
     return sources
@@ -126,11 +130,24 @@ def _propagated_sources(constraint_key: str, group: OktaGroup) -> list[Constrain
                         tag=tag,
                         value=tag.constraints[key],
                         origin=origin,
-                        source_group_id=source_group.id,
-                        source_group_name=source_group.name,
+                        source_id=source_group.id,
+                        source_name=source_group.name,
                     )
                 )
     return sources
+
+
+def _fold(constraint: TagConstraint, sources: list[ConstraintSource]) -> Any:
+    """Coalesce `sources`' values pairwise under `constraint.coalesce`.
+
+    Seeded on `is None`, not on truthiness: a first source contributing a falsy
+    value (`False`, or a `0`-second time limit) is a real contribution and must
+    seed the fold rather than be skipped.
+    """
+    value = None
+    for source in sources:
+        value = source.value if value is None else constraint.coalesce(value, source.value)
+    return value
 
 
 def constraint_sources(
@@ -149,14 +166,7 @@ def constraint_sources(
 def effective_constraint(constraint_key: str, group: OktaGroup) -> Any:
     """Coalesce `constraint_key` across every tag in force on `group`, including
     tags propagated from associated groups when `group` is a role."""
-    constraint = Tag.CONSTRAINTS[constraint_key]
-    coalesced = None
-    for source in constraint_sources(constraint_key, group):
-        if coalesced is None:
-            coalesced = source.value
-        else:
-            coalesced = constraint.coalesce(coalesced, source.value)
-    return coalesced
+    return _fold(Tag.CONSTRAINTS[constraint_key], constraint_sources(constraint_key, group))
 
 
 def effective_ended_at(
@@ -191,11 +201,11 @@ def blocking_source(constraint_key: str, group: OktaGroup) -> Optional[Constrain
 
 def constraint_source_clause(source: Optional[ConstraintSource]) -> str:
     """Trailing clause naming where a constraint came from."""
-    if source is None or source.source_group_name is None:
+    if source is None or source.source_name is None:
         return "due to group tags"
     if source.origin == "member_association":
-        return f"due to tags on {source.source_group_name}, which this role is a member of"
-    return f"due to tags on {source.source_group_name}, which this role owns"
+        return f"due to tags on {source.source_name}, which this role is a member of"
+    return f"due to tags on {source.source_name}, which this role owns"
 
 
 def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
@@ -211,21 +221,18 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
         sources = constraint_sources(constraint_key, group, include_provenance=True)
         if not sources:
             continue
-        value = None
-        for source in sources:
-            value = source.value if value is None else constraint.coalesce(value, source.value)
         entries.append(
             {
                 "constraint": constraint_key,
                 "name": constraint.name,
-                "value": value,
+                "value": _fold(constraint, sources),
                 "sources": [
                     {
                         "tag_id": source.tag.id,
                         "tag_name": source.tag.name,
                         "origin": source.origin,
-                        "source_group_id": source.source_group_id,
-                        "source_group_name": source.source_group_name,
+                        "source_id": source.source_id,
+                        "source_name": source.source_name,
                     }
                     for source in sources
                 ],

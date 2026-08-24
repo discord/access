@@ -60,8 +60,8 @@ class TagSummary(BaseModel):
 
 class TagListItem(BaseModel):
     """Tag list-endpoint item. Slim field set (id, name, description,
-    enabled, constraints, created_at, updated_at) — does not hydrate
-    `active_group_tags`, which would be an N+1 across the page."""
+    enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+    not hydrate `active_group_tags`, which would be an N+1 across the page."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -297,15 +297,20 @@ class EffectiveConstraintSourceDetail(BaseModel):
     tag_name: str
     # "direct" | "app" | "member_association" | "owner_association"
     origin: str
-    source_group_id: Optional[str] = None
-    source_group_name: Optional[str] = None
+    # Deliberately not `source_group_*`: for an "app" origin the source is an
+    # App, so `source_name` carries the app's name and `source_id` is None.
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
 
 
 class EffectiveConstraintDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     constraint: str
     name: str
-    value: Any
+    # Every constraint in `Tag.CONSTRAINTS` is either a seconds count or a
+    # flag. Spelling the union out (rather than `Any`) keeps the generated
+    # TypeScript client from rendering this as `void`.
+    value: int | bool
     sources: list[EffectiveConstraintSourceDetail] = Field(default_factory=list)
 
 

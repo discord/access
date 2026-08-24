@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
@@ -290,6 +291,84 @@ async def test_retroactive_capping_respects_the_gate(db: Db, mocker: MockerFixtu
             select(OktaUserGroupMember)
             .where(OktaUserGroupMember.group_id == role.id)
             .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is None
+
+
+@pytest.mark.parametrize(
+    ("member_limit", "owner_limit"),
+    [(3600, 999_999), (999_999, 3600)],
+    ids=["member_side_shorter", "owner_side_shorter"],
+)
+async def test_member_and_owner_associations_to_one_group_coalesce_to_the_minimum(
+    db: Db, mocker: MockerFixture, user: OktaUser, member_limit: int, owner_limit: int
+) -> None:
+    """A role can be both a MEMBER and an OWNER of the same tagged group. The
+    member association reads the group's member limit; the owner association
+    reads the owner-side counterpart. Both feed the role's member side, so the
+    effective limit is the minimum of the two.
+
+    Parametrized so each direction takes a turn being the shorter one -- if
+    either association were dropped, exactly one case would regress to the
+    other's (deliberately far larger) limit."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: member_limit,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: owner_limit,
+        }
+    )
+    actor = OktaUserFactory.build()
+    db.session.add_all([group, role, tag, user, actor])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=True))
+    await db.session.commit()
+
+    await ModifyGroupUsers(group=role, members_to_add=[user.id], current_user_id=actor.id, sync_to_okta=False).execute()
+
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role.id)
+            .where(OktaUserGroupMember.user_id == user.id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=min(member_limit, owner_limit))
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_retroactive_capping_skips_unmanaged_roles(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    """An externally managed role is exempt from constraint enforcement: both
+    `effective_ended_at` (grant time) and the `cap-role-memberships` sweep
+    return early for one. The retroactive bulk update must agree, or a tag
+    landing on the group would cap grants the other two paths never touch."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build(is_managed=False)
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    role_id, user_id = role.id, user.id
+    await ModifyGroupsTimeLimit(groups=[group.id], tags=[tag.id]).execute()
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
         )
     ).one()
     assert membership.ended_at is None
