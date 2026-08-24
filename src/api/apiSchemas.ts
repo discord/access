@@ -135,6 +135,7 @@ export type AppGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default app_group
    */
@@ -428,6 +429,21 @@ export type DeleteMessage = {
   deleted: boolean;
 };
 
+export type EffectiveConstraintDetail = {
+  constraint: string;
+  name: string;
+  value: void;
+  sources?: EffectiveConstraintSourceDetail[];
+};
+
+export type EffectiveConstraintSourceDetail = {
+  tag_id: string;
+  tag_name: string;
+  origin: string;
+  source_group_id?: string | null;
+  source_group_name?: string | null;
+};
+
 export type GroupDetail =
   | (Omit<OktaGroupDetail, 'type'> & {
       type: 'okta_group';
@@ -559,6 +575,7 @@ export type OktaGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default okta_group
    */
@@ -1057,6 +1074,7 @@ export type RoleGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default role_group
    */

@@ -20,6 +20,8 @@ from api.schemas.core_schemas import (  # noqa: F401
     AppIdRef,
     AppSummary,
     AppTagMapDetail,
+    EffectiveConstraintDetail,
+    EffectiveConstraintSourceDetail,
     GroupDetail,
     GroupMembersSummary,
     GroupRef,
