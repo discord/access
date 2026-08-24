@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import and_, func, or_, select
 from api.config import settings
@@ -514,9 +515,51 @@ async def sync_group_ownerships(
     logger.info("Ownership sync finished.")
 
 
+# The resolution_reason written when a request is closed for age or for a lapsed
+# window, shared by all three sweeps. Worth knowing when reading the audit
+# trail: a null resolver alone does not identify an expiry, since requester
+# deletion, group deletion, group unmanaging, and a conditional-access denial
+# all close requests with no actor too. This wording is what tells them apart.
+EXPIRED_REQUEST_REASON = "Closed because the request expired"
+
+
+async def _expire_each(
+    requests: Sequence[Any],
+    reject: Callable[[Any], Awaitable[Any]],
+    label: str,
+) -> None:
+    """Reject each request, isolating failures so one bad row can't abort the sweep.
+
+    The reject operations commit per request, so a failure only needs its own
+    transaction rolled back. Without this, a single request that raises (e.g.
+    ConflictError, when a reviewer resolves it mid-sync) aborts expiration for
+    every remaining request and will do so again on the next run.
+
+    IDs are read up front, before any rollback: `db.session.rollback()` expires
+    every instance in the identity map (not just the failed one), so touching an
+    attribute on one of the *other*, not-yet-processed `requests` afterward would
+    force a lazy reload with no async context to run it in (`MissingGreenlet`).
+    `reject` is therefore called with the id, matching the `Model | str`
+    constructor every reject operation already supports.
+    """
+    request_ids = [request.id for request in requests]
+    for request_id in request_ids:
+        try:
+            await reject(request_id)
+        except Exception:
+            logger.exception(f"Failed to expire {label} {request_id}, skipping.")
+            await db.session.rollback()
+
+
 async def expire_access_requests() -> None:
     logger.info("Access request expiration started.")
     MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+
+    def reject(request_id: str) -> Awaitable[AccessRequest]:
+        return RejectAccessRequest(
+            access_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute()
 
     older_than_max = (
         await db.session.scalars(
@@ -529,11 +572,7 @@ async def expire_access_requests() -> None:
             )
         )
     ).all()
-    for access_request in older_than_max:
-        await RejectAccessRequest(
-            access_request=access_request,
-            rejection_reason="Closed because the request expired",
-        ).execute()
+    await _expire_each(older_than_max, reject, "access request")
 
     older_than_request = (
         await db.session.scalars(
@@ -543,11 +582,7 @@ async def expire_access_requests() -> None:
             .where(AccessRequest.request_ending_at < func.now())
         )
     ).all()
-    for access_request in older_than_request:
-        await RejectAccessRequest(
-            access_request=access_request,
-            rejection_reason="Closed because the request expired",
-        ).execute()
+    await _expire_each(older_than_request, reject, "access request")
 
     logger.info("Access request expiration finished.")
 
