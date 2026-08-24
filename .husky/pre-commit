@@ -1,4 +1,9 @@
 #!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+# Deliberately no `_/husky.sh` bootstrap: it resolves through $0, i.e.
+# core.hooksPath, which in a git worktree may point at a different checkout's
+# .husky -- and `_/` is gitignored, so it exists only where `npm install` last
+# ran. git runs hooks with cwd at the current worktree root, so lint-staged
+# already sees the right files. Keep this hook free of $0-relative paths.
+[ "$HUSKY" = "0" ] && exit 0
 
 npx lint-staged
