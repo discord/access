@@ -259,9 +259,20 @@ function clampedToTimeLimit(
  *
  * `timeLimit` (seconds, from a tag constraint) is OPTIONAL and defaults to no
  * clamping. Pass it only where you want the result restricted to what the tag
- * currently allows. The two Read.tsx call sites deliberately pass nothing,
- * because they apply their own clamp separately when building form
- * defaultValues; passing it there would double-clamp.
+ * currently allows. There are five call sites, for three different reasons:
+ * - `requests/Read.tsx` and `role_requests/Read.tsx` each call this once with
+ *   no `timeLimit`, for the approve form's `requestedUntil`; both apply their
+ *   own clamp separately (via `autofill_until` / `requestedUntilAdjusted`)
+ *   when building form defaultValues, so passing it here too would
+ *   double-clamp.
+ * - Those same two files each call this a second time, for the reopen
+ *   prefill, passing the current `timeLimit` so the prefill respects a tag
+ *   limit that may have tightened since the original request.
+ * - `group_requests/Read.tsx` calls this once, also for a reopen prefill, but
+ *   passes `timeLimit: null` explicitly rather than omitting it: the group
+ *   create form that reopen hands the prefill to applies no tag clamp at all
+ *   (it doesn't import `minTagTime`), so there is nothing to clamp against
+ *   there, ever.
  */
 export function reconstructRequestedUntil(args: {
   createdAt?: string | null;
