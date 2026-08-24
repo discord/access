@@ -48,6 +48,7 @@ import RoleMembers from './RoleMembers';
 import {
   groupBy,
   displayUserName,
+  isExpiredRequest,
   minTagTime,
   minTagTimeGroups,
   ownerCantAddSelf,
@@ -73,6 +74,7 @@ import {
   AppGroupDetail,
   AppGroupForAppDetail,
   GroupRefForMembership,
+  OktaGroupDetail,
   OktaUserGroupMemberDetail,
   OktaUserSummary,
   GroupDetail,
@@ -88,6 +90,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
 import AccessHistory from '../../components/AccessHistory';
+import CreateRequest from './Create';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -262,6 +265,16 @@ export default function ReadRoleRequest() {
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
+
+  // Role requests must be submitted by an owner of the role, so reopen is
+  // offered to current role owners rather than only the original requester.
+  const canReopen = isExpiredRequest(roleRequest) && canManageGroup(currentUser, roleRequest.requester_role);
+  const reopenPrefill = reconstructRequestedUntil({
+    createdAt: roleRequest.created_at,
+    endingAt: roleRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+    timeLimit: timeLimit,
+  });
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -1108,6 +1121,21 @@ export default function ReadRoleRequest() {
                         <b>Reason:</b>{' '}
                         {roleRequest.resolution_reason ? roleRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {canReopen ? (
+                        <Box sx={{mt: 2}}>
+                          <CreateRequest
+                            enabled
+                            currentUser={currentUser}
+                            role={roleRequest.requester_role as RoleGroupDetail}
+                            group={roleRequest.requested_group as OktaGroupDetail | AppGroupDetail}
+                            owner={roleRequest.request_ownership ?? false}
+                            reopen
+                            until={reopenPrefill.until}
+                            customUntil={reopenPrefill.customUntil}
+                            reason={roleRequest.request_reason ?? ''}
+                          />
+                        </Box>
+                      ) : null}
                     </Paper>
                   )}
                 </TimelineContent>
