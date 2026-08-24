@@ -26,15 +26,7 @@ import Disabled from '@mui/icons-material/PauseCircle';
 import Enabled from '@mui/icons-material/TaskAlt';
 
 import {useTagById, useGroupByIdPut, useAppByIdPut, GroupByIdPutRequestBody} from '../../api/apiComponents';
-import {
-  AppDetail,
-  AppGroupDetail,
-  AppTagMapDetail,
-  GroupDetail,
-  OktaGroupTagMapDetail,
-  TagDetail,
-  UpdateAppBody,
-} from '../../api/apiSchemas';
+import {AppDetail, AppGroupDetail, AppTagMapDetail, GroupDetail, TagDetail, UpdateAppBody} from '../../api/apiSchemas';
 
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin} from '../../authorization';
@@ -48,6 +40,7 @@ import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
 import PropagationNoteView from './PropagationNoteView';
+import {buildGroupsWithTagRows, chipLabel, hasDirectChip} from './groupsWithTagRows';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -76,6 +69,12 @@ export default function ReadTag() {
   }
 
   const tag = data ?? ({} as TagDetail);
+
+  // Row-per-entity: a group tagged both directly and via its app, or a role
+  // reached by propagation through more than one tagged group, is one row
+  // with one chip per source rather than one row per source. See
+  // groupsWithTagRows.ts.
+  const groupsWithTagRows = buildGroupsWithTagRows(tag.active_group_tags, tag.propagated_to_groups);
 
   const removeTagFromApp = (appToRemove: AppDetail, tagId: string) => {
     let app: UpdateAppBody = {
@@ -336,7 +335,7 @@ export default function ReadTag() {
                     <TableCell colSpan={2}>
                       <Grid container>
                         <Grid item xs={3}>
-                          Direct or via App
+                          Tag Source
                         </Grid>
                         <Grid item xs={9}>
                           <Box
@@ -346,7 +345,7 @@ export default function ReadTag() {
                               alignItems: 'right',
                             }}>
                             <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total: {tag.active_group_tags ? tag.active_group_tags.length : 0}
+                            Total: {groupsWithTagRows.length}
                           </Box>
                         </Grid>
                       </Grid>
@@ -354,49 +353,44 @@ export default function ReadTag() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {tag.active_group_tags && tag.active_group_tags.length > 0 ? (
-                    tag.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => (
-                      <TableRow
-                        key={
-                          'taggedgroups' + tagMap.active_group?.id + (tagMap.active_app_tag_mapping ? 'app' : 'direct')
-                        }>
+                  {groupsWithTagRows.length > 0 ? (
+                    groupsWithTagRows.map((row) => (
+                      <TableRow key={'taggedgroups' + row.groupId}>
                         <TableCell>
                           <Link
-                            to={`/groups/${tagMap.active_group?.name}`}
+                            to={`/groups/${row.groupName}`}
                             sx={{
                               textDecoration: 'none',
                               color: 'inherit',
                             }}
                             component={RouterLink}>
-                            {tagMap.active_group?.name}
+                            {row.groupName}
                           </Link>
                         </TableCell>
                         <TableCell>
-                          {tagMap.active_group?.type == 'role_group'
+                          {row.groupType == 'role_group'
                             ? 'Role Group'
-                            : tagMap.active_group?.type == 'app_group'
+                            : row.groupType == 'app_group'
                               ? 'App Group'
                               : 'Group'}
                         </TableCell>
                         <TableCell>
-                          {tagMap.active_app_tag_mapping ? (
-                            <Chip
-                              key={'group' + tagMap.active_group?.id}
-                              label={(tagMap.active_group as AppGroupDetail).app?.name}
-                              color="primary"
-                              variant="outlined"
-                            />
-                          ) : (
-                            <Chip key={'group' + tagMap.active_group?.id} label="Direct" color="primary" />
-                          )}
+                          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                            {row.chips.map((chip, index) => (
+                              <Chip
+                                key={'group' + row.groupId + chip.kind + index}
+                                label={chipLabel(chip)}
+                                color="primary"
+                                variant={chip.kind === 'direct' ? 'filled' : 'outlined'}
+                              />
+                            ))}
+                          </Stack>
                         </TableCell>
                         <TableCell align="right">
-                          {isAccessAdmin(currentUser) && !tagMap.active_app_tag_mapping ? (
+                          {isAccessAdmin(currentUser) && hasDirectChip(row) ? (
                             <IconButton
                               size="small"
-                              onClick={() =>
-                                removeTagFromGroup(tagMap.active_group! as unknown as GroupDetail, tag.id)
-                              }>
+                              onClick={() => removeTagFromGroup(row.directGroup! as unknown as GroupDetail, tag.id)}>
                               <DeleteIcon />
                             </IconButton>
                           ) : null}

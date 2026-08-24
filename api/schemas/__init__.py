@@ -43,6 +43,7 @@ from api.schemas.core_schemas import (  # noqa: F401
     RoleMembersSummary,
     TagDetail,
     TagListItem,
+    TagPropagationTargetDetail,
     TagSummary,
 )
 from api.schemas.delete_message import DeleteMessage  # noqa: F401

@@ -105,3 +105,40 @@ async def test_group_detail_app_tag_has_app_origin(app: FastAPI, client: AsyncCl
     constraints = response.json()["effective_constraints"]
     assert len(constraints) == 1
     assert constraints[0]["sources"][0]["origin"] == "app"
+
+
+async def test_tag_detail_lists_roles_reached_by_propagation(
+    app: FastAPI, client: AsyncClient, db: Db, url_for: Any
+) -> None:
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(name="SOX", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, role, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    await db.session.commit()
+
+    response = await client.get(url_for("tag_by_id", tag_id=tag.id))
+    assert response.status_code == 200
+    propagated = response.json()["propagated_to_groups"]
+    assert len(propagated) == 1
+    assert propagated[0]["group_id"] == role.id
+    assert propagated[0]["source_group_id"] == group.id
+    assert propagated[0]["origin"] == "member_association"
+
+
+async def test_tag_detail_omits_propagation_when_gated_off(
+    app: FastAPI, client: AsyncClient, db: Db, url_for: Any
+) -> None:
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(name="SOX", propagate_to_roles=False)
+    db.session.add_all([group, role, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    await db.session.commit()
+
+    response = await client.get(url_for("tag_by_id", tag_id=tag.id))
+    assert response.json()["propagated_to_groups"] == []
