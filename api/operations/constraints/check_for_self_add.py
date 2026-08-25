@@ -75,10 +75,9 @@ class CheckForSelfAdd:
                     + f"from readding themself as owner to {group.name} {clause}",
                 )
         if len(self.members_to_add) > 0 and current_user.id in self.members_to_add:
-            # For a role, `effective_constraint` also covers the groups the role
-            # is a member of (same key) and the groups it owns (owner-side key),
-            # which the two hand-rolled traversals here used to do. The clause
-            # keeps naming which group imposed the restriction.
+            # For a role, `effective_constraint` also covers the groups the
+            # role is a member of (same key) and the groups it owns (owner-side
+            # key). The clause names which group imposed the restriction.
             key = Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY
             if group.is_managed and effective_constraint(key, group) is True:
                 clause = constraint_source_clause(key, group)

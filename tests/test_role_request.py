@@ -1478,9 +1478,9 @@ async def test_role_request_assignee_filter_excludes_propagated_self_add_role_ta
     role-requests list must key off `effective_constraint`, which also sees
     `disallow_self_add_membership` propagated onto a *role* the assignee owns
     (because that role is itself a member of a tagged group), not only tags
-    applied directly to the role. Regressing to the old direct-tags-only
-    `coalesce_constraints` would offer the assignee a request their approval
-    would then be blocked from resolving."""
+    applied directly to the role. Keying off only directly-applied tags would
+    offer the assignee a request their approval would then be blocked from
+    resolving."""
     role_owner = await OktaUserFactory.create_async()
     other_member = await OktaUserFactory.create_async()
     owned_role = await RoleGroupFactory.create_async()

@@ -1148,8 +1148,8 @@ class Tag(Base):
 
     # Whether this tag's constraints reach roles associated with a tagged group.
     # Distinct from `enabled`: `enabled=False` turns the tag off everywhere,
-    # whereas this only stops propagation. Defaults on so that upgrading
-    # preserves today's unconditional self-add/reason propagation.
+    # whereas this only stops propagation. On unless an operator opts out, so a
+    # tag constrains every path to the access it governs by default.
     propagate_to_roles: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, default=True, server_default=expression.true()
     )

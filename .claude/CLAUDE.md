@@ -281,6 +281,28 @@ If you change what fields are logged or add a new `EventType`, any downstream de
 that parses these audit logs (e.g. a SIEM or a Panther detection schema) also needs to be
 updated. Those schemas typically live in the operator's own private repo, outside Access.
 
+## Comments and docstrings describe the present
+
+**Write what the code does now, not what changed.** Comments, docstrings, READMEs, and these
+steering files describe current behavior and intent. They are read by people who never saw the
+previous version and for whom "used to", "previously", "no longer", "today" (meaning
+pre-change), and "the old X" are noise at best and misleading once the referenced past is two
+refactors gone. Put the narrative of a change in the commit message and the PR description,
+which is where a reader goes looking for it.
+
+The exception is a genuine changelog — release notes, a migration guide, an Access 1.x-to-2.0
+upgrade note. Those exist precisely to describe a difference between versions.
+
+This does not mean stripping rationale. "Seeded on `is None`, not truthiness, so a falsy first
+value still counts" is about the code as it stands and is worth keeping. "Changed from
+truthiness to `is None`" is not.
+
+**Public functions and classes document their interface.** Anything importable from another
+module gets a docstring covering what it does, its arguments, what it returns, and what it
+raises. `api/plugins/app_group_lifecycle.py` is the reference for the house style. Internal
+helpers (leading underscore) need only a one-line summary, but they do need that — a reader
+skimming a module should not have to parse a body to learn what a function is for.
+
 ## Follow existing patterns before inventing new ones
 
 Before implementing anything, look at existing code that does something similar:

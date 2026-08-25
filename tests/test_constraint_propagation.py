@@ -33,8 +33,9 @@ async def _role_associated_with_tagged_group(
 
 async def test_owner_association_blocks_self_add_to_role(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
     """A role that OWNS a group with disallow_self_add_ownership: the role's
-    owner cannot add themself as a member of the role. This is the case the
-    deleted owner loop used to cover."""
+    owner cannot add themself as a member of the role. The group's owner-side
+    key governs the role's member side, because members of a role that owns a
+    group become owners of it."""
     mocker.patch.object(okta, "add_user_to_group")
     role, _ = await _role_associated_with_tagged_group(
         db, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True}, is_owner=True
@@ -108,8 +109,8 @@ async def test_owner_association_requires_reason_to_add_role_member(
 
 
 async def test_member_association_blocks_self_add_to_role(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
-    """Parity with today: a role that is a MEMBER of a group with
-    disallow_self_add_membership still blocks."""
+    """A role that is a MEMBER of a group with disallow_self_add_membership
+    blocks its owner from self-adding, reading the same key on the group."""
     mocker.patch.object(okta, "add_user_to_group")
     role, _ = await _role_associated_with_tagged_group(
         db, constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True}, is_owner=False
