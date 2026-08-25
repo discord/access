@@ -12,6 +12,7 @@ from sqlalchemy.orm import InstrumentedAttribute, joinedload
 from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.services import okta
+from api.services.okta_service import OktaResourceNotFoundError
 
 app_group_lifecycle_plugin_name = "access_app_group_lifecycle"
 hookspec = pluggy.HookspecMarker(app_group_lifecycle_plugin_name)
@@ -54,6 +55,50 @@ class AmbiguousOktaTargetError(Exception):
 
 class MissingOktaTargetError(Exception):
     """Okta is not aware of a target group from an external app and so cannot create a push mapping."""
+
+
+class UnresolvableOktaTargetError(ValueError):
+    """A push mapping's target group exists in Okta but carries no external id, so the downstream
+    group it represents cannot be identified.
+
+    Okta populates external-id profile attributes only when it IMPORTS a group from the downstream
+    app. A target group Okta created itself via group push has only name/description, and a later
+    import does not backfill it -- so unlike `MissingOktaTargetError` this never self-heals and must
+    not be deferred. How a caller surfaces it depends on whether the Access group already carries
+    enough configuration to identify the downstream group by another route: if it does, the link is
+    genuinely broken; if it does not, the group is simply not configured yet.
+
+    Subclasses ValueError because that is what this condition raised before the typed errors
+    existed, so plugins already catching ValueError here keep working.
+
+    Attributes:
+        mapping_id: The push mapping that was found. A caller may record it to avoid creating a
+            duplicate on a later pass, but only once it has confirmed the mapping targets the group
+            the Access group is configured for -- this error means that link could not be verified.
+        target_group_name: The Okta target group's profile name, the only identifying attribute it
+            carries. Okta names a group it creates via push after the name it was pushed with, so
+            this is what lets a caller tell an operator which downstream group the mapping points
+            at, and check a later configuration against it."""
+
+    def __init__(self, message: str, mapping_id: str, target_group_name: str | None) -> None:
+        super().__init__(message)
+        self.mapping_id = mapping_id
+        self.target_group_name = target_group_name
+
+
+class DanglingPushMappingError(Exception):
+    """A push mapping still references a target group that Okta no longer has.
+
+    The link is broken at the Okta end: the target group was deleted out of band, so nothing
+    downstream can be resolved through it. Like `UnresolvableOktaTargetError` this does not
+    self-heal, and unlike it the mapping itself is unusable -- a caller must not record the
+    mapping id as this group's link, or a later pass will believe the group is already linked
+    and skip re-creating it. Repair needs the stale mapping removed and the group re-pushed."""
+
+    def __init__(self, message: str, mapping_id: str, target_group_id: str) -> None:
+        super().__init__(message)
+        self.mapping_id = mapping_id
+        self.target_group_id = target_group_id
 
 
 logger = logging.getLogger(__name__)
@@ -703,7 +748,9 @@ class AppGroupLifecycleContext:
 
         Raises:
             Exception: If the mapping exists but has no id or no target group id.
-            ValueError: If the target group's profile does not carry the external id field.
+            DanglingPushMappingError: If the mapped target group no longer exists in Okta.
+            UnresolvableOktaTargetError: If the target group's profile does not carry the external
+                id field, which is the case for any target group Okta created via group push.
         """
         mappings = await okta.list_group_push_mappings(okta_app_id, sourceGroupId=group.id)
         # Okta allows at most one mapping per app, source, and target.
@@ -722,7 +769,19 @@ class AppGroupLifecycleContext:
         # Custom Okta attributes live in the profile union's actual_instance.additional_properties;
         # both the profile and its actual_instance are Optional on the SDK model, so guard before
         # dereferencing them.
-        profile = (await okta.get_group(target_group_id)).group.profile
+        try:
+            profile = (await okta.get_group(target_group_id)).group.profile
+        except OktaResourceNotFoundError as e:
+            # The mapping outlived its target group. Surfaced as a typed error rather than letting
+            # the raw SDK 404 escape, so callers can tell "this link is broken" from a real fault.
+            raise DanglingPushMappingError(
+                f"The Okta push mapping for {group.name} references target group {target_group_id}, "
+                "which no longer exists in Okta. The link is broken and will not recover on its own: "
+                "remove the stale mapping and re-push the group, or re-create the mapping against "
+                "the correct target group.",
+                mapping_id=mapping_id,
+                target_group_id=target_group_id,
+            ) from e
         actual_instance = profile.actual_instance if profile is not None else None
         external_id = (
             (actual_instance.additional_properties or {}).get(target_group_external_id_field)
@@ -730,9 +789,27 @@ class AppGroupLifecycleContext:
             else None
         )
         if not external_id:
-            raise ValueError(
-                f"ID '{target_group_external_id_field}' could not be resolved for target group mapped to "
-                f"{group.name}.\nTarget group {target_group_id} has profile:\n{profile}"
+            # The profile is dumped here rather than folded into the exception message: the message
+            # reaches operators as the group's sync status detail, where a raw SDK profile is noise.
+            # DEBUG rather than WARNING because this repeats on every sync for as long as the group
+            # stays unresolved, which for a push-created target group is indefinitely. It is also
+            # not the actionable line -- the caller reports the condition and what to do about it.
+            # This layer logs it only because it is the one that has the profile, which is what a
+            # maintainer needs when the attribute is missing for an unexpected reason.
+            logger.debug(
+                f"Target group {target_group_id} mapped to {group.name} has no "
+                f"'{target_group_external_id_field}'. Profile:\n{profile}"
+            )
+            target_group_name = getattr(actual_instance, "name", None) if actual_instance is not None else None
+            raise UnresolvableOktaTargetError(
+                f"Okta target group {target_group_id} ({target_group_name or 'unnamed'}) mapped to "
+                f"{group.name} has no '{target_group_external_id_field}' in its profile. Okta sets that "
+                "attribute only when it imports a group from the downstream app; a target group Okta "
+                "created via group push never receives it, and re-running an import does not backfill it. "
+                "Identify the downstream group by the target group's name, or re-link this group to a "
+                "target group that Okta imported.",
+                mapping_id=mapping_id,
+                target_group_name=target_group_name,
             )
         return mapping_id, external_id
 
