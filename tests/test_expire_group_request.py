@@ -53,12 +53,11 @@ async def test_no_expire_group_request_with_lapsed_ownership_window(
     loses more than it protects. For an access or role request the window IS
     the ask, which is why those get a second sweep.
 
-    What this leaves open, so nobody mistakes it for safe: ApproveGroupRequest
-    falls back to requested_ownership_ending_at when the approver supplies no
-    resolved value, and coalesce_ended_at passes a past timestamp through
-    unchanged, so approving a long-stale request can still write an
-    already-expired ownership row and leave the new group unowned. That is worth
-    fixing in the approve path; it is not a reason to expire the request here.
+    What this leaves to the approve path: ApproveGroupRequest falls back to
+    requested_ownership_ending_at when the approver supplies no resolved value,
+    so approving a long-stale request could write an already-expired ownership
+    row and leave the new group unowned. That is handled there (the approval is
+    refused outright); it was never a reason to expire the request here.
     """
     group_request.created_at = datetime.now(timezone.utc) - timedelta(days=1)
     group_request.requested_ownership_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
