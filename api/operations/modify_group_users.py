@@ -73,6 +73,11 @@ class ModifyGroupUsers:
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     joinedload(AppGroup.app),
                     selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                    # `effective_ended_at` below reads both association
+                    # directions and each associated group's tags to find the
+                    # time limits reaching a role. They are `raise_on_sql`, so
+                    # they must be loaded here even when this group is not a
+                    # role and the collections come back empty.
                     selectinload(RoleGroup.active_role_associated_group_member_mappings)
                     .joinedload(RoleGroupMap.active_group)
                     .selectinload(OktaGroup.active_group_tags)
