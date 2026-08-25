@@ -358,6 +358,16 @@ export type AuditUserGroupRow = {
   ended_actor?: UserSummaryForAudit | null;
 };
 
+/**
+ * How a tag reaches the group a constraint is being evaluated for.
+ *
+ * A `StrEnum` so it serializes as the bare string it always was: the JSON
+ * contract is unchanged, but the OpenAPI schema now carries the value set,
+ * and the generated TypeScript client gets a literal union instead of
+ * `string`.
+ */
+export type ConstraintOrigin = 'direct' | 'app' | 'member_association' | 'owner_association';
+
 export type CreateAccessRequestBody = {
   group_id: string;
   /**
@@ -439,7 +449,7 @@ export type EffectiveConstraintDetail = {
 export type EffectiveConstraintSourceDetail = {
   tag_id: string;
   tag_name: string;
-  origin: string;
+  origin: ConstraintOrigin;
   source_id?: string | null;
   source_name?: string | null;
 };
@@ -1468,8 +1478,7 @@ export type TagDetail = {
 /**
  * Tag list-endpoint item. Slim field set (id, name, description,
  * enabled, propagate_to_roles, constraints, created_at, updated_at) — does
- * not hydrate `active_group_tags`, which would be an N+1 across the page,
- * nor `propagated_to_groups`, which needs a per-tag join.
+ * not hydrate `active_group_tags`, which would be an N+1 across the page.
  */
 export type TagListItem = {
   id: string;

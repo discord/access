@@ -23,6 +23,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing_extensions import TypeAliasType
 
+from api.models.tag import ConstraintOrigin
 from api.schemas.datetimes import FlexibleDatetime
 
 
@@ -296,7 +297,7 @@ class EffectiveConstraintSourceDetail(BaseModel):
     tag_id: str
     tag_name: str
     # "direct" | "app" | "member_association" | "owner_association"
-    origin: str
+    origin: ConstraintOrigin
     # Deliberately not `source_group_*`: for an "app" origin the source is an
     # App, so `source_name` carries the app's name and `source_id` is None.
     source_id: Optional[str] = None

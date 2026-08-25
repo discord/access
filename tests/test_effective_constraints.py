@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
 from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import blocking_source, constraint_source_clause, effective_constraint, effective_constraints
+from api.models.tag import constraint_source_clause, constraint_sources, effective_constraint, effective_constraints
 from tests.factories import (
     AppFactory,
     AppGroupFactory,
@@ -244,7 +244,7 @@ async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
     (source,) = entry["sources"]
     assert source["origin"] == "app"
     assert source["source_name"] == app.name
-    assert source["source_id"] is None
+    assert source["source_id"] == app.id
 
 
 async def test_effective_constraints_tolerates_a_soft_deleted_app(db: Db) -> None:
@@ -297,22 +297,51 @@ async def test_effective_constraints_tolerates_a_soft_deleted_app(db: Db) -> Non
     assert source["source_name"] is None
 
 
-async def test_blocking_source_names_the_member_association(db: Db) -> None:
+async def test_constraint_source_clause_names_the_member_association(db: Db) -> None:
     role = await _setup(db, constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True}, is_owner=False)
-    source = blocking_source(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
-    assert source is not None
-    assert source.origin == "member_association"
-    assert "which this role is a member of" in constraint_source_clause(source)
-    assert source.source_name in constraint_source_clause(source)
+    clause = constraint_source_clause(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
+    assert "which this role is a member of" in clause
+    (source,) = constraint_sources(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
+    assert source.source_name in clause
 
 
-async def test_blocking_source_names_the_owner_association(db: Db) -> None:
+async def test_constraint_source_clause_names_the_owner_association(db: Db) -> None:
     role = await _setup(db, constraints={Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: True}, is_owner=True)
-    source = blocking_source(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
-    assert source is not None
-    assert source.origin == "owner_association"
-    assert "which this role owns" in constraint_source_clause(source)
+    clause = constraint_source_clause(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, role)
+    assert "which this role owns" in clause
 
 
-async def test_constraint_source_clause_falls_back_for_direct_tags(db: Db) -> None:
-    assert constraint_source_clause(None) == "due to group tags"
+async def test_constraint_source_clause_names_every_blocking_source(db: Db) -> None:
+    """Each truthy source blocks independently, so the message names them all."""
+    group_a = OktaGroupFactory.build()
+    group_b = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    db.session.add_all([group_a, group_b, role, tag])
+    await db.session.commit()
+    db.session.add_all(
+        [
+            OktaGroupTagMapFactory.build(group_id=group_a.id, tag_id=tag.id),
+            OktaGroupTagMapFactory.build(group_id=group_b.id, tag_id=tag.id),
+            RoleGroupMap(group_id=group_a.id, role_group_id=role.id, is_owner=False),
+            RoleGroupMap(group_id=group_b.id, role_group_id=role.id, is_owner=False),
+        ]
+    )
+    await db.session.commit()
+    clause = constraint_source_clause(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, await _load_role(db, role.id))
+    assert group_a.name in clause
+    assert group_b.name in clause
+    assert " and " in clause
+
+
+async def test_constraint_source_clause_falls_back_to_the_group_itself(db: Db) -> None:
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, group.id)
+    assert constraint_source_clause(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) == (
+        "due to tags on this group"
+    )

@@ -464,7 +464,7 @@ the OR) across both directions. Propagation applies only when the tag is **enabl
 `propagate_to_roles` is set, and only to managed source groups and managed roles.
 
 Read constraints through the helpers in `api/models/tag.py` — `effective_constraint`,
-`effective_ended_at`, `effective_constraints`, `blocking_source` — rather than
+`effective_ended_at`, `effective_constraints`, `constraint_source_clause` — rather than
 `coalesce_constraints`, which sees a group's own tags only. They read
 `RoleGroup.active_role_associated_group_member_mappings` /
 `..._owner_mappings` (and, through those, the source groups' `active_group_tags` →

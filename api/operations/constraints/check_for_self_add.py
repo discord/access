@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import blocking_source, coalesce_constraints, constraint_source_clause, effective_constraint
+from api.models.tag import coalesce_constraints, constraint_source_clause, effective_constraint
 
 
 class CheckForSelfAdd:
@@ -68,7 +68,7 @@ class CheckForSelfAdd:
         if len(self.owners_to_add) > 0 and current_user.id in self.owners_to_add:
             key = Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY
             if group.is_managed and effective_constraint(key, group) is True:
-                clause = constraint_source_clause(blocking_source(key, group))
+                clause = constraint_source_clause(key, group)
                 return (
                     False,
                     "Current user is an group owner who is restricted "
@@ -81,7 +81,7 @@ class CheckForSelfAdd:
             # keeps naming which group imposed the restriction.
             key = Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY
             if group.is_managed and effective_constraint(key, group) is True:
-                clause = constraint_source_clause(blocking_source(key, group))
+                clause = constraint_source_clause(key, group)
                 return (
                     False,
                     "Current user is a group owner who is restricted "

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, NamedTuple, Optional
 
 from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagConstraint
@@ -50,40 +51,62 @@ OWNER_SIDE_COUNTERPART: dict[str, str] = {
 }
 
 
+class ConstraintOrigin(StrEnum):
+    """How a tag reaches the group a constraint is being evaluated for.
+
+    A `StrEnum` so it serializes as the bare string it always was: the JSON
+    contract is unchanged, but the OpenAPI schema now carries the value set,
+    and the generated TypeScript client gets a literal union instead of
+    `string`.
+    """
+
+    #: Applied to the group itself.
+    DIRECT = "direct"
+    #: Inherited from the group's app.
+    APP = "app"
+    #: Reaches a role because the role is a member of the tagged group.
+    MEMBER_ASSOCIATION = "member_association"
+    #: Reaches a role because the role owns the tagged group.
+    OWNER_ASSOCIATION = "owner_association"
+
+
 class ConstraintSource(NamedTuple):
+    """One tag contributing a value for a constraint, and where it came from."""
+
     tag: Tag
     value: Any
-    # "direct" | "app" | "member_association" | "owner_association"
-    origin: str
-    # For a group-association origin these name the source *group*; for an
-    # "app" origin `source_name` is the App's name and `source_id` is None.
-    # Hence the deliberately origin-agnostic names.
+    origin: ConstraintOrigin
+    #: The App for an `APP` origin, the source group for an association origin,
+    #: and None for a `DIRECT` one. Named without "group" because it is not
+    #: always a group.
     source_id: Optional[str]
     source_name: Optional[str]
 
 
 def _own_tag_sources(constraint_key: str, group: OktaGroup, include_provenance: bool) -> list[ConstraintSource]:
+    """Tags carrying `constraint_key` that sit on `group` itself, directly or via its app."""
     sources: list[ConstraintSource] = []
     for tag_map in group.active_group_tags:
         tag = tag_map.active_tag
         if not tag.enabled or constraint_key not in tag.constraints:
             continue
-        origin = "direct"
+        origin = ConstraintOrigin.DIRECT
+        source_id = None
         source_name = None
         if include_provenance and tag_map.active_app_tag_mapping is not None:
-            origin = "app"
-            # For an "app" origin the "source" is an App, not a group -- there's
-            # no group to point `source_id` at, but the app's name is still
-            # meaningful to surface. `active_app` filters `deleted_at`, so it is
-            # None for a soft-deleted app; fall back to no name rather than
-            # raising, as every other `active_*` read here does.
-            source_name = getattr(tag_map.active_app_tag_mapping.active_app, "name", None)
+            origin = ConstraintOrigin.APP
+            # `active_app` filters `deleted_at`, so it is None for a
+            # soft-deleted app; fall back to no source rather than raising, as
+            # every other `active_*` read here does.
+            app = tag_map.active_app_tag_mapping.active_app
+            source_id = getattr(app, "id", None)
+            source_name = getattr(app, "name", None)
         sources.append(
             ConstraintSource(
                 tag=tag,
                 value=tag.constraints[constraint_key],
                 origin=origin,
-                source_id=None,
+                source_id=source_id,
                 source_name=source_name,
             )
         )
@@ -104,17 +127,23 @@ def _propagated_sources(constraint_key: str, group: OktaGroup) -> list[Constrain
     if constraint_key not in OWNER_SIDE_COUNTERPART:
         return []
 
-    pairs: tuple[tuple[str, str, list[RoleGroupMap]], ...] = (
-        ("member_association", constraint_key, group.active_role_associated_group_member_mappings),
+    # One entry per association direction: the key read on the source group
+    # differs, but the handling is otherwise identical.
+    association_axes: tuple[tuple[ConstraintOrigin, str, list[RoleGroupMap]], ...] = (
         (
-            "owner_association",
+            ConstraintOrigin.MEMBER_ASSOCIATION,
+            constraint_key,
+            group.active_role_associated_group_member_mappings,
+        ),
+        (
+            ConstraintOrigin.OWNER_ASSOCIATION,
             OWNER_SIDE_COUNTERPART[constraint_key],
             group.active_role_associated_group_owner_mappings,
         ),
     )
 
     sources: list[ConstraintSource] = []
-    for origin, key, mappings in pairs:
+    for origin, key, mappings in association_axes:
         for mapping in mappings:
             source_group = mapping.active_group
             if not source_group.is_managed:
@@ -153,27 +182,76 @@ def _fold(constraint: TagConstraint, sources: list[ConstraintSource]) -> Any:
 def constraint_sources(
     constraint_key: str, group: OktaGroup, *, include_provenance: bool = False
 ) -> list[ConstraintSource]:
-    """Every tag contributing `constraint_key` to `group`, with where it came from.
+    """Collect every tag contributing a value for `constraint_key` to `group`.
 
-    `include_provenance=True` additionally reads
-    `OktaGroupTagMap.active_app_tag_mapping` to distinguish "direct" from
-    "app". Enforcement paths leave it False so they do not have to eager-load
-    that relationship.
+    Covers tags on the group itself and, when `group` is a role, tags reaching
+    it from the groups it is associated with. Only enabled tags contribute, and
+    a propagated tag contributes only if it has `propagate_to_roles` set and
+    its source group is managed.
+
+    Args:
+        constraint_key: A key from `Tag.CONSTRAINTS`.
+        group: The group to evaluate. Association reads only happen when this
+            is a `RoleGroup`.
+        include_provenance: Whether to distinguish `APP` from `DIRECT` origins.
+            Doing so reads `OktaGroupTagMap.active_app_tag_mapping`, so
+            enforcement paths leave this False and avoid having to eager-load
+            it. Display paths set it True.
+
+    Returns:
+        Every contributing source, unordered and not deduplicated -- one entry
+        per tag per origin. Empty if nothing sets the constraint.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
+            All of them are `lazy="raise_on_sql"`; see
+            `api/routers/_eager.py`.
     """
     return _own_tag_sources(constraint_key, group, include_provenance) + _propagated_sources(constraint_key, group)
 
 
 def effective_constraint(constraint_key: str, group: OktaGroup) -> Any:
-    """Coalesce `constraint_key` across every tag in force on `group`, including
-    tags propagated from associated groups when `group` is a role."""
+    """Resolve the value of `constraint_key` actually in force on `group`.
+
+    Coalesces every contributing tag under that constraint's own rule -- the
+    minimum for time limits, logical OR for flags -- across the group's own
+    tags and anything reaching it from an associated group.
+
+    Args:
+        constraint_key: A key from `Tag.CONSTRAINTS`.
+        group: The group to evaluate.
+
+    Returns:
+        The coalesced value, or None if no tag sets this constraint.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
+    """
     return _fold(Tag.CONSTRAINTS[constraint_key], constraint_sources(constraint_key, group))
 
 
 def effective_ended_at(
     constraint_key: str, group: OktaGroup, initial_ended_at: Optional[datetime]
 ) -> Optional[datetime]:
-    """`coalesce_ended_at`, but sourced from the effective constraint set (own
-    tags plus anything propagated from associated groups)."""
+    """Apply a time-limit constraint to a proposed access end date.
+
+    Caps `initial_ended_at` at the limit `constraint_key` resolves to for
+    `group`, so a grant can never outlive what the tags in force allow. An
+    indefinite grant becomes bounded; an already-shorter one is left alone.
+
+    Args:
+        constraint_key: `MEMBER_TIME_LIMIT_CONSTRAINT_KEY` or
+            `OWNER_TIME_LIMIT_CONSTRAINT_KEY`.
+        group: The group the access is being granted on.
+        initial_ended_at: The requested end date, or None for indefinite.
+
+    Returns:
+        The capped end date, or `initial_ended_at` unchanged when no limit
+        applies or `group` is unmanaged (unmanaged groups enforce nothing).
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
+    """
     if not group.is_managed:
         return initial_ended_at
 
@@ -186,26 +264,53 @@ def effective_ended_at(
     return min(constraint_ended_at, initial_ended_at.replace(tzinfo=UTC))
 
 
-def blocking_source(constraint_key: str, group: OktaGroup) -> Optional[ConstraintSource]:
-    """The first source contributing a truthy value for `constraint_key`.
+def _source_phrase(source: ConstraintSource) -> str:
+    """Name one source the way it should read inside an error message."""
+    if source.origin == ConstraintOrigin.MEMBER_ASSOCIATION:
+        return f"tags on {source.source_name}, which this role is a member of"
+    if source.origin == ConstraintOrigin.OWNER_ASSOCIATION:
+        return f"tags on {source.source_name}, which this role owns"
+    return "tags on this group"
 
-    Used to name the cause in an error message. Sound for the boolean
-    constraints because their coalesce is `OR` -- any truthy source on its own
-    explains the block.
+
+def _join_phrases(phrases: list[str]) -> str:
+    """Join phrases as prose: "a", "a and b", "a, b and c"."""
+    if len(phrases) == 1:
+        return phrases[0]
+    return f"{', '.join(phrases[:-1])} and {phrases[-1]}"
+
+
+def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
+    """Build a trailing clause naming why `constraint_key` blocks an action.
+
+    Names every source imposing the constraint, not just one. These are the
+    boolean constraints, whose coalesce is logical OR, so each truthy source
+    blocks independently -- resolving one would not unblock the action, and a
+    message naming a single source would send someone to fix the wrong thing.
+
+    Args:
+        constraint_key: A key from `Tag.CONSTRAINTS`.
+        group: The group whose action is being blocked.
+
+    Returns:
+        A clause beginning "due to ...", suitable for appending to an error
+        message. Falls back to naming the group itself when no source carries
+        a name.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
     """
+    phrases: list[str] = []
     for source in constraint_sources(constraint_key, group):
-        if source.value:
-            return source
-    return None
-
-
-def constraint_source_clause(source: Optional[ConstraintSource]) -> str:
-    """Trailing clause naming where a constraint came from."""
-    if source is None or source.source_name is None:
-        return "due to group tags"
-    if source.origin == "member_association":
-        return f"due to tags on {source.source_name}, which this role is a member of"
-    return f"due to tags on {source.source_name}, which this role owns"
+        if not source.value:
+            continue
+        phrase = _source_phrase(source)
+        # Two tags on one source group produce the same phrase; say it once.
+        if phrase not in phrases:
+            phrases.append(phrase)
+    if not phrases:
+        return "due to tags on this group"
+    return f"due to {_join_phrases(phrases)}"
 
 
 def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:

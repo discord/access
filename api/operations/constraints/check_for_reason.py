@@ -8,7 +8,7 @@ from sqlalchemy.orm import (
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import blocking_source, coalesce_constraints, constraint_source_clause, effective_constraint
+from api.models.tag import coalesce_constraints, constraint_source_clause, effective_constraint
 
 
 class CheckForReason:
@@ -59,12 +59,12 @@ class CheckForReason:
             if len(self.owners_to_add) > 0:
                 key = Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY
                 if group.is_managed and effective_constraint(key, group) is True:
-                    clause = constraint_source_clause(blocking_source(key, group))
+                    clause = constraint_source_clause(key, group)
                     return False, f"Reason for adding owners to {group.name} group is required {clause}"
             if len(self.members_to_add) > 0:
                 key = Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY
                 if group.is_managed and effective_constraint(key, group) is True:
-                    clause = constraint_source_clause(blocking_source(key, group))
+                    clause = constraint_source_clause(key, group)
                     return False, f"Reason for adding members to {group.name} group is required {clause}"
         return True, ""
 
