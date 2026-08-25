@@ -85,3 +85,32 @@ async def test_group_request_uses_its_own_cutoff(
 
     row = await db.session.get(GroupRequest, group_request_id)
     assert row.status == AccessRequestStatus.PENDING
+
+
+async def test_never_disables_group_age_expiry(
+    db: Db, group_request: GroupRequest, user: OktaUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "MAX_GROUP_REQUEST_AGE_SECONDS", "never")
+    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    group_request_id = await _persist(db, group_request, user)
+
+    await expire_group_requests()
+
+    row = await db.session.get(GroupRequest, group_request_id)
+    assert row.status == AccessRequestStatus.PENDING
+    assert row.resolved_at is None
+
+
+async def test_group_expiry_is_independent_of_the_access_cutoff(
+    db: Db, group_request: GroupRequest, user: OktaUser, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Disabling the access cutoff must not disable the group one."""
+    monkeypatch.setattr(settings, "MAX_ACCESS_REQUEST_AGE_SECONDS", "never")
+    group_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    group_request_id = await _persist(db, group_request, user)
+
+    await expire_group_requests()
+
+    db.session.expire_all()
+    row = await db.session.get(GroupRequest, group_request_id)
+    assert row.status == AccessRequestStatus.REJECTED

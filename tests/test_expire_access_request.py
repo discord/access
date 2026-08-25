@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from pytest_mock import MockerFixture
 
+from api.config import settings
 from api.models import AccessRequest, AccessRequestStatus, OktaGroup, OktaUser
 from api.extensions import Db
 from api.syncer import expire_access_requests
@@ -137,3 +139,45 @@ async def test_expire_old_temporary_access_request(
     access_request = await db.session.get(AccessRequest, access_request_id)
     assert access_request.status == AccessRequestStatus.REJECTED
     assert access_request.resolved_at is not None
+
+
+async def test_never_disables_the_age_cutoff_but_not_the_requested_window(
+    db: Db,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`never` switches off the age sweep only.
+
+    A request that merely sat too long survives; a request whose own
+    `request_ending_at` has passed is still closed, because that sweep is a
+    separate pass and is deliberately not disableable.
+    """
+    monkeypatch.setattr(settings, "MAX_ACCESS_REQUEST_AGE_SECONDS", "never")
+    db.session.add(user)
+    db.session.add(okta_group)
+    await db.session.commit()
+
+    stale = datetime.now(timezone.utc) - timedelta(days=30)
+
+    old_only = AccessRequestFactory.build()
+    old_only.created_at = stale
+    old_only.requested_group_id = okta_group.id
+    old_only.requester_user_id = user.id
+
+    lapsed_window = AccessRequestFactory.build()
+    lapsed_window.created_at = stale
+    lapsed_window.request_ending_at = datetime.now(timezone.utc) - timedelta(hours=12)
+    lapsed_window.requested_group_id = okta_group.id
+    lapsed_window.requester_user_id = user.id
+
+    db.session.add(old_only)
+    db.session.add(lapsed_window)
+    await db.session.commit()
+    old_only_id, lapsed_id = old_only.id, lapsed_window.id
+
+    await expire_access_requests()
+
+    db.session.expire_all()
+    assert (await db.session.get(AccessRequest, old_only_id)).status == AccessRequestStatus.PENDING
+    assert (await db.session.get(AccessRequest, lapsed_id)).status == AccessRequestStatus.REJECTED

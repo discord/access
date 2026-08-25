@@ -10,10 +10,18 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Any, Literal, Optional, Union, cast
+from typing import Any, Final, Literal, Optional, Union, cast
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Sentinel for "no maximum age": disables the age-based expiration sweep for a
+# request type. A string rather than None because Settings comes only from env
+# vars and .env, so every value arrives as a string: an omitted variable is
+# indistinguishable from one set to nothing, and "", "None", and "null" all fail
+# int validation. (config.default.json's BACKEND key feeds AccessConfig, a
+# separate object, not this class.)
+NEVER_EXPIRE: Final = "never"
 
 
 def _read_secret_key() -> Optional[str]:
@@ -116,17 +124,32 @@ class Settings(BaseSettings):
     # User attributes
     USER_DISPLAY_CUSTOM_ATTRIBUTES: str = "Title,Manager"
     USER_SEARCH_CUSTOM_ATTRIBUTES: Optional[str] = None
-    MAX_ACCESS_REQUEST_AGE_SECONDS: int = 7 * 24 * 60 * 60
-    # Group requests get their own cutoff: their approver may need to negotiate a
-    # name and pick tags rather than just answer yes/no, which plausibly wants a
-    # longer fuse than a membership request. Unset falls back to
-    # MAX_ACCESS_REQUEST_AGE_SECONDS via `max_group_request_age_seconds`, so
-    # operators who never set it keep the behavior they already had.
-    # Unset falls back to MAX_ACCESS_REQUEST_AGE_SECONDS. An explicit 0 is
-    # honored and means "close every pending group request on each sync run";
-    # ge=0 rejects a negative value, which would otherwise expire future-dated
-    # rows.
-    MAX_GROUP_REQUEST_AGE_SECONDS: Optional[int] = Field(default=None, ge=0)
+    # How long a pending request may sit before the sync cronjob closes it.
+    # Access and role requests share one cutoff: both are a yes/no on granting
+    # access, so they get the same fuse. Group requests get their own because
+    # their approver may need to negotiate a name and pick tags rather than just
+    # answer yes/no. The two are independent; neither inherits the other.
+    #
+    # Set either to NEVER_EXPIRE ("never") to switch its age-based sweep off.
+    # That does NOT stop the separate requested-window sweep: an access or role
+    # request whose own `request_ending_at` has passed is still closed.
+    MAX_ACCESS_REQUEST_AGE_SECONDS: Union[int, Literal["never"]] = 7 * 24 * 60 * 60
+    MAX_GROUP_REQUEST_AGE_SECONDS: Union[int, Literal["never"]] = 7 * 24 * 60 * 60
+
+    @field_validator("MAX_ACCESS_REQUEST_AGE_SECONDS", "MAX_GROUP_REQUEST_AGE_SECONDS")
+    @classmethod
+    def _reject_non_positive_age(cls, v: Union[int, str]) -> Union[int, str]:
+        # Short-circuit on the sentinel: a Field(ge=...) bound cannot be used
+        # here because it is applied to the union rather than to its int branch
+        # and rejects "never" itself.
+        if v == NEVER_EXPIRE:
+            return v
+        if isinstance(v, int) and v < 1:
+            raise ValueError(
+                f"must be a positive number of seconds, or {NEVER_EXPIRE!r} to disable expiration; "
+                "a value of 0 or less would close every pending request on the next sync"
+            )
+        return v
 
     # Cloudflare Access
     CLOUDFLARE_APPLICATION_AUDIENCE: Optional[str] = None
@@ -249,11 +272,25 @@ class Settings(BaseSettings):
         return [s.strip() for s in self.APP_GROUP_DELETER_ID.split(",") if s.strip()]
 
     @property
-    def max_group_request_age_seconds(self) -> int:
-        # Explicit `is None` rather than `or`: an operator setting 0 means "expire
-        # immediately", which `or` would silently replace with the access default.
-        if self.MAX_GROUP_REQUEST_AGE_SECONDS is None:
-            return self.MAX_ACCESS_REQUEST_AGE_SECONDS
+    def max_access_request_age_seconds(self) -> Optional[int]:
+        """Seconds after which a pending access or role request is closed for age.
+
+        None when the operator disabled the age-based sweep. This does not affect
+        the separate requested-window sweep, which always runs.
+        """
+        if self.MAX_ACCESS_REQUEST_AGE_SECONDS == NEVER_EXPIRE:
+            return None
+        return self.MAX_ACCESS_REQUEST_AGE_SECONDS
+
+    @property
+    def max_group_request_age_seconds(self) -> Optional[int]:
+        """Seconds after which a pending group request is closed for age.
+
+        None when the operator disabled the age-based sweep. Independent of
+        MAX_ACCESS_REQUEST_AGE_SECONDS; group requests have no second sweep.
+        """
+        if self.MAX_GROUP_REQUEST_AGE_SECONDS == NEVER_EXPIRE:
+            return None
         return self.MAX_GROUP_REQUEST_AGE_SECONDS
 
 
@@ -359,7 +396,6 @@ DATABASE_NAME = settings.DATABASE_NAME
 DATABASE_USES_PUBLIC_IP = settings.DATABASE_USES_PUBLIC_IP
 USER_DISPLAY_CUSTOM_ATTRIBUTES = settings.USER_DISPLAY_CUSTOM_ATTRIBUTES
 USER_SEARCH_CUSTOM_ATTRIBUTES = settings.USER_SEARCH_CUSTOM_ATTRIBUTES or ",".join(settings.user_search_attrs)
-MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
 CLOUDFLARE_APPLICATION_AUDIENCE = settings.CLOUDFLARE_APPLICATION_AUDIENCE
 CLOUDFLARE_TEAM_DOMAIN = settings.CLOUDFLARE_TEAM_DOMAIN
 SECRET_KEY = settings.SECRET_KEY

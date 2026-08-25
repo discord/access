@@ -1,5 +1,8 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+from api.config import settings
 from api.extensions import Db
 from api.models import AccessRequestStatus, OktaGroup, OktaUser, RoleGroup, RoleRequest
 from api.syncer import expire_role_requests
@@ -65,3 +68,24 @@ async def test_expire_role_request_with_lapsed_window(
     row = await db.session.get(RoleRequest, role_request_id)
     assert row.status == AccessRequestStatus.REJECTED
     assert row.resolved_at is not None
+
+
+async def test_never_on_the_access_cutoff_also_disables_role_age_expiry(
+    db: Db,
+    role_request: RoleRequest,
+    role_group: RoleGroup,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Role requests share MAX_ACCESS_REQUEST_AGE_SECONDS, so disabling it
+    disables theirs too. Pins the shared-fuse decision."""
+    monkeypatch.setattr(settings, "MAX_ACCESS_REQUEST_AGE_SECONDS", "never")
+    role_request.created_at = datetime.now(timezone.utc) - timedelta(days=30)
+    role_request_id = await _persist(db, role_request, role_group, okta_group, user)
+
+    await expire_role_requests()
+
+    row = await db.session.get(RoleRequest, role_request_id)
+    assert row.status == AccessRequestStatus.PENDING
+    assert row.resolved_at is None

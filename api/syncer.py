@@ -557,7 +557,7 @@ async def _expire_each(
 
 async def expire_access_requests() -> None:
     logger.info("Access request expiration started.")
-    MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+    max_age_seconds = settings.max_access_request_age_seconds
 
     def reject(request_id: str) -> Awaitable[AccessRequest]:
         return RejectAccessRequest(
@@ -565,18 +565,21 @@ async def expire_access_requests() -> None:
             rejection_reason=EXPIRED_REQUEST_REASON,
         ).execute()
 
-    older_than_max = (
-        await db.session.scalars(
-            select(AccessRequest)
-            .where(AccessRequest.status == AccessRequestStatus.PENDING)
-            .where(AccessRequest.resolved_at.is_(None))
-            .where(
-                AccessRequest.created_at
-                < datetime.now(timezone.utc) - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
+    # Skipped, not short-circuited: the requested-window pass below still runs,
+    # so a request whose own window has passed is closed either way. Logged so
+    # sync output distinguishes "disabled" from "nothing to expire".
+    if max_age_seconds is None:
+        logger.info("Age-based access request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(AccessRequest)
+                .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                .where(AccessRequest.resolved_at.is_(None))
+                .where(AccessRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
             )
-        )
-    ).all()
-    await _expire_each(older_than_max, reject, "access request")
+        ).all()
+        await _expire_each(older_than_max, reject, "access request")
 
     older_than_request = (
         await db.session.scalars(
@@ -594,14 +597,14 @@ async def expire_access_requests() -> None:
 async def expire_role_requests() -> None:
     """Close pending role requests that aged out or whose window has lapsed.
 
-    Shares MAX_ACCESS_REQUEST_AGE_SECONDS with access requests; both are a
-    yes/no on granting access, so they get the same fuse. The lapsed-window
-    path matters here for the same reason it does for access requests:
+    Shares MAX_ACCESS_REQUEST_AGE_SECONDS with access requests, including its "never"
+    disabled state; both are a yes/no on granting access, so they get the same fuse.
+    The lapsed-window path matters here for the same reason it does for access requests:
     approving a role request past its request_ending_at would create an
     already-expired RoleGroupMap.
     """
     logger.info("Role request expiration started.")
-    MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+    max_age_seconds = settings.max_access_request_age_seconds
 
     def reject(request_id: str) -> Awaitable[RoleRequest]:
         return RejectRoleRequest(
@@ -609,17 +612,19 @@ async def expire_role_requests() -> None:
             rejection_reason=EXPIRED_REQUEST_REASON,
         ).execute()
 
-    older_than_max = (
-        await db.session.scalars(
-            select(RoleRequest)
-            .where(RoleRequest.status == AccessRequestStatus.PENDING)
-            .where(RoleRequest.resolved_at.is_(None))
-            .where(
-                RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
+    # Same shape as the access sweep; the requested-window pass below still runs.
+    if max_age_seconds is None:
+        logger.info("Age-based role request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(RoleRequest)
+                .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                .where(RoleRequest.resolved_at.is_(None))
+                .where(RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
             )
-        )
-    ).all()
-    await _expire_each(older_than_max, reject, "role request")
+        ).all()
+        await _expire_each(older_than_max, reject, "role request")
 
     older_than_request = (
         await db.session.scalars(
@@ -662,15 +667,20 @@ async def expire_group_requests() -> None:
             rejection_reason=EXPIRED_REQUEST_REASON,
         ).execute()
 
-    older_than_max = (
-        await db.session.scalars(
-            select(GroupRequest)
-            .where(GroupRequest.status == AccessRequestStatus.PENDING)
-            .where(GroupRequest.resolved_at.is_(None))
-            .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
-        )
-    ).all()
-    await _expire_each(older_than_max, reject, "group request")
+    # Group requests have no second pass, so a disabled cutoff means this sweep
+    # does nothing at all. Logged so that is visible in sync output.
+    if max_age_seconds is None:
+        logger.info("Age-based group request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(GroupRequest)
+                .where(GroupRequest.status == AccessRequestStatus.PENDING)
+                .where(GroupRequest.resolved_at.is_(None))
+                .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+            )
+        ).all()
+        await _expire_each(older_than_max, reject, "group request")
 
     logger.info("Group request expiration finished.")
 
