@@ -70,7 +70,7 @@ describe('buildGroupsWithTagRows', () => {
     expect(rows[0].directGroup?.id).toBe('r1');
   });
 
-  it('produces one row per distinct source group when a role is reached via two groups', () => {
+  it('keeps a role reached via two groups on one row, with a chip per source group', () => {
     const rows = buildGroupsWithTagRows(
       [],
       [

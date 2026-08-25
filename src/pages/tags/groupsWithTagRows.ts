@@ -1,12 +1,11 @@
 import {GroupRefForMembership, OktaGroupTagMapDetail, TagPropagationTargetDetail} from '../../api/apiSchemas';
 
-// The "Groups with Tag" table used to be row-per-tag-map: a group tagged both
-// directly and via its app produced two rows for the same group, and a role
-// reached only by propagation through an associated group never appeared at
-// all (propagation isn't stored as an `OktaGroupTagMap` row). This module
-// merges `active_group_tags` (direct + app-inherited) and `propagated_to_groups`
-// (role reached via an associated group) into one row per entity, each
-// carrying every source that applies -- see groupsWithTagRows.test.ts.
+// Builds the "Groups with Tag" table as one row per entity, each carrying
+// every source that applies. Merges two inputs: `active_group_tags`, which
+// covers tags applied directly and inherited from an app, and
+// `propagated_to_groups`, which covers roles reached through an associated
+// group -- propagation is computed, not stored as an `OktaGroupTagMap` row, so
+// those roles have no tag-map entry of their own.
 
 export type TagSourceChip =
   | {kind: 'direct'}

@@ -26,17 +26,19 @@ async def _build_propagation_scenario(
     group_deleted_at: datetime | None = None,
     group_is_managed: bool = True,
     role_deleted_at: datetime | None = None,
+    role_is_managed: bool = True,
+    tag_enabled: bool = True,
     tag_map_ended_at: datetime | None = None,
     role_map_ended_at: datetime | None = None,
 ) -> tuple[OktaGroup, RoleGroup, Tag]:
-    """Builds the shared happy-path propagation scenario -- a managed,
-    non-deleted source group tagged via an active `OktaGroupTagMap`, mapped
-    to a non-deleted role via an active `RoleGroupMap` -- with knobs to break
-    exactly one of the five active-record conditions `get_tag` filters on.
-    With all defaults, the role WOULD appear in `propagated_to_groups`."""
+    """Builds the shared happy-path propagation scenario -- an enabled tag on a
+    managed, non-deleted source group via an active `OktaGroupTagMap`, mapped
+    to a managed, non-deleted role via an active `RoleGroupMap` -- with knobs
+    to break exactly one of the conditions `get_tag` filters on. With all
+    defaults, the role WOULD appear in `propagated_to_groups`."""
     group = OktaGroupFactory.build(deleted_at=group_deleted_at, is_managed=group_is_managed)
-    role = RoleGroupFactory.build(deleted_at=role_deleted_at)
-    tag = TagFactory.build(name="SOX", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    role = RoleGroupFactory.build(deleted_at=role_deleted_at, is_managed=role_is_managed)
+    tag = TagFactory.build(name="SOX", enabled=tag_enabled, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
     db.session.add_all([group, role, tag])
     await db.session.commit()
     db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id, ended_at=tag_map_ended_at))
@@ -227,6 +229,32 @@ async def test_tag_detail_excludes_soft_deleted_role(app: FastAPI, client: Async
     still tagged and the `RoleGroupMap` is still active, a deleted role must
     not be reported as reached by propagation."""
     _group, _role, tag = await _build_propagation_scenario(db, role_deleted_at=_PAST)
+
+    response = await client.get(url_for("tag_by_id", tag_id=tag.id))
+    assert response.status_code == 200
+    assert response.json()["propagated_to_groups"] == []
+
+
+async def test_tag_detail_omits_propagation_for_disabled_tag(
+    app: FastAPI, client: AsyncClient, db: Db, url_for: Any
+) -> None:
+    """A disabled tag enforces nothing -- `_propagated_sources` short-circuits
+    on `tag.enabled` -- so listing the roles it would otherwise reach is
+    display without enforcement, and the tag page's "these constraints do
+    apply to roles" note would be a lie."""
+    _group, _role, tag = await _build_propagation_scenario(db, tag_enabled=False)
+
+    response = await client.get(url_for("tag_by_id", tag_id=tag.id))
+    assert response.status_code == 200
+    assert response.json()["propagated_to_groups"] == []
+
+
+async def test_tag_detail_excludes_unmanaged_role(app: FastAPI, client: AsyncClient, db: Db, url_for: Any) -> None:
+    """An externally managed role is exempt from constraint enforcement
+    (`effective_ended_at` returns early, and the `cap-role-memberships` sweep
+    filters it out), so it receives nothing and must not be listed as a
+    propagation target."""
+    _group, _role, tag = await _build_propagation_scenario(db, role_is_managed=False)
 
     response = await client.get(url_for("tag_by_id", tag_id=tag.id))
     assert response.status_code == 200

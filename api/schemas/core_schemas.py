@@ -77,7 +77,8 @@ class TagSummary(BaseModel):
 class TagListItem(BaseModel):
     """Tag list-endpoint item. Slim field set (id, name, description,
     enabled, propagate_to_roles, constraints, created_at, updated_at) — does
-    not hydrate `active_group_tags`, which would be an N+1 across the page."""
+    not hydrate `active_group_tags`, which would be an N+1 across the page,
+    nor `propagated_to_groups`, which needs a per-tag join."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str

@@ -76,7 +76,10 @@ async def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) ->
         raise HTTPException(404, "Not Found")
 
     propagated: list[TagPropagationTargetDetail] = []
-    if tag.propagate_to_roles:
+    # `enabled` matters as much as `propagate_to_roles`: `_propagated_sources`
+    # short-circuits on a disabled tag, so listing roles here for one would
+    # claim reach the enforcement path does not have.
+    if tag.propagate_to_roles and tag.enabled:
         # `RoleGroup` is joined-table inheritance on `okta_group`, so selecting
         # both it and the plain source `OktaGroup` in one query makes the two
         # entities overlap on the same physical table. Left unaliased,
@@ -109,6 +112,9 @@ async def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) ->
                 .where(SourceGroup.deleted_at.is_(None))
                 .where(SourceGroup.is_managed.is_(True))
                 .where(RoleGroup.deleted_at.is_(None))
+                # An unmanaged role is exempt from constraint enforcement, so
+                # it receives nothing and must not be listed as a target.
+                .where(RoleGroup.is_managed.is_(True))
             )
         ).all()
         propagated = [
