@@ -288,6 +288,38 @@ the values in the default config.
 To use your custom config file, set the `ACCESS_CONFIG_FILE` environment variable to the name of your config
 override file in the project-level `config` directory.
 
+#### Request expiration
+
+The `access sync` cronjob closes pending requests that have sat too long. Two
+environment variables control it, both in seconds, both defaulting to one week:
+
+| Variable | Governs | Default |
+| --- | --- | --- |
+| `MAX_ACCESS_REQUEST_AGE_SECONDS` | access requests **and** role requests | `604800` |
+| `MAX_GROUP_REQUEST_AGE_SECONDS` | group requests | `604800` |
+
+Set either to `never` to switch off age-based expiration for the request types
+it governs:
+
+```
+MAX_ACCESS_REQUEST_AGE_SECONDS=never
+```
+
+Three things worth knowing:
+
+- **The two are independent.** Raising `MAX_ACCESS_REQUEST_AGE_SECONDS` does not
+  raise the group cutoff; set both if you want both changed.
+- **Access and role requests share one cutoff.** Disabling
+  `MAX_ACCESS_REQUEST_AGE_SECONDS` stops role requests aging out too.
+- **`never` does not mean nothing is ever closed.** Access and role requests are
+  also closed when the end date the requester asked for has already passed,
+  which is a separate check that `never` does not affect. Group requests have no
+  such check, so `never` stops their expiration entirely.
+
+A value of `0` or less is rejected at startup: it would close every pending
+request on the next sync, and is almost always a mistaken attempt to disable
+expiration. Use `never` for that.
+
 ### Sample Usage
 
 To override environment variables, create an override config file in the `config` directory. (You can name
