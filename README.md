@@ -272,23 +272,7 @@ If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_D
 
 Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
 
-### Access application configuration
-
-_All front-end and back-end configuration overrides are **optional**._
-
-The default config for the application is at [`config/config.default.json`](config/config.default.json).
-
-The file is structured with two keys, `FRONTEND` and `BACKEND`, which contain the configuration overrides for the
-front-end and back-end respectively.
-
-If you want to override either front-end or back-end values, create your own config file based on 
-[`config/config.default.json`](config/config.default.json). Any values that you don't override will fall back to 
-the values in the default config.
-
-To use your custom config file, set the `ACCESS_CONFIG_FILE` environment variable to the name of your config
-override file in the project-level `config` directory.
-
-#### Request expiration
+##### Request expiration
 
 The `access sync` cronjob closes pending requests that have sat too long. Two
 environment variables control it, both in seconds, both defaulting to one week:
@@ -297,6 +281,9 @@ environment variables control it, both in seconds, both defaulting to one week:
 | --- | --- | --- |
 | `MAX_ACCESS_REQUEST_AGE_SECONDS` | access requests **and** role requests | `604800` |
 | `MAX_GROUP_REQUEST_AGE_SECONDS` | group requests | `604800` |
+
+These are environment variables; setting them in an `ACCESS_CONFIG_FILE` JSON
+config has no effect.
 
 Set either to `never` to switch off age-based expiration for the request types
 it governs:
@@ -319,6 +306,33 @@ Three things worth knowing:
 A value of `0` or less is rejected at startup: it would close every pending
 request on the next sync, and is almost always a mistaken attempt to disable
 expiration. Use `never` for that.
+
+**The requested-window check for role requests is new and is not covered by
+either cutoff.** The first `access sync` run after upgrading to a version with
+this check will, in a single run, close every existing pending role request
+whose requested end date has already passed; each closure notifies the
+requester and every eligible approver, which for a role request includes
+Access admins. Setting `MAX_ACCESS_REQUEST_AGE_SECONDS=never` before that first
+run only suppresses the age-based half of expiration, not this window check.
+Operators with a large backlog of old role requests may want to plan for this
+rather than be surprised by a burst of notifications on the first sync after
+upgrading.
+
+### Access application configuration
+
+_All front-end and back-end configuration overrides are **optional**._
+
+The default config for the application is at [`config/config.default.json`](config/config.default.json).
+
+The file is structured with two keys, `FRONTEND` and `BACKEND`, which contain the configuration overrides for the
+front-end and back-end respectively.
+
+If you want to override either front-end or back-end values, create your own config file based on 
+[`config/config.default.json`](config/config.default.json). Any values that you don't override will fall back to 
+the values in the default config.
+
+To use your custom config file, set the `ACCESS_CONFIG_FILE` environment variable to the name of your config
+override file in the project-level `config` directory.
 
 ### Sample Usage
 
