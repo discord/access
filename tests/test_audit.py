@@ -713,8 +713,13 @@ async def test_groups_audit_q_with_role_and_owner_pin(client: AsyncClient, db: D
     associated-group `q` filter AND-applies on top of the broad either-side
     filter. A `q` that matches role columns but no group columns must
     return zero rows."""
-    role = await RoleGroupFactory.create_async(name="ZqxRole", description="zqx-only-role")
-    associated = await OktaGroupFactory.create_async(name="GroupGamma", description="gamma")
+    # Pin every column the associated-group `q` filter searches: it matches
+    # `id` as well as `name` and `description`. Factory-generated ids are 20
+    # random alphanumerics, so an associated group whose id happened to contain
+    # "zqx" (about 1 run in 1600) satisfied the filter and returned the very
+    # row this test asserts is filtered out.
+    role = await RoleGroupFactory.create_async(id="ZqxRoleAuditPin00000", name="ZqxRole", description="zqx-only-role")
+    associated = await OktaGroupFactory.create_async(id="GroupGammaAuditPin00", name="GroupGamma", description="gamma")
     owner = await OktaUserFactory.create_async(email="role-pin-owner@example.com", first_name="Pin", last_name="Owner")
     await ModifyRoleGroups(role_group=role, groups_to_add=[associated.id], sync_to_okta=False).execute()
     await ModifyGroupUsers(group=associated, owners_to_add=[owner.id], sync_to_okta=False).execute()
