@@ -145,8 +145,12 @@ def _propagated_sources(constraint_key: str, group: OktaGroup) -> list[Constrain
     sources: list[ConstraintSource] = []
     for origin, key, mappings in association_axes:
         for mapping in mappings:
+            # `active_group` filters `deleted_at`, so it is None when the
+            # source group has been soft-deleted while the mapping is still
+            # active. Skip rather than raise, matching how this module treats
+            # every other `active_*` read.
             source_group = mapping.active_group
-            if not source_group.is_managed:
+            if source_group is None or not source_group.is_managed:
                 continue
             for tag_map in source_group.active_group_tags:
                 tag = tag_map.active_tag
@@ -294,8 +298,10 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
 
     Returns:
         A clause beginning "due to ...", suitable for appending to an error
-        message. Falls back to naming the group itself when no source carries
-        a name.
+        message. Names the group itself when no source contributes a truthy
+        value -- callers only reach this after the constraint has resolved
+        true, so that fallback means the value came from somewhere this
+        function cannot attribute.
 
     Raises:
         InvalidRequestError: If a relationship this reads was not eager-loaded.

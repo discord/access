@@ -95,7 +95,7 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
                   <TableCell>
                     {(entry.sources ?? []).map((source, index) => (
                       <div key={`${source.tag_id}-${source.origin}-${source.source_id ?? index}`}>
-                        <Link component={RouterLink} to={`/tags/${source.tag_name}`}>
+                        <Link component={RouterLink} to={`/tags/${encodeURIComponent(source.tag_name)}`}>
                           {source.tag_name}
                         </Link>
                         {`, ${originLabel(source)}`}

@@ -296,10 +296,10 @@ class EffectiveConstraintSourceDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     tag_id: str
     tag_name: str
-    # "direct" | "app" | "member_association" | "owner_association"
     origin: ConstraintOrigin
-    # Deliberately not `source_group_*`: for an "app" origin the source is an
-    # App, so `source_name` carries the app's name and `source_id` is None.
+    # Deliberately not `source_group_*`: an "app" origin's source is an App,
+    # not a group. Both fields are None for a "direct" origin, which has no
+    # source beyond the group itself.
     source_id: Optional[str] = None
     source_name: Optional[str] = None
 
