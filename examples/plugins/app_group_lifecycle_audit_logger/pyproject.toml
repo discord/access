@@ -4,10 +4,9 @@
 # Access: pluggy discovers implementations through the
 # "access_app_group_lifecycle" entry point group.
 #
-# This example uses pyproject.toml rather than the setup.py the other example
-# plugins carry because the root pyproject.toml names it as a `[tool.uv.sources]`
-# path dependency, and Dependabot's uv file fetcher requires a pyproject.toml in
-# every path-source directory. Either form works for `uv pip install`.
+# The root pyproject.toml also names this example as a `[tool.uv.sources]` path
+# dependency so `make run` picks it up, which makes the file mandatory here:
+# Dependabot's uv file fetcher aborts when a path source has no pyproject.toml.
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -23,7 +22,7 @@ dependencies = [
 ]
 
 # Register the plugin with the app group lifecycle plugin system
-[project.entry-points.access_app_group_lifecycle]
+[project.entry-points."access_app_group_lifecycle"]
 audit_logger = "app_group_lifecycle_audit_logger.plugin:audit_logger_plugin"
 
 # The package lives at the root of this directory rather than in a nested

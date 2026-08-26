@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "health_check_plugin"
+version = "0.1.0"
+dependencies = [
+    "click",
+    "sqlalchemy",
+]
+
+# The group name has to stay quoted. Unquoted, TOML reads
+# [project.entry-points.access.commands] as a `commands` table nested inside
+# `access`, and the command registers under a group the CLI never looks in.
+[project.entry-points."access.commands"]
+health = "health_check_plugin.cli:health_command"
+
+# The package lives at the root of this directory rather than in a nested
+# subdirectory, so map the import name onto ".".
+[tool.setuptools]
+packages = ["health_check_plugin"]
+
+[tool.setuptools.package-dir]
+health_check_plugin = "."

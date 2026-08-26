@@ -14,6 +14,10 @@ happened to ``notifications`` and ``notifications_slack``, which both shipped as
 ``access-notifications``/``notifications.py``. These tests parse the packaging
 declarations without importing or executing them, so the collision is caught
 here rather than in a built image.
+
+The last test here guards a different packaging failure with the same shape: a
+`[tool.uv.sources]` path entry whose directory has no pyproject.toml takes the
+whole Dependabot uv job down, and nothing in a normal build or test run notices.
 """
 
 import ast
@@ -23,10 +27,13 @@ from typing import Any
 
 import pytest
 
-EXAMPLE_PLUGINS_DIR = Path(__file__).resolve().parents[1] / "examples" / "plugins"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+EXAMPLE_PLUGINS_DIR = REPO_ROOT / "examples" / "plugins"
 
-# Examples declare their packaging either way; both are read into the same shape
-# below so a plugin can't drop out of the collision checks by switching form.
+# Every example declares its packaging in a pyproject.toml. The setup.py reader
+# below stays because both install paths still build one, so a plugin that
+# reintroduces the legacy form is still covered by the checks here rather than
+# silently dropping out of them.
 DECLARATION_FILES = sorted(EXAMPLE_PLUGINS_DIR.glob("*/setup.py")) + sorted(
     EXAMPLE_PLUGINS_DIR.glob("*/pyproject.toml")
 )
@@ -121,4 +128,28 @@ def test_example_plugins_do_not_collide(extract: Any, what: str) -> None:
     assert not collisions, (
         "Example plugins must be installable into the same environment; "
         "whichever is installed last would silently win:\n  " + "\n  ".join(collisions)
+    )
+
+
+def test_uv_path_sources_have_a_pyproject() -> None:
+    """Every `[tool.uv.sources]` path must contain a pyproject.toml.
+
+    Dependabot's uv file fetcher fetches `<path>/pyproject.toml` for each path
+    source and aborts the *whole* job when one is missing, so a path source
+    pointing at a setup.py-only directory silently stalls every uv update,
+    security advisories included. uv itself builds either form, so nothing else
+    in CI catches it.
+    """
+    root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    sources = root.get("tool", {}).get("uv", {}).get("sources", {})
+
+    missing = [
+        f"{name} -> {config['path']}"
+        for name, config in sources.items()
+        if "path" in config and not (REPO_ROOT / config["path"] / "pyproject.toml").is_file()
+    ]
+
+    assert not missing, (
+        "These [tool.uv.sources] paths have no pyproject.toml, which aborts every "
+        "Dependabot uv update:\n  " + "\n  ".join(missing)
     )

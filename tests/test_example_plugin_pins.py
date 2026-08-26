@@ -4,9 +4,10 @@ Example plugins are installed *into the Access venv*, on top of the dependency s
 `uv sync --locked` resolved — by the Dockerfile's `install_plugin` helper, by
 `make install-plugins`, and by the plugin-install steps in `.github/workflows/ci.yml`.
 
-The examples declare their deps in `install_requires` or `[project] dependencies`,
-but those two install paths still read a `requirements.txt` when one is present, so
-all three are checked here for the benefit of any plugin that reintroduces one.
+The examples declare their deps in `[project] dependencies`, but those install paths
+also read a `requirements.txt` when one is present and still build a legacy
+`setup.py`, so all three forms are checked here for the benefit of any plugin that
+reintroduces one.
 
 So a plugin requirement that *excludes* the version the app pins does not fail loudly;
 it silently re-resolves that package in the app's venv. A plugin pinning
