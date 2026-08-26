@@ -27,7 +27,7 @@ import {
   DatePickerElement,
   TextFieldElement,
   ToggleButtonGroupElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useRoleRequestsCreate,
@@ -315,7 +315,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
         <FormControl margin="normal" fullWidth>
-          <AutocompleteElement
+          <AutocompleteElement<(typeof roleSearchOptions)[number]>
             label={'For which role?'}
             name="role"
             options={roleSearchOptions}
@@ -353,7 +353,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           />
         </FormControl>
         <FormControl margin="normal" fullWidth>
-          <AutocompleteElement
+          <AutocompleteElement<(typeof groupSearchOptions)[number]>
             label={'For which group?'}
             name="group"
             options={groupSearchOptions}

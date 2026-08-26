@@ -30,7 +30,7 @@ import {
   AutocompleteElement,
   DatePickerElement,
   TextFieldElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useGroups,
@@ -302,7 +302,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
             />
           </FormControl>
           <FormControl fullWidth sx={{margin: '8px 0'}}>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof autocompleteOptions)[number]>
               label={'Search for ' + addGroupsText + ' to Add'}
               name="group"
               options={autocompleteOptions}

@@ -16,7 +16,7 @@ import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
 
-import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
+import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from '../../components/forms';
 
 import {
   useTagsCreate,

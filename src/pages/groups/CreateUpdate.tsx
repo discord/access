@@ -17,7 +17,7 @@ import IconButton from '@mui/material/IconButton';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 
-import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
+import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from '../../components/forms';
 
 import {
   useApps,
@@ -241,7 +241,7 @@ function GroupDialog(props: GroupDialogProps) {
           </FormControl>
           {groupType == 'app_group' ? (
             <FormControl margin="normal" fullWidth required>
-              <AutocompleteElement
+              <AutocompleteElement<(typeof appSearchOptions)[number]>
                 label="App"
                 name="app"
                 options={appSearchOptions}

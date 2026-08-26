@@ -34,12 +34,11 @@ import {
   FormContainer,
   SelectElement,
   TextFieldElement,
-  useFormContext,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
-import {Controller} from 'react-hook-form';
+import {Controller, useFormContext} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -793,7 +792,7 @@ export default function ReadGroupRequest() {
                                   {groupType == 'app_group' ? (
                                     <Grid item xs={6}>
                                       <FormControl margin="normal" fullWidth required>
-                                        <AutocompleteElement
+                                        <AutocompleteElement<(typeof appSearchOptions)[number]>
                                           label="App"
                                           name="resolved_app"
                                           options={appSearchOptions}

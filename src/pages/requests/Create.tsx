@@ -28,7 +28,7 @@ import {
   DatePickerElement,
   TextFieldElement,
   ToggleButtonGroupElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useGroups,
@@ -342,7 +342,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
         <FormControl margin="normal" fullWidth>
-          <AutocompleteElement
+          <AutocompleteElement<GroupDetail>
             label={'For which group?'}
             name="group"
             options={groupSearchOptions}

@@ -25,7 +25,7 @@ import {
   SelectElement,
   DatePickerElement,
   TextFieldElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useGroupRequestsCreate,
@@ -264,7 +264,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </FormControl>
         {groupType === 'app_group' && (
           <FormControl margin="normal" fullWidth required>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof appSearchOptions)[number]>
               label="App"
               name="app"
               options={appSearchOptions}

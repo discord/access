@@ -20,7 +20,7 @@ import InputLabel from '@mui/material/InputLabel';
 import DeleteIcon from '@mui/icons-material/Close';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {FormContainer, SelectElement, AutocompleteElement} from 'react-hook-form-mui';
+import {FormContainer, SelectElement, AutocompleteElement} from '../../components/forms';
 
 import {useApps, useAppByIdPut, AppByIdPutError, AppByIdPutVariables} from '../../api/apiComponents';
 import {AppDetail, OktaUserDetail, TagDetail, UpdateAppBody} from '../../api/apiSchemas';
@@ -128,7 +128,7 @@ function AddAppsDialog(props: AddAppsDialogProps) {
         <DialogContent>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof appSearchOptions)[number]>
               label={'Search for Apps to Add'}
               name="app"
               options={appSearchOptions}

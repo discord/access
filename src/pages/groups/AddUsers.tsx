@@ -28,7 +28,7 @@ import {
   AutocompleteElement,
   DatePickerElement,
   TextFieldElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useUsers,
@@ -303,7 +303,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
             />
           </FormControl>
           <FormControl fullWidth sx={{margin: '8px 0'}}>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof userSearchOptions)[number]>
               label={'Search for ' + addUsersText + ' to Add'}
               name="user"
               options={userSearchOptions}

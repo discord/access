@@ -28,7 +28,7 @@ import {
   FormContainer,
   SelectElement,
   TextFieldElement,
-} from 'react-hook-form-mui';
+} from '../../components/forms';
 
 import {
   useRoles,
@@ -315,7 +315,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof userSearchOptions)[number]>
               label={'Search for Roles to Add'}
               name="user"
               options={userSearchOptions}

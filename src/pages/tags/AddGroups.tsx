@@ -20,7 +20,7 @@ import InputLabel from '@mui/material/InputLabel';
 import DeleteIcon from '@mui/icons-material/Close';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {FormContainer, AutocompleteElement} from 'react-hook-form-mui';
+import {FormContainer, AutocompleteElement} from '../../components/forms';
 
 import {
   useGroups,
@@ -146,7 +146,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         <DialogContent>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof groupSearchOptions)[number]>
               label={'Search for Groups to Add'}
               name="group"
               options={groupSearchOptions}
