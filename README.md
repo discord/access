@@ -307,16 +307,11 @@ A value of `0` or less is rejected at startup: it would close every pending
 request on the next sync, and is almost always a mistaken attempt to disable
 expiration. Use `never` for that.
 
-**The requested-window check for role requests is new and is not covered by
-either cutoff.** The first `access sync` run after upgrading to a version with
-this check will, in a single run, close every existing pending role request
-whose requested end date has already passed; each closure notifies the
-requester and every eligible approver, which for a role request includes
-Access admins. Setting `MAX_ACCESS_REQUEST_AGE_SECONDS=never` before that first
-run only suppresses the age-based half of expiration, not this window check.
-Operators with a large backlog of old role requests may want to plan for this
-rather than be surprised by a burst of notifications on the first sync after
-upgrading.
+Closing a request notifies its requester and every approver eligible to review
+it; for a role request that includes Access admins. A sync run that closes many
+requests at once sends a correspondingly large number of notifications, so on a
+busy instance it is worth knowing how many requests are pending past a cutoff or
+past their requested end date.
 
 ### Access application configuration
 

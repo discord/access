@@ -651,9 +651,8 @@ async def expire_group_requests() -> None:
     What that leaves to the approve path: ApproveGroupRequest falls back to
     requested_ownership_ending_at when the approver supplies no resolved value,
     so approving a long-stale request could write an already-expired ownership
-    row and leave the new group unowned. PR #599 proposes refusing such an
-    approval outright; until it lands the gap is open. Either way, repairing it
-    belongs in the approve path and not in this sweep.
+    row and leave the new group unowned. Repairing that belongs in the approve
+    path and not in this sweep.
     See test_no_expire_group_request_with_lapsed_ownership_window.
 
     Uses its own cutoff because a group request's approver may need to negotiate
