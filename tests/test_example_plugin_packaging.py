@@ -17,6 +17,7 @@ here rather than in a built image.
 """
 
 import ast
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,11 @@ import pytest
 
 EXAMPLE_PLUGINS_DIR = Path(__file__).resolve().parents[1] / "examples" / "plugins"
 
-SETUP_FILES = sorted(EXAMPLE_PLUGINS_DIR.glob("*/setup.py"))
+# Examples declare their packaging either way; both are read into the same shape
+# below so a plugin can't drop out of the collision checks by switching form.
+DECLARATION_FILES = sorted(EXAMPLE_PLUGINS_DIR.glob("*/setup.py")) + sorted(
+    EXAMPLE_PLUGINS_DIR.glob("*/pyproject.toml")
+)
 
 
 def _setup_kwargs(setup_py: Path) -> dict[str, Any]:
@@ -39,6 +44,37 @@ def _setup_kwargs(setup_py: Path) -> dict[str, Any]:
             continue
         return {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords if kw.arg is not None}
     raise AssertionError(f"No setup() call found in {setup_py}")
+
+
+def _pyproject_kwargs(pyproject: Path) -> dict[str, Any]:
+    """Return a ``setup()``-shaped view of a plugin's ``pyproject.toml``."""
+    parsed = tomllib.loads(pyproject.read_text())
+    setuptools_table = parsed.get("tool", {}).get("setuptools", {})
+
+    kwargs: dict[str, Any] = {
+        "name": parsed["project"]["name"],
+        "packages": setuptools_table.get("packages", []),
+        "py_modules": setuptools_table.get("py-modules", []),
+        # Normalize {group: {name: target}} onto setup.py's ["name=target"] form.
+        "entry_points": {
+            group: [f"{name}={target}" for name, target in specs.items()]
+            for group, specs in parsed["project"].get("entry-points", {}).items()
+        },
+    }
+
+    # Auto-discovery would leave the top-level collision check with nothing to
+    # compare, i.e. passing without checking anything. Require it be spelled out.
+    assert kwargs["packages"] or kwargs["py_modules"], (
+        f"{pyproject} must declare [tool.setuptools] packages or py-modules explicitly, "
+        "so the top-level collision check below has something to compare."
+    )
+    return kwargs
+
+
+def _declaration_kwargs(declaration: Path) -> dict[str, Any]:
+    if declaration.name == "setup.py":
+        return _setup_kwargs(declaration)
+    return _pyproject_kwargs(declaration)
 
 
 def _top_level_names(kwargs: dict[str, Any]) -> list[str]:
@@ -60,7 +96,7 @@ def _entry_points(kwargs: dict[str, Any]) -> list[tuple[str, str]]:
 
 def test_example_plugins_are_discovered() -> None:
     """Guard against the collision tests below passing vacuously."""
-    assert len(SETUP_FILES) > 1, f"Expected several example plugins under {EXAMPLE_PLUGINS_DIR}"
+    assert len(DECLARATION_FILES) > 1, f"Expected several example plugins under {EXAMPLE_PLUGINS_DIR}"
 
 
 @pytest.mark.parametrize(
@@ -75,9 +111,9 @@ def test_example_plugins_are_discovered() -> None:
 def test_example_plugins_do_not_collide(extract: Any, what: str) -> None:
     owners: dict[Any, str] = {}
     collisions = []
-    for setup_py in SETUP_FILES:
-        plugin = setup_py.parent.name
-        for value in extract(_setup_kwargs(setup_py)):
+    for declaration in DECLARATION_FILES:
+        plugin = declaration.parent.name
+        for value in extract(_declaration_kwargs(declaration)):
             if value in owners:
                 collisions.append(f"{what} {value!r} claimed by both {owners[value]} and {plugin}")
             owners[value] = plugin

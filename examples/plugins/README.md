@@ -54,10 +54,12 @@ A plugin is an ordinary Python distribution with three parts:
 2. **Entry point registration.** A `setup.py` (or `pyproject.toml`) declaring the
    distribution and an `entry_points` mapping in the right group.
 
-3. **Dependencies.** Declare every runtime dep in `install_requires`, so a plain
-   `uv pip install ./your_plugin` yields a working plugin. The examples carry no
-   `requirements.txt`: a second list is a second place to forget, and a dep named
-   only there is missing from every install path that doesn't happen to read it.
+3. **Dependencies.** Declare every runtime dep where the distribution declares
+   them (`install_requires` in a `setup.py`, `[project] dependencies` in a
+   `pyproject.toml`), so a plain `uv pip install ./your_plugin` yields a working
+   plugin. The examples carry no `requirements.txt`: a second list is a second
+   place to forget, and a dep named only there is missing from every install path
+   that doesn't happen to read it.
    The image build and the `make` target below still install a `requirements.txt`
    first when one is present, so your own plugin may use one if you prefer.
 
