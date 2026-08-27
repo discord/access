@@ -1473,6 +1473,7 @@ export type TagDetail = {
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
   active_app_tags?: AppTagMapDetail[];
+  propagated_to_groups?: TagPropagationTargetDetail[];
 };
 
 /**
@@ -1497,6 +1498,15 @@ export type TagListItem = {
   propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type TagPropagationTargetDetail = {
+  group_id: string;
+  group_name: string;
+  group_type: string;
+  source_group_id: string;
+  source_group_name: string;
+  origin: string;
 };
 
 export type TagSummary = {

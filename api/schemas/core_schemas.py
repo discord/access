@@ -30,6 +30,17 @@ from api.schemas.datetimes import FlexibleDatetime
 # --- Tags -------------------------------------------------------------------
 
 
+class TagPropagationTargetDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    group_id: str
+    group_name: str
+    group_type: str
+    source_group_id: str
+    source_group_name: str
+    # "member_association" | "owner_association"
+    origin: str
+
+
 class TagDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -48,6 +59,10 @@ class TagDetail(BaseModel):
     # `TagResource.get()` `exclude=("all_group_tags", "all_app_tags")`
     # retains the `active_app_tags` projection.
     active_app_tags: list["AppTagMapDetail"] = Field(default_factory=list)
+    # Populated by a query in `get_tag`, not an ORM attribute -- see
+    # `api/routers/tags.py`. Roles reached by tag propagation through an
+    # associated group, gated on `propagate_to_roles`.
+    propagated_to_groups: list["TagPropagationTargetDetail"] = Field(default_factory=list)
 
 
 class TagSummary(BaseModel):
@@ -62,7 +77,8 @@ class TagSummary(BaseModel):
 class TagListItem(BaseModel):
     """Tag list-endpoint item. Slim field set (id, name, description,
     enabled, propagate_to_roles, constraints, created_at, updated_at) — does
-    not hydrate `active_group_tags`, which would be an N+1 across the page."""
+    not hydrate `active_group_tags`, which would be an N+1 across the page,
+    nor `propagated_to_groups`, which needs a per-tag join."""
 
     model_config = ConfigDict(from_attributes=True)
     id: str

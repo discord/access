@@ -8,14 +8,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy import func, nullsfirst, or_, select
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import aliased, joinedload, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
 from api.auth.permissions import require_access_admin
 from api.context import get_request_context
 from api.database import DbSession
-from api.models import AppTagMap, OktaUser, Tag
+from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, RoleGroupMap, Tag
 from api.operations import CreateTag, DeleteTag
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
@@ -29,6 +29,7 @@ from api.schemas import (
     EventType,
     SearchTagQuery,
     TagDetail,
+    TagPropagationTargetDetail,
     UpdateTagBody,
 )
 
@@ -73,7 +74,64 @@ async def get_tag(tag_id: str, db: DbSession, current_user_id: CurrentUserId) ->
     ).first()
     if tag is None:
         raise HTTPException(404, "Not Found")
-    return TagDetail.model_validate(tag, from_attributes=True)
+
+    propagated: list[TagPropagationTargetDetail] = []
+    # `enabled` matters as much as `propagate_to_roles`: `_propagated_sources`
+    # short-circuits on a disabled tag, so listing roles here for one would
+    # claim reach the enforcement path does not have.
+    if tag.propagate_to_roles and tag.enabled:
+        # `RoleGroup` is joined-table inheritance on `okta_group`, so selecting
+        # both it and the plain source `OktaGroup` in one query makes the two
+        # entities overlap on the same physical table. Left unaliased,
+        # SQLAlchemy silently auto-aliases RoleGroup's implicit parent join and
+        # later join/where clauses written against the bare `OktaGroup` class
+        # bind to that alias instead of the intended source-group row --
+        # `OktaGroupTagMap.group_id == OktaGroup.id` ends up matching the
+        # role's own row, not the tagged source group, and the query returns
+        # zero rows. Alias the source side explicitly to keep the two apart.
+        SourceGroup = aliased(OktaGroup, name="source_group")
+        rows = (
+            await db.execute(
+                select(RoleGroupMap.is_owner, RoleGroup, SourceGroup)
+                .join(SourceGroup, SourceGroup.id == RoleGroupMap.group_id)
+                .join(RoleGroup, RoleGroup.id == RoleGroupMap.role_group_id)
+                .join(OktaGroupTagMap, OktaGroupTagMap.group_id == SourceGroup.id)
+                .where(OktaGroupTagMap.tag_id == tag.id)
+                .where(
+                    or_(
+                        OktaGroupTagMap.ended_at.is_(None),
+                        OktaGroupTagMap.ended_at > func.now(),
+                    )
+                )
+                .where(
+                    or_(
+                        RoleGroupMap.ended_at.is_(None),
+                        RoleGroupMap.ended_at > func.now(),
+                    )
+                )
+                .where(SourceGroup.deleted_at.is_(None))
+                .where(SourceGroup.is_managed.is_(True))
+                .where(RoleGroup.deleted_at.is_(None))
+                # An unmanaged role is exempt from constraint enforcement, so
+                # it receives nothing and must not be listed as a target.
+                .where(RoleGroup.is_managed.is_(True))
+            )
+        ).all()
+        propagated = [
+            TagPropagationTargetDetail(
+                group_id=role.id,
+                group_name=role.name,
+                group_type="role_group",
+                source_group_id=source.id,
+                source_group_name=source.name,
+                origin="owner_association" if is_owner else "member_association",
+            )
+            for is_owner, role, source in rows
+        ]
+
+    detail = TagDetail.model_validate(tag, from_attributes=True)
+    detail.propagated_to_groups = propagated
+    return detail
 
 
 @router.post("", name="tags_create", status_code=201)
