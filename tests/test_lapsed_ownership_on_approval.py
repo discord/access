@@ -28,9 +28,7 @@ from api.services import okta
 def _mock_okta(mocker: MockerFixture) -> None:
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
-    mocker.patch.object(
-        okta, "create_group", side_effect=lambda name, desc: Group.from_dict({"id": uuid.uuid4().hex})
-    )
+    mocker.patch.object(okta, "create_group", side_effect=lambda name, desc: Group.from_dict({"id": uuid.uuid4().hex}))
 
 
 async def _access_owner(db: Db) -> OktaUser:
@@ -65,9 +63,7 @@ async def test_approval_rejected_when_requested_ownership_window_has_passed(db: 
     request_id = request.id
 
     with pytest.raises(InvalidRequestError) as exc:
-        await ApproveGroupRequest(
-            group_request=request_id, approver_user=approver, approval_reason="ok"
-        ).execute()
+        await ApproveGroupRequest(group_request=request_id, approver_user=approver, approval_reason="ok").execute()
     assert "already passed" in str(exc.value)
 
     # The guard raises mid-transaction, so unwind it the way the request teardown
@@ -93,9 +89,7 @@ async def test_approval_rejected_when_resolved_ownership_window_has_passed(db: D
     await db.session.commit()
 
     with pytest.raises(InvalidRequestError):
-        await ApproveGroupRequest(
-            group_request=request.id, approver_user=approver, approval_reason="ok"
-        ).execute()
+        await ApproveGroupRequest(group_request=request.id, approver_user=approver, approval_reason="ok").execute()
 
 
 async def test_approval_succeeds_with_a_future_ownership_window(db: Db, user: OktaUser) -> None:
@@ -106,9 +100,7 @@ async def test_approval_succeeds_with_a_future_ownership_window(db: Db, user: Ok
     request.requested_ownership_ending_at = datetime.now(timezone.utc) + timedelta(days=30)
     await db.session.commit()
 
-    await ApproveGroupRequest(
-        group_request=request.id, approver_user=approver, approval_reason="ok"
-    ).execute()
+    await ApproveGroupRequest(group_request=request.id, approver_user=approver, approval_reason="ok").execute()
 
     db.session.expire_all()
     group = (await db.session.scalars(select(OktaGroup).where(OktaGroup.name == "Future"))).first()
@@ -125,9 +117,7 @@ async def test_approval_succeeds_with_an_indefinite_ownership_window(db: Db, use
     request = await _group_request(db, user, "Indefinite")
     assert request.requested_ownership_ending_at is None
 
-    await ApproveGroupRequest(
-        group_request=request.id, approver_user=approver, approval_reason="ok"
-    ).execute()
+    await ApproveGroupRequest(group_request=request.id, approver_user=approver, approval_reason="ok").execute()
 
     db.session.expire_all()
     group = (await db.session.scalars(select(OktaGroup).where(OktaGroup.name == "Indefinite"))).first()
