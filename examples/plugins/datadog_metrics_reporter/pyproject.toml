@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "access-metrics"
+# setup.py declared no version, so setuptools defaulted the built distribution
+# to 0.0.0. PEP 621 requires the field, so it is spelled out at the value the
+# distribution already carried rather than silently promoted to a real one.
+version = "0.0.0"
+# datadog is pinned to the version the (now removed) requirements.txt
+# installed, so the image keeps getting the exact version it did before.
+dependencies = ["pluggy>=1.5,<2", "datadog==0.49.0"]
+
+[project.entry-points."access_metrics_reporter"]
+metrics_reporter = "metrics_reporter:datadog_metrics_plugin"
+
+[tool.setuptools]
+py-modules = ["metrics_reporter"]

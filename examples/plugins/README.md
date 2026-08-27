@@ -51,15 +51,27 @@ A plugin is an ordinary Python distribution with three parts:
    schema/metadata/validation hooks stay synchronous. CLI-command plugins are
    ordinary Click commands and drive their own `asyncio.run(...)`.
 
-2. **Entry point registration.** A `setup.py` (or `pyproject.toml`) declaring the
-   distribution and an `entry_points` mapping in the right group.
+2. **Entry point registration.** A `pyproject.toml` declaring the distribution
+   and a `[project.entry-points."<group>"]` table for the right group. Every
+   example uses this form, and it is what the packaging standards (PEP 517/518
+   for the build backend, PEP 621 for the metadata) define; a legacy `setup.py`
+   still builds, but nothing here needs one. Keep the group name **quoted** if it
+   contains a dot: unquoted, `[project.entry-points.access.commands]` is TOML for
+   a `commands` table nested inside `access`, and the plugin registers under a
+   group nothing looks in.
 
-3. **Dependencies.** Declare every runtime dep in `install_requires`, so a plain
-   `uv pip install ./your_plugin` yields a working plugin. The examples carry no
-   `requirements.txt`: a second list is a second place to forget, and a dep named
-   only there is missing from every install path that doesn't happen to read it.
-   The image build and the `make` target below still install a `requirements.txt`
-   first when one is present, so your own plugin may use one if you prefer.
+   One case makes `pyproject.toml` mandatory rather than merely preferred: a
+   plugin listed in the root [`pyproject.toml`](../../pyproject.toml) under
+   `[tool.uv.sources]`. Dependabot's uv file fetcher fetches `<path>/pyproject.toml`
+   for every path source and aborts the entire uv update job when it is missing.
+
+3. **Dependencies.** Declare every runtime dep in `[project] dependencies`, so a
+   plain `uv pip install ./your_plugin` yields a working plugin. The examples
+   carry no `requirements.txt`: a second list is a second place to forget, and a
+   dep named only there is missing from every install path that doesn't happen to
+   read it. The image build and the `make` target below still install a
+   `requirements.txt` first when one is present, so your own plugin may use one if
+   you prefer.
 
    Pin deps the app does not itself ship (`slack-sdk`, `datadog`), but keep deps
    the app supplies (`pluggy`, `SQLAlchemy`) on a compatible range. Plugins are

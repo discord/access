@@ -84,9 +84,10 @@ RUN uv sync --frozen --no-dev
 #   docker build --build-arg INSTALL_SLACK_NOTIFICATIONS_PLUGIN=true .
 # Installs use `uv pip install` because the venv at /app/.venv has no `pip`;
 # plain `pip` would install into the system interpreter where the app won't find
-# it. A plugin's requirements.txt is installed first when present (some examples
-# keep runtime deps there rather than in setup.py). See examples/plugins/README.md
-# for the full list and for how to bake in your own plugin.
+# it. A plugin's requirements.txt is installed first when present (no example
+# ships one, but your own plugin may keep runtime deps there rather than in its
+# project metadata). See examples/plugins/README.md for the full list and for
+# how to bake in your own plugin.
 ARG INSTALL_AUDIT_LOGGER_PLUGIN="false"
 ARG INSTALL_CONDITIONAL_ACCESS_PLUGIN="false"
 ARG INSTALL_DATADOG_METRICS_PLUGIN="false"
@@ -97,11 +98,13 @@ ARG INSTALL_SLACK_NOTIFICATIONS_PLUGIN="false"
 # Bind-mount the plugin sources for the length of this RUN only: enabled plugins
 # are installed (non-editable) into /app/.venv, so nothing needs to persist in
 # the final image and the default (all-false) build stays byte-identical.
-# `rw` is required, not incidental: every example uses a legacy setup.py, and
-# setuptools' build_wheel writes <name>.egg-info/ into the source directory, so
-# a read-only mount fails the build with "could not create '<name>.egg-info':
-# Read-only file system". BuildKit discards writes to an `rw` bind mount, so the
-# scratch egg-info still never reaches the image.
+# `rw` is required, not incidental: setuptools' build_wheel writes
+# <name>.egg-info/ into the source directory, so a read-only mount fails the
+# build with "could not create '<name>.egg-info': Read-only file system". That
+# is a property of the setuptools backend, not of how a plugin declares its
+# metadata, so it still holds now that every example uses pyproject.toml.
+# BuildKit discards writes to an `rw` bind mount, so the scratch egg-info still
+# never reaches the image.
 RUN --mount=type=bind,source=examples/plugins,target=examples/plugins,rw \
     set -eu; \
     install_plugin() { \

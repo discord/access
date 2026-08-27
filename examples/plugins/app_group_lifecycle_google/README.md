@@ -16,7 +16,7 @@ Membership is kept in sync automatically by Okta group push. A Google Group link
 
 - **[`__init__.py`](./__init__.py)**: Plugin package initialization
 - **[`plugin.py`](./plugin.py)**: Plugin implementation
-- **[`setup.py`](./setup.py)**: Setup script defining plugin metadata and entry points
+- **[`pyproject.toml`](./pyproject.toml)**: Packaging metadata and the entry point that registers the plugin
 
 ## Configuration
 

@@ -94,8 +94,12 @@ def cli() -> None:
 def _load_plugin_commands() -> None:
     """Register Click commands published via the `access.commands` entry point.
 
-    Plugins declare commands in their `setup.py` like:
-        entry_points={"access.commands": ["health=my_plugin.cli:health_command"]}
+    Plugins declare commands in their pyproject.toml like:
+        [project.entry-points."access.commands"]
+        health = "my_plugin.cli:health_command"
+
+    The group name must stay quoted: unquoted, TOML reads it as a `commands`
+    table nested inside `access` and the command never reaches this loader.
     """
     try:
         from importlib.metadata import entry_points

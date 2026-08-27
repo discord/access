@@ -108,7 +108,7 @@ curl -X PUT http://localhost:6060/api/groups/{group_id} \
 
 - **[`__init__.py`](./__init__.py)**: Plugin package initialization
 - **[`plugin.py`](./plugin.py)**: Plugin implementation with all hook implementations
-- **[`setup.py`](./setup.py)**: Setup script defining the plugin metadata and entry points
+- **[`pyproject.toml`](./pyproject.toml)**: Packaging metadata and the entry point that registers the plugin
 
 ## Extending This Example
 
@@ -117,7 +117,7 @@ You can use this plugin as a template for creating your own app group lifecycle 
 1. Copy this directory structure
 2. Replace the logging logic with your integration (e.g., Discord API, GitHub API, Google Groups API)
 3. Update the plugin ID, display name, and description
-4. Add any required dependencies to `setup.py`
+4. Add any required dependencies to `pyproject.toml`
 5. Implement the configuration and status properties your integration needs
 6. Update the validation logic for your specific requirements
 

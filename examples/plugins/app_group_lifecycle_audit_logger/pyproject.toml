@@ -1,0 +1,34 @@
+# Packaging metadata for the App Group Lifecycle Audit Logger example plugin.
+#
+# The [project.entry-points] table below is what registers the plugin with
+# Access: pluggy discovers implementations through the
+# "access_app_group_lifecycle" entry point group.
+#
+# The root pyproject.toml also names this example as a `[tool.uv.sources]` path
+# dependency so `make run` picks it up, which makes the file mandatory here:
+# Dependabot's uv file fetcher aborts when a path source has no pyproject.toml.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "app_group_lifecycle_audit_logger"
+version = "0.1.0"
+description = "Example app group lifecycle plugin that logs all group events"
+authors = [{ name = "Discord" }]
+dependencies = [
+    "SQLAlchemy",
+]
+
+# Register the plugin with the app group lifecycle plugin system
+[project.entry-points."access_app_group_lifecycle"]
+audit_logger = "app_group_lifecycle_audit_logger.plugin:audit_logger_plugin"
+
+# The package lives at the root of this directory rather than in a nested
+# subdirectory, so map the import name onto ".".
+[tool.setuptools]
+packages = ["app_group_lifecycle_audit_logger"]
+
+[tool.setuptools.package-dir]
+app_group_lifecycle_audit_logger = "."

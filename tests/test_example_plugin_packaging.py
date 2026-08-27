@@ -14,17 +14,29 @@ happened to ``notifications`` and ``notifications_slack``, which both shipped as
 ``access-notifications``/``notifications.py``. These tests parse the packaging
 declarations without importing or executing them, so the collision is caught
 here rather than in a built image.
+
+The last test here guards a different packaging failure with the same shape: a
+`[tool.uv.sources]` path entry whose directory has no pyproject.toml takes the
+whole Dependabot uv job down, and nothing in a normal build or test run notices.
 """
 
 import ast
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-EXAMPLE_PLUGINS_DIR = Path(__file__).resolve().parents[1] / "examples" / "plugins"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+EXAMPLE_PLUGINS_DIR = REPO_ROOT / "examples" / "plugins"
 
-SETUP_FILES = sorted(EXAMPLE_PLUGINS_DIR.glob("*/setup.py"))
+# Every example declares its packaging in a pyproject.toml. The setup.py reader
+# below stays because both install paths still build one, so a plugin that
+# reintroduces the legacy form is still covered by the checks here rather than
+# silently dropping out of them.
+DECLARATION_FILES = sorted(EXAMPLE_PLUGINS_DIR.glob("*/setup.py")) + sorted(
+    EXAMPLE_PLUGINS_DIR.glob("*/pyproject.toml")
+)
 
 
 def _setup_kwargs(setup_py: Path) -> dict[str, Any]:
@@ -39,6 +51,37 @@ def _setup_kwargs(setup_py: Path) -> dict[str, Any]:
             continue
         return {kw.arg: ast.literal_eval(kw.value) for kw in node.keywords if kw.arg is not None}
     raise AssertionError(f"No setup() call found in {setup_py}")
+
+
+def _pyproject_kwargs(pyproject: Path) -> dict[str, Any]:
+    """Return a ``setup()``-shaped view of a plugin's ``pyproject.toml``."""
+    parsed = tomllib.loads(pyproject.read_text())
+    setuptools_table = parsed.get("tool", {}).get("setuptools", {})
+
+    kwargs: dict[str, Any] = {
+        "name": parsed["project"]["name"],
+        "packages": setuptools_table.get("packages", []),
+        "py_modules": setuptools_table.get("py-modules", []),
+        # Normalize {group: {name: target}} onto setup.py's ["name=target"] form.
+        "entry_points": {
+            group: [f"{name}={target}" for name, target in specs.items()]
+            for group, specs in parsed["project"].get("entry-points", {}).items()
+        },
+    }
+
+    # Auto-discovery would leave the top-level collision check with nothing to
+    # compare, i.e. passing without checking anything. Require it be spelled out.
+    assert kwargs["packages"] or kwargs["py_modules"], (
+        f"{pyproject} must declare [tool.setuptools] packages or py-modules explicitly, "
+        "so the top-level collision check below has something to compare."
+    )
+    return kwargs
+
+
+def _declaration_kwargs(declaration: Path) -> dict[str, Any]:
+    if declaration.name == "setup.py":
+        return _setup_kwargs(declaration)
+    return _pyproject_kwargs(declaration)
 
 
 def _top_level_names(kwargs: dict[str, Any]) -> list[str]:
@@ -60,7 +103,7 @@ def _entry_points(kwargs: dict[str, Any]) -> list[tuple[str, str]]:
 
 def test_example_plugins_are_discovered() -> None:
     """Guard against the collision tests below passing vacuously."""
-    assert len(SETUP_FILES) > 1, f"Expected several example plugins under {EXAMPLE_PLUGINS_DIR}"
+    assert len(DECLARATION_FILES) > 1, f"Expected several example plugins under {EXAMPLE_PLUGINS_DIR}"
 
 
 @pytest.mark.parametrize(
@@ -75,9 +118,9 @@ def test_example_plugins_are_discovered() -> None:
 def test_example_plugins_do_not_collide(extract: Any, what: str) -> None:
     owners: dict[Any, str] = {}
     collisions = []
-    for setup_py in SETUP_FILES:
-        plugin = setup_py.parent.name
-        for value in extract(_setup_kwargs(setup_py)):
+    for declaration in DECLARATION_FILES:
+        plugin = declaration.parent.name
+        for value in extract(_declaration_kwargs(declaration)):
             if value in owners:
                 collisions.append(f"{what} {value!r} claimed by both {owners[value]} and {plugin}")
             owners[value] = plugin
@@ -85,4 +128,28 @@ def test_example_plugins_do_not_collide(extract: Any, what: str) -> None:
     assert not collisions, (
         "Example plugins must be installable into the same environment; "
         "whichever is installed last would silently win:\n  " + "\n  ".join(collisions)
+    )
+
+
+def test_uv_path_sources_have_a_pyproject() -> None:
+    """Every `[tool.uv.sources]` path must contain a pyproject.toml.
+
+    Dependabot's uv file fetcher fetches `<path>/pyproject.toml` for each path
+    source and aborts the *whole* job when one is missing, so a path source
+    pointing at a setup.py-only directory silently stalls every uv update,
+    security advisories included. uv itself builds either form, so nothing else
+    in CI catches it.
+    """
+    root = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    sources = root.get("tool", {}).get("uv", {}).get("sources", {})
+
+    missing = [
+        f"{name} -> {config['path']}"
+        for name, config in sources.items()
+        if "path" in config and not (REPO_ROOT / config["path"] / "pyproject.toml").is_file()
+    ]
+
+    assert not missing, (
+        "These [tool.uv.sources] paths have no pyproject.toml, which aborts every "
+        "Dependabot uv update:\n  " + "\n  ".join(missing)
     )

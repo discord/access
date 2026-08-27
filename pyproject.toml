@@ -82,6 +82,11 @@ dev = [
 # ----------------------------------------------------------------------
 # uv sources — resolve the in-repo example plugin from its local path
 # (editable) rather than PyPI. Only referenced by the dev group above.
+#
+# Every path listed here must contain a pyproject.toml, even though uv itself
+# is happy with a legacy setup.py. Dependabot's uv file fetcher unconditionally
+# fetches `<path>/pyproject.toml` for each source and aborts the whole job when
+# it is missing, which silently stalls every uv update including security ones.
 # ----------------------------------------------------------------------
 [tool.uv.sources]
 app_group_lifecycle_audit_logger = { path = "examples/plugins/app_group_lifecycle_audit_logger", editable = true }

@@ -97,12 +97,14 @@ def test_metadata(plugin_instance: GoogleGroupManagerPlugin) -> None:
 
 def test_app_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_app_config_properties(PLUGIN_ID)
+    assert props is not None
     assert set(props) == {"enabled", "email_pattern"}
     assert props["enabled"].required is True
 
 
 def test_group_config_properties_shape(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props is not None
     assert set(props) == {"email", "display_name"}
     assert props["email"].required is True
     assert props["display_name"].required is True
@@ -112,6 +114,7 @@ def test_group_config_email_property_carries_domain_suffix(plugin_instance: Goog
     # The email prefix field surfaces the domain as an inline suffix so the operator sees the
     # full address; the stored value remains the prefix only.
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props is not None
     assert props["email"].suffix == "@test-company.com"
     assert props["display_name"].suffix is None
 
@@ -120,13 +123,19 @@ def test_group_config_properties_surface_validation_patterns(plugin_instance: Go
     from plugin import GOOGLE_LOCAL_PART_RE
 
     # With no app pattern, the email property carries just the Google-safe charset rule.
-    patterns = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})["email"].validation["patterns"]
+    props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props is not None
+    validation = props["email"].validation
+    assert validation is not None
+    patterns = validation["patterns"]
     assert [p["regex"] for p in patterns] == [GOOGLE_LOCAL_PART_RE.pattern]
 
     # With an app email_pattern, it is appended as a second rule.
-    patterns = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {"email_pattern": r"^sec-"})[
-        "email"
-    ].validation["patterns"]
+    props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {"email_pattern": r"^sec-"})
+    assert props is not None
+    validation = props["email"].validation
+    assert validation is not None
+    patterns = validation["patterns"]
     assert [p["regex"] for p in patterns] == [GOOGLE_LOCAL_PART_RE.pattern, r"^sec-"]
 
 
@@ -444,6 +453,7 @@ async def test_email_from_status_reraises_non_absent_error(
 
 def test_email_config_property_is_immutable(plugin_instance: GoogleGroupManagerPlugin) -> None:
     props = plugin_instance.get_plugin_group_config_properties(PLUGIN_ID, {})
+    assert props is not None
     assert props["email"].immutable is True
     assert props["display_name"].immutable is False
 

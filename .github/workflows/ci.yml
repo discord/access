@@ -138,7 +138,7 @@ jobs:
               sys.exit(
                   "Example plugin installs re-resolved app dependencies:\n"
                   + "\n".join(drift)
-                  + "\nLoosen the offending plugin's install_requires to a compatible range."
+                  + "\nLoosen the offending plugin's dependencies to a compatible range."
               )
           print("OK: installed versions match every exact pin in pyproject.toml")
           PY

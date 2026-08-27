@@ -7,7 +7,7 @@ This is an example plugin that demonstrates how to extend the Access CLI using p
 The plugin consists of the following files:
 
 - **`cli.py`**: Contains the implementation of the `health` command.
-- **`setup.py`**: Defines the plugin's setup configuration and registers the entry point for the CLI command.
+- **`pyproject.toml`**: Declares the packaging metadata and registers the entry point for the CLI command.
 
 ## Installation
 
@@ -42,11 +42,11 @@ This command outputs the application's health status in JSON format, indicating 
 This plugin serves as an example of how to extend the Access CLI commands using plugins and entry points. It demonstrates:
 
 - How to create a custom Click command in a plugin.
-- How to register the command using the `access.commands` entry point group in `setup.py`.
+- How to register the command using the `access.commands` entry point group in `pyproject.toml`.
 
 By following this example, you can create your own plugins to extend the functionality of the Access CLI in a modular and scalable way.
 
 ## Files
 
 - **[`cli.py`](./cli.py)**: Implementation of the `health` CLI command.
-- **[`setup.py`](./setup.py)**: Setup script defining the plugin metadata and entry points.
+- **[`pyproject.toml`](./pyproject.toml)**: Packaging metadata and the entry point that registers the command.

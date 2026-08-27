@@ -1,0 +1,28 @@
+# Distribution name, module name, and entry-point name all stay distinct from
+# the `notifications` example: both register in the `access_notifications`
+# group, and the Dockerfile exposes them as independent build args, so an image
+# can enable both. Sharing any of those names makes the second install silently
+# overwrite the first instead of registering alongside it.
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "access-notifications-slack"
+# setup.py declared no version, so setuptools defaulted the built distribution
+# to 0.0.0. PEP 621 requires the field, so it is spelled out at the value the
+# distribution already carried rather than silently promoted to a real one.
+version = "0.0.0"
+# Every runtime dep is declared here, so a plain `uv pip install
+# ./notifications_slack` yields a working plugin. slack_sdk's AsyncWebClient
+# imports aiohttp, which slack-sdk does not depend on itself, so aiohttp has
+# to be named explicitly or the hook fails at import time. pluggy stays a
+# range because the app supplies it.
+dependencies = ["pluggy>=1.5,<2", "slack-sdk==3.27.2", "aiohttp==3.14.3"]
+
+[project.entry-points."access_notifications"]
+notifications_slack = "notifications_slack"
+
+[tool.setuptools]
+py-modules = ["notifications_slack"]
