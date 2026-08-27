@@ -73,8 +73,16 @@ A plugin is an ordinary Python distribution with three parts:
    `requirements.txt` first when one is present, so your own plugin may use one if
    you prefer.
 
+   Declare what the plugin *imports*, not what it runs alongside. The two
+   app-group-lifecycle examples declare neither `pluggy` nor `SQLAlchemy`: they
+   take `hookimpl` from `api.plugins.app_group_lifecycle` and the ORM classes
+   they annotate hook arguments with from `api.models`, so both arrive with the
+   app and neither is imported here. A dep declared without a matching import
+   goes stale silently and, per the pinning rule below, can re-resolve a package
+   the app is using.
+
    Pin deps the app does not itself ship (`slack-sdk`, `datadog`), but keep deps
-   the app supplies (`pluggy`, `SQLAlchemy`) on a compatible range. Plugins are
+   the app supplies (`click`, `SQLAlchemy`) on a compatible range. Plugins are
    installed *into* the app's venv, so an exact pin that disagrees with
    [`pyproject.toml`](../../pyproject.toml) silently re-resolves that package for
    the running app.

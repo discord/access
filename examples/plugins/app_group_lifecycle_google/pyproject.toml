@@ -14,7 +14,6 @@ version = "0.1.0"
 description = "Plugin for managing Google groups linked to Access groups"
 authors = [{ name = "Discord" }]
 dependencies = [
-    "SQLAlchemy",
     "google-api-python-client>=2.0.0",
     "google-auth>=2.0.0",
 ]
