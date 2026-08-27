@@ -272,6 +272,47 @@ If you are using Cloudflare Access, ensure that you configure `CLOUDFLARE_TEAM_D
 
 Else, if you are using a generic OIDC identity provider (such as Okta), then you should configure `SECRET_KEY` and `OIDC_CLIENT_SECRETS`. `CLOUDFLARE_TEAM_DOMAIN` and `CLOUDFLARE_APPLICATION_AUDIENCE` do not need to be set and can be removed from your env file. Make sure to also mount your `client-secrets.json` file to the container if you don't have it inline.
 
+##### Request expiration
+
+The `access sync` cronjob closes pending requests that have sat too long. Two
+environment variables control it, both in seconds, both defaulting to one week:
+
+| Variable | Governs | Default |
+| --- | --- | --- |
+| `MAX_ACCESS_REQUEST_AGE_SECONDS` | access requests **and** role requests | `604800` |
+| `MAX_GROUP_REQUEST_AGE_SECONDS` | group requests | `604800` |
+
+These are environment variables; setting them in an `ACCESS_CONFIG_FILE` JSON
+config has no effect.
+
+Set either to `never` to switch off age-based expiration for the request types
+it governs:
+
+```
+MAX_ACCESS_REQUEST_AGE_SECONDS=never
+```
+
+Three things worth knowing:
+
+- **The two are independent.** Raising `MAX_ACCESS_REQUEST_AGE_SECONDS` does not
+  raise the group cutoff; set both if you want both changed.
+- **Access and role requests share one cutoff.** Disabling
+  `MAX_ACCESS_REQUEST_AGE_SECONDS` stops role requests aging out too.
+- **`never` does not mean nothing is ever closed.** Access and role requests are
+  also closed when the end date the requester asked for has already passed,
+  which is a separate check that `never` does not affect. Group requests have no
+  such check, so `never` stops their expiration entirely.
+
+A value of `0` or less is rejected at startup: it would close every pending
+request on the next sync, and is almost always a mistaken attempt to disable
+expiration. Use `never` for that.
+
+Closing a request notifies its requester and every approver eligible to review
+it; for a role request that includes Access admins. A sync run that closes many
+requests at once sends a correspondingly large number of notifications, so on a
+busy instance it is worth knowing how many requests are pending past a cutoff or
+past their requested end date.
+
 ### Access application configuration
 
 _All front-end and back-end configuration overrides are **optional**._

@@ -1,8 +1,9 @@
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from sqlalchemy import and_, func, or_, select
 from api.config import settings
@@ -21,11 +22,13 @@ from api.models import (
     AccessRequestStatus,
     App,
     AppGroup,
+    GroupRequest,
     OktaGroup,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
     RoleGroupMap,
+    RoleRequest,
 )
 from api.models.app_group import get_access_owners, get_app_managers
 from api.models.okta_group import get_group_managers
@@ -34,6 +37,8 @@ from api.operations import (
     DeleteUser,
     ModifyGroupUsers,
     RejectAccessRequest,
+    RejectGroupRequest,
+    RejectRoleRequest,
     UnmanageGroup,
 )
 from api.plugins import NotificationHook, send_notification
@@ -514,26 +519,67 @@ async def sync_group_ownerships(
     logger.info("Ownership sync finished.")
 
 
+# The resolution_reason written when a request is closed for age or for a lapsed
+# window, shared by all three sweeps. Worth knowing when reading the audit
+# trail: a null resolver alone does not identify an expiry, since requester
+# deletion, group deletion, group unmanaging, and a conditional-access denial
+# all close requests with no actor too. This wording is what tells them apart.
+EXPIRED_REQUEST_REASON = "Closed because the request expired"
+
+
+async def _expire_each(
+    requests: Sequence[Any],
+    reject: Callable[[str], Awaitable[Any]],
+    label: str,
+) -> None:
+    """Reject each request, isolating failures so one bad row can't abort the sweep.
+
+    The reject operations commit per request, so a failure only needs its own
+    transaction rolled back. Without this, a single request that raises (e.g.
+    ConflictError, when a reviewer resolves it mid-sync) aborts expiration for
+    every remaining request and will do so again on the next run.
+
+    IDs are read up front, before any rollback: `db.session.rollback()` expires
+    every instance in the identity map (not just the failed one), so touching an
+    attribute on one of the *other*, not-yet-processed `requests` afterward would
+    force a lazy reload with no async context to run it in (`MissingGreenlet`).
+    `reject` is therefore called with the id, matching the `Model | str`
+    constructor every reject operation already supports.
+    """
+    request_ids: list[str] = [request.id for request in requests]
+    for request_id in request_ids:
+        try:
+            await reject(request_id)
+        except Exception:
+            logger.exception(f"Failed to expire {label} {request_id}, skipping.")
+            await db.session.rollback()
+
+
 async def expire_access_requests() -> None:
     logger.info("Access request expiration started.")
-    MAX_ACCESS_REQUEST_AGE_SECONDS = settings.MAX_ACCESS_REQUEST_AGE_SECONDS
+    max_age_seconds = settings.max_access_request_age_seconds
 
-    older_than_max = (
-        await db.session.scalars(
-            select(AccessRequest)
-            .where(AccessRequest.status == AccessRequestStatus.PENDING)
-            .where(AccessRequest.resolved_at.is_(None))
-            .where(
-                AccessRequest.created_at
-                < datetime.now(timezone.utc) - timedelta(seconds=MAX_ACCESS_REQUEST_AGE_SECONDS)
-            )
-        )
-    ).all()
-    for access_request in older_than_max:
-        await RejectAccessRequest(
-            access_request=access_request,
-            rejection_reason="Closed because the request expired",
+    def reject(request_id: str) -> Awaitable[AccessRequest]:
+        return RejectAccessRequest(
+            access_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
         ).execute()
+
+    # Skipped, not short-circuited: the requested-window pass below still runs,
+    # so a request whose own window has passed is closed either way. Logged so
+    # sync output distinguishes "disabled" from "nothing to expire".
+    if max_age_seconds is None:
+        logger.info("Age-based access request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(AccessRequest)
+                .where(AccessRequest.status == AccessRequestStatus.PENDING)
+                .where(AccessRequest.resolved_at.is_(None))
+                .where(AccessRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+            )
+        ).all()
+        await _expire_each(older_than_max, reject, "access request")
 
     older_than_request = (
         await db.session.scalars(
@@ -543,13 +589,100 @@ async def expire_access_requests() -> None:
             .where(AccessRequest.request_ending_at < func.now())
         )
     ).all()
-    for access_request in older_than_request:
-        await RejectAccessRequest(
-            access_request=access_request,
-            rejection_reason="Closed because the request expired",
-        ).execute()
+    await _expire_each(older_than_request, reject, "access request")
 
     logger.info("Access request expiration finished.")
+
+
+async def expire_role_requests() -> None:
+    """Close pending role requests that aged out or whose window has lapsed.
+
+    Shares MAX_ACCESS_REQUEST_AGE_SECONDS with access requests, including its "never"
+    disabled state; both are a yes/no on granting access, so they get the same fuse.
+    The lapsed-window path matters here for the same reason it does for access requests:
+    approving a role request past its request_ending_at would create an
+    already-expired RoleGroupMap.
+    """
+    logger.info("Role request expiration started.")
+    max_age_seconds = settings.max_access_request_age_seconds
+
+    def reject(request_id: str) -> Awaitable[RoleRequest]:
+        return RejectRoleRequest(
+            role_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute()
+
+    # Same shape as the access sweep; the requested-window pass below still runs.
+    if max_age_seconds is None:
+        logger.info("Age-based role request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(RoleRequest)
+                .where(RoleRequest.status == AccessRequestStatus.PENDING)
+                .where(RoleRequest.resolved_at.is_(None))
+                .where(RoleRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+            )
+        ).all()
+        await _expire_each(older_than_max, reject, "role request")
+
+    older_than_request = (
+        await db.session.scalars(
+            select(RoleRequest)
+            .where(RoleRequest.status == AccessRequestStatus.PENDING)
+            .where(RoleRequest.resolved_at.is_(None))
+            .where(RoleRequest.request_ending_at < func.now())
+        )
+    ).all()
+    await _expire_each(older_than_request, reject, "role request")
+
+    logger.info("Role request expiration finished.")
+
+
+async def expire_group_requests() -> None:
+    """Close pending group requests that aged out.
+
+    Age cutoff only, deliberately, and this is a policy call rather than a
+    claim that nothing can go wrong: a group request's payload is the group
+    itself, and destroying that ask over a stale secondary field (the requested
+    ownership window) loses more than it protects. Access and role requests get
+    a second, lapsed-window sweep because for them the window IS the ask.
+
+    What that leaves to the approve path: ApproveGroupRequest falls back to
+    requested_ownership_ending_at when the approver supplies no resolved value,
+    so approving a long-stale request could write an already-expired ownership
+    row and leave the new group unowned. Repairing that belongs in the approve
+    path and not in this sweep.
+    See test_no_expire_group_request_with_lapsed_ownership_window.
+
+    Uses its own cutoff because a group request's approver may need to negotiate
+    a name and pick tags rather than just answer yes/no.
+    """
+    logger.info("Group request expiration started.")
+    max_age_seconds = settings.max_group_request_age_seconds
+
+    def reject(request_id: str) -> Awaitable[GroupRequest]:
+        return RejectGroupRequest(
+            group_request=request_id,
+            rejection_reason=EXPIRED_REQUEST_REASON,
+        ).execute()
+
+    # Group requests have no second pass, so a disabled cutoff means this sweep
+    # does nothing at all. Logged so that is visible in sync output.
+    if max_age_seconds is None:
+        logger.info("Age-based group request expiration is disabled.")
+    else:
+        older_than_max = (
+            await db.session.scalars(
+                select(GroupRequest)
+                .where(GroupRequest.status == AccessRequestStatus.PENDING)
+                .where(GroupRequest.resolved_at.is_(None))
+                .where(GroupRequest.created_at < datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds))
+            )
+        ).all()
+        await _expire_each(older_than_max, reject, "group request")
+
+    logger.info("Group request expiration finished.")
 
 
 async def expiring_access_notifications_user() -> None:
