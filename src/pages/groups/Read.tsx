@@ -77,6 +77,7 @@ import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
+import EffectiveConstraints from '../../components/EffectiveConstraints';
 import DebouncedSearchField from '../../components/DebouncedSearchField';
 
 function sortGroupMembers(
@@ -429,6 +430,11 @@ export default function ReadGroup() {
               </Stack>
             </Paper>
           </Grid>
+          {(group.effective_constraints ?? []).length > 0 && (
+            <Grid item xs={12}>
+              <EffectiveConstraints constraints={group.effective_constraints ?? []} />
+            </Grid>
+          )}
           {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
             <Grid item xs={12}>
               <AppGroupLifecyclePluginData

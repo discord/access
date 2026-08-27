@@ -281,6 +281,28 @@ If you change what fields are logged or add a new `EventType`, any downstream de
 that parses these audit logs (e.g. a SIEM or a Panther detection schema) also needs to be
 updated. Those schemas typically live in the operator's own private repo, outside Access.
 
+## Comments and docstrings describe the present
+
+**Write what the code does now, not what changed.** Comments, docstrings, READMEs, and these
+steering files describe current behavior and intent. They are read by people who never saw the
+previous version and for whom "used to", "previously", "no longer", "today" (meaning
+pre-change), and "the old X" are noise at best and misleading once the referenced past is two
+refactors gone. Put the narrative of a change in the commit message and the PR description,
+which is where a reader goes looking for it.
+
+The exception is a genuine changelog — release notes, a migration guide, an Access 1.x-to-2.0
+upgrade note. Those exist precisely to describe a difference between versions.
+
+This does not mean stripping rationale. "Seeded on `is None`, not truthiness, so a falsy first
+value still counts" is about the code as it stands and is worth keeping. "Changed from
+truthiness to `is None`" is not.
+
+**Public functions and classes document their interface.** Anything importable from another
+module gets a docstring covering what it does, its arguments, what it returns, and what it
+raises. `api/plugins/app_group_lifecycle.py` is the reference for the house style. Internal
+helpers (leading underscore) need only a one-line summary, but they do need that — a reader
+skimming a module should not have to parse a body to learn what a function is for.
+
 ## Follow existing patterns before inventing new ones
 
 Before implementing anything, look at existing code that does something similar:
@@ -431,9 +453,46 @@ Time limits are stored in seconds but surfaced to users in days. Reason constrai
 direct adds and role adds, not only to access requests. **Only enabled tags apply** —
 disabled tags still exist in the DB but their constraints are short-circuited.
 
+A tag also carries a seventh, non-constraint knob: **`propagate_to_roles`** (bool, default
+`true`). It controls whether the tag's constraints reach roles associated with a tagged group,
+as described below.
+
 Operators typically define named tags (e.g. SOX, Quarterly Renewal) with specific constraint
 configurations. Read the tag definitions directly for current details — they change and any
 summary here would become stale.
+
+### Propagation to associated roles
+
+A role confers access on its **members**, so a tag on a group reaches the **member side** of
+any role associated with that group — computed at read time, never denormalized. Which key a
+role reads depends on the direction of the association:
+
+- a role that is a **member** of group G reads **the same** constraint key on G's tags;
+- a role that **owns** G reads the **owner-side counterpart** key.
+
+Nothing propagates onto a role's *own* owner side: owning a role confers none of the role's
+grants. `OWNER_SIDE_COUNTERPART` in `api/models/tag.py` encodes both the mapping and — via its
+key set — which constraints propagate at all. The three pairs cover all six constraints:
+
+| Member-side key (propagates) | Owner-side counterpart |
+|------------------------------|------------------------|
+| `MEMBER_TIME_LIMIT_CONSTRAINT_KEY` | `OWNER_TIME_LIMIT_CONSTRAINT_KEY` |
+| `REQUIRE_MEMBER_REASON_CONSTRAINT_KEY` | `REQUIRE_OWNER_REASON_CONSTRAINT_KEY` |
+| `DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY` | `DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY` |
+
+Propagated values coalesce with the role's own tags under the same rules as the table above, so
+a role holding both a member and an owner association to one tagged group takes the minimum (or
+the OR) across both directions. Propagation applies only when the tag is **enabled** and
+`propagate_to_roles` is set, and only to managed source groups and managed roles.
+
+Read constraints through the helpers in `api/models/tag.py` — `effective_constraint`,
+`effective_ended_at`, `effective_constraints`, `constraint_source_clause` — rather than
+`coalesce_constraints`, which sees a group's own tags only. They read
+`RoleGroup.active_role_associated_group_member_mappings` /
+`..._owner_mappings` (and, through those, the source groups' `active_group_tags` →
+`active_tag`), all `lazy="raise_on_sql"`: **every call site must eager-load that stack**, and
+must do so regardless of whether the group has any tags, since propagation is consulted
+unconditionally.
 
 **`disallow_self_add_membership`** prevents owners from directly adding themselves as members
 to any group carrying this constraint — not just roles. Common scenarios where this surfaces:

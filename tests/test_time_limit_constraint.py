@@ -916,6 +916,10 @@ async def test_time_limit_add_group_tags(
     user: OktaUser,
     url_for: Any,
 ) -> None:
+    # A time-limited tag landing on a group now also caps the members of roles
+    # associated with that group. The role's own membership row therefore moves
+    # from the uncapped bucket into the capped one; the totals below are
+    # unchanged, one row simply counts on the other side.
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.batch(
         3,
@@ -997,9 +1001,9 @@ async def test_time_limit_add_group_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
             ),
         )
-        == 4
+        == 5
     )
-    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 5
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 4
     assert (
         await db_count(
             db.session,
@@ -1035,7 +1039,7 @@ async def test_time_limit_add_group_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
             ),
         )
-        == 4
+        == 5
     )
     assert (
         await db_count(
@@ -1045,7 +1049,7 @@ async def test_time_limit_add_group_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
             ),
         )
-        == 4
+        == 3
     )
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
     assert (
@@ -1096,7 +1100,7 @@ async def test_time_limit_add_group_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
             ),
         )
-        == 4
+        == 5
     )
     assert (
         await db_count(
@@ -1106,7 +1110,7 @@ async def test_time_limit_add_group_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
             ),
         )
-        == 4
+        == 3
     )
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 1
     assert (
@@ -1142,6 +1146,10 @@ async def test_time_limit_add_app_tags(
     user: OktaUser,
     url_for: Any,
 ) -> None:
+    # A time-limited tag landing on a group now also caps the members of roles
+    # associated with that group. The role's own membership row therefore moves
+    # from the uncapped bucket into the capped one; the totals below are
+    # unchanged, one row simply counts on the other side.
     # Set primary tag constraint time limit to 3 days
     tags = TagFactory.batch(
         3,
@@ -1211,9 +1219,9 @@ async def test_time_limit_add_app_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
             ),
         )
-        == 4
+        == 5
     )
-    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 3
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 2
     assert (
         await db_count(
             db.session,
@@ -1251,9 +1259,9 @@ async def test_time_limit_add_app_tags(
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
             ),
         )
-        == 4
+        == 5
     )
-    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 3
+    assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_(None))) == 2
     assert (
         await db_count(
             db.session,

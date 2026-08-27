@@ -15,6 +15,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
 
@@ -61,6 +62,7 @@ interface CreateTagForm {
   memberReason?: string;
   ownerAdd?: string;
   memberAdd?: string;
+  propagateToRoles: string;
 }
 
 interface TagDialogProps {
@@ -118,6 +120,7 @@ function TagDialog(props: TagDialogProps) {
       name: tagForm.name,
       description: tagForm.description,
       enabled: tagForm.enabled == 'enabled',
+      propagate_to_roles: tagForm.propagateToRoles == 'yes',
     } as TagDetail;
 
     const constraints: Record<string, number | boolean> = {};
@@ -185,6 +188,11 @@ function TagDialog(props: TagDialogProps) {
                 ? 'yes'
                 : 'no'
               : 'no',
+          // `?? true` rather than a bare truthiness check: the field is
+          // optional in the generated type and the server default is `true`,
+          // so an absent value must prefill "yes", not "no" -- otherwise
+          // opening and saving an older tag silently turns propagation off.
+          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ?? true ? 'yes' : 'no') : 'yes',
         }}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>{createOrUpdateText} Tag</DialogTitle>
@@ -359,6 +367,39 @@ function TagDialog(props: TagDialogProps) {
                 <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as members?:</Box>
                 <ToggleButtonGroupElement
                   name="memberAdd"
+                  enforceAtLeastOneSelected
+                  exclusive
+                  required
+                  options={[
+                    {
+                      id: 'yes',
+                      label: 'Yes',
+                    },
+                    {
+                      id: 'no',
+                      label: 'No',
+                    },
+                  ]}
+                />
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Grid container spacing={1}>
+            <Grid item xs={12}>
+              <FormControl fullWidth sx={{marginTop: '18px'}}>
+                <Tooltip
+                  title={
+                    'When yes, these constraints also apply to any role that is a member or owner of a group ' +
+                    "carrying this tag — the role's own members must satisfy the same time limits, reason " +
+                    'requirements, and self-add restrictions. When no, the constraints apply only to the tagged ' +
+                    'groups themselves. This is not the same as disabling the tag, which turns off its ' +
+                    'enforcement everywhere.'
+                  }
+                  placement="top-start">
+                  <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
+                </Tooltip>
+                <ToggleButtonGroupElement
+                  name="propagateToRoles"
                   enforceAtLeastOneSelected
                   exclusive
                   required

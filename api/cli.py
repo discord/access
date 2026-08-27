@@ -345,6 +345,23 @@ async def fix_role_memberships(dry_run: bool) -> None:
     await verify_and_fix_role_memberships(dry_run=dry_run)
 
 
+@cli.command("cap-role-memberships")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="If set will run as dry run and not make any changes",
+)
+@_with_app_context
+async def cap_role_memberships_command(dry_run: bool) -> None:
+    """Cap existing role memberships against time limits propagated from tagged groups."""
+    from api.integrity import cap_role_memberships
+
+    capped = await cap_role_memberships(dry_run=dry_run)
+    click.echo(f"{'Would cap' if dry_run else 'Capped'} {capped} role membership(s)")
+
+
 @cli.command("notify")
 @click.option(
     "--owner",

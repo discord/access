@@ -135,6 +135,7 @@ export type AppGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default app_group
    */
@@ -357,6 +358,16 @@ export type AuditUserGroupRow = {
   ended_actor?: UserSummaryForAudit | null;
 };
 
+/**
+ * How a tag reaches the group a constraint is being evaluated for.
+ *
+ * A `StrEnum` so it serializes as the bare string it always was: the JSON
+ * contract is unchanged, but the OpenAPI schema now carries the value set,
+ * and the generated TypeScript client gets a literal union instead of
+ * `string`.
+ */
+export type ConstraintOrigin = 'direct' | 'app' | 'member_association' | 'owner_association';
+
 export type CreateAccessRequestBody = {
   group_id: string;
   /**
@@ -421,10 +432,26 @@ export type CreateTagBody = {
    * @default true
    */
   enabled?: boolean;
+  propagate_to_roles?: boolean | null;
 };
 
 export type DeleteMessage = {
   deleted: boolean;
+};
+
+export type EffectiveConstraintDetail = {
+  constraint: string;
+  name: string;
+  value: number | boolean;
+  sources?: EffectiveConstraintSourceDetail[];
+};
+
+export type EffectiveConstraintSourceDetail = {
+  tag_id: string;
+  tag_name: string;
+  origin: ConstraintOrigin;
+  source_id?: string | null;
+  source_name?: string | null;
 };
 
 export type GroupDetail =
@@ -558,6 +585,7 @@ export type OktaGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default okta_group
    */
@@ -1056,6 +1084,7 @@ export type RoleGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
+  effective_constraints?: EffectiveConstraintDetail[];
   /**
    * @default role_group
    */
@@ -1435,6 +1464,10 @@ export type TagDetail = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -1444,8 +1477,8 @@ export type TagDetail = {
 
 /**
  * Tag list-endpoint item. Slim field set (id, name, description,
- * enabled, constraints, created_at, updated_at) — does not hydrate
- * `active_group_tags`, which would be an N+1 across the page.
+ * enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+ * not hydrate `active_group_tags`, which would be an N+1 across the page.
  */
 export type TagListItem = {
   id: string;
@@ -1458,6 +1491,10 @@ export type TagListItem = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1472,6 +1509,10 @@ export type TagSummary = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
 };
 
 /**
@@ -1498,6 +1539,7 @@ export type UpdateTagBody = {
     [key: string]: any;
   } | null;
   enabled?: boolean | null;
+  propagate_to_roles?: boolean | null;
 };
 
 export type AccessRequestAppGroupRef = {
