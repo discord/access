@@ -49,6 +49,7 @@ import ListTags from './pages/tags/List';
 import ListUsers from './pages/users/List';
 import NavItems from './components/NavItems';
 import QuickSwitcher from './components/QuickSwitcher';
+import {TABLE_SEARCH_WIDTH, TABLE_TOP_BAR_PADDING_X} from './components/TableTopBar';
 import NotFound from './pages/NotFound';
 import ReadApp from './pages/apps/Read';
 import ReadGroup from './pages/groups/Read';
@@ -220,38 +221,46 @@ function Dashboard({setThemeMode}: {setThemeMode: (theme: PaletteMode) => void})
             <MenuIcon />
           </IconButton>
           <Box sx={{flexGrow: 1}} />
-          <Tooltip title="Search (users, groups, roles, apps)">
-            <Button
-              color="inherit"
-              onClick={() => setQuickSwitcherOpen(true)}
-              startIcon={<SearchIcon />}
-              sx={{
-                mr: 1,
-                textTransform: 'none',
-                borderColor: alpha('#fff', 0.4),
-                color: 'inherit',
-              }}
-              variant="outlined"
-              size="small">
-              Search
-              <Box
-                component="span"
+          <Box
+            sx={(theme) => ({
+              display: 'flex',
+              alignItems: 'center',
+              width: `calc(${TABLE_SEARCH_WIDTH}px + ${theme.spacing(TABLE_TOP_BAR_PADDING_X)})`,
+            })}>
+            <Tooltip title="Search (users, groups, roles, apps)">
+              <Button
+                color="inherit"
+                onClick={() => setQuickSwitcherOpen(true)}
+                startIcon={<SearchIcon />}
                 sx={{
-                  ml: 1.5,
-                  px: 0.75,
-                  py: 0.1,
-                  borderRadius: 1,
-                  fontSize: '0.7rem',
-                  lineHeight: 1.6,
-                  backgroundColor: alpha('#fff', 0.15),
-                }}>
-                {isMacPlatform ? '⌘K' : 'Ctrl K'}
-              </Box>
-            </Button>
-          </Tooltip>
-          <IconButton color="inherit" component={RouterLink} to="/users/@me">
-            <AccountIcon />
-          </IconButton>
+                  flexGrow: 1,
+                  mr: 1,
+                  textTransform: 'none',
+                  borderColor: alpha('#fff', 0.4),
+                  color: 'inherit',
+                }}
+                variant="outlined"
+                size="small">
+                Search
+                <Box
+                  component="span"
+                  sx={{
+                    ml: 'auto',
+                    px: 0.75,
+                    py: 0.1,
+                    borderRadius: 1,
+                    fontSize: '0.7rem',
+                    lineHeight: 1.6,
+                    backgroundColor: alpha('#fff', 0.15),
+                  }}>
+                  {isMacPlatform ? '⌘K' : 'Ctrl K'}
+                </Box>
+              </Button>
+            </Tooltip>
+            <IconButton color="inherit" component={RouterLink} to="/users/@me">
+              <AccountIcon />
+            </IconButton>
+          </Box>
         </Toolbar>
       </AppBar>
       <QuickSwitcher open={quickSwitcherOpen} onClose={() => setQuickSwitcherOpen(false)} />
