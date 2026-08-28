@@ -1,12 +1,13 @@
 import copy
 import logging
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload, with_polymorphic
 
 from api.context import get_request_context
-from api.exceptions import ConflictError
+from api.exceptions import ConflictError, InvalidRequestError
 from api.extensions import db
 from api.models import (
     AccessRequestStatus,
@@ -126,6 +127,41 @@ class ApproveGroupRequest:
             if group_request.resolved_plugin_data
             else group_request.requested_plugin_data
         )
+
+        # Same resolved-or-requested fallback as the fields above, hoisted here so
+        # it can be validated before anything is created.
+        resolved_ownership_ending_at = (
+            group_request.resolved_ownership_ending_at
+            if group_request.resolved_ownership_ending_at
+            else group_request.requested_ownership_ending_at
+        )
+        # Refuse to approve into an ownership window that has already closed.
+        # Nothing downstream clamps it: coalesce_ended_at only ever moves the date
+        # earlier, so a past value reaches ModifyGroupUsers and writes an ownership
+        # row that is expired on arrival. get_group_managers filters on ended_at, so
+        # the new group would have no owners at all, and its future approvals would
+        # silently route to the app owner or an Access admin instead of the person
+        # who asked for it.
+        #
+        # This is reachable three ways, which is why the guard lives here rather
+        # than in the router: any client that omits resolved_ownership_ending_at
+        # (the field is optional and only assigned when present), an approver
+        # selecting "Indefinite" in the UI (which sends nothing, so the stale
+        # requested value survives), or an approver leaving the custom date
+        # prefilled with the original — already past — date. Failing loudly makes
+        # the approver name a window they mean, which is the only safe default: the
+        # alternatives silently grant either nothing or more than was asked.
+        if resolved_ownership_ending_at is not None:
+            ending_at = (
+                resolved_ownership_ending_at.replace(tzinfo=UTC)
+                if resolved_ownership_ending_at.tzinfo is None
+                else resolved_ownership_ending_at
+            )
+            if ending_at <= datetime.now(UTC):
+                raise InvalidRequestError(
+                    "The ownership window for this request has already passed. "
+                    "Set an ownership end date when approving it."
+                )
 
         # authorization
         access_owner_ids = {u.id for u in await get_access_owners()}
@@ -280,16 +316,10 @@ class ApproveGroupRequest:
         tags = [tag_map.active_tag for tag_map in created_group_with_tags.active_group_tags]
 
         # Determine the initial ending time: prefer resolved, fall back to requested
-        initial_ending_at = (
-            group_request.resolved_ownership_ending_at
-            if group_request.resolved_ownership_ending_at
-            else group_request.requested_ownership_ending_at
-        )
-
         coalesced_ownership_ending_at = coalesce_ended_at(
             constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
             tags=tags,
-            initial_ended_at=initial_ending_at,
+            initial_ended_at=resolved_ownership_ending_at,
             group_is_managed=True,
         )
 
