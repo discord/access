@@ -288,12 +288,6 @@ wheels = [
 name = "app-group-lifecycle-audit-logger"
 version = "0.1.0"
 source = { editable = "examples/plugins/app_group_lifecycle_audit_logger" }
-dependencies = [
-    { name = "sqlalchemy" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "sqlalchemy" }]
 
 [[package]]
 name = "asyncpg"

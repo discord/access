@@ -17,9 +17,13 @@ name = "app_group_lifecycle_audit_logger"
 version = "0.1.0"
 description = "Example app group lifecycle plugin that logs all group events"
 authors = [{ name = "Discord" }]
-dependencies = [
-    "SQLAlchemy",
-]
+# No runtime dependencies. The plugin reaches Access only through the plugin
+# interface, and everything it needs comes with the app it installs into:
+# `hookimpl` and the context/metadata types from
+# `api.plugins.app_group_lifecycle`, and the ORM classes it annotates hook
+# arguments with from `api.models`. Nothing here imports SQLAlchemy (or pluggy)
+# directly, so nothing here declares them.
+dependencies = []
 
 # Register the plugin with the app group lifecycle plugin system
 [project.entry-points."access_app_group_lifecycle"]
