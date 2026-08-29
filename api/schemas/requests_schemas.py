@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Optional, Self, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from api.access_config import get_access_config
 from api.config import settings
@@ -47,6 +47,30 @@ _TAG_DESC_MAX_LENGTH = 1024
 
 
 # --- Access requests --------------------------------------------------------
+
+
+def _strip_reason(value: Any) -> Any:
+    """Normalize inbound justification text.
+
+    `CheckForReason` decides whether a reason was given by stripping it, while
+    every route stored the value as received. A whitespace-only reason was
+    therefore rejected where a tag required one and stored verbatim where none
+    did -- "provided" judged by two standards depending on a tag, and
+    blank-looking text in the audit trail either way. Stripping on the way in
+    makes the two agree by construction, and covers the `request_reason`
+    fields that never reach the constraint at all.
+
+    Non-string input passes through for pydantic to reject or coerce, so this
+    adds no type handling of its own.
+    """
+    return value.strip() if isinstance(value, str) else value
+
+
+#: An inbound justification field. Whitespace-only collapses to `""`, which the
+#: reason constraints already treat as not provided. Response models keep plain
+#: `Optional[str]`: they report what is stored, and normalizing on the way out
+#: would hide rows written before this existed.
+ReasonStr = Annotated[Optional[str], BeforeValidator(_strip_reason)]
 
 
 # Discriminated-union refs for the *detail* `requested_group`. Each variant
@@ -157,7 +181,7 @@ class CreateAccessRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     group_id: str
     group_owner: bool = False
-    reason: Optional[str] = ""
+    reason: ReasonStr = ""
     ending_at: Optional[FlexibleDatetime] = None
 
 
@@ -169,7 +193,7 @@ class ResolveAccessRequestBody(BaseModel):
     # briefly used) interprets every non-empty string as True and silently
     # turns "false" into an APPROVED outcome.
     approved: StrictBool
-    reason: Optional[str] = ""
+    reason: ReasonStr = ""
     ending_at: Optional[FlexibleDatetime] = None
 
 
@@ -251,7 +275,7 @@ class CreateRoleRequestBody(BaseModel):
     role_id: str
     group_id: str
     group_owner: bool = False
-    reason: Optional[str] = ""
+    reason: ReasonStr = ""
     ending_at: Optional[FlexibleDatetime] = None
 
 
@@ -313,7 +337,7 @@ class _GroupRequestBodyBase(BaseModel):
     requested_group_description: Optional[str] = Field(default="", max_length=_GROUP_DESC_MAX_LENGTH)
     requested_group_tags: list[str] = Field(default_factory=list)
     requested_ownership_ending_at: Optional[FlexibleDatetime] = None
-    request_reason: Optional[str] = ""
+    request_reason: ReasonStr = ""
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -347,7 +371,7 @@ CreateGroupRequestBody = Annotated[
 class ResolveGroupRequestBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
     approved: StrictBool
-    reason: Optional[str] = ""
+    reason: ReasonStr = ""
     resolved_group_name: Optional[str] = None
     resolved_group_description: Optional[str] = None
     resolved_group_type: Optional[str] = None
@@ -608,7 +632,7 @@ class GroupMember(BaseModel):
     members_should_expire: list[int] = Field(default_factory=list)
     owners_should_expire: list[int] = Field(default_factory=list)
     users_added_ending_at: Optional[FlexibleDatetime] = None
-    created_reason: Optional[str] = ""
+    created_reason: ReasonStr = ""
 
 
 class RoleMember(BaseModel):
@@ -628,4 +652,4 @@ class RoleMember(BaseModel):
     groups_should_expire: list[int] = Field(default_factory=list)
     owner_groups_should_expire: list[int] = Field(default_factory=list)
     groups_added_ending_at: Optional[FlexibleDatetime] = None
-    created_reason: Optional[str] = ""
+    created_reason: ReasonStr = ""
