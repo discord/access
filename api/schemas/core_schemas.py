@@ -315,6 +315,22 @@ class EffectiveConstraintDetail(BaseModel):
     sources: list[EffectiveConstraintSourceDetail] = Field(default_factory=list)
 
 
+class EffectiveConstraintsResponse(BaseModel):
+    """The answer to "what constraints apply here?" for a set of groups or tags.
+
+    Carries both shapes because callers need both and neither can be derived
+    from the other without re-implementing `coalesce`: `coalesced` bounds one
+    shared control across the whole set (a bulk dialog's single duration
+    picker), while `by_group` answers per row (which groups block a self-add,
+    which picker options to disable). `by_group` is empty in tag mode, where
+    no group was named.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+    coalesced: list[EffectiveConstraintDetail] = Field(default_factory=list)
+    by_group: dict[str, list[EffectiveConstraintDetail]] = Field(default_factory=dict)
+
+
 class _GroupBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

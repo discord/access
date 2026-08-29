@@ -379,6 +379,27 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
     return f"due to {_join_phrases(phrases)}"
 
 
+def _constraint_entry(
+    constraint_key: str, constraint: TagConstraint, sources: list[ConstraintSource]
+) -> dict[str, Any]:
+    """One constraint's coalesced value and the sources that produced it."""
+    return {
+        "constraint": constraint_key,
+        "name": constraint.name,
+        "value": _fold(constraint, sources),
+        "sources": [
+            {
+                "tag_id": source.tag.id,
+                "tag_name": source.tag.name,
+                "origin": source.origin,
+                "source_id": source.source_id,
+                "source_name": source.source_name,
+            }
+            for source in sources
+        ],
+    }
+
+
 def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
     """Every constraint in force on `group`, with its coalesced value and sources.
 
@@ -392,21 +413,56 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
         sources = constraint_sources(constraint_key, group, include_provenance=True)
         if not sources:
             continue
-        entries.append(
-            {
-                "constraint": constraint_key,
-                "name": constraint.name,
-                "value": _fold(constraint, sources),
-                "sources": [
-                    {
-                        "tag_id": source.tag.id,
-                        "tag_name": source.tag.name,
-                        "origin": source.origin,
-                        "source_id": source.source_id,
-                        "source_name": source.source_name,
-                    }
-                    for source in sources
-                ],
-            }
-        )
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
+    return entries
+
+
+def effective_constraints_across(groups: list[OktaGroup]) -> list[dict[str, Any]]:
+    """Every constraint in force across `groups` taken together.
+
+    Not a per-group answer merged by the caller: the sources from every group
+    are folded under one `coalesce`, so a set of groups bounds a single shared
+    control (one duration picker for a bulk renewal) exactly as one group
+    bounds its own. Callers that also need per-group answers should ask for
+    both rather than re-deriving either -- re-deriving is the duplication this
+    exists to remove.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources: list[ConstraintSource] = []
+        for group in groups:
+            sources.extend(constraint_sources(constraint_key, group, include_provenance=True))
+        if not sources:
+            continue
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
+    return entries
+
+
+def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
+    """Every constraint a set of tags would impose, with no group involved.
+
+    For the case where the group does not exist yet -- approving a group
+    request means choosing tags for a group about to be created, so there is
+    nothing to compute propagation or app inheritance from. Every source is
+    therefore `DIRECT`: these tags would sit on the group itself.
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources = [
+            ConstraintSource(
+                tag=tag,
+                value=tag.constraints[constraint_key],
+                origin=ConstraintOrigin.DIRECT,
+                source_id=None,
+                source_name=None,
+            )
+            for tag in tags
+            if tag.enabled and constraint_key in tag.constraints
+        ]
+        if not sources:
+            continue
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
     return entries
