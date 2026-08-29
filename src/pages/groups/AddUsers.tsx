@@ -36,25 +36,10 @@ import {
   GroupMembersByIdPutError,
   GroupMembersByIdPutVariables,
 } from '../../api/apiComponents';
-import {
-  GroupDetail,
-  GroupMember,
-  GroupMembersSummary,
-  GroupRefForMembership,
-  OktaUserDetail,
-  RoleGroupDetail,
-  RoleGroupMapDetail,
-} from '../../api/apiSchemas';
+import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  ownerCantAddSelf,
-  ownerCantAddSelfGroups,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {effectiveOwnerCantAddSelf, effectiveRequiredReason, effectiveTimeLimit} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -100,47 +85,16 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
 
-  // in seconds
-  let timeLimit = minTagTime(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  let reason = requiredReason(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  let disallow_owner_add = ownerCantAddSelf(
-    props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-    props.owner,
-  );
-
-  if (props.group.type == 'role_group' && !props.owner) {
-    const active_groups_owners = (props.group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (props.group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out: GroupRefForMembership[], curr: RoleGroupMapDetail) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-    disallow_owner_add =
-      disallow_owner_add ||
-      ownerCantAddSelfGroups(active_groups_members ?? [], false) ||
-      ownerCantAddSelfGroups(active_groups_owners ?? [], true);
-  }
+  // `effective_constraints` is resolved server-side by the same code that
+  // enforces these, so the association traversal and coalescing that used to
+  // live here is gone -- along with its blind spots. It covers a role's own
+  // tags and anything reaching it through its associations, gated on
+  // `propagate_to_roles`, and it is the only source here for the propagated
+  // time limit, which had no client-side mirror at all.
+  const constraints = props.group.effective_constraints;
+  const timeLimit = effectiveTimeLimit(constraints, props.owner); // in seconds
+  const reason = effectiveRequiredReason(constraints, props.owner);
+  const disallow_owner_add = effectiveOwnerCantAddSelf(constraints, props.owner);
 
   let labels = null;
   let timeLimitUntil = null;
