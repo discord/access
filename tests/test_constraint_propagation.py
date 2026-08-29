@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
-from api.operations import ModifyGroupsTimeLimit, ModifyGroupUsers
+from api.operations import ModifyGroupsTimeLimit, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import (
     OktaGroupFactory,
@@ -373,3 +373,175 @@ async def test_retroactive_capping_skips_unmanaged_roles(db: Db, mocker: MockerF
         )
     ).one()
     assert membership.ended_at is None
+
+
+# --- Capping when the association is created -------------------------------
+#
+# The retroactive block above runs when a time-limited *tag* lands on a group.
+# The other way an association starts being governed is the association itself
+# being created, and that path never triggered a cap: a role with existing
+# indefinite members attached to a time-limited group left every one of those
+# memberships uncapped. The role's access to the group is bounded (the
+# `RoleGroupMap` is capped at creation, and derived rows take the minimum), but
+# membership *of the role* is never forced through review -- so renewing the
+# role's access rebuilds every derived grant from memberships nobody
+# re-examined. This recurs on every new association, not just historically.
+
+
+async def test_attaching_a_role_caps_its_existing_members(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    # Indefinite membership of the role, established before any association
+    # to the tagged group exists.
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    role_id, user_id = role.id, user.id
+
+    await ModifyRoleGroups(role_group=role_id, groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=86400)
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_attaching_a_role_as_owner_caps_its_existing_members(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """Members of a role that owns a group become owners of it, so the role's
+    member side is capped by the group's OWNER limit. Covering only the member
+    association would leave this branch of the fix untested."""
+    mocker.patch.object(okta, "add_owner_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 999_999,
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 3600,
+        }
+    )
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    role_id, user_id = role.id, user.id
+
+    await ModifyRoleGroups(role_group=role_id, owner_groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.ended_at is not None
+    expected = datetime.now(UTC) + timedelta(seconds=3600)
+    assert abs((membership.ended_at.replace(tzinfo=UTC) - expected).total_seconds()) < 60
+
+
+async def test_attaching_a_role_respects_the_gate(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
+    """A tag that does not propagate must not cap the role's members when the
+    association is created, exactly as it does not when the tag lands."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, propagate_to_roles=False)
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    role_id, user_id = role.id, user.id
+
+    await ModifyRoleGroups(role_group=role_id, groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.ended_at is None
+
+
+async def test_attaching_a_role_to_an_untagged_group_leaves_members_alone(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """The common case must not acquire a cap -- or a wasted query pass -- just
+    because the capping call was added to this operation."""
+    mocker.patch.object(okta, "add_user_to_group")
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    db.session.add_all([group, role, user])
+    await db.session.commit()
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    role_id, user_id = role.id, user.id
+
+    await ModifyRoleGroups(role_group=role_id, groups_to_add=[group.id], sync_to_okta=False).execute()
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.ended_at is None
+
+
+async def test_attaching_a_role_does_not_leak_one_groups_limit_onto_another(
+    db: Db, mocker: MockerFixture, user: OktaUser
+) -> None:
+    """`ModifyGroupsTimeLimit(groups=G, tags=T)` applies T to every group in G,
+    so the groups added by one operation cannot be unioned into a single call.
+    Attaching a role to a tagged group and an untagged group together must
+    leave the untagged group's own direct grants indefinite."""
+    mocker.patch.object(okta, "add_user_to_group")
+    tagged_group = OktaGroupFactory.build()
+    untagged_group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([tagged_group, untagged_group, role, tag, user])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=tagged_group.id, tag_id=tag.id))
+    # A direct, indefinite grant in the untagged group -- nothing about this
+    # operation should touch it.
+    db.session.add(OktaUserGroupMember(group_id=untagged_group.id, user_id=user.id, is_owner=False))
+    await db.session.commit()
+    untagged_group_id, user_id = untagged_group.id, user.id
+
+    await ModifyRoleGroups(
+        role_group=role.id,
+        groups_to_add=[tagged_group.id, untagged_group.id],
+        sync_to_okta=False,
+    ).execute()
+
+    db.session.expire_all()
+    direct = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == untagged_group_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+            .where(OktaUserGroupMember.role_group_map_id.is_(None))
+        )
+    ).one()
+    assert direct.ended_at is None
