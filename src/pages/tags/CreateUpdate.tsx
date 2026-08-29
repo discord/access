@@ -3,6 +3,8 @@ import * as React from 'react';
 import {useNavigate} from 'react-router-dom';
 
 import Alert from '@mui/material/Alert';
+
+import {MEMBER_SELF_ADD_LABEL, OWNER_SELF_ADD_LABEL, propagationConflictMessage} from './propagationRules';
 import AddTagIcon from '@mui/icons-material/Discount';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
@@ -343,7 +345,7 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as owners?:</Box>
+                <Box sx={{marginLeft: '3px'}}>{OWNER_SELF_ADD_LABEL}?:</Box>
                 <ToggleButtonGroupElement
                   name="ownerAdd"
                   enforceAtLeastOneSelected
@@ -364,7 +366,7 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as members?:</Box>
+                <Box sx={{marginLeft: '3px'}}>{MEMBER_SELF_ADD_LABEL}?:</Box>
                 <ToggleButtonGroupElement
                   name="memberAdd"
                   enforceAtLeastOneSelected
@@ -403,6 +405,18 @@ function TagDialog(props: TagDialogProps) {
                   enforceAtLeastOneSelected
                   exclusive
                   required
+                  // The backend rejects this combination on every tag write;
+                  // catching it here names the offending restriction next to
+                  // the control instead of surfacing a 400 after submit.
+                  validation={{
+                    validate: (value, form) =>
+                      propagationConflictMessage({
+                        propagateToRoles: value,
+                        ownerAdd: form.ownerAdd,
+                        memberAdd: form.memberAdd,
+                      }) ?? true,
+                  }}
+                  parseError={(error) => error?.message ?? ''}
                   options={[
                     {
                       id: 'yes',

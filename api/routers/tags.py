@@ -20,6 +20,7 @@ from api.operations import CreateTag, DeleteTag
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
+from api.models.tag import validate_constraint_propagation
 from api.routers._eager import group_tag_map_options
 from api.schemas import (
     TagListItem,
@@ -158,6 +159,15 @@ async def put_tag(
         payload["constraints"] = {}
     if "description" in payload and payload["description"] is None:
         payload["description"] = ""
+    # Validate the merged result, not the body: this is a partial update, so
+    # either half of the conflict may be arriving now while the other is
+    # already stored. Runs before the setattr loop so a rejected edit leaves
+    # the session unmutated.
+    validate_constraint_propagation(
+        payload["constraints"] if "constraints" in payload else tag.constraints,
+        payload["propagate_to_roles"] if "propagate_to_roles" in payload else tag.propagate_to_roles,
+    )
+
     for key in ("name", "description", "constraints", "enabled", "propagate_to_roles"):
         if key in payload:
             setattr(tag, key, payload[key])
