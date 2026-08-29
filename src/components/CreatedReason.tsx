@@ -28,7 +28,10 @@ function CreatedReasonDialog(props: CreatedReasonDialogProps) {
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
       <DialogTitle sx={{paddingBottom: '0px'}}>Justification</DialogTitle>
-      <DialogContent>{props.created_reason}</DialogContent>
+      {/* `pre-line` so a role-derived justification keeps its two labelled
+          lines; HTML would otherwise collapse the newline to a space and
+          run both halves together. Spaces still collapse normally. */}
+      <DialogContent sx={{whiteSpace: 'pre-line'}}>{props.created_reason}</DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Close</Button>
       </DialogActions>

@@ -9,6 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
+from api.operations._derived_reason import role_derived_reason
 from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
@@ -510,7 +511,10 @@ class ModifyRoleGroups:
                         ended_at=associated_users_ended_at,
                         created_actor_id=self.current_user_id,
                         ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                        created_reason=self.created_reason,
+                        # This operation supplies why the role was attached;
+                        # `member` is the user's role membership and supplies
+                        # why they are in the role to begin with.
+                        created_reason=role_derived_reason(member.created_reason, self.created_reason),
                     )
                     role_associated_membership_added[member.user_id] = membership_to_add
                     db.session.add(membership_to_add)
@@ -545,7 +549,7 @@ class ModifyRoleGroups:
                         ended_at=associated_users_ended_at,
                         created_actor_id=self.current_user_id,
                         ended_actor_id=self.current_user_id if self.groups_added_ended_at is not None else None,
-                        created_reason=self.created_reason,
+                        created_reason=role_derived_reason(member.created_reason, self.created_reason),
                     )
                     role_associated_ownership_added[member.user_id] = ownership_to_add
                     db.session.add(ownership_to_add)
