@@ -5,6 +5,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import selectinload
 from api.extensions import db
 from api.models import OktaGroup, OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.operations._derived_reason import role_derived_reason
 from api.models.tag import effective_constraint
 from api.operations import UnmanageGroup
 from api.services import okta
@@ -110,6 +111,14 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                             is_owner=active_role_group_map.is_owner,
                             role_group_map_id=active_role_group_map.id,
                             ended_at=associated_users_ended_at,
+                            # A repaired row is reconstructed from the two
+                            # records that justify it, so it carries the same
+                            # provenance as one written by the operations --
+                            # rather than the blank it used to default to.
+                            created_reason=role_derived_reason(
+                                role_group_membership.created_reason,
+                                active_role_group_map.created_reason,
+                            ),
                         )
                     )
                 await db.session.commit()
