@@ -64,7 +64,8 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {effectiveTimeLimit, useConstraintsForTags} from '../../constraints';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
@@ -194,7 +195,12 @@ export default function ReadGroupRequest() {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
 
-  const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags the approver has picked. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  const {data: tagConstraints} = useConstraintsForTags(selectedTags.map((tag) => tag.id));
+  const ownershipTimeLimit = effectiveTimeLimit(tagConstraints?.coalesced, true);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},

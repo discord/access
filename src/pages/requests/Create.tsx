@@ -47,7 +47,7 @@ import {
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {minTagTime, minTagTimeGroups, ownerCantAddSelf} from '../../helpers';
+import {effectiveOwnerCantAddSelf, effectiveTimeLimit, useConstraintsForGroups} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -218,25 +218,18 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   // find the shortest time (max allowed access time) and set that as the time limit. This value is used to
   // filter until drop-down labels, display a message about the constraint, and set a max date on the custom
   // until calendar.
-  const [timeLimit, setTimeLimit] = React.useState<number | null>(
-    props.group
-      ? minTagTime(
-          props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-          props.owner ?? false,
-        )
-      : null,
-  );
   const [groupSearchInput, setGroupSearchInput] = React.useState(props.group?.name ?? '');
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [selectedGroup, setSelectedGroup] = React.useState<GroupDetail | null>(props.group ?? null);
   const [owner, setOwner] = React.useState<boolean>(props.owner ?? false);
 
-  const untilLabels: [string, Array<Record<string, string>>] = timeLimit
-    ? filterUntilLabels(timeLimit)
-    : [accessConfig.DEFAULT_ACCESS_TIME, UNTIL_OPTIONS];
-  const [until, setUntil] = React.useState(untilLabels[0]);
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
+  // Seeded unrestricted; the effect below narrows both once the applicable
+  // constraints arrive, including on first render for a group passed in as a
+  // prop. Previously this seed did double duty as the constraint calculation,
+  // which is why it could only see the group's own tags.
+  const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
+  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
 
   const complete = (
     completedRequest: AccessRequestDetail | undefined,
@@ -270,28 +263,23 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const updateUntil = (group: GroupDetail | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);
     setOwner(ownerOrMember);
-    let time: number | null = null;
-    if (group == null) {
+  };
+
+  // Reading the group's own tags missed anything reaching a requested *role*
+  // through its associations, so the picker offered durations the backend
+  // would then quietly shorten. The API resolves that.
+  const {data: groupConstraints} = useConstraintsForGroups([selectedGroup?.id]);
+  const timeLimit = effectiveTimeLimit(groupConstraints?.coalesced, owner);
+
+  React.useEffect(() => {
+    if (timeLimit == null) {
+      setLabels(UNTIL_OPTIONS);
       return;
     }
-
-    // defaults to member if owner field on form is unset and props.owner == undefined
-    time = minTagTime(
-      group.active_group_tags ? group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-      ownerOrMember,
-    );
-
-    setTimeLimit(time);
-
-    if (!(time == null)) {
-      const [filteredUntil, filteredLabels] = filterUntilLabels(time);
-
-      setUntil(filteredUntil);
-      setLabels(filteredLabels);
-    } else {
-      setLabels(UNTIL_OPTIONS);
-    }
-  };
+    const [filteredUntil, filteredLabels] = filterUntilLabels(timeLimit);
+    setUntil(filteredUntil);
+    setLabels(filteredLabels);
+  }, [timeLimit]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -531,10 +519,7 @@ export default function CreateRequest(props: CreateRequestProps) {
   // constraints, so they never see it.
   const blockedFromSelfAdd =
     !isAccessAdmin(props.currentUser) &&
-    ownerCantAddSelf(
-      props.group?.active_group_tags?.map((tagMap) => tagMap.active_tag!),
-      props.owner ?? false,
-    );
+    effectiveOwnerCantAddSelf(props.group?.effective_constraints, props.owner ?? false);
 
   if (
     props.group?.deleted_at != null ||
