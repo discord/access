@@ -1276,15 +1276,11 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    """A tag setting only an owner time limit still caps role-derived ownerships.
+    """A tag setting only an owner time limit caps the ownerships a role grants.
 
-    The ownership branch of `ModifyGroupsTimeLimit` used to reach for
-    `membership_time_limit_from_now` when capping the ownerships a role grants
-    to its associated groups. That name is only bound by the membership branch,
-    so an owner-only tag raised `UnboundLocalError` here.
+    Memberships are left alone, since the tag carries no member limit.
     """
-    # Deliberately no MEMBER_TIME_LIMIT_CONSTRAINT_KEY -- an owner-only tag is
-    # the case that leaves the membership limit unset.
+    # Owner limit only -- the member limit is deliberately left unset.
     tag = TagFactory.build(constraints={Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS})
     db.session.add_all([tag, okta_group, role_group, user])
     await db.session.commit()
@@ -1304,7 +1300,6 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
     )
     assert role_owner_map_id is not None
 
-    # Baseline: nothing is time-bounded before the tag is applied.
     assert await db_count(db.session, select(OktaUserGroupMember).where(OktaUserGroupMember.ended_at.is_not(None))) == 0
 
     update_group_spy = mocker.patch.object(okta, "update_group")
@@ -1322,7 +1317,6 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    # The ownership the role grants `okta_group` is capped at the owner limit.
     assert (
         await db_count(
             db.session,
@@ -1336,7 +1330,6 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
         == 1
     )
 
-    # The tag sets no member limit, so the user's role membership stays indefinite.
     assert (
         await db_count(
             db.session,
@@ -1362,9 +1355,8 @@ async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
 ) -> None:
     """Role-derived ownerships are capped at the owner limit, not the member one.
 
-    The companion to the owner-only case above: when both limits are set but
-    differ, using `membership_time_limit_from_now` here silently capped
-    role-derived ownerships at the wrong limit instead of raising.
+    When a tag sets the two limits to different values, each side of the role's
+    grant takes its own: ownerships the owner limit, memberships the member one.
     """
     tag = TagFactory.build(
         constraints={
@@ -1412,19 +1404,18 @@ async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
     assert rep.status_code == 200
     assert update_group_spy.call_count == 1
 
-    # Ownership derived from the role is capped at the 1-day owner limit...
     assert (
         await db_count(
             db.session,
             select(OktaUserGroupMember).where(
                 OktaUserGroupMember.role_group_map_id == role_owner_map_id,
                 OktaUserGroupMember.is_owner.is_(True),
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(hours=12)),
                 OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
             ),
         )
         == 1
     )
-    # ...while membership derived from the role keeps the 7-day member limit.
     assert (
         await db_count(
             db.session,
