@@ -1,18 +1,40 @@
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import select
+
 from api.extensions import db
-from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models import OktaGroup, RoleGroup, Tag
 from api.models.tag import coalesce_constraints
+from api.operations._time_limits import (
+    limit_memberships_by_roles,
+    limit_memberships_to_groups,
+    limit_roles_associated_with_groups,
+)
 
 
 class ModifyGroupsTimeLimit:
+    """Apply the time limits a set of tags imposes on a set of groups.
+
+    Runs when a tag's constraints start applying to groups that already have
+    access granted on them -- the tag being attached, edited, or inherited from
+    an app. Existing grants are shortened to fit; nothing is ever extended.
+
+    A tag reaches access three ways, and each is a separate call below:
+
+    1. Directly, to the tagged groups' own memberships and ownerships.
+    2. Through a tagged *role*, to the access that role confers on the groups
+       it is associated with.
+    3. By propagation, to roles associated with a tagged group -- their members
+       are governed by the tagged group's limit, and so is everything those
+       memberships in turn confer.
+    """
+
     def __init__(self, groups: list[str] | set[str], tags: list[str] | set[str]):
         self.group_ids = groups
         self.tag_ids = tags
 
     async def execute(self) -> None:
-        # Only include groups that are managed
+        # Only managed groups are subject to constraints.
         groups = (
             await db.session.scalars(
                 select(OktaGroup)
@@ -21,6 +43,9 @@ class ModifyGroupsTimeLimit:
                 .where(OktaGroup.is_managed.is_(True))
             )
         ).all()
+        if len(groups) == 0:
+            return
+
         role_groups = (
             await db.session.scalars(
                 select(RoleGroup)
@@ -29,195 +54,41 @@ class ModifyGroupsTimeLimit:
                 .where(RoleGroup.is_managed.is_(True))
             )
         ).all()
-
         tags = list(
             (
                 await db.session.scalars(select(Tag).where(Tag.id.in_(self.tag_ids)).where(Tag.deleted_at.is_(None)))
             ).all()
         )
 
-        if len(groups) == 0:
-            return
-
-        # Only tags that propagate contribute a limit to associated roles.
-        propagating_tags = [t for t in tags if t.propagate_to_roles]
-        # A role that is a MEMBER of these groups is capped by their member
-        # limit; a role that OWNS them is capped by their owner limit. Both
-        # land on the role's own user memberships.
-        role_member_limit = coalesce_constraints(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, propagating_tags)
-        role_owner_limit = coalesce_constraints(Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, propagating_tags)
-
-        # Determine the minimum time allowed for group membership and ownership by current group tags
-        membership_seconds_limit = coalesce_constraints(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, tags)
-        ownership_seconds_limit = coalesce_constraints(Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, tags)
-        # Handle group time limit constraints when adding tags with time limit contraints to a group
-        if membership_seconds_limit is not None:
-            membership_time_limit_from_now = datetime.now(UTC) + timedelta(seconds=membership_seconds_limit)
-            # Reduce all user memberships for the given groups to minimum allowed time limit
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.group_id.in_([g.id for g in groups]))
-                .where(OktaUserGroupMember.is_owner.is_(False))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > membership_time_limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            # Reduce all role memberships for the given groups to the minimum allowed time limit
-            await db.session.execute(
-                update(RoleGroupMap)
-                .where(RoleGroupMap.group_id.in_([g.id for g in groups]))
-                .where(RoleGroupMap.is_owner.is_(False))
-                .where(
-                    or_(
-                        RoleGroupMap.ended_at.is_(None),
-                        RoleGroupMap.ended_at > membership_time_limit_from_now,
-                    )
-                )
-                .values({RoleGroupMap.ended_at: membership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            # Reduce all user memberships for groups associated with any given role groups
-            # to the minimum allowed time limit
-            role_group_map_associations = (
-                await db.session.scalars(
-                    select(RoleGroupMap)
-                    .where(RoleGroupMap.role_group_id.in_([g.id for g in role_groups]))
-                    .where(RoleGroupMap.is_owner.is_(False))
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
-                        )
-                    )
-                )
-            ).all()
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_group_map_associations]))
-                .where(OktaUserGroupMember.is_owner.is_(False))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > membership_time_limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            await db.session.commit()
-        if ownership_seconds_limit is not None:
-            ownership_time_limit_from_now = datetime.now(UTC) + timedelta(seconds=ownership_seconds_limit)
-            # Reduce all user ownerships for the given groups to minimum allowed time limit
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.group_id.in_([g.id for g in groups]))
-                .where(OktaUserGroupMember.is_owner.is_(True))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > ownership_time_limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: ownership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            # Reduce all role ownerships for the given groups to the minimum allowed time limit
-            await db.session.execute(
-                update(RoleGroupMap)
-                .where(RoleGroupMap.group_id.in_([g.id for g in groups]))
-                .where(RoleGroupMap.is_owner.is_(True))
-                .where(
-                    or_(
-                        RoleGroupMap.ended_at.is_(None),
-                        RoleGroupMap.ended_at > ownership_time_limit_from_now,
-                    )
-                )
-                .values({RoleGroupMap.ended_at: ownership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            # Reduce all user ownerships for groups associated with any given role groups
-            # to the minimum allowed time limit
-            role_group_map_associations = (
-                await db.session.scalars(
-                    select(RoleGroupMap)
-                    .where(RoleGroupMap.role_group_id.in_([g.id for g in role_groups]))
-                    .where(RoleGroupMap.is_owner.is_(True))
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
-                        )
-                    )
-                )
-            ).all()
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_group_map_associations]))
-                .where(OktaUserGroupMember.is_owner.is_(True))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > membership_time_limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            await db.session.commit()
-
-        # Retroactive capping: a time-limited tag landing on a group must also
-        # reach the existing user memberships of any role already associated
-        # with that group -- not just future grants. This is independent of
-        # whether the group's own membership/ownership limits (above) applied.
-        # Compute the full set of affected roles once per direction and issue
-        # a single bulk update per direction; this operation commits, so
-        # per-role updates would commit once per role.
         group_ids = [g.id for g in groups]
-        for is_owner_association, seconds_limit in (
-            (False, role_member_limit),
-            (True, role_owner_limit),
+        role_group_ids = [g.id for g in role_groups]
+        # Only tags that propagate reach an associated role.
+        propagating_tags = [t for t in tags if t.propagate_to_roles]
+
+        # One pass per side, each carrying its own limit. A tag may set either
+        # limit without the other, so neither pass can borrow the other's
+        # value or depend on the other having run.
+        for is_owner, constraint_key in (
+            (False, Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY),
+            (True, Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY),
         ):
-            if seconds_limit is None:
-                continue
-            limit_from_now = datetime.now(UTC) + timedelta(seconds=seconds_limit)
-            # Unmanaged roles are exempt: `effective_ended_at` returns early
-            # for a group that is not managed, and the `cap-role-memberships`
-            # sweep filters `RoleGroup.is_managed`. Join through so this third
-            # enforcement point agrees with the other two.
-            associated_role_ids = (
-                await db.session.scalars(
-                    select(RoleGroupMap.role_group_id)
-                    .join(RoleGroup, RoleGroup.id == RoleGroupMap.role_group_id)
-                    .where(RoleGroupMap.group_id.in_(group_ids))
-                    .where(RoleGroupMap.is_owner.is_(is_owner_association))
-                    .where(RoleGroup.deleted_at.is_(None))
-                    .where(RoleGroup.is_managed.is_(True))
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
-                        )
-                    )
+            seconds_limit = coalesce_constraints(constraint_key, tags)
+            if seconds_limit is not None:
+                ended_at = datetime.now(UTC) + timedelta(seconds=seconds_limit)
+                await limit_memberships_to_groups(group_ids, is_owner=is_owner, ended_at=ended_at)
+                await limit_memberships_by_roles(role_group_ids, is_owner=is_owner, ended_at=ended_at)
+
+            # A role that is a MEMBER of these groups is governed by their
+            # member limit and a role that OWNS them by their owner limit;
+            # either way the limit lands on the role's members. Computed from
+            # the propagating tags only, and independent of whether the group's
+            # own limit above applied.
+            propagated_seconds_limit = coalesce_constraints(constraint_key, propagating_tags)
+            if propagated_seconds_limit is not None:
+                await limit_roles_associated_with_groups(
+                    group_ids,
+                    is_owner=is_owner,
+                    ended_at=datetime.now(UTC) + timedelta(seconds=propagated_seconds_limit),
                 )
-            ).all()
-            if len(associated_role_ids) == 0:
-                continue
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.group_id.in_(associated_role_ids))
-                .where(OktaUserGroupMember.is_owner.is_(False))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
+
         await db.session.commit()

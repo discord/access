@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
 import logging
@@ -26,7 +26,7 @@ from api.models import (
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
-from api.operations.modify_groups_time_limit import ModifyGroupsTimeLimit
+from api.operations._time_limits import limit_access_conferred_by_roles, propagating_seconds_limit
 from api.plugins import NotificationHook
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import (
@@ -638,52 +638,35 @@ class ModifyRoleGroups:
         # Commit all changes
         await db.session.commit()
 
-        # Creating an association is the second moment a role starts being
-        # governed by a group's time limits; the first is a time-limited tag
-        # landing on a group the role is already associated with, which
-        # `ModifyGroupsTimeLimit` has always covered. Only that first one was
-        # wired up. Without this, a role carrying existing indefinite
-        # memberships joins a time-limited group and every one of them stays
-        # uncapped -- the role's *access* is bounded (the `RoleGroupMap` is
-        # capped at creation and derived rows take the minimum), but
-        # membership of the role is never forced through review, so renewing
-        # the role's access rebuilds each derived grant from a membership
-        # nobody re-examined.
+        # Attaching a role to a group is the second moment its members start
+        # being governed by that group's time limits; the first is a
+        # time-limited tag landing on a group the role is already associated
+        # with. Both have to reach the same things -- membership of the role
+        # and everything that membership confers -- so both end at the same
+        # helper rather than one operation reaching for the other.
         #
-        # Called once with the full set of added groups rather than per group:
-        # `ModifyGroupsTimeLimit` commits, so a call per group would commit
-        # per group. The call also re-applies those groups' own direct-grant
-        # limits, which is a no-op -- every update it issues is guarded on the
-        # existing end date already exceeding the limit.
-        newly_associated_group_ids = {g.id for g in groups_to_add} | {g.id for g in owner_groups_to_add}
-        if len(newly_associated_group_ids) > 0:
-            # `ModifyGroupsTimeLimit(groups=G, tags=T)` applies T's coalesced
-            # limits to every group in G, so the groups added here cannot be
-            # unioned into one call -- one group's tag would cap another
-            # group's direct grants. Batch by distinct tag set instead: still
-            # one call in the ordinary case (a single group, or several app
-            # groups sharing their app's tags), and never one per group.
-            # Untagged groups drop out entirely, so the common case does no
-            # extra work beyond the lookup below.
-            tag_ids_by_group: Dict[str, set[str]] = {}
-            for group_id, tag_id in await db.session.execute(
-                select(OktaGroupTagMap.group_id, OktaGroupTagMap.tag_id)
-                .where(OktaGroupTagMap.group_id.in_(newly_associated_group_ids))
-                .where(
-                    or_(
-                        OktaGroupTagMap.ended_at.is_(None),
-                        OktaGroupTagMap.ended_at > func.now(),
-                    )
+        # Without this, a role carrying existing indefinite memberships joins a
+        # time-limited group and every one of them stays uncapped. The role's
+        # own access is bounded (the `RoleGroupMap` is capped at creation and
+        # derived rows take the minimum), but membership of the role is never
+        # forced through review, so renewing the role's access rebuilds each
+        # derived grant from a membership nobody re-examined.
+        if self.role.is_managed:
+            # A role that is a MEMBER of a group is governed by that group's
+            # member limit and one that OWNS it by the owner limit, but both
+            # land on the role's own member side, so the tighter governs.
+            propagated_limits = [
+                await propagating_seconds_limit([g.id for g in groups_to_add], Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY),
+                await propagating_seconds_limit(
+                    [g.id for g in owner_groups_to_add], Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY
+                ),
+            ]
+            seconds_limit = min((limit for limit in propagated_limits if limit is not None), default=None)
+            if seconds_limit is not None:
+                await limit_access_conferred_by_roles(
+                    [self.role.id], ended_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
                 )
-            ):
-                tag_ids_by_group.setdefault(group_id, set()).add(tag_id)
-
-            group_ids_by_tag_set: Dict[frozenset[str], list[str]] = {}
-            for group_id, tag_ids in tag_ids_by_group.items():
-                group_ids_by_tag_set.setdefault(frozenset(tag_ids), []).append(group_id)
-
-            for tag_set, group_ids in group_ids_by_tag_set.items():
-                await ModifyGroupsTimeLimit(groups=group_ids, tags=set(tag_set)).execute()
+                await db.session.commit()
 
         # Resolve everything the notification hooks need on the main coroutine
         # before spawning tasks: spawned tasks must only perform network I/O,
