@@ -421,6 +421,7 @@ export type CreateTagBody = {
    * @default true
    */
   enabled?: boolean;
+  propagate_to_roles?: boolean | null;
 };
 
 export type DeleteMessage = {
@@ -1435,6 +1436,10 @@ export type TagDetail = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
   deleted_at?: string | null;
@@ -1444,8 +1449,8 @@ export type TagDetail = {
 
 /**
  * Tag list-endpoint item. Slim field set (id, name, description,
- * enabled, constraints, created_at, updated_at) — does not hydrate
- * `active_group_tags`, which would be an N+1 across the page.
+ * enabled, propagate_to_roles, constraints, created_at, updated_at) — does
+ * not hydrate `active_group_tags`, which would be an N+1 across the page.
  */
 export type TagListItem = {
   id: string;
@@ -1458,6 +1463,10 @@ export type TagListItem = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -1472,6 +1481,10 @@ export type TagSummary = {
    * @default true
    */
   enabled?: boolean;
+  /**
+   * @default true
+   */
+  propagate_to_roles?: boolean;
 };
 
 /**
@@ -1502,6 +1515,7 @@ export type UpdateTagBody = {
     [key: string]: any;
   } | null;
   enabled?: boolean;
+  propagate_to_roles?: boolean;
 };
 
 export type AccessRequestAppGroupRef = {

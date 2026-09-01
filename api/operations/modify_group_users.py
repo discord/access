@@ -24,7 +24,7 @@ from api.models import (
     Tag,
 )
 from api.models.access_request import get_all_possible_request_approvers
-from api.models.tag import coalesce_ended_at
+from api.models.tag import effective_ended_at
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
@@ -74,6 +74,19 @@ class ModifyGroupUsers:
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     joinedload(AppGroup.app),
                     selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                    # `effective_ended_at` below reads both association
+                    # directions and each associated group's tags to find the
+                    # time limits reaching a role. They are `raise_on_sql`, so
+                    # they must be loaded here even when this group is not a
+                    # role and the collections come back empty.
+                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                    .joinedload(RoleGroupMap.active_group)
+                    .selectinload(OktaGroup.active_group_tags)
+                    .joinedload(OktaGroupTagMap.active_tag),
+                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                    .joinedload(RoleGroupMap.active_group)
+                    .selectinload(OktaGroup.active_group_tags)
+                    .joinedload(OktaGroupTagMap.active_tag),
                 )
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaGroup.id == self.group_id)
@@ -81,19 +94,13 @@ class ModifyGroupUsers:
         ).first()
         assert group is not None
 
-        # Determine the minimum time allowed for group membership and ownership by current group tags
-        tags = [tag_map.active_tag for tag_map in group.active_group_tags]
-        members_added_ended_at = coalesce_ended_at(
-            constraint_key=Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=self.users_added_ended_at,
-            group_is_managed=group.is_managed,
+        # Determine the minimum time allowed for group membership and ownership,
+        # including any constraints propagated from associated groups if this is a role
+        members_added_ended_at = effective_ended_at(
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, group, self.users_added_ended_at
         )
-        owners_added_ended_at = coalesce_ended_at(
-            constraint_key=Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY,
-            tags=tags,
-            initial_ended_at=self.users_added_ended_at,
-            group_is_managed=group.is_managed,
+        owners_added_ended_at = effective_ended_at(
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY, group, self.users_added_ended_at
         )
 
         members_to_add: list[OktaUser] = []
