@@ -297,9 +297,9 @@ class EffectiveConstraintSourceDetail(BaseModel):
     tag_id: str
     tag_name: str
     origin: ConstraintOrigin
-    # Deliberately not `source_group_*`: an "app" origin's source is an App,
-    # not a group. Both fields are None for a "direct" origin, which has no
-    # source beyond the group itself.
+    # The site where the source tag was directly applied, from which the
+    # constraint is inherited: an app, another group, or None if applied
+    # directly.
     source_id: Optional[str] = None
     source_name: Optional[str] = None
 
