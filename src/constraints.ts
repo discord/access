@@ -31,24 +31,24 @@ function valueOf(constraints: Constraints, key: string): number | boolean | unde
   return constraints?.find((entry) => entry.constraint === key)?.value;
 }
 
-function side<T>(keys: {member: T; owner: T}, owner: boolean): T {
-  return owner ? keys.owner : keys.member;
+function side<T>(keys: {member: T; owner: T}, isOwner: boolean): T {
+  return isOwner ? keys.owner : keys.member;
 }
 
 // Seconds, or null when no limit applies. Compared against `undefined` rather
 // than tested for truthiness: a `0`-second limit is a real constraint, and
 // treating it as absent would offer an unbounded duration.
-export function effectiveTimeLimit(constraints: Constraints, owner: boolean): number | null {
-  const value = valueOf(constraints, side(TIME_LIMIT_KEYS, owner));
+export function effectiveTimeLimit(constraints: Constraints, isOwner: boolean): number | null {
+  const value = valueOf(constraints, side(TIME_LIMIT_KEYS, isOwner));
   return typeof value === 'number' ? value : null;
 }
 
-export function effectiveRequiredReason(constraints: Constraints, owner: boolean): boolean {
-  return valueOf(constraints, side(REQUIRE_REASON_KEYS, owner)) === true;
+export function isReasonRequired(constraints: Constraints, isOwner: boolean): boolean {
+  return valueOf(constraints, side(REQUIRE_REASON_KEYS, isOwner)) === true;
 }
 
-export function effectiveOwnerCantAddSelf(constraints: Constraints, owner: boolean): boolean {
-  return valueOf(constraints, side(SELF_ADD_KEYS, owner)) === true;
+export function isSelfAddDisallowed(constraints: Constraints, isOwner: boolean): boolean {
+  return valueOf(constraints, side(SELF_ADD_KEYS, isOwner)) === true;
 }
 
 // Stable, deduplicated, sorted ids so the query key does not change when the
@@ -108,16 +108,16 @@ export interface EffectiveConstraintsReader {
   /** `pending || error != null` — the answer is not yet trustworthy. */
   blocked: boolean;
   /** Seconds, or null when no limit applies or the answer is unknown. */
-  timeLimit(owner: boolean): number | null;
+  timeLimit(isOwner: boolean): number | null;
   /** True while the answer is unknown. */
-  requiresReason(owner: boolean): boolean;
+  isReasonRequired(isOwner: boolean): boolean;
   /** True while the answer is unknown. */
-  cantAddSelf(owner: boolean): boolean;
+  isSelfAddDisallowed(isOwner: boolean): boolean;
   /** One group's own answer, for marking individual rows. */
   forGroup(groupId: string | undefined | null): {
-    timeLimit(owner: boolean): number | null;
-    requiresReason(owner: boolean): boolean;
-    cantAddSelf(owner: boolean): boolean;
+    timeLimit(isOwner: boolean): number | null;
+    isReasonRequired(isOwner: boolean): boolean;
+    isSelfAddDisallowed(isOwner: boolean): boolean;
   };
 }
 
@@ -129,9 +129,9 @@ function reader(
 ): EffectiveConstraintsReader {
   const blocked = pending || error != null;
   const at = (constraints: Constraints) => ({
-    timeLimit: (owner: boolean) => (blocked ? null : effectiveTimeLimit(constraints, owner)),
-    requiresReason: (owner: boolean) => blocked || effectiveRequiredReason(constraints, owner),
-    cantAddSelf: (owner: boolean) => blocked || effectiveOwnerCantAddSelf(constraints, owner),
+    timeLimit: (isOwner: boolean) => (blocked ? null : effectiveTimeLimit(constraints, isOwner)),
+    isReasonRequired: (isOwner: boolean) => blocked || isReasonRequired(constraints, isOwner),
+    isSelfAddDisallowed: (isOwner: boolean) => blocked || isSelfAddDisallowed(constraints, isOwner),
   });
   return {
     pending,

@@ -46,7 +46,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
-import {effectiveOwnerCantAddSelf, effectiveRequiredReason, effectiveTimeLimit} from '../../constraints';
+import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
 
@@ -120,11 +120,10 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   const timeLimit = effectiveTimeLimit(constraints, props.owner); // in seconds
 
-  const reason = effectiveRequiredReason(constraints, props.owner);
+  const reason = isReasonRequired(constraints, props.owner);
 
   // current user is a group owner and disallow owner add tag constraint active for type of dialog open (owner/member)
-  const disallowOwnerAdd =
-    isGroupOwner(currentUser, props.group.id!) && effectiveOwnerCantAddSelf(constraints, props.owner);
+  const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id!) && isSelfAddDisallowed(constraints, props.owner);
 
   let labels = null;
   let timeLimitUntil = null;
