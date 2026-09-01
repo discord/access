@@ -23,12 +23,13 @@ shortens one of those inputs has to re-establish it.
 """
 
 from datetime import datetime
-from typing import Collection
+from typing import Collection, Optional
 
 from sqlalchemy import func, or_, select, update
 
 from api.extensions import db
-from api.models import OktaUserGroupMember, RoleGroupMap
+from api.models import OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models.tag import coalesce_constraints
 
 
 async def limit_memberships_to_groups(group_ids: Collection[str], *, is_owner: bool, end_at: datetime) -> None:
@@ -149,3 +150,81 @@ async def limit_access_conferred_by_roles(role_ids: Collection[str], *, end_at: 
     await limit_memberships_to_groups(role_ids, is_owner=False, end_at=end_at)
     await limit_memberships_by_roles(role_ids, is_owner=False, end_at=end_at)
     await limit_memberships_by_roles(role_ids, is_owner=True, end_at=end_at)
+
+
+async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_owner: bool, end_at: datetime) -> None:
+    """Cap the roles reached by a constraint on `group_ids`.
+
+    `is_owner` selects the association axis, not the side the limit lands on:
+    a role that is a member of these groups is reached by their member-side
+    limit and a role that owns them by their owner-side limit, but either way
+    the limit applies to the role's members. Unmanaged and deleted roles are
+    skipped, matching `effective_ended_at` and the `cap-role-memberships`
+    sweep.
+
+    Args:
+        group_ids: The groups the constraint sits on.
+        is_owner: The association axis to follow.
+        end_at: The end date to cap at.
+    """
+    if len(group_ids) == 0:
+        return
+
+    associated_role_ids = (
+        await db.session.scalars(
+            select(RoleGroupMap.role_group_id)
+            .join(RoleGroup, RoleGroup.id == RoleGroupMap.role_group_id)
+            .where(RoleGroupMap.group_id.in_(group_ids))
+            .where(RoleGroupMap.is_owner.is_(is_owner))
+            .where(RoleGroup.deleted_at.is_(None))
+            .where(RoleGroup.is_managed.is_(True))
+            .where(
+                or_(
+                    RoleGroupMap.ended_at.is_(None),
+                    RoleGroupMap.ended_at > func.now(),
+                )
+            )
+        )
+    ).all()
+
+    await limit_access_conferred_by_roles(associated_role_ids, end_at=end_at)
+
+
+async def propagating_seconds_limit(group_ids: Collection[str], constraint_key: str) -> Optional[int]:
+    """The limit `group_ids`' tags impose on a role associated with them.
+
+    Reads the groups' active tags directly rather than through
+    `effective_constraint`, because the caller has ids rather than a loaded
+    object graph. Only enabled tags that propagate contribute.
+
+    Args:
+        group_ids: The groups the role is being associated with.
+        constraint_key: `MEMBER_TIME_LIMIT_CONSTRAINT_KEY` for a member-side
+            association, `OWNER_TIME_LIMIT_CONSTRAINT_KEY` for an owner-side one.
+
+    Returns:
+        The coalesced limit in seconds, or None if no propagating tag sets it.
+    """
+    if len(group_ids) == 0:
+        return None
+
+    tags = (
+        await db.session.scalars(
+            select(Tag)
+            .join(OktaGroupTagMap, OktaGroupTagMap.tag_id == Tag.id)
+            .where(OktaGroupTagMap.group_id.in_(group_ids))
+            .where(
+                or_(
+                    OktaGroupTagMap.ended_at.is_(None),
+                    OktaGroupTagMap.ended_at > func.now(),
+                )
+            )
+            .where(Tag.deleted_at.is_(None))
+            .where(Tag.propagate_to_roles.is_(True))
+        )
+    ).all()
+
+    # `coalesce_constraints` applies the `enabled` filter and the constraint's
+    # own coalesce rule, so the minimum here comes from the same code that
+    # resolves it everywhere else.
+    return coalesce_constraints(constraint_key, list(tags))

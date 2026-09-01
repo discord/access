@@ -8,7 +8,7 @@ from sqlalchemy.orm import (
 
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import coalesce_constraints
+from api.models.tag import coalesce_constraints, constraint_source_clause, effective_constraint
 
 
 class CheckForReason:
@@ -56,47 +56,16 @@ class CheckForReason:
         assert group is not None
 
         if self.invalid_reason(self.reason):
-            tags = [tag_map.active_tag for tag_map in group.active_group_tags]
             if len(self.owners_to_add) > 0:
-                require_owner_reason = coalesce_constraints(
-                    constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY, tags=tags
-                )
-                if group.is_managed and require_owner_reason is True:
-                    return False, f"Reason for adding owners to {group.name} group is required due to group tags"
+                key = Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY
+                if group.is_managed and effective_constraint(key, group) is True:
+                    clause = constraint_source_clause(key, group)
+                    return False, f"Reason for adding owners to {group.name} group is required {clause}"
             if len(self.members_to_add) > 0:
-                require_member_reason = coalesce_constraints(
-                    constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY, tags=tags
-                )
-                if group.is_managed and require_member_reason is True:
-                    return False, f"Reason for adding members to {group.name} group is required due to group tags"
-
-                # If the group is a role group check to see if a reason is required for adding members or owners
-                # to the associated groups
-                if type(group) is RoleGroup and group.is_managed:
-                    member_groups = [rm.active_group for rm in group.active_role_associated_group_member_mappings]
-                    for member_group in member_groups:
-                        require_member_reason = coalesce_constraints(
-                            constraint_key=Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY,
-                            tags=[tag_map.active_tag for tag_map in member_group.active_group_tags],
-                        )
-                        if member_group.is_managed and require_member_reason is True:
-                            return (
-                                False,
-                                f"Reason for adding members to {member_group.name} group associated "
-                                + f"with role {group.name} is required due to group tags",
-                            )
-                    owner_groups = [rm.active_group for rm in group.active_role_associated_group_owner_mappings]
-                    for owner_group in owner_groups:
-                        require_owner_reason = coalesce_constraints(
-                            constraint_key=Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
-                            tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
-                        )
-                        if owner_group.is_managed and require_owner_reason is True:
-                            return (
-                                False,
-                                f"Reason for adding owners to {owner_group.name} group associated "
-                                + f"with role {group.name} is required due to group tags",
-                            )
+                key = Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY
+                if group.is_managed and effective_constraint(key, group) is True:
+                    clause = constraint_source_clause(key, group)
+                    return False, f"Reason for adding members to {group.name} group is required {clause}"
         return True, ""
 
     async def execute_for_role(self) -> Tuple[bool, str]:

@@ -1146,6 +1146,14 @@ class Tag(Base):
 
     enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=True)
 
+    # Whether this tag's constraints reach roles associated with a tagged group.
+    # Distinct from `enabled`: `enabled=False` turns the tag off everywhere,
+    # whereas this only stops propagation. On unless an operator opts out, so a
+    # tag constrains every path to the access it governs by default.
+    propagate_to_roles: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, default=True, server_default=expression.true()
+    )
+
     # Field containing additional data about externally managed groups
     constraints: Mapped[Dict[str, Any]] = mapped_column(
         mutable_json_type(
