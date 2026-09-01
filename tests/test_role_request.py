@@ -1471,6 +1471,71 @@ async def test_role_request_list_filters_via_http(client: AsyncClient, db: Db, u
     assert target_rr.id in found and other_rr.id not in found
 
 
+async def test_role_request_assignee_filter_excludes_propagated_self_add_role_target(
+    client: AsyncClient, db: Db, tag: Tag, url_for: Any
+) -> None:
+    """`owned_groups_no_self_member` in the `assignee_user_id` branch of the
+    role-requests list must key off `effective_constraint`, which also sees
+    `disallow_self_add_membership` propagated onto a *role* the assignee owns
+    (because that role is itself a member of a tagged group), not only tags
+    applied directly to the role. Keying off only directly-applied tags would
+    offer the assignee a request their approval would then be blocked from
+    resolving."""
+    role_owner = await OktaUserFactory.create_async()
+    other_member = await OktaUserFactory.create_async()
+    owned_role = await RoleGroupFactory.create_async()
+    tagged_group = await OktaGroupFactory.create_async()
+    other_role = await RoleGroupFactory.create_async()
+
+    # `role_owner` owns `owned_role`, and is separately a plain member of
+    # `other_role` alongside `other_member` -- `other_member` is who actually
+    # submits the (fixture-inserted) request below, so the unconditional
+    # "never show the assignee their own requests" filter doesn't hide it
+    # for an unrelated reason.
+    await ModifyGroupUsers(group=owned_role, owners_to_add=[role_owner.id], sync_to_okta=False).execute()
+    await ModifyGroupUsers(
+        group=other_role, members_to_add=[role_owner.id, other_member.id], sync_to_okta=False
+    ).execute()
+
+    # `owned_role` becomes a MEMBER of `tagged_group` -- this is what
+    # propagates the constraint onto `owned_role` without tagging it directly.
+    await ModifyRoleGroups(
+        role_group=owned_role, groups_to_add=[tagged_group.id], sync_to_okta=False, created_reason="test"
+    ).execute()
+
+    tag.constraints = {Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True}
+    db.session.add(tag)
+    await db.session.commit()
+    await OktaGroupTagMapFactory.create_async(group_id=tagged_group.id, tag_id=tag.id)
+
+    # Inserted directly (bypassing `CreateRoleRequest`, which refuses a role
+    # as `requested_group`) to exercise the router's list-filtering query in
+    # isolation against a role target carrying only a propagated constraint.
+    pending_rr = await RoleRequestFactory.create_async(
+        requester_user_id=other_member.id,
+        requester_role_id=other_role.id,
+        requested_group_id=owned_role.id,
+        request_ownership=False,
+    )
+
+    assignee_user_id = role_owner.id
+    pending_rr_id = pending_rr.id
+
+    # The test session already loaded `owned_role`'s (previously empty)
+    # `active_role_associated_group_member_mappings` collection earlier in
+    # this test (e.g. via factory/operation calls before the mapping row
+    # existed); expire it so the endpoint's own query -- sharing this same
+    # session -- repopulates it instead of reading the stale cached state.
+    # A real request never has this staleness since it starts a fresh session.
+    db.session.expire_all()
+
+    list_url = url_for("api-role-requests.role_requests")
+    rep = await client.get(list_url, params={"assignee_user_id": assignee_user_id, "status": "PENDING"})
+    assert rep.status_code == 200
+    ids = [r["id"] for r in rep.json()["items"]]
+    assert pending_rr_id not in ids
+
+
 async def test_get_role_request_detail_requested_group_for_app_group(
     client: AsyncClient,
     db: Db,
@@ -1615,3 +1680,42 @@ async def test_reject_role_request_notify_false_suppresses_completion(
 
     assert (await db.session.get(RoleRequest, role_request.id)).status == AccessRequestStatus.REJECTED
     assert completed_spy.call_count == 0
+
+
+async def test_role_request_assignee_admin_branch_loads_role_target_propagation(
+    client: AsyncClient, db: Db, url_for: Any
+) -> None:
+    """The Access-admin branch of the `assignee_user_id` role-requests list
+    evaluates `effective_constraint(DISALLOW_SELF_ADD_MEMBERSHIP, ...)` over
+    every pending request's `requested_group`. That key is in
+    `OWNER_SIDE_COUNTERPART`, so for a `RoleGroup` target the helper reads the
+    role's `active_role_associated_group_*_mappings` -- all `raise_on_sql`.
+    Without those loaders the endpoint 500s, and it does so whether or not the
+    role carries any tags, because propagation is consulted unconditionally.
+
+    A `RoleGroup` can become a `RoleRequest.requested_group` in production via
+    `ModifyGroupType` converting a group that already has a pending request."""
+    admin = (
+        await db.session.scalars(select(OktaUser).where(OktaUser.email == settings.CURRENT_OKTA_USER_EMAIL))
+    ).first()
+    assert admin is not None
+    admin_id = admin.id
+
+    requester = await OktaUserFactory.create_async()
+    requester_role = await RoleGroupFactory.create_async()
+    # The request target is itself a role -- the shape `ModifyGroupType`
+    # produces when it converts a group with a pending role request.
+    target_role = await RoleGroupFactory.create_async()
+
+    await RoleRequestFactory.create_async(
+        requester_user_id=requester.id,
+        requester_role_id=requester_role.id,
+        requested_group_id=target_role.id,
+        request_ownership=False,
+    )
+
+    db.session.expire_all()
+
+    list_url = url_for("api-role-requests.role_requests")
+    rep = await client.get(list_url, params={"assignee_user_id": admin_id, "status": "PENDING"})
+    assert rep.status_code == 200

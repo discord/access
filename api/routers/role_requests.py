@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy import String, and_, cast, false, not_, or_, select
-from sqlalchemy.orm import aliased, joinedload, selectinload
+from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -21,10 +21,11 @@ from api.models import (
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
+    RoleGroupMap,
     RoleRequest,
     Tag,
 )
-from api.models.tag import coalesce_constraints
+from api.models.tag import effective_constraint
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
@@ -185,16 +186,30 @@ async def list_role_requests(
                                         joinedload(OktaGroupTagMap.active_tag)
                                     ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request). `effective_constraint`
+                                    # then consults propagation -- unconditionally, tags
+                                    # or not -- and reads these `raise_on_sql`
+                                    # relationships. Loaded for both the owner-side and
+                                    # member-side queries so the eager-load set doesn't
+                                    # depend on which constraint key happens to be passed.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
                             .where(RoleRequest.request_ownership.is_(True))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
                 tagged_member_requests = [
                     rr
@@ -214,16 +229,30 @@ async def list_role_requests(
                                         joinedload(OktaGroupTagMap.active_tag)
                                     ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request). `effective_constraint`
+                                    # then consults propagation -- unconditionally, tags
+                                    # or not -- and reads these `raise_on_sql`
+                                    # relationships. Loaded for both the owner-side and
+                                    # member-side queries so the eager-load set doesn't
+                                    # depend on which constraint key happens to be passed.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                                    .joinedload(RoleGroupMap.active_group)
+                                    .selectinload(OktaGroup.active_group_tags)
+                                    .joinedload(OktaGroupTagMap.active_tag),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
                             .where(RoleRequest.request_ownership.is_(False))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
 
                 blocked_request_ids: list[str] = []
@@ -253,10 +282,26 @@ async def list_role_requests(
                             select(OktaGroup)
                             # `active_tag` is read per tag below; nest its loader so
                             # OktaGroupTagMap.active_tag isn't left on raise_on_sql.
+                            # `owned_groups` has no type filter, so `g` can be a
+                            # RoleGroup here (a role owner's own role); the
+                            # selectin_polymorphic plus the two
+                            # active_role_associated_group_*_mappings loaders below
+                            # let `effective_constraint` read the propagated
+                            # member/owner tags a RoleGroup picks up from the
+                            # groups it belongs to / owns.
                             .options(
+                                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                                 selectinload(OktaGroup.active_group_tags).options(
                                     joinedload(OktaGroupTagMap.active_tag)
-                                )
+                                ),
+                                selectinload(RoleGroup.active_role_associated_group_member_mappings)
+                                .joinedload(RoleGroupMap.active_group)
+                                .selectinload(OktaGroup.active_group_tags)
+                                .joinedload(OktaGroupTagMap.active_tag),
+                                selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+                                .joinedload(RoleGroupMap.active_group)
+                                .selectinload(OktaGroup.active_group_tags)
+                                .joinedload(OktaGroupTagMap.active_tag),
                             )
                             .where(
                                 or_(
@@ -272,18 +317,12 @@ async def list_role_requests(
                 owned_groups_no_self_owner = [
                     g.id
                     for g in owned_groups
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in g.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, g)
                 ]
                 owned_groups_no_self_member = [
                     g.id
                     for g in owned_groups
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in g.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, g)
                 ]
                 role_membership_ids = [
                     rg.id

@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
 from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
-from api.models.tag import coalesce_constraints
+from api.models.tag import coalesce_constraints, constraint_source_clause, effective_constraint
 
 
 class CheckForSelfAdd:
@@ -66,57 +66,26 @@ class CheckForSelfAdd:
             return True, ""
 
         if len(self.owners_to_add) > 0 and current_user.id in self.owners_to_add:
-            disallow_self_add_ownership = coalesce_constraints(
-                constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                tags=[tag_map.active_tag for tag_map in group.active_group_tags],
-            )
-            if group.is_managed and disallow_self_add_ownership is True:
+            key = Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY
+            if group.is_managed and effective_constraint(key, group) is True:
+                clause = constraint_source_clause(key, group)
                 return (
                     False,
                     "Current user is a group owner who is restricted "
-                    + f"from re-adding themself as owner to {group.name} due to group tags",
+                    + f"from re-adding themself as owner to {group.name} {clause}",
                 )
         if len(self.members_to_add) > 0 and current_user.id in self.members_to_add:
-            disallow_self_add_membership = coalesce_constraints(
-                constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                tags=[tag_map.active_tag for tag_map in group.active_group_tags],
-            )
-            if group.is_managed and disallow_self_add_membership is True:
+            # For a role, `effective_constraint` also covers the groups the
+            # role is a member of (same key) and the groups it owns (owner-side
+            # key). The clause names which group imposed the restriction.
+            key = Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY
+            if group.is_managed and effective_constraint(key, group) is True:
+                clause = constraint_source_clause(key, group)
                 return (
                     False,
                     "Current user is a group owner who is restricted "
-                    + f"from adding themself as member to {group.name} due to group tags",
+                    + f"from adding themself as member to {group.name} {clause}",
                 )
-
-            # If the group is a role group check to see if a reason is required for adding members or owners
-            # to the associated groups
-            if type(group) is RoleGroup and group.is_managed:
-                member_groups = [rm.active_group for rm in group.active_role_associated_group_member_mappings]
-                for member_group in member_groups:
-                    disallow_self_add_membership = coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tag_map.active_tag for tag_map in member_group.active_group_tags],
-                    )
-                    if member_group.is_managed and disallow_self_add_membership is True:
-                        return (
-                            False,
-                            "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {group.name} because the associated group {member_group.name} "
-                            + "has group tags which restricts self-adding membership",
-                        )
-                owner_groups = [rm.active_group for rm in group.active_role_associated_group_owner_mappings]
-                for owner_group in owner_groups:
-                    disallow_self_add_ownership = coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tag_map.active_tag for tag_map in owner_group.active_group_tags],
-                    )
-                    if owner_group.is_managed and disallow_self_add_ownership is True:
-                        return (
-                            False,
-                            "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {group.name} because the associated group {owner_group.name} "
-                            + "has group tags which restricts self-adding ownership",
-                        )
         return True, ""
 
     async def execute_for_role(self) -> Tuple[bool, str]:
