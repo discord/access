@@ -123,27 +123,44 @@ export interface EffectiveConstraintsReader {
 
 function reader(
   coalesced: EffectiveConstraintDetail[] | undefined,
-  byGroup: Record<string, EffectiveConstraintDetail[]>,
+  byGroup: Record<string, EffectiveConstraintDetail[]> | undefined,
   pending: boolean,
   error: Error | null,
 ): EffectiveConstraintsReader {
-  const blocked = pending || error != null;
-  const at = (constraints: Constraints) => ({
-    timeLimit: (isOwner: boolean) => (blocked ? null : effectiveTimeLimit(constraints, isOwner)),
-    isReasonRequired: (isOwner: boolean) => blocked || isReasonRequired(constraints, isOwner),
-    isSelfAddDisallowed: (isOwner: boolean) => blocked || isSelfAddDisallowed(constraints, isOwner),
-  });
+  // An absent list is unknown, not empty. `[]` is an answer -- nothing applies
+  // to this group -- but `undefined` means nobody has told us yet, whether
+  // because a request is in flight, because it failed, or because the payload
+  // in hand does not carry the field. All three fail the gates closed.
+  const at = (constraints: Constraints) => {
+    const unknown = pending || error != null || constraints == null;
+    return {
+      timeLimit: (isOwner: boolean) => (unknown ? null : effectiveTimeLimit(constraints, isOwner)),
+      isReasonRequired: (isOwner: boolean) => unknown || isReasonRequired(constraints, isOwner),
+      isSelfAddDisallowed: (isOwner: boolean) => unknown || isSelfAddDisallowed(constraints, isOwner),
+    };
+  };
   return {
     pending,
     error,
-    blocked,
+    blocked: pending || error != null || coalesced == null,
     ...at(coalesced),
-    forGroup: (groupId) => at(groupId ? byGroup[groupId] : undefined),
+    // An id the response did not answer for is unknown too. The endpoint drops
+    // ids naming a group that no longer exists, so a row whose group was
+    // deleted since the page rendered must not read as unrestricted.
+    forGroup: (groupId) => at(groupId ? (byGroup ?? {})[groupId] : undefined),
   };
 }
 
-/** A reader over constraints already in hand, which are never pending. */
-export function settledConstraints(constraints: Constraints): EffectiveConstraintsReader {
+/**
+ * A reader over constraints carried on a payload already in hand, which is
+ * never pending.
+ *
+ * `[]` means the payload answered "nothing applies". `undefined` or `null`
+ * means it does not carry the field at all -- audit group references and the
+ * create/update group responses omit it -- which is unknown, so the gates fail
+ * closed exactly as they do while a request is in flight.
+ */
+export function carriedConstraints(constraints: Constraints): EffectiveConstraintsReader {
   return reader(constraints ?? undefined, {}, false, null);
 }
 
@@ -166,7 +183,7 @@ function useSplitQuery(ids: string[], mode: 'group_ids' | 'tag_ids'): EffectiveC
       null,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batches, results.map((r) => `${r.status}:${r.dataUpdatedAt}`).join('|')]);
+  }, [batches, results.map((r) => `${r.status}:${r.dataUpdatedAt}:${r.errorUpdatedAt}`).join('|')]);
 }
 
 /**

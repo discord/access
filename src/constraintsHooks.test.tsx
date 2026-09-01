@@ -101,6 +101,17 @@ describe('useConstraintsForGroups', () => {
     expect(shown('isSelfAddDisallowed')).toBe('true');
   });
 
+  it('treats an id the response did not answer for as unknown, not unrestricted', async () => {
+    // The endpoint drops ids naming a group that no longer exists, so a row
+    // whose group was deleted since the page rendered gets no `by_group` key.
+    server.respond = async () => ({coalesced: [], by_group: {}});
+
+    renderProbe(['gone']);
+
+    await waitFor(() => expect(shown('blocked')).toBe('false'));
+    expect(shown('rowSelfAddDisallowed')).toBe('true');
+  });
+
   it('reports the resolved answer once every request lands', async () => {
     server.respond = async () => ({
       coalesced: [entry('member_time_limit', 86400), entry('disallow_self_add_membership', true)],

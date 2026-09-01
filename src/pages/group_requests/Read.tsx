@@ -60,6 +60,7 @@ import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
 import {useConstraintsForTags} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
@@ -92,20 +93,31 @@ const ROLE_GROUP_PREFIX = 'Role-';
 
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
+  constraintsBlocked: boolean;
   ownershipUntil: string | null;
   setOwnershipUntil: (v: string | null) => void;
 }
 
-function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipUntil}: OwnershipEndingFieldProps) {
+function OwnershipEndingField({
+  ownershipTimeLimit,
+  constraintsBlocked,
+  ownershipUntil,
+  setOwnershipUntil,
+}: OwnershipEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the tag-mode answer is in flight the limit reads as null. Holding
+    // the narrower list rather than re-offering the full one keeps a duration
+    // the chosen tags forbid from being briefly clickable.
     if (ownershipTimeLimit == null) {
-      return [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+      return constraintsBlocked
+        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
+        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
     }
     const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
     return [filtered, lastId];
-  }, [ownershipTimeLimit]);
+  }, [ownershipTimeLimit, constraintsBlocked]);
 
   React.useEffect(() => {
     if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
@@ -769,6 +781,7 @@ export default function ReadGroupRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
+                            <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
                             {canApprove && (
                               <>
                                 <Typography variant="h6" sx={{mb: 1}}>
@@ -897,6 +910,7 @@ export default function ReadGroupRequest() {
                                   <Grid item xs={6}>
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
+                                      constraintsBlocked={tagConstraints.blocked}
                                       ownershipUntil={ownershipUntil}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />

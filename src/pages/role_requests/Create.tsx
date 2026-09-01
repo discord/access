@@ -52,6 +52,7 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
 import {useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {Tooltip} from '@mui/material';
 
 dayjs.extend(IsSameOrBefore);
@@ -253,6 +254,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const timeLimit = constraints.timeLimit(owner);
 
   React.useEffect(() => {
+    // Only widen once the answer is known. While a refetch is in flight the
+    // limit reads as null, and re-offering durations the group forbids makes
+    // them briefly clickable -- the narrowing that follows then overwrites the
+    // choice without saying so.
+    if (constraints.blocked) {
+      return;
+    }
     if (timeLimit == null) {
       setLabels(UNTIL_OPTIONS);
       return;
@@ -266,7 +274,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
     formContext.setValue('until', filteredUntil);
-  }, [timeLimit]);
+  }, [timeLimit, constraints.blocked]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -311,6 +319,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             : null}
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+        <ConstraintsUnavailableAlert constraints={constraints} action="sending" />
         <FormControl margin="normal" fullWidth>
           <AutocompleteElement<(typeof roleSearchOptions)[number]>
             label={'For which role?'}

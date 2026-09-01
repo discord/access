@@ -48,7 +48,8 @@ import {
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {isSelfAddDisallowed, useConstraintsForGroups} from '../../constraints';
+import {carriedConstraints, useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -282,6 +283,13 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const timeLimit = constraints.timeLimit(owner);
 
   React.useEffect(() => {
+    // Only widen once the answer is known. While a refetch is in flight the
+    // limit reads as null, and re-offering durations the group forbids makes
+    // them briefly clickable -- the narrowing that follows then overwrites the
+    // choice without saying so.
+    if (constraints.blocked) {
+      return;
+    }
     if (timeLimit == null) {
       setLabels(UNTIL_OPTIONS);
       return;
@@ -295,7 +303,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
     formContext.setValue('until', filteredUntil);
-  }, [timeLimit]);
+  }, [timeLimit, constraints.blocked]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -339,6 +347,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             : null}
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+        <ConstraintsUnavailableAlert constraints={constraints} action="sending" />
         <FormControl margin="normal" fullWidth>
           <AutocompleteElement<(typeof groupSearchOptions)[number]>
             label={'For which group?'}
@@ -531,8 +540,15 @@ export default function CreateRequest(props: CreateRequestProps) {
   // directly — so the button is hidden for them. The exception is a group tagged to disallow
   // owner self-add, where a request is their only path. Access admins are exempt from tag
   // constraints, so they never see it.
+  // Not every caller hands this component a full `GroupDetail`: the expiring-
+  // access page passes an audit group reference, which carries no
+  // `effective_constraints` at all. `carriedConstraints` reads that absence as
+  // unknown rather than as "nothing applies", so the button stays visible --
+  // hiding it would take away the only path an owner a self-add restriction
+  // blocks has to renew.
   const blockedFromSelfAdd =
-    !isAccessAdmin(props.currentUser) && isSelfAddDisallowed(props.group?.effective_constraints, props.owner ?? false);
+    !isAccessAdmin(props.currentUser) &&
+    carriedConstraints(props.group?.effective_constraints).isSelfAddDisallowed(props.owner ?? false);
 
   if (
     props.group?.deleted_at != null ||
