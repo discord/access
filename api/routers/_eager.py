@@ -138,6 +138,12 @@ def effective_constraint_options() -> tuple:
     `polymorphic_group_options()`) so the `RoleGroup` paths resolve; a query
     selecting `RoleGroup` directly needs no such pairing.
 
+    The plural `effective_constraints(group)` reads one relationship more --
+    `OktaGroupTagMap.active_app_tag_mapping`, to tell a tag applied to the
+    group apart from one inherited via its app. That path belongs to
+    `group_tag_map_options()`, which detail routes already nest under
+    `active_group_tags`; pair the two when you need provenance.
+
     Uses `selectinload` (not `joinedload`) for `RoleGroupMap.active_group` to
     match the strategy `role_group_map_options()` already declares for that
     path in `groups.py`'s `DEFAULT_LOAD_OPTIONS` -- mixing strategies on the

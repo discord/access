@@ -10,9 +10,13 @@ from api.models.tag import (
     constraint_source_clause,
     constraint_sources,
     effective_constraint,
+    effective_constraints,
     effective_ended_at,
 )
 from tests.factories import (
+    AppFactory,
+    AppGroupFactory,
+    AppTagMapFactory,
     OktaGroupFactory,
     OktaGroupTagMapFactory,
     RoleGroupFactory,
@@ -278,3 +282,123 @@ async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:
     assert effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) is None
     # Enforcement agrees, which is the point -- the two must not diverge.
     assert effective_ended_at(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded, None) is None
+
+
+async def test_effective_constraints_omits_unset_constraints(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    result = effective_constraints(role)
+    assert [entry["constraint"] for entry in result] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    assert result[0]["value"] == 86400
+    assert result[0]["name"] == Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY].name
+
+
+async def test_effective_constraints_reports_association_source(db: Db) -> None:
+    role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
+    (entry,) = effective_constraints(role)
+    (source,) = entry["sources"]
+    assert source["origin"] == "member_association"
+    assert source["source_name"] is not None
+
+
+async def test_effective_constraints_is_empty_when_nothing_applies(db: Db) -> None:
+    role = RoleGroupFactory.build()
+    db.session.add(role)
+    await db.session.commit()
+    loaded = await _load_role(db, role.id)
+    assert effective_constraints(loaded) == []
+
+
+async def test_effective_constraints_direct_tag_has_direct_origin(db: Db) -> None:
+    """A tag applied straight to a group (no `AppTagMap` linkage) is reported
+    with `origin == "direct"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is None`."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "direct"
+
+
+async def test_effective_constraints_app_tag_has_app_origin(db: Db) -> None:
+    """A tag applied to an `App` and inherited by one of its `AppGroup`s is
+    reported with `origin == "app"` -- the `_own_tag_sources` branch where
+    `tag_map.active_app_tag_mapping is not None`. The inherited group-tag row
+    (`OktaGroupTagMap`) points at the `AppTagMap` row via `app_tag_map_id`;
+    that linkage is what makes `active_app_tag_mapping` non-null.
+
+    The source also carries the app's name in `source_name` -- for an
+    "app" origin the "source" is the App itself, not a group -- hence the
+    origin-agnostic field names -- so `source_id` stays `None` while
+    the name is still meaningful to show in the UI."""
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build()
+    app_group.app_id = app.id
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, tag])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
+    await db.session.commit()
+    loaded = await _load_group_with_provenance(db, app_group.id)
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "app"
+    assert source["source_name"] == app.name
+    assert source["source_id"] == app.id
+
+
+async def test_effective_constraints_tolerates_a_soft_deleted_app(db: Db) -> None:
+    """`AppTagMap.active_app` filters `App.deleted_at`, so it resolves to
+    `None` once the app is soft-deleted while an inherited `OktaGroupTagMap`
+    row survives. Reading `.name` off it unguarded raises `AttributeError`
+    (a 500); the source must instead report the "app" origin with no name.
+
+    Loaded with `selectinload` deliberately. `group_tag_map_options()` uses
+    `joinedload`, and `active_app` is `innerjoin=True`, so there the deleted
+    app collapses the whole `active_app_tag_mapping` chain to `None` and the
+    source degrades to "direct" instead -- which is why the unguarded read is
+    not reachable through the production loader today. `selectinload` issues a
+    separate SELECT per relationship, so `active_app_tag_mapping` survives
+    while `active_app` comes back `None`: exactly the shape the guard exists
+    for, and the shape any future switch to `selectinload` would produce."""
+    app = AppFactory.build()
+    app_group = AppGroupFactory.build()
+    app_group.app_id = app.id
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([app, app_group, tag])
+    await db.session.commit()
+    app_tag_map = AppTagMapFactory.build(app_id=app.id, tag_id=tag.id)
+    db.session.add(app_tag_map)
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=app_group.id, tag_id=tag.id, app_tag_map_id=app_tag_map.id))
+    await db.session.commit()
+
+    app.deleted_at = datetime.now(UTC) - timedelta(days=1)
+    db.session.add(app)
+    await db.session.commit()
+    app_group_id = app_group.id
+
+    db.session.expire_all()
+    loaded = (
+        await db.session.scalars(
+            select(OktaGroup)
+            .options(
+                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
+                selectinload(OktaGroup.active_group_tags)
+                .selectinload(OktaGroupTagMap.active_app_tag_mapping)
+                .selectinload(AppTagMap.active_app),
+            )
+            .where(OktaGroup.id == app_group_id)
+        )
+    ).one()
+    (entry,) = effective_constraints(loaded)
+    (source,) = entry["sources"]
+    assert source["origin"] == "app"
+    assert source["source_name"] is None
