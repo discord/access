@@ -69,7 +69,7 @@ def _strip_reason(value: Any) -> Any:
 #: An inbound justification field. Whitespace-only collapses to `""`, which the
 #: reason constraints already treat as not provided. Response models keep plain
 #: `Optional[str]`: they report what is stored, and normalizing on the way out
-#: would hide rows written before this existed.
+#: would hide stored values that were never normalized.
 ReasonStr = Annotated[Optional[str], BeforeValidator(_strip_reason)]
 
 

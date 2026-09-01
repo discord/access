@@ -1841,11 +1841,10 @@ async def test_whitespace_only_reason_is_not_stored_on_an_untagged_group(
     url_for: Any,
     mocker: MockerFixture,
 ) -> None:
-    """`CheckForReason` treats a whitespace-only reason as absent, but a group
-    with no reason constraint never consults it -- so the raw value used to go
-    straight into the audit trail, and "provided" meant one thing on a tagged
-    group and another here. Normalizing inbound reasons makes both paths agree
-    that this is no reason at all."""
+    """`CheckForReason` treats a whitespace-only reason as absent, and a group
+    with no reason constraint never consults it. Normalizing inbound reasons is
+    what makes both paths agree that this is no reason at all, rather than
+    "provided" meaning one thing on a tagged group and another here."""
     mocker.patch.object(okta, "add_user_to_group")
     db.session.add_all([okta_group, user])
     await db.session.commit()

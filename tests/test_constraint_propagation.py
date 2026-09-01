@@ -556,9 +556,9 @@ async def test_attaching_a_role_does_not_leak_one_groups_limit_onto_another(
 # access that membership grants *through* the role to every group the role is
 # associated with. Both hold however the limit reaches the role -- a tag on the
 # role itself, or one propagating from a group it is associated with. Capping
-# only the first would leave a user whose role membership was just shortened
-# holding derived access to the role's other groups on the old, longer end
-# date, outliving the membership it exists because of.
+# only the first leaves a user whose role membership has just been shortened
+# still holding derived access to the role's other groups, outliving the
+# membership it exists because of.
 
 
 async def test_propagated_limit_also_caps_access_the_role_grants(db: Db, mocker: MockerFixture, user: OktaUser) -> None:

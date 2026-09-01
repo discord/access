@@ -1,12 +1,28 @@
 """Applying a time limit to access that groups and roles confer.
 
-Every function here narrows `ended_at` and never extends it: each update is
+Every function here narrows `end_at` and never extends it: each update is
 guarded on the existing end date being absent or later than the limit. That
 makes them idempotent and safe to compose in any order, which is what lets the
 callers express a policy as a few calls instead of a wall of near-identical
 bulk updates.
 
 None of them commit. The caller owns the transaction.
+
+Constraints apply only to managed, non-deleted entities, and that filter sits
+wherever the ids are *discovered* rather than wherever they are consumed.
+`limit_roles_associated_with_groups` finds its own roles, so it has to apply
+the filter itself -- its caller never sees those ids and cannot. The other
+functions are handed ids their caller chose, and it is the caller that decided
+the entity is subject to a constraint; re-deriving that here would add a join
+to every bulk update and would quietly absorb a caller's mistake instead of
+letting it show. **Callers must pass only managed, non-deleted ids.**
+
+The filter also tracks the entity a constraint is *reaching*, not everything a
+statement touches. Capping access into a tagged group constrains that group, so
+the group must be managed -- but the roles holding that access need not be,
+because the constraint is not theirs. Capping a role's members constrains the
+role, so the role must be managed, while the groups it confers access to need
+not be.
 
 The invariant they exist to maintain: a membership materialized from a role --
 one carrying a `role_group_map_id` -- must never outlive either of the two
@@ -26,16 +42,20 @@ from api.models import OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGrou
 from api.models.tag import coalesce_constraints
 
 
-async def limit_memberships_to_groups(group_ids: Collection[str], *, is_owner: bool, ended_at: datetime) -> None:
+async def limit_memberships_to_groups(group_ids: Collection[str], *, is_owner: bool, end_at: datetime) -> None:
     """Cap the access granted *to* `group_ids` on the `is_owner` side.
 
     Covers both ways access into a group is held: directly by a user, and by a
-    role whose members inherit it.
+    role whose members inherit it. Passing role ids is meaningful and does the
+    right thing -- a role is a group, and capping its inbound access caps
+    membership of the role. The `RoleGroupMap` half of that is simply empty,
+    since a role can never be another role's target.
 
     Args:
-        group_ids: The groups whose inbound access is being capped.
+        group_ids: The groups whose inbound access is being capped. Must be
+            managed and not deleted; see the module docstring.
         is_owner: Whether to cap ownership (True) or membership (False).
-        ended_at: The end date to cap at.
+        end_at: The end date to cap at.
     """
     if len(group_ids) == 0:
         return
@@ -47,10 +67,10 @@ async def limit_memberships_to_groups(group_ids: Collection[str], *, is_owner: b
         .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > ended_at,
+                OktaUserGroupMember.ended_at > end_at,
             )
         )
-        .values({OktaUserGroupMember.ended_at: ended_at})
+        .values({OktaUserGroupMember.ended_at: end_at})
         .execution_options(synchronize_session="fetch")
     )
 
@@ -61,15 +81,15 @@ async def limit_memberships_to_groups(group_ids: Collection[str], *, is_owner: b
         .where(
             or_(
                 RoleGroupMap.ended_at.is_(None),
-                RoleGroupMap.ended_at > ended_at,
+                RoleGroupMap.ended_at > end_at,
             )
         )
-        .values({RoleGroupMap.ended_at: ended_at})
+        .values({RoleGroupMap.ended_at: end_at})
         .execution_options(synchronize_session="fetch")
     )
 
 
-async def limit_memberships_by_roles(role_ids: Collection[str], *, is_owner: bool, ended_at: datetime) -> None:
+async def limit_memberships_by_roles(role_ids: Collection[str], *, is_owner: bool, end_at: datetime) -> None:
     """Cap the access granted *by* `role_ids` through their `is_owner`-side associations.
 
     These are the materialized rows in the groups each role is associated with.
@@ -77,10 +97,11 @@ async def limit_memberships_by_roles(role_ids: Collection[str], *, is_owner: boo
     owner-side association owner-side rows, so `is_owner` selects both together.
 
     Args:
-        role_ids: The roles whose conferred access is being capped.
+        role_ids: The roles whose conferred access is being capped. Must be
+            managed and not deleted; see the module docstring.
         is_owner: Which association side to follow, and therefore which side of
             materialized row to cap.
-        ended_at: The end date to cap at.
+        end_at: The end date to cap at.
     """
     if len(role_ids) == 0:
         return
@@ -108,15 +129,15 @@ async def limit_memberships_by_roles(role_ids: Collection[str], *, is_owner: boo
         .where(
             or_(
                 OktaUserGroupMember.ended_at.is_(None),
-                OktaUserGroupMember.ended_at > ended_at,
+                OktaUserGroupMember.ended_at > end_at,
             )
         )
-        .values({OktaUserGroupMember.ended_at: ended_at})
+        .values({OktaUserGroupMember.ended_at: end_at})
         .execution_options(synchronize_session="fetch")
     )
 
 
-async def limit_access_conferred_by_roles(role_ids: Collection[str], *, ended_at: datetime) -> None:
+async def limit_access_conferred_by_roles(role_ids: Collection[str], *, end_at: datetime) -> None:
     """Cap membership of `role_ids` and everything that membership grants.
 
     A limit reaching a role always lands on its member side -- being a member
@@ -129,18 +150,19 @@ async def limit_access_conferred_by_roles(role_ids: Collection[str], *, ended_at
     from the same membership.
 
     Args:
-        role_ids: The roles whose members are being capped.
-        ended_at: The end date to cap at.
+        role_ids: The roles whose members are being capped. Must be managed and
+            not deleted; see the module docstring.
+        end_at: The end date to cap at.
     """
     if len(role_ids) == 0:
         return
 
-    await limit_memberships_to_groups(role_ids, is_owner=False, ended_at=ended_at)
-    await limit_memberships_by_roles(role_ids, is_owner=False, ended_at=ended_at)
-    await limit_memberships_by_roles(role_ids, is_owner=True, ended_at=ended_at)
+    await limit_memberships_to_groups(role_ids, is_owner=False, end_at=end_at)
+    await limit_memberships_by_roles(role_ids, is_owner=False, end_at=end_at)
+    await limit_memberships_by_roles(role_ids, is_owner=True, end_at=end_at)
 
 
-async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_owner: bool, ended_at: datetime) -> None:
+async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_owner: bool, end_at: datetime) -> None:
     """Cap the roles reached by a constraint on `group_ids`.
 
     `is_owner` selects the association axis, not the side the limit lands on:
@@ -153,7 +175,7 @@ async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_o
     Args:
         group_ids: The groups the constraint sits on.
         is_owner: The association axis to follow.
-        ended_at: The end date to cap at.
+        end_at: The end date to cap at.
     """
     if len(group_ids) == 0:
         return
@@ -175,7 +197,7 @@ async def limit_roles_associated_with_groups(group_ids: Collection[str], *, is_o
         )
     ).all()
 
-    await limit_access_conferred_by_roles(associated_role_ids, ended_at=ended_at)
+    await limit_access_conferred_by_roles(associated_role_ids, end_at=end_at)
 
 
 async def propagating_seconds_limit(group_ids: Collection[str], constraint_key: str) -> Optional[int]:

@@ -187,8 +187,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
 
   // Seeded unrestricted; the effect below narrows both once the applicable
   // constraints arrive, including on first render for a group passed in as a
-  // prop. Previously this seed did double duty as the constraint calculation,
-  // which is why it could only see the group's own tags.
+  // prop.
   const [until, setUntil] = React.useState('1209600');
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
 
@@ -236,9 +235,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     setOwner(ownerOrMember);
   };
 
-  // Reading the group's own tags missed anything reaching a target group
-  // through a role's associations, so the picker offered durations the backend
-  // would then quietly shorten. The API resolves that.
+  // The API resolves what applies, so the picker never offers a duration the
+  // backend would quietly shorten.
   const {data: groupConstraints} = useConstraintsForGroups([selectedGroup?.id]);
   const timeLimit = effectiveTimeLimit(groupConstraints?.coalesced, owner);
 

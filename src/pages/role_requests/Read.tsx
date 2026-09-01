@@ -127,8 +127,8 @@ const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index
 
 // Which constraints apply to the requested group, resolved by the API rather
 // than re-derived here. A requested role's applicable constraints cannot be
-// read off its own tags, and the association walk this replaces was blind to
-// `propagate_to_roles` and had no mirror for the propagated time limits.
+// read off its own tags: they depend on which of its associations propagate,
+// which is the server's rule to apply.
 function useRequestConstraints(roleRequest: RoleRequestDetail): [number | null, boolean] {
   const owner = !!roleRequest.request_ownership;
   const {data} = useConstraintsForGroups([roleRequest.requested_group?.id]);

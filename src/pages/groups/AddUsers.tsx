@@ -86,11 +86,9 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const [submitting, setSubmitting] = React.useState(false);
 
   // `effective_constraints` is resolved server-side by the same code that
-  // enforces these, so the association traversal and coalescing that used to
-  // live here is gone -- along with its blind spots. It covers a role's own
-  // tags and anything reaching it through its associations, gated on
-  // `propagate_to_roles`, and it is the only source here for the propagated
-  // time limit, which had no client-side mirror at all.
+  // enforces these: a role's own tags plus anything reaching it through its
+  // associations, gated on `propagate_to_roles`. It arrives on the group the
+  // page already fetched, so reading it costs no request of its own.
   const constraints = props.group.effective_constraints;
   const timeLimit = effectiveTimeLimit(constraints, props.owner); // in seconds
   const reason = effectiveRequiredReason(constraints, props.owner);

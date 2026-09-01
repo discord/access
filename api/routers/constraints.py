@@ -1,11 +1,11 @@
 """Effective-constraints router.
 
-One place to ask "what constraints apply here?", so the dialogs that let
-someone choose an access duration or type a justification stop re-deriving it.
-Each of them used to decide client-side which tags were enabled, which reached
-a role through its associations, and the minimum or logical OR across them --
-`api.models.tag`'s logic transcribed into TypeScript, in four copies, which
-drifted the moment `propagate_to_roles` made propagation conditional.
+One place to ask "what constraints apply here?", so the dialogs where
+someone chooses an access duration or types a justification read the same
+answer the enforcement paths do. Deciding it client-side means transcribing
+`api.models.tag` -- which tags are enabled, which reach a role through its
+associations, and the minimum or logical OR across them -- into TypeScript once
+per dialog, and every copy is free to drift from the rule it mirrors.
 
 Deliberately not a field on the group/audit list endpoints. `effective_constraints`
 needs the association and tag eager loads for every group it touches, so
@@ -28,7 +28,7 @@ from api.database import DbSession
 from api.models import AppGroup, OktaGroup, RoleGroup, Tag
 from api.models.tag import (
     effective_constraints,
-    effective_constraints_across,
+    effective_constraints_across_groups,
     effective_constraints_for_tags,
 )
 from api.routers._eager import effective_constraint_options, group_tag_map_options
@@ -84,6 +84,6 @@ async def get_effective_constraints(
     )
 
     return EffectiveConstraintsResponse(
-        coalesced=_details(effective_constraints_across(groups)),
+        coalesced=_details(effective_constraints_across_groups(groups)),
         by_group={group.id: _details(effective_constraints(group)) for group in groups},
     )

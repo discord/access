@@ -417,7 +417,7 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
     return entries
 
 
-def effective_constraints_across(groups: list[OktaGroup]) -> list[dict[str, Any]]:
+def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[str, Any]]:
     """Every constraint in force across `groups` taken together.
 
     Not a per-group answer merged by the caller: the sources from every group

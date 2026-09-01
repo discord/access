@@ -638,19 +638,17 @@ class ModifyRoleGroups:
         # Commit all changes
         await db.session.commit()
 
-        # Attaching a role to a group is the second moment its members start
-        # being governed by that group's time limits; the first is a
+        # Attaching a role to a group is one of the two moments its members
+        # start being governed by that group's time limits; the other is a
         # time-limited tag landing on a group the role is already associated
-        # with. Both have to reach the same things -- membership of the role
-        # and everything that membership confers -- so both end at the same
-        # helper rather than one operation reaching for the other.
+        # with. Both reach membership of the role and everything that
+        # membership confers.
         #
-        # Without this, a role carrying existing indefinite memberships joins a
-        # time-limited group and every one of them stays uncapped. The role's
-        # own access is bounded (the `RoleGroupMap` is capped at creation and
-        # derived rows take the minimum), but membership of the role is never
-        # forced through review, so renewing the role's access rebuilds each
-        # derived grant from a membership nobody re-examined.
+        # The role's own access is bounded either way -- the `RoleGroupMap` is
+        # capped at creation and derived rows take the minimum -- but without
+        # this, membership of the role is never forced through review, so
+        # renewing the role's access rebuilds each derived grant from a
+        # membership nobody re-examined.
         if self.role.is_managed:
             # A role that is a MEMBER of a group is governed by that group's
             # member limit and one that OWNS it by the owner limit, but both
@@ -664,7 +662,7 @@ class ModifyRoleGroups:
             seconds_limit = min((limit for limit in propagated_limits if limit is not None), default=None)
             if seconds_limit is not None:
                 await limit_access_conferred_by_roles(
-                    [self.role.id], ended_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
+                    [self.role.id], end_at=datetime.now(UTC) + timedelta(seconds=seconds_limit)
                 )
                 await db.session.commit()
 

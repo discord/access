@@ -207,8 +207,8 @@ def test_surrounding_whitespace_is_trimmed_from_a_real_reason(model: Any, field:
 
 
 def test_group_request_body_normalizes_its_request_reason() -> None:
-    """`request_reason` never reaches `CheckForReason`, so nothing here was
-    even inconsistent -- whitespace simply went straight into the record."""
+    """`request_reason` never reaches `CheckForReason`, so the boundary is the
+    only thing standing between whitespace and the stored record."""
     body = _OktaGroupRequestBody.model_validate(
         {
             "requested_group_name": "Some-Group",

@@ -74,9 +74,9 @@ class ModifyGroupsTimeLimit:
         ):
             seconds_limit = coalesce_constraints(constraint_key, tags)
             if seconds_limit is not None:
-                ended_at = datetime.now(UTC) + timedelta(seconds=seconds_limit)
-                await limit_memberships_to_groups(group_ids, is_owner=is_owner, ended_at=ended_at)
-                await limit_memberships_by_roles(role_group_ids, is_owner=is_owner, ended_at=ended_at)
+                end_at = datetime.now(UTC) + timedelta(seconds=seconds_limit)
+                await limit_memberships_to_groups(group_ids, is_owner=is_owner, end_at=end_at)
+                await limit_memberships_by_roles(role_group_ids, is_owner=is_owner, end_at=end_at)
 
             # A role that is a MEMBER of these groups is governed by their
             # member limit and a role that OWNS them by their owner limit;
@@ -88,7 +88,7 @@ class ModifyGroupsTimeLimit:
                 await limit_roles_associated_with_groups(
                     group_ids,
                     is_owner=is_owner,
-                    ended_at=datetime.now(UTC) + timedelta(seconds=propagated_seconds_limit),
+                    end_at=datetime.now(UTC) + timedelta(seconds=propagated_seconds_limit),
                 )
 
         await db.session.commit()

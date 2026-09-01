@@ -223,9 +223,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   // side: asking about every selected group at once would apply each group's
   // owner limit to rows that are only memberships. The API resolves the rest —
   // which tags are enabled, which reach a renewed role through its
-  // associations, and the coalescing across the set — so the traversal that
-  // used to live here is gone, along with its blindness to
-  // `propagate_to_roles` and its missing time-limit mirror.
+  // associations, and the coalescing across the set.
   const {data: ownerSideConstraints} = useConstraintsForGroups(ownerGroupIds);
   const {data: memberSideConstraints} = useConstraintsForGroups(memberGroupIds);
 
