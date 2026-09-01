@@ -100,6 +100,13 @@ export default defineConfig(({mode}) => {
       globals: true,
       environment: 'jsdom',
       setupFiles: './src/setupTests.ts',
+      // Scope discovery to src/ instead of Vitest's default project-wide glob.
+      // The default walks every directory under the repo root, and its exclude
+      // list covers only node_modules and .git -- so a nested checkout (a git
+      // worktree, a vendored copy) has its test files collected and run against
+      // *this* checkout's node_modules, reporting failures that belong to some
+      // other branch. Every frontend test lives under src/.
+      include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
     },
   };
 });
