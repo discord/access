@@ -454,6 +454,23 @@ export type EffectiveConstraintSourceDetail = {
   source_name?: string | null;
 };
 
+/**
+ * The answer to "what constraints apply here?" for a set of groups or tags.
+ *
+ * Carries both shapes because callers need both and neither can be derived
+ * from the other without re-implementing `coalesce`: `coalesced` bounds one
+ * shared control across the whole set (a bulk dialog's single duration
+ * picker), while `by_group` answers per row (which groups block a self-add,
+ * which picker options to disable). `by_group` is empty in tag mode, where
+ * no group was named.
+ */
+export type EffectiveConstraintsResponse = {
+  coalesced?: EffectiveConstraintDetail[];
+  by_group?: {
+    [key: string]: EffectiveConstraintDetail[];
+  };
+};
+
 export type GroupDetail =
   | (Omit<OktaGroupDetail, 'type'> & {
       type: 'okta_group';
