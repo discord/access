@@ -2,13 +2,13 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.orm import selectinload
 from api.extensions import db
-from api.models import OktaGroup, OktaGroupTagMap, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
 from api.models.tag import effective_constraint
+from api.operations import UnmanageGroup
 from api.operations._derived_reason import role_derived_reason
 from api.operations._time_limits import limit_access_conferred_by_roles
-from api.operations import UnmanageGroup
+from api.routers._eager import effective_constraint_options
 from api.services import okta
 
 logger = logging.getLogger(__name__)
@@ -190,17 +190,7 @@ async def cap_role_memberships(dry_run: bool = False) -> int:
     roles = (
         await db.session.scalars(
             select(RoleGroup)
-            .options(
-                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags)
-                .joinedload(OktaGroupTagMap.active_tag),
-                selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags)
-                .joinedload(OktaGroupTagMap.active_tag),
-            )
+            .options(*effective_constraint_options())
             .where(RoleGroup.deleted_at.is_(None))
             .where(RoleGroup.is_managed.is_(True))
         )
@@ -227,11 +217,6 @@ async def cap_role_memberships(dry_run: bool = False) -> int:
         ).all()
         capped += len(over_long)
         if not dry_run and len(over_long) > 0:
-            # Go through the shared helper rather than assigning `ended_at`
-            # here: capping the membership alone leaves the rows it
-            # materialized in the role's associated groups on their old end
-            # dates, so the sweep would shorten the membership without
-            # shortening the access it actually confers.
             await limit_access_conferred_by_roles([role.id], end_at=limit_from_now)
         if len(over_long) > 0:
             logger.info(
