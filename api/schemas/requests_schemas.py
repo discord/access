@@ -400,6 +400,13 @@ class CreateTagBody(BaseModel):
         return _validate_tag_constraints(v)
 
 
+#: Fields on a tag update whose column forbids null and for which no empty
+#: value is meaningful. `description` and `constraints` are absent because they
+#: have one -- the handler coerces a null there to `""` / `{}`. Omitting a
+#: field remains the way to leave it unchanged.
+_TAG_FIELDS_REJECTING_NULL = ("name", "enabled")
+
+
 class UpdateTagBody(BaseModel):
     """Body for PUT /api/tags/{id}. All fields optional (partial update)."""
 
@@ -416,6 +423,25 @@ class UpdateTagBody(BaseModel):
             return self
         if settings.REQUIRE_DESCRIPTIONS and (self.description is None or self.description == ""):
             raise ValueError("Description is required.")
+        return self
+
+    @model_validator(mode="after")
+    def _reject_explicit_nulls(self) -> Self:
+        """Reject a null sent for a field that cannot hold one.
+
+        Every field is `Optional` so that a partial update may omit it, which
+        makes an explicit `null` indistinguishable from omission by type --
+        only by presence in `model_fields_set`. Left alone it reaches a
+        `NOT NULL` column and fails the flush, turning a client mistake into a
+        500.
+        """
+        nulled = [
+            field
+            for field in _TAG_FIELDS_REJECTING_NULL
+            if field in self.model_fields_set and getattr(self, field) is None
+        ]
+        if nulled:
+            raise ValueError(f"May not be null: {', '.join(nulled)}. Omit a field to leave it unchanged.")
         return self
 
     @field_validator("constraints")
