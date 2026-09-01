@@ -23,6 +23,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing_extensions import TypeAliasType
 
+from api.models.tag import ConstraintOrigin
 from api.schemas.datetimes import FlexibleDatetime
 
 
@@ -291,6 +292,29 @@ class RoleGroupMapDetail(BaseModel):
 # request-body unions live in `requests_schemas.py`.
 
 
+class EffectiveConstraintSourceDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    tag_id: str
+    tag_name: str
+    origin: ConstraintOrigin
+    # Deliberately not `source_group_*`: an "app" origin's source is an App,
+    # not a group. Both fields are None for a "direct" origin, which has no
+    # source beyond the group itself.
+    source_id: Optional[str] = None
+    source_name: Optional[str] = None
+
+
+class EffectiveConstraintDetail(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    constraint: str
+    name: str
+    # Every constraint in `Tag.CONSTRAINTS` is either a seconds count or a
+    # flag. Spelling the union out (rather than `Any`) keeps the generated
+    # TypeScript client from rendering this as `void`.
+    value: int | bool
+    sources: list[EffectiveConstraintSourceDetail] = Field(default_factory=list)
+
+
 class _GroupBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -306,6 +330,11 @@ class _GroupBase(BaseModel):
     # group of an app) materialize unbounded member rows. They are served by
     # the paginated `GET /api/groups/{id}/member-details` endpoint instead.
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
+    # Populated explicitly by `get_group` from `api.models.tag.effective_constraints`
+    # -- not an ORM attribute, so `from_attributes=True` cannot pick it up on its
+    # own. `post_group`/`put_group` leave this at its default `[]`; the group page
+    # re-fetches the detail after a mutation, so it is populated on the read.
+    effective_constraints: list[EffectiveConstraintDetail] = Field(default_factory=list)
 
 
 class OktaGroupDetail(_GroupBase):

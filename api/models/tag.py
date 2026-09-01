@@ -386,3 +386,41 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
     if not phrases:
         return "due to tags on this group"
     return f"due to {_join_phrases(phrases)}"
+
+
+def _constraint_entry(
+    constraint_key: str, constraint: TagConstraint, sources: list[ConstraintSource]
+) -> dict[str, Any]:
+    """One constraint's coalesced value and the sources that produced it."""
+    return {
+        "constraint": constraint_key,
+        "name": constraint.name,
+        "value": _fold(constraint, sources),
+        "sources": [
+            {
+                "tag_id": source.tag.id,
+                "tag_name": source.tag.name,
+                "origin": source.origin,
+                "source_id": source.source_id,
+                "source_name": source.source_name,
+            }
+            for source in sources
+        ],
+    }
+
+
+def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
+    """Every constraint in force on `group`, with its coalesced value and sources.
+
+    Backs the API response the UI reads, so display and enforcement answer from
+    the same code. Unlike `effective_constraint`, this reads
+    `OktaGroupTagMap.active_app_tag_mapping` for provenance -- callers must
+    eager-load it (`group_tag_map_options()` in `api/routers/_eager.py` does).
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources = constraint_sources(constraint_key, group, include_provenance=True)
+        if not sources:
+            continue
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
+    return entries
