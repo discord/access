@@ -51,7 +51,7 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
-import {useConstraintsForGroups} from '../../constraints';
+import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {Tooltip} from '@mui/material';
 
@@ -314,8 +314,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           {timeLimit
             ? (owner ? 'Ownership of ' : 'Membership to ') +
               'this group is limited to ' +
-              Math.floor(timeLimit / 86400) +
-              ' days.'
+              timeLimitLabel(timeLimit) +
+              '.'
             : null}
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}

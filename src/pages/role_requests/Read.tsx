@@ -47,7 +47,7 @@ import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
 import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
-import {useConstraintsForGroups} from '../../constraints';
+import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
@@ -742,8 +742,8 @@ export default function ReadRoleRequest() {
                                         {timeLimit
                                           ? (roleRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
-                                            Math.floor(timeLimit / 86400) +
-                                            ' days.'
+                                            timeLimitLabel(timeLimit) +
+                                            '.'
                                           : null}
                                       </Typography>
                                     </Grid>
