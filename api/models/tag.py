@@ -413,9 +413,26 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
     """Every constraint in force on `group`, with its coalesced value and sources.
 
     Backs the API response the UI reads, so display and enforcement answer from
-    the same code. Unlike `effective_constraint`, this reads
-    `OktaGroupTagMap.active_app_tag_mapping` for provenance -- callers must
-    eager-load it (`group_tag_map_options()` in `api/routers/_eager.py` does).
+    the same code.
+
+    Args:
+        group: The group to evaluate. Association reads only happen when this
+            is a `RoleGroup`.
+
+    Returns:
+        One entry per constraint that anything sets, in `Tag.CONSTRAINTS`
+        order, each a mapping of `constraint` (the key), `name` (its display
+        name), `value` (coalesced across every source under that constraint's
+        own rule), and `sources`. A source names the tag, how it reached the
+        group (`origin`), and the app or group it came from -- `source_id` and
+        `source_name`, both None for a `DIRECT` origin. Constraints nothing
+        sets are omitted, so an untagged group returns an empty list.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded.
+            Provenance means this reads one relationship more than
+            `effective_constraint` does -- `OktaGroupTagMap.active_app_tag_mapping`,
+            supplied by `group_tag_map_options()` in `api/routers/_eager.py`.
     """
     entries = []
     for constraint_key, constraint in Tag.CONSTRAINTS.items():
