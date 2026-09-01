@@ -162,15 +162,15 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const allRowGroupIds = React.useMemo(() => props.rows.map((row) => row.group?.id), [props.rows]);
   const rowConstraints = useConstraintsForGroups(allRowGroupIds);
 
-  const cantAddSelf = (group: GroupRefForMembership | null | undefined, owner: boolean) =>
-    rowConstraints.forGroup(group?.id).cantAddSelf(owner);
+  const rowDisallowsSelfAdd = (group: GroupRefForMembership | null | undefined, isOwner: boolean) =>
+    rowConstraints.forGroup(group?.id).isSelfAddDisallowed(isOwner);
 
   const groups_cant_add_self_owner = props.rows.reduce((out, curr) => {
-    cantAddSelf(curr.group, true) ? out.add(curr.group!.name) : null;
+    rowDisallowsSelfAdd(curr.group, true) ? out.add(curr.group!.name) : null;
     return out;
   }, new Set<string>());
   const groups_cant_add_self_member = props.rows.reduce((out, curr) => {
-    cantAddSelf(curr.group, false) ? out.add(curr.group!.name) : null;
+    rowDisallowsSelfAdd(curr.group, false) ? out.add(curr.group!.name) : null;
     return out;
   }, new Set<string>());
 
@@ -253,7 +253,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const display_owner_add_constraint =
     !isAccessAdmin(currentUser) &&
     props.rows.reduce((out, curr) => {
-      return out || (role_memberships.has(curr.role_group?.name!) && cantAddSelf(curr.group, curr.is_owner!));
+      return out || (role_memberships.has(curr.role_group?.name!) && rowDisallowsSelfAdd(curr.group, curr.is_owner!));
     }, false);
 
   // Which rows are actually being renewed, split by the side each was granted
@@ -290,7 +290,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         ? ownerTimeLimit
         : Math.min(ownerTimeLimit, memberTimeLimit);
 
-  const requiredReason = ownerSideConstraints.requiresReason(true) || memberSideConstraints.requiresReason(false);
+  const requiredReason = ownerSideConstraints.isReasonRequired(true) || memberSideConstraints.isReasonRequired(false);
 
   // Bound the duration control to whatever limit is in force, and pull the
   // user's selection down if it now exceeds it.

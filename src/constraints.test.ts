@@ -1,11 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {
-  effectiveOwnerCantAddSelf,
-  effectiveRequiredReason,
-  effectiveTimeLimit,
-  settledConstraints,
-} from './constraints';
+import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit, settledConstraints} from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
 
 // The API returns constraints already coalesced across whatever set was asked
@@ -42,29 +37,29 @@ describe('effectiveTimeLimit', () => {
   });
 });
 
-describe('effectiveRequiredReason', () => {
+describe('isReasonRequired', () => {
   it('reads the member and owner keys by side', () => {
-    expect(effectiveRequiredReason([entry('require_member_reason', true)], false)).toBe(true);
-    expect(effectiveRequiredReason([entry('require_owner_reason', true)], true)).toBe(true);
-    expect(effectiveRequiredReason([entry('require_member_reason', true)], true)).toBe(false);
+    expect(isReasonRequired([entry('require_member_reason', true)], false)).toBe(true);
+    expect(isReasonRequired([entry('require_owner_reason', true)], true)).toBe(true);
+    expect(isReasonRequired([entry('require_member_reason', true)], true)).toBe(false);
   });
 
   it('is false when absent', () => {
-    expect(effectiveRequiredReason([], false)).toBe(false);
-    expect(effectiveRequiredReason(undefined, true)).toBe(false);
+    expect(isReasonRequired([], false)).toBe(false);
+    expect(isReasonRequired(undefined, true)).toBe(false);
   });
 });
 
-describe('effectiveOwnerCantAddSelf', () => {
+describe('isSelfAddDisallowed', () => {
   it('reads the membership and ownership keys by side', () => {
-    expect(effectiveOwnerCantAddSelf([entry('disallow_self_add_membership', true)], false)).toBe(true);
-    expect(effectiveOwnerCantAddSelf([entry('disallow_self_add_ownership', true)], true)).toBe(true);
-    expect(effectiveOwnerCantAddSelf([entry('disallow_self_add_membership', true)], true)).toBe(false);
+    expect(isSelfAddDisallowed([entry('disallow_self_add_membership', true)], false)).toBe(true);
+    expect(isSelfAddDisallowed([entry('disallow_self_add_ownership', true)], true)).toBe(true);
+    expect(isSelfAddDisallowed([entry('disallow_self_add_membership', true)], true)).toBe(false);
   });
 
   it('is false when absent', () => {
-    expect(effectiveOwnerCantAddSelf([], false)).toBe(false);
-    expect(effectiveOwnerCantAddSelf(undefined, true)).toBe(false);
+    expect(isSelfAddDisallowed([], false)).toBe(false);
+    expect(isSelfAddDisallowed(undefined, true)).toBe(false);
   });
 });
 
@@ -75,15 +70,15 @@ describe('settledConstraints', () => {
     expect(reader.error).toBeNull();
     expect(reader.blocked).toBe(false);
     expect(reader.timeLimit(false)).toBe(86400);
-    expect(reader.requiresReason(false)).toBe(false);
-    expect(reader.cantAddSelf(false)).toBe(false);
+    expect(reader.isReasonRequired(false)).toBe(false);
+    expect(reader.isSelfAddDisallowed(false)).toBe(false);
   });
 
   it('reports nothing applying for a group with no constraints', () => {
     const reader = settledConstraints([]);
     expect(reader.timeLimit(true)).toBeNull();
-    expect(reader.requiresReason(true)).toBe(false);
-    expect(reader.cantAddSelf(true)).toBe(false);
+    expect(reader.isReasonRequired(true)).toBe(false);
+    expect(reader.isSelfAddDisallowed(true)).toBe(false);
   });
 
   it('answers per group only for a group it holds, which it never does', () => {
@@ -91,7 +86,7 @@ describe('settledConstraints', () => {
     // per-group map to consult; asking for a row falls through to unknown-but-
     // -settled, which reports nothing applying rather than failing closed.
     const reader = settledConstraints([entry('disallow_self_add_membership', true)]);
-    expect(reader.cantAddSelf(false)).toBe(true);
-    expect(reader.forGroup('some-other-group').cantAddSelf(false)).toBe(false);
+    expect(reader.isSelfAddDisallowed(false)).toBe(true);
+    expect(reader.forGroup('some-other-group').isSelfAddDisallowed(false)).toBe(false);
   });
 });

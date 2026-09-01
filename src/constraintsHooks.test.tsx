@@ -43,9 +43,9 @@ function Probe({ids, tags = false}: {ids: string[]; tags?: boolean}) {
       <div data-testid="pending">{String(reader.pending)}</div>
       <div data-testid="errored">{String(reader.error != null)}</div>
       <div data-testid="timeLimit">{String(reader.timeLimit(false))}</div>
-      <div data-testid="requiresReason">{String(reader.requiresReason(false))}</div>
-      <div data-testid="cantAddSelf">{String(reader.cantAddSelf(false))}</div>
-      <div data-testid="rowCantAddSelf">{String(reader.forGroup(ids[0]).cantAddSelf(false))}</div>
+      <div data-testid="isReasonRequired">{String(reader.isReasonRequired(false))}</div>
+      <div data-testid="isSelfAddDisallowed">{String(reader.isSelfAddDisallowed(false))}</div>
+      <div data-testid="rowSelfAddDisallowed">{String(reader.forGroup(ids[0]).isSelfAddDisallowed(false))}</div>
     </>
   );
 }
@@ -77,16 +77,16 @@ describe('useConstraintsForGroups', () => {
 
     expect(shown('pending')).toBe('true');
     expect(shown('blocked')).toBe('true');
-    expect(shown('requiresReason')).toBe('true');
-    expect(shown('cantAddSelf')).toBe('true');
-    expect(shown('rowCantAddSelf')).toBe('true');
+    expect(shown('isReasonRequired')).toBe('true');
+    expect(shown('isSelfAddDisallowed')).toBe('true');
+    expect(shown('rowSelfAddDisallowed')).toBe('true');
     // A time limit has no closed value to fail to; `blocked` is what a dialog
     // offering a duration must check.
     expect(shown('timeLimit')).toBe('null');
 
     release({coalesced: [], by_group: {}});
     await waitFor(() => expect(shown('pending')).toBe('false'));
-    expect(shown('cantAddSelf')).toBe('false');
+    expect(shown('isSelfAddDisallowed')).toBe('false');
   });
 
   it('keeps the gates closed when the request fails, rather than reporting nothing applies', async () => {
@@ -97,8 +97,8 @@ describe('useConstraintsForGroups', () => {
     await waitFor(() => expect(shown('errored')).toBe('true'));
     expect(shown('pending')).toBe('false');
     expect(shown('blocked')).toBe('true');
-    expect(shown('requiresReason')).toBe('true');
-    expect(shown('cantAddSelf')).toBe('true');
+    expect(shown('isReasonRequired')).toBe('true');
+    expect(shown('isSelfAddDisallowed')).toBe('true');
   });
 
   it('reports the resolved answer once every request lands', async () => {
@@ -111,8 +111,8 @@ describe('useConstraintsForGroups', () => {
 
     await waitFor(() => expect(shown('blocked')).toBe('false'));
     expect(shown('timeLimit')).toBe('86400');
-    expect(shown('cantAddSelf')).toBe('true');
-    expect(shown('rowCantAddSelf')).toBe('true');
+    expect(shown('isSelfAddDisallowed')).toBe('true');
+    expect(shown('rowSelfAddDisallowed')).toBe('true');
     expect(server.calls).toHaveLength(1);
   });
 
@@ -125,7 +125,7 @@ describe('useConstraintsForGroups', () => {
     expect(server.calls).toHaveLength(0);
     // An empty selection is a settled answer, not an unknown one, so the gates
     // must not be closed — otherwise a dialog would start out blocked forever.
-    expect(shown('cantAddSelf')).toBe('false');
+    expect(shown('isSelfAddDisallowed')).toBe('false');
   });
 });
 
@@ -154,7 +154,7 @@ describe('splitting a selection larger than the endpoint cap', () => {
     expect(server.calls[0].ids).toHaveLength(200);
     expect(server.calls[1].ids).toHaveLength(60);
     expect(shown('timeLimit')).toBe('3600');
-    expect(shown('cantAddSelf')).toBe('true');
+    expect(shown('isSelfAddDisallowed')).toBe('true');
   });
 
   it('stays blocked while any one batch is still outstanding', async () => {
@@ -172,7 +172,7 @@ describe('splitting a selection larger than the endpoint cap', () => {
     gate[0]({coalesced: [], by_group: {}});
     // One batch home, one still out: a partial answer is not an answer.
     await waitFor(() => expect(shown('blocked')).toBe('true'));
-    expect(shown('cantAddSelf')).toBe('true');
+    expect(shown('isSelfAddDisallowed')).toBe('true');
 
     gate[1]({coalesced: [], by_group: {}});
     await waitFor(() => expect(shown('blocked')).toBe('false'));
