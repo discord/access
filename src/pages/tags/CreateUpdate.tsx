@@ -15,6 +15,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import FormControl from '@mui/material/FormControl';
 import Grid from '@mui/material/Grid';
 import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 import {ToggleButtonGroupElement, FormContainer, TextFieldElement} from 'react-hook-form-mui';
 
@@ -27,6 +28,7 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
+import {MEMBER_SELF_ADD_LABEL, OWNER_SELF_ADD_LABEL, propagationConflictMessage} from './propagationRules';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -61,6 +63,7 @@ interface CreateTagForm {
   memberReason?: string;
   ownerAdd?: string;
   memberAdd?: string;
+  propagateToRoles: string;
 }
 
 interface TagDialogProps {
@@ -118,6 +121,7 @@ function TagDialog(props: TagDialogProps) {
       name: tagForm.name,
       description: tagForm.description,
       enabled: tagForm.enabled == 'enabled',
+      propagate_to_roles: tagForm.propagateToRoles == 'yes',
     } as TagDetail;
 
     const constraints: Record<string, number | boolean> = {};
@@ -185,6 +189,11 @@ function TagDialog(props: TagDialogProps) {
                 ? 'yes'
                 : 'no'
               : 'no',
+          // `?? true` rather than a bare truthiness check: the field is
+          // optional in the generated type and the server default is `true`,
+          // so an absent value must prefill "yes", not "no" -- otherwise
+          // opening and saving an older tag silently turns propagation off.
+          propagateToRoles: props.tag ? (props.tag.propagate_to_roles ?? true ? 'yes' : 'no') : 'yes',
         }}
         onSuccess={(formData) => submit(formData)}>
         <DialogTitle>{createOrUpdateText} Tag</DialogTitle>
@@ -335,12 +344,18 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as owners?:</Box>
+                <Box sx={{marginLeft: '3px'}}>{OWNER_SELF_ADD_LABEL}?:</Box>
                 <ToggleButtonGroupElement
                   name="ownerAdd"
                   enforceAtLeastOneSelected
                   exclusive
                   required
+                  // The conflict rule lives on `propagateToRoles`, and RHF
+                  // re-runs a field's rules only when that field changes. `deps`
+                  // makes this toggle re-trigger it, so switching a self-add
+                  // restriction on surfaces the conflict and switching it back
+                  // off clears the message.
+                  rules={{deps: ['propagateToRoles']}}
                   options={[
                     {
                       id: 'yes',
@@ -356,12 +371,63 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Disallow owners adding selves as members?:</Box>
+                <Box sx={{marginLeft: '3px'}}>{MEMBER_SELF_ADD_LABEL}?:</Box>
                 <ToggleButtonGroupElement
                   name="memberAdd"
                   enforceAtLeastOneSelected
                   exclusive
                   required
+                  // The conflict rule lives on `propagateToRoles`, and RHF
+                  // re-runs a field's rules only when that field changes. `deps`
+                  // makes this toggle re-trigger it, so switching a self-add
+                  // restriction on surfaces the conflict and switching it back
+                  // off clears the message.
+                  rules={{deps: ['propagateToRoles']}}
+                  options={[
+                    {
+                      id: 'yes',
+                      label: 'Yes',
+                    },
+                    {
+                      id: 'no',
+                      label: 'No',
+                    },
+                  ]}
+                />
+              </FormControl>
+            </Grid>
+          </Grid>
+          <Grid container spacing={1}>
+            <Grid item xs={12}>
+              <FormControl fullWidth sx={{marginTop: '18px'}}>
+                <Tooltip
+                  title={
+                    'When yes, these constraints also apply to any role that is a member or owner of a group ' +
+                    "carrying this tag \u2014 the role's own members must satisfy the same time limits, reason " +
+                    'requirements, and self-add restrictions. When no, the constraints apply only to the tagged ' +
+                    'groups themselves. This is not the same as disabling the tag, which turns off its ' +
+                    'enforcement everywhere.'
+                  }
+                  placement="top-start">
+                  <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
+                </Tooltip>
+                <ToggleButtonGroupElement
+                  name="propagateToRoles"
+                  enforceAtLeastOneSelected
+                  exclusive
+                  required
+                  // The backend rejects this combination on every tag write;
+                  // catching it here names the offending restriction next to
+                  // the control instead of surfacing a 400 after submit.
+                  rules={{
+                    validate: (value, form) =>
+                      propagationConflictMessage({
+                        propagateToRoles: value,
+                        ownerAdd: form.ownerAdd,
+                        memberAdd: form.memberAdd,
+                      }) ?? true,
+                  }}
+                  parseError={(error) => error?.message ?? ''}
                   options={[
                     {
                       id: 'yes',
