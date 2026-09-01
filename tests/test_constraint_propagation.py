@@ -380,15 +380,12 @@ async def test_retroactive_capping_skips_unmanaged_roles(db: Db, mocker: MockerF
 
 # --- Capping when the association is created -------------------------------
 #
-# The retroactive block above runs when a time-limited *tag* lands on a group.
+# The retroactive block above covers a time-limited *tag* landing on a group.
 # The other way an association starts being governed is the association itself
-# being created, and that path never triggered a cap: a role with existing
-# indefinite members attached to a time-limited group left every one of those
-# memberships uncapped. The role's access to the group is bounded (the
-# `RoleGroupMap` is capped at creation, and derived rows take the minimum), but
-# membership *of the role* is never forced through review -- so renewing the
-# role's access rebuilds every derived grant from memberships nobody
-# re-examined. This recurs on every new association, not just historically.
+# being created: attaching a role to a time-limited group must cap the role's
+# existing members, not only the `RoleGroupMap`. Bounding the association alone
+# would leave membership *of the role* indefinite, so renewing the role's access
+# would rebuild every derived grant from memberships nobody re-examined.
 
 
 async def test_attaching_a_role_caps_its_existing_members(db: Db, mocker: MockerFixture, user: OktaUser) -> None:
