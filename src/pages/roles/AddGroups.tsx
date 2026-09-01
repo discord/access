@@ -45,6 +45,7 @@ import {
 } from '../../api/apiSchemas';
 import {isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups} from '../../helpers';
+import {timeLimitLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import {group} from 'console';
 import accessConfig from '../../config/accessConfig';
@@ -244,8 +245,8 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'one or more selected groups is limited to ' +
-                Math.floor(timeLimit / 86400) +
-                ' days.'
+                timeLimitLabel(timeLimit) +
+                '.'
               : null}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}

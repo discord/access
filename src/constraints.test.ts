@@ -2,10 +2,11 @@ import {describe, expect, it} from 'vitest';
 
 import {
   approvalUntilDefault,
-  isSelfAddDisallowed,
-  isReasonRequired,
-  effectiveTimeLimit,
   carriedConstraints,
+  effectiveTimeLimit,
+  isReasonRequired,
+  isSelfAddDisallowed,
+  timeLimitLabel,
 } from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
 
@@ -153,5 +154,25 @@ describe('approvalUntilDefault', () => {
         autofillUntil: false,
       }),
     ).toBe('43200');
+  });
+});
+
+describe('timeLimitLabel', () => {
+  it('renders whole days, singular and plural', () => {
+    expect(timeLimitLabel(86400)).toBe('1 day');
+    expect(timeLimitLabel(604800)).toBe('7 days');
+  });
+
+  it('rounds a limit that does not divide evenly into days', () => {
+    expect(timeLimitLabel(90000)).toBe('1 day');
+    expect(timeLimitLabel(7776000)).toBe('90 days');
+  });
+
+  it('renders a sub-day limit as "<1 day" rather than rounding it away', () => {
+    // A one-hour limit is a legal value -- the constraint validator only
+    // requires a positive integer. Flooring it to days prints "0 days", which
+    // reads as no access at all.
+    expect(timeLimitLabel(3600)).toBe('<1 day');
+    expect(timeLimitLabel(1)).toBe('<1 day');
   });
 });
