@@ -31,7 +31,7 @@ import {useTheme} from '@mui/material';
 import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName} from '../../helpers';
-import {useConstraintsForGroups} from '../../constraints';
+import {timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import {useCurrentUser} from '../../authentication';
@@ -509,7 +509,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
             {timeLimit
-              ? 'Access to one or more selected groups is limited to ' + Math.floor(timeLimit / 86400) + ' days.'
+              ? 'Access to one or more selected groups is limited to ' + timeLimitLabel(timeLimit) + '.'
               : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">

@@ -34,7 +34,7 @@ import {
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {carriedConstraints} from '../../constraints';
+import {carriedConstraints, timeLimitLabel} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -196,8 +196,8 @@ function AddUsersDialog(props: AddUsersDialogProps) {
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
-                Math.floor(timeLimit / 86400) +
-                ' days.'
+                timeLimitLabel(timeLimit) +
+                '.'
               : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">

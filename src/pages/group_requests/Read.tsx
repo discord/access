@@ -62,7 +62,7 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {useConstraintsForTags} from '../../constraints';
+import {timeLimitLabel, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
@@ -920,8 +920,8 @@ export default function ReadGroupRequest() {
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
                                         {'Ownership is limited to ' +
-                                          Math.floor(ownershipTimeLimit / 86400) +
-                                          ' days by a tag constraint.'}
+                                          timeLimitLabel(ownershipTimeLimit) +
+                                          ' by a tag constraint.'}
                                       </Typography>
                                     </Grid>
                                   )}

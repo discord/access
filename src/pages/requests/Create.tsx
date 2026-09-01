@@ -48,7 +48,7 @@ import {
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {carriedConstraints, useConstraintsForGroups} from '../../constraints';
+import {carriedConstraints, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import accessConfig from '../../config/accessConfig';
 
@@ -339,8 +339,8 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
           {timeLimit
             ? (owner ? 'Ownership of ' : 'Membership to ') +
               'this group is limited to ' +
-              Math.floor(timeLimit / 86400) +
-              ' days.'
+              timeLimitLabel(timeLimit) +
+              '.'
             : null}
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
