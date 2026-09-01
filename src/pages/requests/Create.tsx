@@ -48,7 +48,7 @@ import {
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {effectiveOwnerCantAddSelf, useConstraintsForGroups} from '../../constraints';
+import {isSelfAddDisallowed, useConstraintsForGroups} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -532,8 +532,7 @@ export default function CreateRequest(props: CreateRequestProps) {
   // owner self-add, where a request is their only path. Access admins are exempt from tag
   // constraints, so they never see it.
   const blockedFromSelfAdd =
-    !isAccessAdmin(props.currentUser) &&
-    effectiveOwnerCantAddSelf(props.group?.effective_constraints, props.owner ?? false);
+    !isAccessAdmin(props.currentUser) && isSelfAddDisallowed(props.group?.effective_constraints, props.owner ?? false);
 
   if (
     props.group?.deleted_at != null ||

@@ -178,11 +178,11 @@ export default function ReadRequest() {
 
   const constraints = useRequestConstraints(accessRequest);
   const owner = !!accessRequest.request_ownership;
-  // `requiresReason` reports true until the answer lands, and approval stays
+  // `isReasonRequired` reports true until the answer lands, and approval stays
   // disabled while `blocked`, so nothing offers a duration or waives a
   // justification on the strength of an answer that has not arrived.
   const timeLimit = constraints.timeLimit(owner);
-  const reason = constraints.requiresReason(owner);
+  const reason = constraints.isReasonRequired(owner);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {

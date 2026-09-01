@@ -224,11 +224,11 @@ export default function ReadRoleRequest() {
 
   const constraints = useRequestConstraints(roleRequest);
   const constraintSide = !!roleRequest.request_ownership;
-  // `requiresReason` reports true until the answer lands, and approval stays
+  // `isReasonRequired` reports true until the answer lands, and approval stays
   // disabled while `blocked`, so nothing offers a duration or waives a
   // justification on the strength of an answer that has not arrived.
   const timeLimit = constraints.timeLimit(constraintSide);
-  const reason = constraints.requiresReason(constraintSide);
+  const reason = constraints.isReasonRequired(constraintSide);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {

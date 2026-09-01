@@ -241,7 +241,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         ? ownerTimeLimit
         : Math.min(ownerTimeLimit, memberTimeLimit);
 
-  const requiredReason = ownerSideConstraints.requiresReason(true) || memberSideConstraints.requiresReason(false);
+  const requiredReason = ownerSideConstraints.isReasonRequired(true) || memberSideConstraints.isReasonRequired(false);
 
   // Bound the duration control to whatever limit is in force, and pull the
   // user's selection down if it now exceeds it.

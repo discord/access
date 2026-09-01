@@ -34,7 +34,7 @@ import {
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {effectiveOwnerCantAddSelf, effectiveRequiredReason, effectiveTimeLimit} from '../../constraints';
+import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -86,8 +86,8 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   // page already fetched, so reading it costs no request of its own.
   const constraints = props.group.effective_constraints;
   const timeLimit = effectiveTimeLimit(constraints, props.owner); // in seconds
-  const reason = effectiveRequiredReason(constraints, props.owner);
-  const disallow_owner_add = effectiveOwnerCantAddSelf(constraints, props.owner);
+  const reason = isReasonRequired(constraints, props.owner);
+  const selfAddDisallowed = isSelfAddDisallowed(constraints, props.owner);
 
   let labels = null;
   let timeLimitUntil = null;
@@ -201,7 +201,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
               : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
-            {disallow_owner_add && !isAccessAdmin(props.currentUser) ? (
+            {selfAddDisallowed && !isAccessAdmin(props.currentUser) ? (
               <>
                 You cannot add yourself to this group due to the{' '}
                 <strong>owner can't add themselves as {ownerOrMember}</strong> tag constraint. Please get another owner
@@ -262,7 +262,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                     const userIds = users.map((user) => user.id);
                     return (
                       !userIds.includes(option.id) &&
-                      (disallow_owner_add && !isAccessAdmin(props.currentUser)
+                      (selfAddDisallowed && !isAccessAdmin(props.currentUser)
                         ? !(option.id == props.currentUser.id)
                         : true)
                     );
