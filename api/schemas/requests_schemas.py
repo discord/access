@@ -387,6 +387,7 @@ class CreateTagBody(BaseModel):
     description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: bool = True
+    propagate_to_roles: Optional[bool] = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:
@@ -408,6 +409,7 @@ class UpdateTagBody(BaseModel):
     description: Optional[str] = Field(default=None, max_length=_TAG_DESC_MAX_LENGTH)
     constraints: Optional[dict[str, Any]] = None
     enabled: Optional[bool] = None
+    propagate_to_roles: Optional[bool] = None
 
     @model_validator(mode="after")
     def _check_description_required(self) -> Self:

@@ -121,3 +121,29 @@ def group_tag_map_options() -> tuple:
         joinedload(OktaGroupTagMap.active_tag),
         selectinload(OktaGroupTagMap.active_group).options(*polymorphic_group_options()),
     )
+
+
+def effective_constraint_options() -> tuple:
+    """Eager-load everything `effective_constraints(group)` reads.
+
+    Both association relationships plus each associated group's tags. Omitting
+    these raises `InvalidRequestError` at serialization time, not at query
+    time -- `lazy="raise_on_sql"`.
+
+    Uses `selectinload` (not `joinedload`) for `RoleGroupMap.active_group` to
+    match the strategy `role_group_map_options()` already declares for that
+    path in `groups.py`'s `DEFAULT_LOAD_OPTIONS` -- mixing strategies on the
+    same path raises `InvalidRequestError: Loader strategies ... conflict` at
+    query-compile time. Callers that load `active_role_associated_group_*_mappings`
+    with a different (or no) prior strategy for `.active_group` are unaffected.
+    """
+    return (
+        selectinload(RoleGroup.active_role_associated_group_member_mappings)
+        .selectinload(RoleGroupMap.active_group)
+        .selectinload(OktaGroup.active_group_tags)
+        .joinedload(OktaGroupTagMap.active_tag),
+        selectinload(RoleGroup.active_role_associated_group_owner_mappings)
+        .selectinload(RoleGroupMap.active_group)
+        .selectinload(OktaGroup.active_group_tags)
+        .joinedload(OktaGroupTagMap.active_tag),
+    )
