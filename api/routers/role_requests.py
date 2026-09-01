@@ -17,11 +17,9 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
-    RoleGroupMap,
     RoleRequest,
     Tag,
 )
@@ -31,6 +29,7 @@ from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import (
+    effective_constraint_options,
     group_tag_map_options,
     polymorphic_group_options,
     user_group_member_options,
@@ -178,31 +177,15 @@ async def list_role_requests(
                                     selectinload(OktaGroup.active_user_memberships)
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
-                                    # `active_tag` is read per tag below in the
-                                    # disallow-self-add constraint check, so nest its
-                                    # loader — selectinload of the collection alone
-                                    # leaves OktaGroupTagMap.active_tag on raise_on_sql.
-                                    selectinload(OktaGroup.active_group_tags).options(
-                                        joinedload(OktaGroupTagMap.active_tag)
-                                    ),
                                     selectinload(OktaGroup.active_user_ownerships),
                                     # `requested_group` can be a RoleGroup (e.g.
                                     # `ModifyGroupType` converted a group that already
-                                    # had a pending role request). `effective_constraint`
-                                    # then consults propagation -- unconditionally, tags
-                                    # or not -- and reads these `raise_on_sql`
-                                    # relationships. Loaded for both the owner-side and
-                                    # member-side queries so the eager-load set doesn't
-                                    # depend on which constraint key happens to be passed.
+                                    # had a pending role request), so the constraint
+                                    # lookup below may consult propagation. The
+                                    # polymorphic loader is what lets the RoleGroup
+                                    # paths in `effective_constraint_options` resolve.
                                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                                    .joinedload(RoleGroupMap.active_group)
-                                    .selectinload(OktaGroup.active_group_tags)
-                                    .joinedload(OktaGroupTagMap.active_tag),
-                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                                    .joinedload(RoleGroupMap.active_group)
-                                    .selectinload(OktaGroup.active_group_tags)
-                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    *effective_constraint_options(),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
@@ -221,31 +204,15 @@ async def list_role_requests(
                                     selectinload(OktaGroup.active_user_memberships)
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
-                                    # `active_tag` is read per tag below in the
-                                    # disallow-self-add constraint check, so nest its
-                                    # loader — selectinload of the collection alone
-                                    # leaves OktaGroupTagMap.active_tag on raise_on_sql.
-                                    selectinload(OktaGroup.active_group_tags).options(
-                                        joinedload(OktaGroupTagMap.active_tag)
-                                    ),
                                     selectinload(OktaGroup.active_user_ownerships),
                                     # `requested_group` can be a RoleGroup (e.g.
                                     # `ModifyGroupType` converted a group that already
-                                    # had a pending role request). `effective_constraint`
-                                    # then consults propagation -- unconditionally, tags
-                                    # or not -- and reads these `raise_on_sql`
-                                    # relationships. Loaded for both the owner-side and
-                                    # member-side queries so the eager-load set doesn't
-                                    # depend on which constraint key happens to be passed.
+                                    # had a pending role request), so the constraint
+                                    # lookup below may consult propagation. The
+                                    # polymorphic loader is what lets the RoleGroup
+                                    # paths in `effective_constraint_options` resolve.
                                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                                    .joinedload(RoleGroupMap.active_group)
-                                    .selectinload(OktaGroup.active_group_tags)
-                                    .joinedload(OktaGroupTagMap.active_tag),
-                                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                                    .joinedload(RoleGroupMap.active_group)
-                                    .selectinload(OktaGroup.active_group_tags)
-                                    .joinedload(OktaGroupTagMap.active_tag),
+                                    *effective_constraint_options(),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
@@ -280,28 +247,13 @@ async def list_role_requests(
                     (
                         await db.scalars(
                             select(OktaGroup)
-                            # `active_tag` is read per tag below; nest its loader so
-                            # OktaGroupTagMap.active_tag isn't left on raise_on_sql.
                             # `owned_groups` has no type filter, so `g` can be a
                             # RoleGroup here (a role owner's own role); the
-                            # selectin_polymorphic plus the two
-                            # active_role_associated_group_*_mappings loaders below
-                            # let `effective_constraint` read the propagated
-                            # member/owner tags a RoleGroup picks up from the
-                            # groups it belongs to / owns.
+                            # polymorphic loader is what lets the RoleGroup paths
+                            # in `effective_constraint_options` resolve.
                             .options(
                                 selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                                selectinload(OktaGroup.active_group_tags).options(
-                                    joinedload(OktaGroupTagMap.active_tag)
-                                ),
-                                selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                                .joinedload(RoleGroupMap.active_group)
-                                .selectinload(OktaGroup.active_group_tags)
-                                .joinedload(OktaGroupTagMap.active_tag),
-                                selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                                .joinedload(RoleGroupMap.active_group)
-                                .selectinload(OktaGroup.active_group_tags)
-                                .joinedload(OktaGroupTagMap.active_tag),
+                                *effective_constraint_options(),
                             )
                             .where(
                                 or_(
