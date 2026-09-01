@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, NamedTuple, Optional
 
+from api.exceptions import InvalidRequestError
 from api.models.core_models import OktaGroup, RoleGroup, RoleGroupMap, Tag, TagConstraint
 
 
@@ -49,6 +50,22 @@ OWNER_SIDE_COUNTERPART: dict[str, str] = {
     Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY,
     Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
 }
+
+# Constraints a tag may not carry while opting out of propagation. The reason
+# and time-limit constraints degrade gracefully without it -- they still bind
+# on the direct path, and a role path still records some reason and some
+# duration. A self-add prohibition does not degrade, it inverts: the owner it
+# targets adds themselves to a role associated with the tagged group and
+# arrives at the same access by a supported path, with nothing recording that a
+# separation-of-duties control was in play. So these two settings are not
+# independently configurable, and `validate_constraint_propagation` rejects the
+# combination at every write.
+PROPAGATION_REQUIRED_CONSTRAINT_KEYS: frozenset[str] = frozenset(
+    {
+        Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
+        Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
+    }
+)
 
 
 class ConstraintOrigin(StrEnum):
@@ -289,6 +306,51 @@ def _join_phrases(phrases: list[str]) -> str:
     if len(phrases) == 1:
         return phrases[0]
     return f"{', '.join(phrases[:-1])} and {phrases[-1]}"
+
+
+def validate_constraint_propagation(constraints: Optional[dict[str, Any]], propagate_to_roles: Optional[bool]) -> None:
+    """Reject a tag whose constraints cannot survive its propagation setting.
+
+    Guards the invariant that a `PROPAGATION_REQUIRED_CONSTRAINT_KEYS`
+    constraint is never set on a tag that opts out of reaching roles. Every
+    write path calls this, because the two fields can be set independently and
+    in either order -- turning propagation off on a tag that already disallows
+    self-adds opens the same hole as adding the constraint to a tag that
+    already opted out.
+
+    Callers must pass the *merged* result of a partial update, not the request
+    body alone: a `PUT` carrying only `propagate_to_roles` is coherent in
+    isolation and conflicts only with what is already stored.
+
+    Args:
+        constraints: The tag's resulting constraint mapping. None is read as
+            empty, matching the column's `{}` server default on a row that has
+            not been flushed yet.
+        propagate_to_roles: The tag's resulting propagation setting. None is
+            read as True, matching the column default -- an unflushed `Tag()`
+            has not had it applied, so reading the attribute yields None rather
+            than the default it will be given at INSERT.
+
+    Raises:
+        InvalidRequestError: If any such constraint is set truthy while
+            propagation is off. Names every offending key, since removing one
+            of two would still leave the tag invalid, and states the invariant
+            rather than which half of it the write happened to change --
+            either half may be the one arriving.
+    """
+    if propagate_to_roles is not False:
+        return
+    # Only a truthy value is a live constraint; an explicit `False` sets
+    # nothing and is as compatible with opting out as omitting the key.
+    conflicting = sorted(key for key in PROPAGATION_REQUIRED_CONSTRAINT_KEYS if (constraints or {}).get(key))
+    if not conflicting:
+        return
+    raise InvalidRequestError(
+        f"A tag that sets {_join_phrases(conflicting)} must propagate to roles. "
+        "Such a constraint only holds if it reaches roles associated with the tagged group: "
+        "an owner it blocks could otherwise add themselves to one of those roles and receive "
+        "the same access. Enable propagation to roles, or remove the constraint."
+    )
 
 
 def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
