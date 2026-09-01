@@ -420,6 +420,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
         apps,
         audit,
         bugs,
+        constraints,
         group_requests,
         groups,
         health,
@@ -435,6 +436,7 @@ def create_app(testing: Optional[bool] = False) -> FastAPI:
     app.include_router(apps.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(audit.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(bugs.router, responses=DEFAULT_ERROR_RESPONSES)
+    app.include_router(constraints.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(group_requests.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(groups.router, responses=DEFAULT_ERROR_RESPONSES)
     app.include_router(plugins.router, responses=DEFAULT_ERROR_RESPONSES)

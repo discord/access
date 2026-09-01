@@ -474,3 +474,78 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
         if entry is not None:
             entries.append(entry)
     return entries
+
+
+def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[str, Any]]:
+    """Every constraint in force across `groups` taken together.
+
+    Not a per-group answer merged by the caller: the sources from every group
+    are folded under one `coalesce`, so a set of groups bounds a single shared
+    control (one duration picker for a bulk renewal) exactly as one group
+    bounds its own. Callers that also need per-group answers should ask for
+    both rather than re-deriving either -- re-deriving is the duplication this
+    exists to remove.
+
+    Args:
+        groups: The groups to evaluate together. An empty list yields an empty
+            result, as does a set of groups nothing constrains.
+
+    Returns:
+        The same entry shape `effective_constraints` returns, except that a
+        constraint's `value` is coalesced across every group's sources and its
+        `sources` list carries the contributions from all of them. A tag
+        reaching two of the groups appears once per group, since the reader
+        needs to know which of their selections carries it.
+
+    Raises:
+        InvalidRequestError: If a relationship this reads was not eager-loaded
+            on any of the groups. Same set as `effective_constraints`.
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources: list[ConstraintSource] = []
+        for group in groups:
+            sources.extend(constraint_sources(constraint_key, group, include_provenance=True))
+        if not sources:
+            continue
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
+    return entries
+
+
+def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
+    """Every constraint a set of tags would impose, with no group involved.
+
+    For the case where the group does not exist yet -- approving a group
+    request means choosing tags for a group about to be created, so there is
+    nothing to compute propagation or app inheritance from.
+
+    Args:
+        tags: The tags to evaluate. Disabled tags contribute nothing, matching
+            every other path.
+
+    Returns:
+        The same entry shape `effective_constraints` returns. Every source has
+        a `DIRECT` origin with no `source_id` or `source_name`: these tags
+        would sit on the group itself, so there is no other site to name.
+
+    Raises:
+        Nothing. Only `Tag.constraints` and `Tag.enabled` are read, both
+        columns rather than relationships, so no eager loading applies.
+    """
+    entries = []
+    for constraint_key, constraint in Tag.CONSTRAINTS.items():
+        sources = [
+            ConstraintSource(
+                tag=tag,
+                value=tag.constraints[constraint_key],
+                origin=ConstraintOrigin.DIRECT,
+                source_id=None,
+                source_name=None,
+            )
+            for tag in tags
+            if tag.enabled and constraint_key in tag.constraints
+        ]
+        if not sources:
+            continue
+        entries.append(_constraint_entry(constraint_key, constraint, sources))
+    return entries
