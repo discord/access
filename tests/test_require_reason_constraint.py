@@ -1831,3 +1831,43 @@ async def test_require_reason_approve_access_request(
         )
         == 1
     )
+
+
+async def test_whitespace_only_reason_is_not_stored_on_an_untagged_group(
+    client: AsyncClient,
+    db: Db,
+    okta_group: OktaGroup,
+    user: OktaUser,
+    url_for: Any,
+    mocker: MockerFixture,
+) -> None:
+    """`CheckForReason` treats a whitespace-only reason as absent, and a group
+    with no reason constraint never consults it. Normalizing inbound reasons is
+    what makes both paths agree that this is no reason at all, rather than
+    "provided" meaning one thing on a tagged group and another here."""
+    mocker.patch.object(okta, "add_user_to_group")
+    db.session.add_all([okta_group, user])
+    await db.session.commit()
+    group_id, user_id = okta_group.id, user.id
+
+    response = await client.put(
+        url_for("group_members_by_id_put", group_id=group_id),
+        json={
+            "members_to_add": [user_id],
+            "members_to_remove": [],
+            "owners_to_add": [],
+            "owners_to_remove": [],
+            "created_reason": "   \t ",
+        },
+    )
+    assert response.status_code == 200
+
+    db.session.expire_all()
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == group_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+        )
+    ).one()
+    assert membership.created_reason == ""
