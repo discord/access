@@ -40,15 +40,8 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {
-  groupBy,
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  ownerCantAddSelf,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {useConstraintsForGroups} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
@@ -127,46 +120,12 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(roleRequest: RoleRequestDetail) {
-  const group = roleRequest.requested_group ?? null;
-
-  if (group == null) {
-    return [null, null];
-  }
-
-  let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  if ((group.type as string) == 'role_group' && !roleRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-  }
-
-  return [timeLimit, reason];
+// Which constraints apply to the requested group, resolved by the API rather
+// than re-derived here. A requested role's applicable constraints cannot be
+// read off its own tags: they depend on which of its associations propagate,
+// which is the server's rule to apply.
+function useRequestConstraints(roleRequest: RoleRequestDetail) {
+  return useConstraintsForGroups([roleRequest.requested_group?.id]);
 }
 
 export default function ReadRoleRequest() {
@@ -221,6 +180,12 @@ export default function ReadRoleRequest() {
     },
     new Array<TagSummary>(),
   );
+  // Deliberately read from the group's own tags rather than the constraints
+  // endpoint. This is the role-to-group direction, where nothing propagates —
+  // the target of a role request is never itself a role — so the group's own
+  // tags are the whole answer and both sources agree. Answering synchronously
+  // costs no request and spares the approver a render with the controls
+  // withheld while a fetch that could not change the answer settles.
   const tagged =
     (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
     (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
@@ -257,10 +222,13 @@ export default function ReadRoleRequest() {
 
   const group = groupData ?? ({} as GroupDetail);
 
-  const constraints = ComputeConstraints(roleRequest);
-
-  const timeLimit: number | null = constraints[0] as number | null;
-  const reason: boolean = constraints[1] as boolean;
+  const constraints = useRequestConstraints(roleRequest);
+  const constraintSide = !!roleRequest.request_ownership;
+  // `requiresReason` reports true until the answer lands, and approval stays
+  // disabled while `blocked`, so nothing offers a duration or waives a
+  // justification on the strength of an answer that has not arrived.
+  const timeLimit = constraints.timeLimit(constraintSide);
+  const reason = constraints.requiresReason(constraintSide);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -820,6 +788,12 @@ export default function ReadRoleRequest() {
                                   }}
                                 />
                               </FormControl>
+                              {constraints.error != null ? (
+                                <Alert severity="error">
+                                  Could not load the constraints on this group, so approval is disabled. Reload to try
+                                  again.
+                                </Alert>
+                              ) : null}
                               <FormControl margin="normal" style={{flexDirection: 'row'}}>
                                 <Button
                                   variant="contained"
@@ -828,7 +802,7 @@ export default function ReadRoleRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || ownRequest}
+                                  disabled={submitting || ownRequest || constraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>

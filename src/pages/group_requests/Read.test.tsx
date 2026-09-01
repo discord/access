@@ -50,6 +50,27 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../../authentication', () => ({useCurrentUser: () => APP_OWNER}));
 
+// The page asks the constraints endpoint what the selected tags impose, which
+// needs a QueryClient this render does not provide. These tests assert group
+// name resolution and the locked Type select, neither of which reads a
+// constraint, so stand in a resolved reader that restricts nothing.
+vi.mock('../../constraints', () => {
+  const unrestricted = {
+    timeLimit: () => null,
+    isReasonRequired: () => false,
+    isSelfAddDisallowed: () => false,
+  };
+  return {
+    useConstraintsForTags: () => ({
+      pending: false,
+      error: null,
+      blocked: false,
+      ...unrestricted,
+      forGroup: () => unrestricted,
+    }),
+  };
+});
+
 vi.mock('../../api/apiComponents', () => ({
   useGroupRequestById: () => ({data: PENDING_APP_GROUP_REQUEST, isError: false, isLoading: false}),
   useGroupRequestByIdPut: () => ({mutate: resolveMutate}),

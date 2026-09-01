@@ -28,6 +28,7 @@ import {
   ToggleButtonGroupElement,
 } from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useForm} from 'react-hook-form';
 
 import {
   useRoleRequestsCreate,
@@ -50,7 +51,7 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup} from '../../authorization';
-import {minTagTime, minTagTimeGroups} from '../../helpers';
+import {useConstraintsForGroups} from '../../constraints';
 import {Tooltip} from '@mui/material';
 
 dayjs.extend(IsSameOrBefore);
@@ -178,14 +179,6 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   // find the shortest time (max allowed access time) and set that as the time limit. This value is used to
   // filter until drop-down labels, display a message about the constraint, and set a max date on the custom
   // until calendar.
-  const [timeLimit, setTimeLimit] = React.useState<number | null>(
-    props.group
-      ? minTagTime(
-          props.group.active_group_tags ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-          props.owner ?? false,
-        )
-      : null,
-  );
   const [roleSearchInput, setRoleSearchInput] = React.useState(props.role?.name ?? '');
   const [groupSearchInput, setGroupSearchInput] = React.useState(props.group?.name ?? '');
   const [requestError, setRequestError] = React.useState('');
@@ -193,11 +186,22 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const [selectedGroup, setSelectedGroup] = React.useState<GroupDetail | null>(props.group ?? null);
   const [owner, setOwner] = React.useState<boolean>(props.owner ?? false);
 
-  const untilLabels: [string, Array<Record<string, string>>] = timeLimit
-    ? filterUntilLabels(timeLimit)
-    : ['1209600', UNTIL_OPTIONS];
-  const [until, setUntil] = React.useState(untilLabels[0]);
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
+  // Seeded unrestricted; the effect below narrows both once the applicable
+  // constraints arrive, including on first render for a group passed in as a
+  // prop.
+  const [until, setUntil] = React.useState('1209600');
+  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
+
+  // Owned here rather than by `FormContainer` so the constraint effect below
+  // can move the `until` field when the allowed durations narrow.
+  const formContext = useForm<CreateRequestForm>({
+    defaultValues: {
+      role: props.role,
+      group: props.group,
+      until: '1209600',
+      ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
+    },
+  });
 
   const complete = (
     completedRequest: RoleRequestSummary | undefined,
@@ -241,28 +245,28 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const updateUntil = (group: GroupDetail | null = selectedGroup, ownerOrMember: boolean = owner) => {
     setSelectedGroup(group);
     setOwner(ownerOrMember);
-    let time: number | null = null;
-    if (group == null) {
+  };
+
+  // The API resolves what applies, so the picker never offers a duration the
+  // backend would quietly shorten.
+  const constraints = useConstraintsForGroups([selectedGroup?.id]);
+  const timeLimit = constraints.timeLimit(owner);
+
+  React.useEffect(() => {
+    if (timeLimit == null) {
+      setLabels(UNTIL_OPTIONS);
       return;
     }
-
-    // defaults to member if owner field on form is unset and props.owner == undefined
-    time = minTagTime(
-      group.active_group_tags ? group.active_group_tags.map((tagMap) => tagMap.active_tag!) : [],
-      ownerOrMember,
-    );
-
-    setTimeLimit(time);
-
-    if (!(time == null)) {
-      const [filteredUntil, filteredLabels] = filterUntilLabels(time);
-
-      setUntil(filteredUntil);
-      setLabels(filteredLabels);
-    } else {
-      setLabels(UNTIL_OPTIONS);
-    }
-  };
+    const [filteredUntil, filteredLabels] = filterUntilLabels(timeLimit);
+    setUntil(filteredUntil);
+    setLabels(filteredLabels);
+    // The form's own value has to move too, not just the option list. RHF
+    // snapshots `defaultValues` at mount, so narrowing the options underneath
+    // it leaves the field holding a duration no longer on offer -- the select
+    // renders blank and a submit sends a length the backend then shortens
+    // without saying so.
+    formContext.setValue('until', filteredUntil);
+  }, [timeLimit]);
 
   const submit = (requestForm: CreateRequestForm) => {
     setSubmitting(true);
@@ -291,14 +295,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   };
 
   return (
-    <FormContainer<CreateRequestForm>
-      defaultValues={{
-        role: props.role,
-        group: props.group,
-        until: '1209600',
-        ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
-      }}
-      onSuccess={(formData) => submit(formData)}>
+    <FormContainer<CreateRequestForm> formContext={formContext} onSuccess={(formData) => submit(formData)}>
       <DialogTitle>
         {props.renew ? 'Renew ' : 'Create '}
         {props.owner != null ? (props.owner == true ? ' Ownership ' : ' Membership ') : ' Role '}
@@ -484,7 +481,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogContent>
       <DialogActions>
         <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || constraints.blocked}>
           {submitting ? <CircularProgress size={24} /> : 'Send'}
         </Button>
       </DialogActions>

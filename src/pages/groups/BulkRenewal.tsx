@@ -30,17 +30,11 @@ import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
-import {displayUserName, minTagTimeGroups, requiredReasonGroups} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {useConstraintsForGroups} from '../../constraints';
 
 import {useGroupMembersByIdPut, GroupMembersByIdPutError, GroupMembersByIdPutVariables} from '../../api/apiComponents';
-import {
-  GroupMember,
-  GroupMembersSummary,
-  GroupRefForMembership,
-  OktaUserGroupMemberDetail,
-  RoleGroupMapDetail,
-  RoleGroupDetail,
-} from '../../api/apiSchemas';
+import {GroupMember, GroupMembersSummary, OktaUserGroupMemberDetail} from '../../api/apiSchemas';
 import BulkRenewalDataGrid from '../../components/BulkRenewalDataGrid';
 import accessConfig from '../../config/accessConfig';
 
@@ -115,8 +109,6 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [groupUpdatesErrored, setGroupUpdatesErrored] = React.useState(0);
 
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
-  const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
-  const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
 
   // Track toggle states for each row
   const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
@@ -212,151 +204,78 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     },
   ];
 
-  const updateUntil = (memberships: OktaUserGroupMemberDetail[]) => {
-    // Only calculate time limit for memberships selected for renewal (yes)
-    const renewalMemberships = memberships.filter((m) => toggleStates[m.id] === 'yes');
+  // Which rows are actually being renewed, split by the side each was granted
+  // on. The split matters: a group's owner limit governs only the rows being
+  // renewed as ownerships, and its member limit only the rest.
+  const renewalMemberships = React.useMemo(
+    () => [...selectedYes, ...selectedNo].filter((m) => toggleStates[m.id] === 'yes'),
+    [selectedYes, selectedNo, toggleStates],
+  );
+  const ownerGroupIds = React.useMemo(
+    () => renewalMemberships.filter((m) => m.is_owner).map((m) => m.group?.id),
+    [renewalMemberships],
+  );
+  const memberGroupIds = React.useMemo(
+    () => renewalMemberships.filter((m) => !m.is_owner).map((m) => m.group?.id),
+    [renewalMemberships],
+  );
 
-    if (renewalMemberships.length === 0) {
-      // No renewals selected, use default options
-      setTimeLimit(null);
-      setLabels(UNTIL_OPTIONS);
-      return;
-    }
+  // Two requests rather than one over the union, because a request names one
+  // side: asking about every selected group at once would apply each group's
+  // owner limit to rows that are only memberships. The API resolves the rest —
+  // which tags are enabled, which reach a renewed role through its
+  // associations, and the coalescing across the set.
+  const ownerSideConstraints = useConstraintsForGroups(ownerGroupIds);
+  const memberSideConstraints = useConstraintsForGroups(memberGroupIds);
+  const constraintsBlocked = ownerSideConstraints.blocked || memberSideConstraints.blocked;
 
-    const ownedGroups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
-        curr.is_owner && curr.group ? all.add(curr.group) : null;
-        return all;
-      }, new Set<GroupRefForMembership>()),
-    );
+  const ownerTimeLimit = ownerSideConstraints.timeLimit(true);
+  const memberTimeLimit = memberSideConstraints.timeLimit(false);
+  // Not a coalesce being re-implemented: these are two different constraint
+  // keys governing two disjoint sets of rows, which no single request can
+  // combine. Choosing the tighter of the two is the caller's decision.
+  const timeLimit =
+    ownerTimeLimit == null
+      ? memberTimeLimit
+      : memberTimeLimit == null
+        ? ownerTimeLimit
+        : Math.min(ownerTimeLimit, memberTimeLimit);
 
-    const memberGroups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
-        !curr.is_owner && curr.group ? all.add(curr.group) : null;
-        return all;
-      }, new Set<GroupRefForMembership>()),
-    );
+  const requiredReason = ownerSideConstraints.requiresReason(true) || memberSideConstraints.requiresReason(false);
 
-    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: OktaUserGroupMemberDetail) => {
-      return all.add(curr.is_owner!);
-    }, new Set<boolean>());
-
-    let time: number | null = null;
-    if (owner_member.size == 2) {
-      const owner = minTagTimeGroups(ownedGroups, true) ?? Number.MAX_VALUE;
-      const member = minTagTimeGroups(memberGroups, false) ?? Number.MAX_VALUE;
-      time = owner == Number.MAX_VALUE && member == Number.MAX_VALUE ? null : Math.min(owner, member);
-    } else if (owner_member.has(true)) {
-      time = minTagTimeGroups(ownedGroups, true);
-    } else {
-      time = minTagTimeGroups(memberGroups, false) ?? Number.MAX_VALUE;
-      time == Number.MAX_VALUE ? (time = null) : null;
-    }
-
-    setTimeLimit(time);
-
-    if (!(time == null)) {
-      const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-        .filter((key) => Number(key) <= time!)
-        .reduce(
-          (obj, key) => {
-            obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-            return obj;
-          },
-          {} as Record<string, string>,
-        );
-
-      // Only adjust the user's selection if it exceeds the new time limit
-      const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
-
-      if (currentUntilValue === null || currentUntilValue > time!) {
-        // User's selection exceeds limit (or is indefinite), set to highest valid option
-        setUntil(Object.keys(filteredUntil).at(-1)!);
-      }
-
-      // Otherwise, keep the user's current selection
-      setLabels(
-        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-          id: id,
-          label: label,
-        })),
-      );
-    } else {
-      setLabels(UNTIL_OPTIONS);
-    }
-  };
-
-  const updateRequiredReason = (memberships: OktaUserGroupMemberDetail[]) => {
-    // Only calculate required reason for memberships selected for renewal (yes)
-    const renewalMemberships = memberships.filter((m) => toggleStates[m.id] === 'yes');
-
-    if (renewalMemberships.length === 0) {
-      setRequiredReason(false);
-      return;
-    }
-
-    const ownedGroups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
-        curr.is_owner && curr.group ? all.add(curr.group) : null;
-        return all;
-      }, new Set<GroupRefForMembership>()),
-    );
-
-    const memberGroups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: OktaUserGroupMemberDetail) => {
-        !curr.is_owner && curr.group ? all.add(curr.group) : null;
-        return all;
-      }, new Set<GroupRefForMembership>()),
-    );
-
-    // get role groups where renewing memberships only (not ownerships)
-    const roleGroupMems = memberGroups.filter((group: GroupRefForMembership) => group.type == 'role_group');
-
-    // role group ownerships
-    const roleGroupOwnerGroups: GroupRefForMembership[] = (roleGroupMems as unknown as RoleGroupDetail[])
-      .reduce((out: RoleGroupMapDetail[], rg: RoleGroupDetail) => {
-        rg.active_role_associated_group_owner_mappings
-          ? (out = out.concat(rg.active_role_associated_group_owner_mappings))
-          : null;
-        return out;
-      }, new Array<RoleGroupMapDetail>())
-      .map((rgm: RoleGroupMapDetail) => rgm.active_group!);
-
-    // role group memberships
-    const roleGroupMemberGroups: GroupRefForMembership[] = (roleGroupMems as unknown as RoleGroupDetail[])
-      .reduce((out: RoleGroupMapDetail[], rg: RoleGroupDetail) => {
-        rg.active_role_associated_group_member_mappings
-          ? (out = out.concat(rg.active_role_associated_group_member_mappings))
-          : null;
-        return out;
-      }, new Array<RoleGroupMapDetail>())
-      .map((rgm: RoleGroupMapDetail) => rgm.active_group!);
-
-    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: OktaUserGroupMemberDetail) => {
-      return all.add(curr.is_owner!);
-    }, new Set<boolean>());
-
-    if (owner_member.size == 2) {
-      setRequiredReason(
-        requiredReasonGroups(ownedGroups, true) ||
-          requiredReasonGroups(memberGroups.concat(roleGroupMemberGroups), false) ||
-          requiredReasonGroups(roleGroupOwnerGroups, true),
-      );
-    } else if (owner_member.has(true)) {
-      setRequiredReason(requiredReasonGroups(ownedGroups, true));
-    } else {
-      setRequiredReason(
-        requiredReasonGroups(memberGroups.concat(roleGroupMemberGroups), false) ||
-          requiredReasonGroups(roleGroupOwnerGroups, true),
-      );
-    }
-  };
-
-  // Update time limits and required reason when selections change
+  // Bound the duration control to whatever limit is in force, and pull the
+  // user's selection down if it now exceeds it.
   React.useEffect(() => {
-    updateUntil([...selectedYes, ...selectedNo]);
-    updateRequiredReason([...selectedYes, ...selectedNo]);
-  }, [selectedYes, selectedNo, toggleStates]);
+    if (timeLimit == null) {
+      setLabels(UNTIL_OPTIONS);
+      return;
+    }
+
+    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
+      .filter((key) => Number(key) <= timeLimit)
+      .reduce(
+        (obj, key) => {
+          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
+          return obj;
+        },
+        {} as Record<string, string>,
+      );
+
+    const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
+    if (currentUntilValue === null || currentUntilValue > timeLimit) {
+      setUntil(Object.keys(filteredUntil).at(-1)!);
+    }
+
+    setLabels(
+      Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+        id: id,
+        label: label,
+      })),
+    );
+    // `until` is read but deliberately not a dependency: this reacts to the
+    // limit changing, not to the user picking a duration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit]);
 
   const complete = (
     completedUsersChange: GroupMembersSummary | undefined,
@@ -558,7 +477,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || constraintsBlocked}>
             {submitting ? <CircularProgress size={24} /> : 'Submit'}
           </Button>
         </DialogActions>
