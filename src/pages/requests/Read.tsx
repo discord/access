@@ -37,6 +37,7 @@ import {
   TextFieldElement,
   ToggleButtonGroupElement,
 } from 'react-hook-form-mui';
+import {useForm} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -44,6 +45,7 @@ import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import {groupBy, displayUserName} from '../../helpers';
 import {useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
@@ -195,7 +197,7 @@ export default function ReadRequest() {
   }
 
   let labels = null;
-  let requestedUntilAdjusted = null;
+  let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
       .filter((key) => Number(key) <= timeLimit!)
@@ -214,6 +216,26 @@ export default function ReadRequest() {
       label: label,
     }));
   }
+
+  // Owned here rather than by `FormContainer` so the effect below can move the
+  // `until` field once the constraints land. React Hook Form snapshots
+  // `defaultValues` on the mounting render, and that is the render on which
+  // the request data arrives and the constraints query is still in flight --
+  // so a limit narrower than the requested duration is never known in time to
+  // be a default.
+  const resolveForm = useForm<ResolveRequestForm>({
+    defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
+  });
+
+  React.useEffect(() => {
+    // The limit came back lower than what was requested, so the approver's
+    // starting point is the longest duration still on offer. Guarded on
+    // `requestedUntilAdjusted` rather than on `timeLimit` being truthy, since a
+    // limit of zero leaves nothing to offer and the field should stay put.
+    if (timeLimit != null && !autofill_until && requestedUntilAdjusted) {
+      resolveForm.setValue('until', requestedUntilAdjusted);
+    }
+  }, [timeLimit, autofill_until, requestedUntilAdjusted]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.
@@ -611,11 +633,7 @@ export default function ReadRequest() {
                           </Paper>
                           <Paper sx={{p: 2, mt: 1}}>
                             <FormContainer<ResolveRequestForm>
-                              defaultValues={
-                                timeLimit && !autofill_until && requestedUntilAdjusted
-                                  ? {until: requestedUntilAdjusted} // case where time limit lowered below requested time
-                                  : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
-                              }
+                              formContext={resolveForm}
                               onSuccess={(formData) => submit(formData)}>
                               {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
                               {!ownRequest ? (
@@ -695,12 +713,7 @@ export default function ReadRequest() {
                                   }}
                                 />
                               </FormControl>
-                              {constraints.error != null ? (
-                                <Alert severity="error">
-                                  Could not load the constraints on this group, so approval is disabled. Reload to try
-                                  again.
-                                </Alert>
-                              ) : null}
+                              <ConstraintsUnavailableAlert constraints={constraints} action="approval" />
                               <FormControl margin="normal" style={{flexDirection: 'row'}}>
                                 <Button
                                   variant="contained"

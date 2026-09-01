@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit, settledConstraints} from './constraints';
+import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit, carriedConstraints} from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
 
 // The API returns constraints already coalesced across whatever set was asked
@@ -63,9 +63,9 @@ describe('isSelfAddDisallowed', () => {
   });
 });
 
-describe('settledConstraints', () => {
+describe('carriedConstraints', () => {
   it('is never blocked, so it reports exactly what it was given', () => {
-    const reader = settledConstraints([entry('member_time_limit', 86400)]);
+    const reader = carriedConstraints([entry('member_time_limit', 86400)]);
     expect(reader.pending).toBe(false);
     expect(reader.error).toBeNull();
     expect(reader.blocked).toBe(false);
@@ -75,18 +75,29 @@ describe('settledConstraints', () => {
   });
 
   it('reports nothing applying for a group with no constraints', () => {
-    const reader = settledConstraints([]);
+    const reader = carriedConstraints([]);
     expect(reader.timeLimit(true)).toBeNull();
     expect(reader.isReasonRequired(true)).toBe(false);
     expect(reader.isSelfAddDisallowed(true)).toBe(false);
   });
 
-  it('answers per group only for a group it holds, which it never does', () => {
-    // `settledConstraints` wraps one group's own constraints, so there is no
-    // per-group map to consult; asking for a row falls through to unknown-but-
-    // -settled, which reports nothing applying rather than failing closed.
-    const reader = settledConstraints([entry('disallow_self_add_membership', true)]);
+  it('treats an absent list as unknown rather than as nothing applying', () => {
+    // The audit group reference and the create/update group responses do not
+    // carry `effective_constraints` at all. Reading `undefined` as "no
+    // constraints" hides the request button from an owner a self-add
+    // restriction blocks -- taking away their only path -- so it fails closed.
+    const reader = carriedConstraints(undefined);
+    expect(reader.blocked).toBe(true);
+    expect(reader.isReasonRequired(false)).toBe(true);
     expect(reader.isSelfAddDisallowed(false)).toBe(true);
-    expect(reader.forGroup('some-other-group').isSelfAddDisallowed(false)).toBe(false);
+    expect(reader.timeLimit(false)).toBeNull();
+  });
+
+  it('has no per-group map, so any row it is asked about is unknown', () => {
+    // `carriedConstraints` wraps one group's own constraints; there is nothing
+    // to answer a per-row question with, and unknown fails closed.
+    const reader = carriedConstraints([entry('disallow_self_add_membership', true)]);
+    expect(reader.isSelfAddDisallowed(false)).toBe(true);
+    expect(reader.forGroup('some-other-group').isSelfAddDisallowed(false)).toBe(true);
   });
 });
