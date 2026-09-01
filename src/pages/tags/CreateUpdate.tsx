@@ -403,7 +403,7 @@ function TagDialog(props: TagDialogProps) {
                 <Tooltip
                   title={
                     'When yes, these constraints also apply to any role that is a member or owner of a group ' +
-                    "carrying this tag \u2014 the role's own members must satisfy the same time limits, reason " +
+                    "carrying this tag: The role's own members must satisfy the same time limits, reason " +
                     'requirements, and self-add restrictions. When no, the constraints apply only to the tagged ' +
                     'groups themselves. This is not the same as disabling the tag, which turns off its ' +
                     'enforcement everywhere.'
