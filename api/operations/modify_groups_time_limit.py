@@ -101,6 +101,38 @@ class ModifyGroupsTimeLimit:
                 .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
                 .execution_options(synchronize_session="fetch")
             )
+            # A role confers its access on its MEMBERS, so the ownerships a
+            # role grants in the groups it owns are held by those members and
+            # are bounded by the same membership limit. They are materialized
+            # as min(role membership, role-group map), so capping the
+            # membership without capping these would leave them outliving the
+            # membership they exist because of.
+            role_owner_map_associations = (
+                await db.session.scalars(
+                    select(RoleGroupMap)
+                    .where(RoleGroupMap.role_group_id.in_([g.id for g in role_groups]))
+                    .where(RoleGroupMap.is_owner.is_(True))
+                    .where(
+                        or_(
+                            RoleGroupMap.ended_at.is_(None),
+                            RoleGroupMap.ended_at > func.now(),
+                        )
+                    )
+                )
+            ).all()
+            await db.session.execute(
+                update(OktaUserGroupMember)
+                .where(OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_owner_map_associations]))
+                .where(OktaUserGroupMember.is_owner.is_(True))
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > membership_time_limit_from_now,
+                    )
+                )
+                .values({OktaUserGroupMember.ended_at: membership_time_limit_from_now})
+                .execution_options(synchronize_session="fetch")
+            )
             await db.session.commit()
         if ownership_seconds_limit is not None:
             ownership_time_limit_from_now = datetime.now(UTC) + timedelta(seconds=ownership_seconds_limit)
@@ -130,34 +162,6 @@ class ModifyGroupsTimeLimit:
                     )
                 )
                 .values({RoleGroupMap.ended_at: ownership_time_limit_from_now})
-                .execution_options(synchronize_session="fetch")
-            )
-            # Reduce all user ownerships for groups associated with any given role groups
-            # to the minimum allowed time limit
-            role_group_map_associations = (
-                await db.session.scalars(
-                    select(RoleGroupMap)
-                    .where(RoleGroupMap.role_group_id.in_([g.id for g in role_groups]))
-                    .where(RoleGroupMap.is_owner.is_(True))
-                    .where(
-                        or_(
-                            RoleGroupMap.ended_at.is_(None),
-                            RoleGroupMap.ended_at > func.now(),
-                        )
-                    )
-                )
-            ).all()
-            await db.session.execute(
-                update(OktaUserGroupMember)
-                .where(OktaUserGroupMember.role_group_map_id.in_([m.id for m in role_group_map_associations]))
-                .where(OktaUserGroupMember.is_owner.is_(True))
-                .where(
-                    or_(
-                        OktaUserGroupMember.ended_at.is_(None),
-                        OktaUserGroupMember.ended_at > ownership_time_limit_from_now,
-                    )
-                )
-                .values({OktaUserGroupMember.ended_at: ownership_time_limit_from_now})
                 .execution_options(synchronize_session="fetch")
             )
             await db.session.commit()

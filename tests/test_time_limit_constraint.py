@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
 from httpx import AsyncClient
 from pytest_mock import MockerFixture
 
@@ -18,9 +19,15 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
-from api.operations import ModifyGroupUsers, ModifyRoleGroups
+from api.operations import ModifyGroupsTimeLimit, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
-from tests.factories import AppTagMapFactory, OktaGroupTagMapFactory, TagFactory
+from tests.factories import (
+    AppTagMapFactory,
+    OktaGroupFactory,
+    OktaGroupTagMapFactory,
+    RoleGroupFactory,
+    TagFactory,
+)
 from tests.helpers import db_count
 
 SEVEN_DAYS_IN_SECONDS = 7 * 24 * 60 * 60
@@ -1267,7 +1274,7 @@ async def test_time_limit_add_app_tags(
     assert await db_count(db.session, select(RoleGroupMap).where(RoleGroupMap.ended_at.is_(None))) == 0
 
 
-async def test_owner_only_time_limit_caps_role_derived_ownership(
+async def test_owner_only_time_limit_leaves_role_derived_ownership_alone(
     client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
@@ -1276,9 +1283,13 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    """A tag setting only an owner time limit caps the ownerships a role grants.
+    """A tag setting only an owner time limit does not cap what the role grants.
 
-    Memberships are left alone, since the tag carries no member limit.
+    The owner limit governs who may own the role, and owning a role confers
+    none of its access. The ownerships the role grants are held by its
+    *members*, so with no member limit set there is nothing to cap -- and
+    capping them here would shorten access whose source membership is still
+    indefinite, which `verify_and_fix_role_memberships` would then restore.
     """
     # Owner limit only -- the member limit is deliberately left unset.
     tag = TagFactory.build(constraints={Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: THREE_DAYS_IN_SECONDS})
@@ -1323,8 +1334,7 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
             select(OktaUserGroupMember).where(
                 OktaUserGroupMember.role_group_map_id == role_owner_map_id,
                 OktaUserGroupMember.is_owner.is_(True),
-                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=2)),
-                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=4)),
+                OktaUserGroupMember.ended_at.is_(None),
             ),
         )
         == 1
@@ -1344,7 +1354,7 @@ async def test_owner_only_time_limit_caps_role_derived_ownership(
     )
 
 
-async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
+async def test_differing_time_limits_cap_role_derived_ownership_at_member_limit(
     client: AsyncClient,
     db: Db,
     mocker: MockerFixture,
@@ -1353,10 +1363,11 @@ async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
     user: OktaUser,
     url_for: Any,
 ) -> None:
-    """Role-derived ownerships are capped at the owner limit, not the member one.
+    """Role-derived ownerships are capped at the member limit, not the owner one.
 
-    When a tag sets the two limits to different values, each side of the role's
-    grant takes its own: ownerships the owner limit, memberships the member one.
+    Both sides of what a role grants are held by its members, so both follow
+    the member limit. The owner limit applies to ownership *of the role*, which
+    confers nothing.
     """
     tag = TagFactory.build(
         constraints={
@@ -1410,8 +1421,8 @@ async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
             select(OktaUserGroupMember).where(
                 OktaUserGroupMember.role_group_map_id == role_owner_map_id,
                 OktaUserGroupMember.is_owner.is_(True),
-                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(hours=12)),
-                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=2)),
+                OktaUserGroupMember.ended_at > (datetime.now(UTC) + timedelta(days=6)),
+                OktaUserGroupMember.ended_at < (datetime.now(UTC) + timedelta(days=8)),
             ),
         )
         == 1
@@ -1428,3 +1439,97 @@ async def test_differing_time_limits_cap_role_derived_ownership_at_owner_limit(
         )
         == 1
     )
+
+
+# --- A role's conferred access is bounded by the membership conferring it ----
+#
+# A user's rows in the groups a role is associated with are materialized as
+# `min(role_membership.ended_at, role_group_map.ended_at)`, so they exist by
+# virtue of that membership and must not outlive it. Both are governed by the
+# role's MEMBER limit: being a member of the role is what confers the access,
+# on either association axis. The role's OWNER limit governs who may own the
+# role, which confers nothing.
+
+
+async def _role_associated_with(db: Db, user: OktaUser, *, role_owns_group: bool, constraints: dict):
+    """A tagged role R associated with group G, and a user who is an indefinite
+    MEMBER of R and therefore holds a derived grant in G."""
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints=constraints)
+    db.session.add_all([group, role, tag, user])
+    await db.session.commit()
+    mapping = RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=role_owns_group)
+    db.session.add(mapping)
+    await db.session.commit()
+    db.session.add(OktaUserGroupMember(group_id=role.id, user_id=user.id, is_owner=False))
+    db.session.add(
+        OktaUserGroupMember(group_id=group.id, user_id=user.id, is_owner=role_owns_group, role_group_map_id=mapping.id)
+    )
+    db.session.add(OktaGroupTagMapFactory.build(group_id=role.id, tag_id=tag.id))
+    await db.session.commit()
+    return role.id, group.id, user.id, tag.id
+
+
+async def _membership_and_conferred(db: Db, role_id: str, group_id: str, user_id: str):
+    membership = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == role_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+            .where(OktaUserGroupMember.role_group_map_id.is_(None))
+        )
+    ).one()
+    conferred = (
+        await db.session.scalars(
+            select(OktaUserGroupMember)
+            .where(OktaUserGroupMember.group_id == group_id)
+            .where(OktaUserGroupMember.user_id == user_id)
+            .where(OktaUserGroupMember.role_group_map_id.is_not(None))
+        )
+    ).one()
+    return membership, conferred
+
+
+@pytest.mark.parametrize("role_owns_group", [False, True], ids=["role_is_member", "role_is_owner"])
+async def test_member_limit_on_a_role_reaches_the_access_it_confers(
+    db: Db, mocker: MockerFixture, user: OktaUser, role_owns_group: bool
+) -> None:
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    role_id, group_id, user_id, tag_id = await _role_associated_with(
+        db,
+        user,
+        role_owns_group=role_owns_group,
+        constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: ONE_DAY_IN_SECONDS},
+    )
+
+    await ModifyGroupsTimeLimit(groups=[role_id], tags=[tag_id]).execute()
+
+    db.session.expire_all()
+    membership, conferred = await _membership_and_conferred(db, role_id, group_id, user_id)
+    assert membership.ended_at is not None
+    assert conferred.ended_at is not None, "conferred access outlives the membership conferring it"
+    assert conferred.ended_at <= membership.ended_at
+
+
+@pytest.mark.parametrize("role_owns_group", [False, True], ids=["role_is_member", "role_is_owner"])
+async def test_owner_limit_on_a_role_does_not_reach_the_access_it_confers(
+    db: Db, mocker: MockerFixture, user: OktaUser, role_owns_group: bool
+) -> None:
+    """Owning a role confers none of its grants, so the owner limit governs
+    only who may own the role. Capping conferred access by it would shorten
+    access whose source membership nothing has capped -- and the next
+    `fix-role-memberships` run would restore it indefinitely anyway."""
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    role_id, group_id, user_id, tag_id = await _role_associated_with(
+        db, user, role_owns_group=role_owns_group, constraints={Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: ONE_DAY_IN_SECONDS}
+    )
+
+    await ModifyGroupsTimeLimit(groups=[role_id], tags=[tag_id]).execute()
+
+    db.session.expire_all()
+    membership, conferred = await _membership_and_conferred(db, role_id, group_id, user_id)
+    assert membership.ended_at is None
+    assert conferred.ended_at is None
