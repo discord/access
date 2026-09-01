@@ -100,8 +100,8 @@ async def test_post_tag_defaults_propagate_to_roles_when_absent(
 #
 # `disallow_self_add_*` is a separation-of-duties control, and unlike the
 # reason and time-limit constraints it does not merely weaken when propagation
-# is off -- it inverts to permitted. An owner of G blocked from adding
-# themselves directly can add themselves to a role associated with G and arrive
+# is off -- it inverts to permitted: An owner of G blocked from adding
+# themselves directly could add themselves to a role associated with G and arrive
 # at the same access by a supported path. So the two are not independently
 # configurable: a tag carrying either self-add key must propagate.
 
