@@ -32,6 +32,7 @@ import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName} from '../../helpers';
 import {useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import {useGroupMembersByIdPut, GroupMembersByIdPutError, GroupMembersByIdPutVariables} from '../../api/apiComponents';
 import {GroupMember, GroupMembersSummary, OktaUserGroupMemberDetail} from '../../api/apiSchemas';
@@ -228,6 +229,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const ownerSideConstraints = useConstraintsForGroups(ownerGroupIds);
   const memberSideConstraints = useConstraintsForGroups(memberGroupIds);
   const constraintsBlocked = ownerSideConstraints.blocked || memberSideConstraints.blocked;
+  const constraintsError = {error: ownerSideConstraints.error ?? memberSideConstraints.error};
 
   const ownerTimeLimit = ownerSideConstraints.timeLimit(true);
   const memberTimeLimit = memberSideConstraints.timeLimit(false);
@@ -246,6 +248,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   // Bound the duration control to whatever limit is in force, and pull the
   // user's selection down if it now exceeds it.
   React.useEffect(() => {
+    // Only widen once the answer is known. While a refetch is in flight the
+    // limit reads as null, and re-offering durations the selection forbids
+    // makes them briefly clickable -- the narrowing that follows then
+    // overwrites the choice without saying so.
+    if (constraintsBlocked) {
+      return;
+    }
     if (timeLimit == null) {
       setLabels(UNTIL_OPTIONS);
       return;
@@ -400,6 +409,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+          <ConstraintsUnavailableAlert constraints={constraintsError} action="renewal" />
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{margin: '7px 0'}}>

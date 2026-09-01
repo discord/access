@@ -34,7 +34,7 @@ import {
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit} from '../../constraints';
+import {carriedConstraints} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -84,10 +84,10 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   // enforces these: a role's own tags plus anything reaching it through its
   // associations, gated on `propagate_to_roles`. It arrives on the group the
   // page already fetched, so reading it costs no request of its own.
-  const constraints = props.group.effective_constraints;
-  const timeLimit = effectiveTimeLimit(constraints, props.owner); // in seconds
-  const reason = isReasonRequired(constraints, props.owner);
-  const selfAddDisallowed = isSelfAddDisallowed(constraints, props.owner);
+  const constraints = carriedConstraints(props.group.effective_constraints);
+  const timeLimit = constraints.timeLimit(props.owner); // in seconds
+  const reason = constraints.isReasonRequired(props.owner);
+  const selfAddDisallowed = constraints.isSelfAddDisallowed(props.owner);
 
   let labels = null;
   let timeLimitUntil = null;

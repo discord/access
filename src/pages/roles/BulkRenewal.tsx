@@ -32,6 +32,7 @@ import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName} from '../../helpers';
 import {useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import {useCurrentUser} from '../../authentication';
 
@@ -146,11 +147,16 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     page: props.select != undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
   });
 
-  const role_memberships =
-    currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
-      curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
-      return out;
-    }, new Set<string>()) ?? new Set<string>();
+  // Memoised because the constraint scans below depend on it; rebuilt every
+  // render it would defeat their memos.
+  const role_memberships = React.useMemo(
+    () =>
+      currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
+        curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
+        return out;
+      }, new Set<string>()) ?? new Set<string>(),
+    [currentUser],
+  );
 
   // Per-row rather than coalesced: this marks which individual rows a self-add
   // restriction blocks, so it reads each group's own entry from `by_group`
@@ -162,17 +168,24 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const allRowGroupIds = React.useMemo(() => props.rows.map((row) => row.group?.id), [props.rows]);
   const rowConstraints = useConstraintsForGroups(allRowGroupIds);
 
-  const rowDisallowsSelfAdd = (group: GroupRefForMembership | null | undefined, isOwner: boolean) =>
-    rowConstraints.forGroup(group?.id).isSelfAddDisallowed(isOwner);
+  const rowDisallowsSelfAdd = React.useCallback(
+    (group: GroupRefForMembership | null | undefined, isOwner: boolean) =>
+      rowConstraints.forGroup(group?.id).isSelfAddDisallowed(isOwner),
+    [rowConstraints],
+  );
 
-  const groups_cant_add_self_owner = props.rows.reduce((out, curr) => {
-    rowDisallowsSelfAdd(curr.group, true) ? out.add(curr.group!.name) : null;
-    return out;
-  }, new Set<string>());
-  const groups_cant_add_self_member = props.rows.reduce((out, curr) => {
-    rowDisallowsSelfAdd(curr.group, false) ? out.add(curr.group!.name) : null;
-    return out;
-  }, new Set<string>());
+  // Memoised on the rows and the answer rather than recomputed per render:
+  // each lookup allocates and scans the group's constraint list, the grid
+  // re-renders on every toggle, and a role can have hundreds of rows.
+  const [groups_cant_add_self_owner, groups_cant_add_self_member] = React.useMemo(() => {
+    const owners = new Set<string>();
+    const members = new Set<string>();
+    for (const row of props.rows) {
+      if (rowDisallowsSelfAdd(row.group, true)) owners.add(row.group!.name);
+      if (rowDisallowsSelfAdd(row.group, false)) members.add(row.group!.name);
+    }
+    return [owners, members];
+  }, [props.rows, rowDisallowsSelfAdd]);
 
   // Custom cell renderer for the ToggleButtonGroup
   const renderToggleButtons = (params: GridRenderCellParams) => {
@@ -250,11 +263,14 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     },
   ];
 
-  const display_owner_add_constraint =
-    !isAccessAdmin(currentUser) &&
-    props.rows.reduce((out, curr) => {
-      return out || (role_memberships.has(curr.role_group?.name!) && rowDisallowsSelfAdd(curr.group, curr.is_owner!));
-    }, false);
+  const display_owner_add_constraint = React.useMemo(
+    () =>
+      !isAccessAdmin(currentUser) &&
+      props.rows.some(
+        (row) => role_memberships.has(row.role_group?.name!) && rowDisallowsSelfAdd(row.group, row.is_owner!),
+      ),
+    [currentUser, props.rows, role_memberships, rowDisallowsSelfAdd],
+  );
 
   // Which rows are actually being renewed, split by the side each was granted
   // on: a group's owner limit governs only the rows being renewed as
@@ -278,6 +294,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const ownerSideConstraints = useConstraintsForGroups(ownerGroupIds);
   const memberSideConstraints = useConstraintsForGroups(memberGroupIds);
   const constraintsBlocked = rowConstraints.blocked || ownerSideConstraints.blocked || memberSideConstraints.blocked;
+  const constraintsError = {
+    error: rowConstraints.error ?? ownerSideConstraints.error ?? memberSideConstraints.error,
+  };
 
   const ownerTimeLimit = ownerSideConstraints.timeLimit(true);
   const memberTimeLimit = memberSideConstraints.timeLimit(false);
@@ -295,6 +314,13 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   // Bound the duration control to whatever limit is in force, and pull the
   // user's selection down if it now exceeds it.
   React.useEffect(() => {
+    // Only widen once the answer is known. While a refetch is in flight the
+    // limit reads as null, and re-offering durations the selection forbids
+    // makes them briefly clickable -- the narrowing that follows then
+    // overwrites the choice without saying so.
+    if (constraintsBlocked) {
+      return;
+    }
     if (timeLimit == null) {
       setLabels(UNTIL_OPTIONS);
       return;
@@ -495,6 +521,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+          <ConstraintsUnavailableAlert constraints={constraintsError} action="renewal" />
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{margin: '7px 0'}}>
