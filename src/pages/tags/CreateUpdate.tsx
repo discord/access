@@ -29,13 +29,18 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
+import ConstraintHelpText from './ConstraintHelpText';
 import {
-  MEMBER_SELF_ADD_LABEL,
-  OWNER_SELF_ADD_LABEL,
-  SELF_ADD_NEEDS_PROPAGATION,
-  propagationConflictMessage,
-  selfAddRestrictionAvailable,
-} from './propagationRules';
+  CONSTRAINT_LABELS,
+  DISALLOW_SELF_ADD_MEMBERSHIP,
+  DISALLOW_SELF_ADD_OWNERSHIP,
+  MEMBER_TIME_LIMIT,
+  OWNER_TIME_LIMIT,
+  REQUIRE_MEMBER_REASON,
+  REQUIRE_OWNER_REASON,
+  constraintEditHelp,
+} from './constraintHelp';
+import {SELF_ADD_NEEDS_PROPAGATION, propagationConflictMessage, selfAddRestrictionAvailable} from './propagationRules';
 import {OktaUserDetail, TagDetail} from '../../api/apiSchemas';
 import {isAccessAdmin} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
@@ -86,12 +91,12 @@ interface TagDialogProps {
 // the restriction while it is in effect.
 //
 // Both read sibling fields, so both must render inside `FormContainer`.
-function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; label: string}) {
+function SelfAddToggle(props: {name: 'ownerAdd' | 'memberAdd'; constraint: string}) {
   const propagateToRoles = useWatch<CreateTagForm>({name: 'propagateToRoles'});
   const withoutPropagation = !selfAddRestrictionAvailable(propagateToRoles);
   return (
     <FormControl fullWidth sx={{marginTop: '18px'}}>
-      <Box sx={{marginLeft: '3px'}}>{props.label}?:</Box>
+      <ConstraintLabel constraint={props.constraint} />
       <ToggleButtonGroupElement
         name={props.name}
         enforceAtLeastOneSelected
@@ -343,7 +348,7 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Owner time limit:</Box>
+                <ConstraintLabel constraint={OWNER_TIME_LIMIT} />
                 <NumberInput
                   label={'days'}
                   setValue={setDaysOwner}
@@ -355,7 +360,7 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth>
-                <Box sx={{marginLeft: '3px'}}>Member time limit:</Box>
+                <ConstraintLabel constraint={MEMBER_TIME_LIMIT} />
                 <NumberInput
                   label={'days'}
                   setValue={setDaysMember}
@@ -369,7 +374,7 @@ function TagDialog(props: TagDialogProps) {
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require ownership justification?:</Box>
+                <ConstraintLabel constraint={REQUIRE_OWNER_REASON} />
                 <ToggleButtonGroupElement
                   name="ownerReason"
                   enforceAtLeastOneSelected
@@ -390,7 +395,7 @@ function TagDialog(props: TagDialogProps) {
             </Grid>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{marginTop: '18px'}}>
-                <Box sx={{marginLeft: '3px'}}>Require membership justification?:</Box>
+                <ConstraintLabel constraint={REQUIRE_MEMBER_REASON} />
                 <ToggleButtonGroupElement
                   name="memberReason"
                   enforceAtLeastOneSelected
@@ -412,10 +417,10 @@ function TagDialog(props: TagDialogProps) {
           </Grid>
           <Grid container spacing={1}>
             <Grid item xs={6}>
-              <SelfAddToggle name="ownerAdd" label={OWNER_SELF_ADD_LABEL} />
+              <SelfAddToggle name="ownerAdd" constraint={DISALLOW_SELF_ADD_OWNERSHIP} />
             </Grid>
             <Grid item xs={6}>
-              <SelfAddToggle name="memberAdd" label={MEMBER_SELF_ADD_LABEL} />
+              <SelfAddToggle name="memberAdd" constraint={DISALLOW_SELF_ADD_MEMBERSHIP} />
             </Grid>
           </Grid>
           <Grid container spacing={1}>
@@ -432,6 +437,19 @@ function TagDialog(props: TagDialogProps) {
         </DialogActions>
       </FormContainer>
     </Dialog>
+  );
+}
+
+// A constraint's label doubles as its tooltip trigger, so an admin deciding
+// whether to propagate can read what it means for this constraint without
+// leaving the form. `width: 'fit-content'` keeps the trigger on the text:
+// without it the Box fills its grid column and the tooltip opens from empty
+// space beside the label.
+function ConstraintLabel({constraint}: {constraint: string}) {
+  return (
+    <Tooltip title={<ConstraintHelpText paragraphs={constraintEditHelp(constraint)} />} placement="top-start">
+      <Box sx={{marginLeft: '3px', width: 'fit-content'}}>{CONSTRAINT_LABELS[constraint]}:</Box>
+    </Tooltip>
   );
 }
 
