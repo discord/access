@@ -2,9 +2,10 @@
 
 All HTTP errors cross the wire as
 `{"type": "about:blank", "title": "<reason>", "status": <code>, "detail": "<message>"}`
-with `Content-Type: application/problem+json`. Validation errors include a
-non-standard `errors:` extension with the full FastAPI/Pydantic error list
-for clients that want it.
+with `Content-Type: application/problem+json`. Two RFC 9457 extension members
+are in use: validation errors carry `errors:` (the full FastAPI/Pydantic error
+list) and the OIDC 401 carries `login_url:` (where the client should send the
+browser to sign in).
 
 `PluginNotFoundError` is the lone outlier: it emits `{"error": ...}` because
 the React plugin-admin page reads `error` (not `detail`). Migrating that page
@@ -27,6 +28,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
+from starlette.responses import Response
 
 from api.auth.dependencies import OIDCRedirectRequired
 from api.exceptions import AccessException
@@ -38,6 +40,9 @@ logger = logging.getLogger(__name__)
 INDEX_HTML = Path(__file__).resolve().parent.parent / "build" / "index.html"
 
 PROBLEM_JSON = "application/problem+json"
+
+# `api.auth.oidc` mounts the login endpoint here.
+LOGIN_PATH = "/oidc/login"
 
 
 def _is_api(request: Request) -> bool:
@@ -156,9 +161,34 @@ async def pydantic_validation_handler(request: Request, exc: ValidationError) ->
     )
 
 
-async def oidc_redirect_handler(request: Request, exc: OIDCRedirectRequired) -> RedirectResponse:
+def _is_document_navigation(request: Request) -> bool:
+    """Whether this request is a browser navigating to a page.
+
+    Only a top-level navigation can carry a user through an interactive IdP
+    round trip. `fetch`/XHR cannot: it would follow the redirect into the IdP's
+    cross-origin HTML, fail CORS, and surface as a generic network error rather
+    than a login prompt.
+    """
+    # Every browser that would follow the redirect sends Sec-Fetch-Mode; the
+    # Accept sniff is the fallback for clients that omit it.
+    sec_fetch_mode = request.headers.get("sec-fetch-mode")
+    if sec_fetch_mode is not None:
+        return sec_fetch_mode == "navigate"
+    return "text/html" in request.headers.get("accept", "")
+
+
+async def oidc_redirect_handler(request: Request, exc: OIDCRedirectRequired) -> Response:
+    if not _is_document_navigation(request):
+        # Hand XHR callers a 401 carrying the login endpoint instead, so the SPA
+        # can navigate the whole window there with its own location as `next`
+        # — see `redirectToLogin` in `src/api/apiFetcher.ts`.
+        return _problem(
+            status_code=401,
+            detail="Authentication required",
+            extras={"login_url": LOGIN_PATH},
+        )
     query = urlencode({"next": exc.next_path})
-    return RedirectResponse(url=f"/oidc/login?{query}", status_code=307)
+    return RedirectResponse(url=f"{LOGIN_PATH}?{query}", status_code=307)
 
 
 async def plugin_not_found_handler(request: Request, exc: PluginNotFoundError) -> JSONResponse:
