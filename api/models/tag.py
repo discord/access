@@ -495,7 +495,8 @@ def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[st
         constraint's `value` is coalesced across every group's sources and its
         `sources` list carries the contributions from all of them. A tag
         reaching two of the groups appears once per group, since the reader
-        needs to know which of their selections carries it.
+        needs to know which of their selections carries it. A flag every
+        source turns off is omitted, as it is for a single group.
 
     Raises:
         InvalidRequestError: If a relationship this reads was not eager-loaded
@@ -506,9 +507,9 @@ def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[st
         sources: list[ConstraintSource] = []
         for group in groups:
             sources.extend(constraint_sources(constraint_key, group, include_provenance=True))
-        if not sources:
-            continue
-        entries.append(_constraint_entry(constraint_key, constraint, sources))
+        entry = _constraint_entry(constraint_key, constraint, sources)
+        if entry is not None:
+            entries.append(entry)
     return entries
 
 
@@ -526,7 +527,8 @@ def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
     Returns:
         The same entry shape `effective_constraints` returns. Every source has
         a `DIRECT` origin with no `source_id` or `source_name`: these tags
-        would sit on the group itself, so there is no other site to name.
+        would sit on the group itself, so there is no other site to name. A
+        flag every tag turns off is omitted, as it is for a group.
 
     Raises:
         Nothing. Only `Tag.constraints` and `Tag.enabled` are read, both
@@ -545,7 +547,7 @@ def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
             for tag in tags
             if tag.enabled and constraint_key in tag.constraints
         ]
-        if not sources:
-            continue
-        entries.append(_constraint_entry(constraint_key, constraint, sources))
+        entry = _constraint_entry(constraint_key, constraint, sources)
+        if entry is not None:
+            entries.append(entry)
     return entries

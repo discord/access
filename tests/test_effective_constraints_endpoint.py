@@ -148,6 +148,31 @@ async def test_unknown_group_ids_are_omitted_rather_than_failing(client: AsyncCl
     assert _by_key(body["coalesced"])[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]["value"] == 86400
 
 
+async def test_flags_every_tag_turns_off_are_not_reported(client: AsyncClient, db: Db) -> None:
+    """The tag form writes all four boolean keys on every save, so most tags
+    carry several `False` flags. Neither the roll-up nor the per-group answer
+    may report one: a dialog reading `disallow_self_add_membership` back would
+    withhold a self-add the backend permits."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 3600,
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
+            Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: False,
+        }
+    )
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+
+    response = await client.get(URL, params={"group_ids": [group.id]})
+    assert response.status_code == 200
+    body = response.json()
+    assert list(_by_key(body["coalesced"])) == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    assert list(_by_key(body["by_group"][group.id])) == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+
+
 # --- Tag mode ---------------------------------------------------------------
 
 
@@ -183,6 +208,24 @@ async def test_tag_mode_ignores_disabled_tags(client: AsyncClient, db: Db) -> No
     response = await client.get(URL, params={"tag_ids": [disabled.id]})
     assert response.status_code == 200
     assert response.json()["coalesced"] == []
+
+
+async def test_tag_mode_omits_flags_the_tags_turn_off(client: AsyncClient, db: Db) -> None:
+    """Same rule with no group involved: an approver choosing tags for a group
+    about to be created must not be told a flag applies when every chosen tag
+    sets it to `False`."""
+    tag = TagFactory.build(
+        constraints={
+            Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY: 3600,
+            Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
+        }
+    )
+    db.session.add(tag)
+    await db.session.commit()
+
+    response = await client.get(URL, params={"tag_ids": [tag.id]})
+    assert response.status_code == 200
+    assert list(_by_key(response.json()["coalesced"])) == [Tag.OWNER_TIME_LIMIT_CONSTRAINT_KEY]
 
 
 # --- Input validation -------------------------------------------------------
