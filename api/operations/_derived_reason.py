@@ -2,7 +2,7 @@
 
 When user U has access to group G because U is a member of role R and R is
 associated with G, the `OktaUserGroupMember` materialized in G is not the
-record of a decision anyone made about G directly. It exists because of two
+record of a decision anyone made about U and G directly. It exists because of two
 separate decisions: someone put U in R, and someone attached R to G. Either one
 alone is half the story, and a reader of G's audit log could not tell which
 half they were looking at.
