@@ -22,6 +22,9 @@ from api.models import OktaUserGroupMember
 
 USER_IN_ROLE_PREFIX = "User in role because: "
 ROLE_IN_GROUP_PREFIX = "Role in group because: "
+#: The association's own side. A role that owns a group confers ownership of
+#: it, and "in group" would describe the wrong relationship.
+ROLE_OWNS_GROUP_PREFIX = "Role owns group because: "
 
 #: Stands in for a half that was never recorded. A blank half is itself worth
 #: seeing -- dropping the label instead would make a one-sided reason
@@ -63,12 +66,19 @@ def _fit(user_half: str, role_half: str, budget: int) -> tuple[str, str]:
     return _trim(user_half, share), _trim(role_half, budget - share)
 
 
-def role_derived_reason(user_in_role_reason: Optional[str], role_in_group_reason: Optional[str]) -> str:
-    """Compose the reason stored on a membership a role confers.
+def role_derived_reason(
+    user_in_role_reason: Optional[str], role_in_group_reason: Optional[str], *, is_owner: bool = False
+) -> str:
+    """Compose the reason stored on a membership or ownership a role confers.
 
     Args:
-        user_in_role_reason: Why the user is a member of the role.
+        user_in_role_reason: Why the user is a member of the role. Always a
+            membership: only a role's members receive what it confers, so this
+            label does not vary.
         role_in_group_reason: Why the role is associated with the group.
+        is_owner: Whether the association makes the role an owner of the group
+            rather than a member, taken from the `RoleGroupMap`. It selects the
+            second label, since a role that owns a group is not in it.
 
     Returns:
         Both halves on their own labelled lines, trimmed to fit
@@ -83,9 +93,12 @@ def role_derived_reason(user_in_role_reason: Optional[str], role_in_group_reason
     user_half = user_half or MISSING_REASON_PLACEHOLDER
     role_half = role_half or MISSING_REASON_PLACEHOLDER
 
+    role_prefix = ROLE_OWNS_GROUP_PREFIX if is_owner else ROLE_IN_GROUP_PREFIX
+
     # The labels and the separating newline are not negotiable; only the two
-    # reasons compete for what is left.
-    overhead = len(USER_IN_ROLE_PREFIX) + len(ROLE_IN_GROUP_PREFIX) + len("\n")
+    # reasons compete for what is left. Measured off the selected label, which
+    # is the longer of the two when the role owns the group.
+    overhead = len(USER_IN_ROLE_PREFIX) + len(role_prefix) + len("\n")
     user_half, role_half = _fit(user_half, role_half, _MAX_LENGTH - overhead)
 
-    return f"{USER_IN_ROLE_PREFIX}{user_half}\n{ROLE_IN_GROUP_PREFIX}{role_half}"
+    return f"{USER_IN_ROLE_PREFIX}{user_half}\n{role_prefix}{role_half}"

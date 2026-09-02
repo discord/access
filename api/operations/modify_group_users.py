@@ -674,7 +674,9 @@ class ModifyGroupUsers:
                             # association mapping supplies why the role reaches
                             # this group.
                             created_reason=role_derived_reason(
-                                self.created_reason, role_associated_group_map.created_reason
+                                self.created_reason,
+                                role_associated_group_map.created_reason,
+                                is_owner=role_associated_group_map.is_owner,
                             ),
                             created_actor_id=self.current_user_id,
                             ended_actor_id=self.current_user_id if associated_users_ended_at is not None else None,

@@ -17,7 +17,9 @@ from api.integrity import verify_and_fix_role_memberships
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.operations._derived_reason import (
     MISSING_REASON_PLACEHOLDER,
+    _MAX_LENGTH,
     ROLE_IN_GROUP_PREFIX,
+    ROLE_OWNS_GROUP_PREFIX,
     USER_IN_ROLE_PREFIX,
     role_derived_reason,
 )
@@ -27,6 +29,7 @@ from tests.factories import OktaUserGroupMemberFactory, RoleGroupMapFactory
 USER_IN_ROLE = "Q3 audit rotation"
 ROLE_IN_GROUP = "role needs ledger export"
 COMPOSED = f"{USER_IN_ROLE_PREFIX}{USER_IN_ROLE}\n{ROLE_IN_GROUP_PREFIX}{ROLE_IN_GROUP}"
+COMPOSED_AS_OWNER = f"{USER_IN_ROLE_PREFIX}{USER_IN_ROLE}\n{ROLE_OWNS_GROUP_PREFIX}{ROLE_IN_GROUP}"
 
 
 async def _derived_row(db: Db, group_id: str, user_id: str) -> OktaUserGroupMember:
@@ -93,6 +96,22 @@ def test_role_derived_reason_leaves_a_short_composition_untouched() -> None:
     assert role_derived_reason("x", "y") == f"{USER_IN_ROLE_PREFIX}x\n{ROLE_IN_GROUP_PREFIX}y"
 
 
+def test_the_owner_side_names_ownership_rather_than_membership() -> None:
+    # Only the association's own side changes. The user half stays a
+    # membership: only a role's members receive what it confers.
+    assert role_derived_reason("x", "y", is_owner=True) == f"{USER_IN_ROLE_PREFIX}x\n{ROLE_OWNS_GROUP_PREFIX}y"
+
+
+def test_the_owner_side_budget_accounts_for_its_longer_label() -> None:
+    # "Role owns group because: " is longer than "Role in group because: ", so
+    # a composition that just fits as a membership must trim as an ownership.
+    long_half = "z" * 4000
+    composed = role_derived_reason(long_half, long_half, is_owner=True)
+    assert len(composed) <= _MAX_LENGTH
+    assert composed.startswith(USER_IN_ROLE_PREFIX)
+    assert f"\n{ROLE_OWNS_GROUP_PREFIX}" in composed
+
+
 # --- ModifyRoleGroups: the role is attached to the group second ------------
 
 
@@ -116,7 +135,10 @@ async def test_attaching_a_role_as_owner_composes_the_reason(
     db: Db, role_group: RoleGroup, okta_group: OktaGroup, user: OktaUser
 ) -> None:
     """The ownership branch materializes its own rows and needs the same
-    composition; only the member branch would be covered otherwise."""
+    composition; only the member branch would be covered otherwise.
+
+    It also labels its second half differently: a role that owns a group is not
+    in it, so "Role in group because" would describe the wrong relationship."""
     db.session.add_all([user, role_group, okta_group])
     await db.session.commit()
 
@@ -129,7 +151,7 @@ async def test_attaching_a_role_as_owner_composes_the_reason(
 
     derived = await _derived_row(db, okta_group.id, user.id)
     assert derived.is_owner is True
-    assert derived.created_reason == COMPOSED
+    assert derived.created_reason == COMPOSED_AS_OWNER
 
 
 async def test_attaching_a_role_leaves_the_direct_role_membership_reason_alone(

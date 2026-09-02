@@ -115,6 +115,7 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                             created_reason=role_derived_reason(
                                 role_group_membership.created_reason,
                                 active_role_group_map.created_reason,
+                                is_owner=active_role_group_map.is_owner,
                             ),
                         )
                     )
