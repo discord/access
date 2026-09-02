@@ -51,6 +51,51 @@ export function isSelfAddDisallowed(constraints: Constraints, isOwner: boolean):
   return valueOf(constraints, side(SELF_ADD_KEYS, isOwner)) === true;
 }
 
+export interface ApprovalUntilInput {
+  /** The `until` option matching what the requester asked for. */
+  requestedUntil: string;
+  /** The longest option still on offer under the limit, if any. */
+  requestedUntilAdjusted: string | undefined;
+  /** The limit in force, or null when none applies or none is known yet. */
+  timeLimit: number | null;
+  /** Whether what was requested already fits inside the limit. */
+  autofillUntil: boolean;
+}
+
+/**
+ * The duration an approval form should start on, or null to leave it alone.
+ *
+ * An approval page has three inputs arriving on different renders -- the
+ * request, the constraints, and the option list derived from them -- and React
+ * Hook Form takes its `defaultValues` from the first render, before any of
+ * them. So the starting value has to be written after the fact, and this is
+ * the decision behind that write, kept out of the dialogs because neither can
+ * be rendered under vitest.
+ *
+ * Two rules, in order:
+ *
+ * - A limit narrower than what was asked for moves the approver to the longest
+ *   duration still on offer, so the field never holds an option the list no
+ *   longer contains. A limit leaving nothing on offer returns null: there is
+ *   no valid duration to select, and inventing one would be worse than leaving
+ *   the field where it is.
+ * - Otherwise the requested duration is allowed and is the default. Returning
+ *   null here instead would leave the form on its pre-request snapshot, which
+ *   reads as indefinite -- an approver would grant unbounded access by
+ *   accepting a default that looks like the request.
+ */
+export function approvalUntilDefault({
+  requestedUntil,
+  requestedUntilAdjusted,
+  timeLimit,
+  autofillUntil,
+}: ApprovalUntilInput): string | null {
+  if (timeLimit != null && !autofillUntil) {
+    return requestedUntilAdjusted ?? null;
+  }
+  return requestedUntil;
+}
+
 // Stable, deduplicated, sorted ids so the query key does not change when the
 // same selection arrives in a different order. That makes the result cacheable
 // and, in the bulk dialogs where the selection changes as rows are toggled,
@@ -156,8 +201,9 @@ function reader(
  * never pending.
  *
  * `[]` means the payload answered "nothing applies". `undefined` or `null`
- * means it does not carry the field at all -- audit group references and the
- * create/update group responses omit it -- which is unknown, so the gates fail
+ * means it does not carry the answer -- an audit group reference has no such
+ * field, and the create/update group responses send null, since only
+ * `GET /api/groups/{id}` resolves it. Both read as unknown, so the gates fail
  * closed exactly as they do while a request is in flight.
  */
 export function carriedConstraints(constraints: Constraints): EffectiveConstraintsReader {
