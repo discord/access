@@ -33,21 +33,54 @@ function constraintLabel(entry: EffectiveConstraintDetail): string {
   return `${entry.name} — ${value}`;
 }
 
-function originLabel(source: EffectiveConstraintSourceDetail): string {
+// The text before the source's name, by origin. `direct` is absent on
+// purpose: it names no other site, so there is nothing to link.
+const ORIGIN_PREFIX: Record<string, string> = {
+  app: 'via app ',
+  member_association: 'via membership in ',
+  owner_association: 'via ownership of ',
+};
+
+// Where the named source lives. An app origin's source is an App, not a
+// group, which is why the API's fields are named for the origin rather than
+// for a group.
+function sourceHref(source: EffectiveConstraintSourceDetail): string | null {
+  if (source.source_name == null) {
+    return null;
+  }
   switch (source.origin) {
     case 'app':
-      return `via app ${source.source_name ?? ''}`.trim();
+      return `/apps/${encodeURIComponent(source.source_name)}`;
     case 'member_association':
-      return `via membership in ${source.source_name}`;
     case 'owner_association':
-      return `via ownership of ${source.source_name}`;
-    case 'direct':
-      return 'direct';
+      return `/groups/${encodeURIComponent(source.source_name)}`;
     default:
-      // An origin we don't have specific copy for. Echo it back rather than
-      // asserting a specific (and possibly wrong) meaning like "direct".
-      return source.origin;
+      return null;
   }
+}
+
+function OriginText({source}: {source: EffectiveConstraintSourceDetail}) {
+  const prefix = ORIGIN_PREFIX[source.origin];
+  if (prefix == null) {
+    // `direct`, or an origin this build has no copy for. Echo it back rather
+    // than asserting a specific (and possibly wrong) meaning.
+    return <>{source.origin}</>;
+  }
+  const href = sourceHref(source);
+  if (href == null) {
+    // `active_app` filters soft-deleted apps, so the name can be missing while
+    // the origin is still worth stating. Trimmed so it does not read as though
+    // a name were about to follow.
+    return <>{prefix.trim()}</>;
+  }
+  return (
+    <>
+      {prefix}
+      <Link component={RouterLink} to={href}>
+        {source.source_name}
+      </Link>
+    </>
+  );
 }
 
 export default function EffectiveConstraints({constraints}: {constraints: EffectiveConstraintDetail[]}) {
@@ -83,7 +116,8 @@ export default function EffectiveConstraints({constraints}: {constraints: Effect
                         <Link component={RouterLink} to={`/tags/${encodeURIComponent(source.tag_name)}`}>
                           {source.tag_name}
                         </Link>
-                        {`, ${originLabel(source)}`}
+                        {', '}
+                        <OriginText source={source} />
                       </div>
                     ))}
                   </TableCell>

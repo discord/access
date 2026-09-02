@@ -84,10 +84,48 @@ describe('EffectiveConstraints', () => {
     expect(screen.getByText('Require reason for member access')).toBeInTheDocument();
   });
 
-  it('links the tag name and names the origin', () => {
+  it('links the tag and links the group the constraint reaches this one through', () => {
     renderPanel([timeLimit]);
     expect(screen.getByRole('link', {name: 'SOX'})).toHaveAttribute('href', '/tags/SOX');
-    expect(screen.getByText(/via membership in App-Foo-Admin/)).toBeInTheDocument();
+    expect(screen.getByText(/via membership in/)).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'App-Foo-Admin'})).toHaveAttribute('href', '/groups/App-Foo-Admin');
+  });
+
+  it('links an owner-association source as a group as well', () => {
+    renderPanel([
+      {
+        ...timeLimit,
+        sources: [{...timeLimit.sources[0], origin: 'owner_association', source_name: 'Payments-Config'}],
+      },
+    ]);
+    expect(screen.getByText(/via ownership of/)).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'Payments-Config'})).toHaveAttribute('href', '/groups/Payments-Config');
+  });
+
+  it('links an app-inherited source to the app, not to a group', () => {
+    // The "source" of an app origin is an App, which lives at a different
+    // route — hence the origin-agnostic field names on the API side.
+    renderPanel([
+      {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app', source_id: 'a1', source_name: 'Ledger'}]},
+    ]);
+    expect(screen.getByText(/via app/)).toBeInTheDocument();
+    expect(screen.getByRole('link', {name: 'Ledger'})).toHaveAttribute('href', '/apps/Ledger');
+  });
+
+  it('states the origin without a link when the app behind it is gone', () => {
+    // `active_app` filters soft-deleted apps, so an inherited tag can outlive
+    // the app's record. Linking to a name we do not have would be a dead link.
+    renderPanel([
+      {...timeLimit, sources: [{...timeLimit.sources[0], origin: 'app', source_id: null, source_name: null}]},
+    ]);
+    expect(screen.getByText(/via app/)).toBeInTheDocument();
+    expect(screen.queryAllByRole('link')).toHaveLength(1); // the tag only
+  });
+
+  it('gives a direct source no second link, having no other site to point at', () => {
+    renderPanel([flag]);
+    expect(screen.getByText(/direct/)).toBeInTheDocument();
+    expect(screen.queryAllByRole('link')).toHaveLength(1);
   });
 
   it('rounds a time limit that does not divide evenly into days, and says "day" singular', () => {
