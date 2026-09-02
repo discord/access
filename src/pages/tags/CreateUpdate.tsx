@@ -29,7 +29,7 @@ import {
   TagByIdPutVariables,
 } from '../../api/apiComponents';
 import NumberInput from '../../components/NumberInput';
-import ConstraintHelpText from './ConstraintHelpText';
+import ConstraintHelpTooltip from './ConstraintHelpTooltip';
 import {
   CONSTRAINT_LABELS,
   DISALLOW_SELF_ADD_MEMBERSHIP,
@@ -120,6 +120,12 @@ function PropagationToggle() {
   const conflict = propagationConflictMessage({propagateToRoles: 'no', ownerAdd, memberAdd});
   return (
     <FormControl fullWidth sx={{marginTop: '18px'}}>
+      {/* `describeChild` and `tabIndex` for the same reasons as
+          `ConstraintHelpTooltip`: without them this paragraph is the label's
+          accessible *name*, so a screen reader announces the whole explanation
+          and never the label. A string title does at least get a native
+          `title` attribute out of `describeChild`, so the closed state is not
+          silent. */}
       <Tooltip
         title={
           'When yes, these constraints also apply to any role that is a member or owner of a group ' +
@@ -128,8 +134,11 @@ function PropagationToggle() {
           'groups themselves. This is not the same as disabling the tag, which turns off its ' +
           'enforcement everywhere.'
         }
-        placement="top-start">
-        <Box sx={{marginLeft: '3px', width: 'fit-content'}}>Propagate these constraints to roles?</Box>
+        placement="top-start"
+        describeChild>
+        <Box tabIndex={0} sx={{marginLeft: '3px', width: 'fit-content'}}>
+          Propagate these constraints to roles?
+        </Box>
       </Tooltip>
       <ToggleButtonGroupElement
         name="propagateToRoles"
@@ -447,9 +456,9 @@ function TagDialog(props: TagDialogProps) {
 // space beside the label.
 function ConstraintLabel({constraint}: {constraint: string}) {
   return (
-    <Tooltip title={<ConstraintHelpText paragraphs={constraintEditHelp(constraint)} />} placement="top-start">
-      <Box sx={{marginLeft: '3px', width: 'fit-content'}}>{CONSTRAINT_LABELS[constraint]}:</Box>
-    </Tooltip>
+    <ConstraintHelpTooltip paragraphs={constraintEditHelp(constraint)} sx={{marginLeft: '3px'}}>
+      {CONSTRAINT_LABELS[constraint]}:
+    </ConstraintHelpTooltip>
   );
 }
 

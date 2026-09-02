@@ -47,7 +47,7 @@ import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
-import ConstraintHelpText from './ConstraintHelpText';
+import ConstraintHelpTooltip from './ConstraintHelpTooltip';
 import {
   CONSTRAINT_LABELS,
   MEMBER_TIME_LIMIT,
@@ -193,61 +193,65 @@ export default function ReadTag() {
               </Stack>
             </Paper>
           </Grid>
+          {/* A tag that constrains nothing gets the sentence alone. A table whose
+              only row explains that it has no rows is worse than no table: the
+              column headers, the "Total: 0" and the propagation note all
+              describe constraints that do not exist. */}
           <Grid item xs={12}>
-            <TableContainer component={Paper}>
-              <Table sx={{minWidth: 650}} size="small" aria-label="apps with tag">
-                <TableHead>
-                  <TableRow>
-                    <TableCell colSpan={3}>
-                      <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="h6" color="text.accent">
-                          Tag Constraints
-                        </Typography>
-                      </Stack>
-                      {/* Suppressed when nothing is in force: the note describes where
-                          this tag's constraints reach, and saying they "do apply to
-                          roles" directly above "does not apply any constraints"
-                          contradicts itself. */}
-                      {constraintsInForce.length > 0 && <PropagationNoteView propagateToRoles={propagateToRoles} />}
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Value</TableCell>
-                    <TableCell colSpan={2}>
-                      <Grid container>
-                        <Grid item xs={12}>
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                              alignItems: 'right',
-                            }}>
-                            <Divider sx={{mx: 2}} orientation="vertical" flexItem />
-                            Total: {constraintsInForce.length}
-                          </Box>
+            {constraintsInForce.length === 0 ? (
+              <Paper sx={{p: 2}}>
+                <Typography variant="h6" color="text.accent">
+                  Tag Constraints
+                </Typography>
+                <Typography variant="body2" sx={{marginTop: '4px'}}>
+                  {NO_CONSTRAINTS_NOTE}
+                </Typography>
+              </Paper>
+            ) : (
+              <TableContainer component={Paper}>
+                <Table sx={{minWidth: 650}} size="small" aria-label="tag constraints">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell colSpan={3}>
+                        <Stack direction="row" spacing={1} sx={{display: 'flex', alignItems: 'center'}}>
+                          <Typography variant="h6" color="text.accent">
+                            Tag Constraints
+                          </Typography>
+                        </Stack>
+                        <PropagationNoteView propagateToRoles={propagateToRoles} />
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Value</TableCell>
+                      <TableCell colSpan={2}>
+                        <Grid container>
+                          <Grid item xs={12}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                alignItems: 'right',
+                              }}>
+                              <Divider sx={{mx: 2}} orientation="vertical" flexItem />
+                              Total: {constraintsInForce.length}
+                            </Box>
+                          </Grid>
                         </Grid>
-                      </Grid>
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {constraintsInForce.length > 0 ? (
-                    constraintsInForce.map((key: string) => (
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {constraintsInForce.map((key: string) => (
                       <TableRow key={'constraint' + key}>
                         <TableCell>
-                          <Tooltip
-                            title={
-                              <ConstraintHelpText
-                                paragraphs={constraintReadHelp(key, {
-                                  propagateToRoles,
-                                  value: tag.constraints![key],
-                                })}
-                              />
-                            }
-                            placement="top-start">
-                            <Box sx={{width: 'fit-content'}}>{CONSTRAINT_LABELS[key]}</Box>
-                          </Tooltip>
+                          <ConstraintHelpTooltip
+                            paragraphs={constraintReadHelp(key, {
+                              propagateToRoles,
+                              value: tag.constraints![key],
+                            })}>
+                            {CONSTRAINT_LABELS[key]}
+                          </ConstraintHelpTooltip>
                         </TableCell>
                         <TableCell colSpan={2}>
                           {
@@ -257,21 +261,14 @@ export default function ReadTag() {
                           }
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : (
-                    /* Not `EmptyListEntry`: a tag with no constraints is a
-                       perfectly valid thing to have, and a bare dash leaves the
-                       reader wondering whether the page failed to load them. */
-                    <TableRow>
-                      <TableCell colSpan={3}>{NO_CONSTRAINTS_NOTE}</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-                <TableFooter>
-                  <TableRow />
-                </TableFooter>
-              </Table>
-            </TableContainer>
+                    ))}
+                  </TableBody>
+                  <TableFooter>
+                    <TableRow />
+                  </TableFooter>
+                </Table>
+              </TableContainer>
+            )}
           </Grid>
           <Grid item xs={12}>
             <TableContainer component={Paper}>
