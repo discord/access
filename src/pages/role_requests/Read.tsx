@@ -82,7 +82,6 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
 import AccessHistory from '../../components/AccessHistory';
-import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -142,12 +141,6 @@ export default function ReadRoleRequest() {
     roleRequest.request_ending_at == null
       ? null
       : Math.round(requestEndingAt.diff(dayjs(roleRequest.created_at), 'second') / 100) * 100;
-  const requestedUntil =
-    requestedUntilDelta == null
-      ? 'indefinite'
-      : requestedUntilDelta in accessConfig.ACCESS_TIME_LABELS
-        ? requestedUntilDelta.toString()
-        : 'custom';
 
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
@@ -224,6 +217,19 @@ export default function ReadRoleRequest() {
   }
 
   const untilOptions = untilOptionsFor(timeLimit);
+
+  // Tested against the options actually on offer, not against
+  // `accessConfig.ACCESS_TIME_LABELS` directly: a limit shorter than every
+  // configured preset is offered as a synthetic option whose id is the limit
+  // itself, which is never a configured key. Testing membership in the
+  // resolved list, rather than the configured map, is what keeps this in
+  // sync with `untilOptions.options`.
+  const requestedUntil =
+    requestedUntilDelta == null
+      ? 'indefinite'
+      : untilOptions.options.some((option) => option.id === requestedUntilDelta.toString())
+        ? requestedUntilDelta.toString()
+        : 'custom';
 
   // Owned here rather than by `FormContainer` so the effect below can move the
   // `until` field once the constraints land. React Hook Form snapshots

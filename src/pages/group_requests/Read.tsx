@@ -123,8 +123,8 @@ function OwnershipEndingField({
     if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
     const seconds = parseInt(ownershipUntil, 10);
     if (!isNaN(seconds) && ownershipTimeLimit != null && seconds > ownershipTimeLimit) {
-      setOwnershipUntil(defaultUntilId ?? null);
-      setValue('resolved_ownership_ending_at', defaultUntilId ?? '');
+      setOwnershipUntil(defaultUntilId);
+      setValue('resolved_ownership_ending_at', defaultUntilId);
     }
   }, [ownershipTimeLimit, ownershipUntil, defaultUntilId, setValue, setOwnershipUntil]);
 
