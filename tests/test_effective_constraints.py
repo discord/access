@@ -1,8 +1,11 @@
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from api.extensions import Db
 from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
+from api.routers._eager import effective_constraint_options
 from api.models.tag import (
     constraint_source_clause,
     constraint_sources,
@@ -18,22 +21,15 @@ from tests.factories import (
 
 
 async def _load_role(db: Db, role_id: str) -> RoleGroup:
-    """Load a role with everything `effective_constraint` reads."""
+    """Load a role with everything `effective_constraint` reads.
+
+    Through the same builder the enforcement paths use, so a change to the
+    loaders cannot pass here while breaking them. `select(RoleGroup)` needs no
+    `selectin_polymorphic` pairing.
+    """
     return (
         await db.session.scalars(
-            select(RoleGroup)
-            .options(
-                selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags)
-                .joinedload(OktaGroupTagMap.active_tag),
-                selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                .joinedload(RoleGroupMap.active_group)
-                .selectinload(OktaGroup.active_group_tags)
-                .joinedload(OktaGroupTagMap.active_tag),
-            )
-            .where(RoleGroup.id == role_id)
+            select(RoleGroup).options(*effective_constraint_options()).where(RoleGroup.id == role_id)
         )
     ).one()
 
@@ -225,6 +221,35 @@ async def test_constraint_source_clause_falls_back_to_the_group_itself(db: Db) -
     assert constraint_source_clause(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, loaded) == (
         "due to tags on this group"
     )
+
+
+async def test_soft_deleted_source_group_contributes_nothing(db: Db) -> None:
+    """A mapping whose group has been soft-deleted while the mapping is still
+    active reaches `_propagated_sources` with `active_group` as None.
+
+    Reachable only under `selectinload`: `RoleGroupMap.active_group` carries
+    `innerjoin=True`, so a `joinedload` drops the whole mapping instead and the
+    None branch never runs. `effective_constraint_options` declares
+    `selectinload`, so this is the path the enforcement sites take."""
+    group = OktaGroupFactory.build()
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400})
+    db.session.add_all([group, role, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    await db.session.commit()
+
+    group.deleted_at = datetime.now(UTC) - timedelta(days=1)
+    db.session.add(group)
+    await db.session.commit()
+    role_id = role.id
+
+    db.session.expire_all()
+    loaded = await _load_role(db, role_id)
+    (mapping,) = loaded.active_role_associated_group_member_mappings
+    assert mapping.active_group is None
+    assert effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, loaded) is None
 
 
 async def test_nothing_propagates_onto_an_unmanaged_role(db: Db) -> None:

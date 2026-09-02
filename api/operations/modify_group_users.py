@@ -16,7 +16,6 @@ from api.models import (
     AccessRequestStatus,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
@@ -25,6 +24,7 @@ from api.models import (
 )
 from api.models.access_request import get_all_possible_request_approvers
 from api.models.tag import effective_ended_at
+from api.routers._eager import effective_constraint_options
 from api.operations.constraints import CheckForReason, CheckForSelfAdd
 from api.plugins import NotificationHook
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
@@ -71,22 +71,18 @@ class ModifyGroupUsers:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
+                    # The subtype loader stays here rather than in the helper: it is
+                    # what makes the `RoleGroup` paths resolvable on a polymorphic
+                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
+                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
                     joinedload(AppGroup.app),
-                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                    # `effective_ended_at` below reads both association
-                    # directions and each associated group's tags to find the
-                    # time limits reaching a role. They are `raise_on_sql`, so
-                    # they must be loaded here even when this group is not a
-                    # role and the collections come back empty.
-                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
-                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
+                    # `effective_ended_at` below reads both association directions
+                    # and each associated group's tags to find the time limits
+                    # reaching a role. They are `raise_on_sql`, so they must be
+                    # loaded here even when this group is not a role and the
+                    # collections come back empty.
+                    *effective_constraint_options(),
                 )
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaGroup.id == self.group_id)
