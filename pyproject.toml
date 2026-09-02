@@ -10,10 +10,10 @@ version = "2.0"
 requires-python = ">=3.13"
 dependencies = [
     # FastAPI
-    "fastapi==0.139.0",
-    "fastapi-pagination==0.15.15",
-    "uvicorn[standard]==0.51.0",
-    "gunicorn==26.0.0",
+    "fastapi==0.141.1",
+    "fastapi-pagination==0.15.16",
+    "uvicorn[standard]==0.52.4",
+    "gunicorn==26.2.0",
     "itsdangerous==2.2.0",
     "click==8.4.2",
     "python-dateutil==2.9.0.post0",
@@ -22,19 +22,19 @@ dependencies = [
     "pydantic-settings>=2.6,<3",
     # Database
     "SQLAlchemy[asyncio]==2.0.50",
-    "alembic==1.18.5",
+    "alembic==1.19.1",
     "sqlalchemy-json==0.7.0",
     "asyncpg==0.31.0",
     "aiosqlite==0.22.1",
-    "cloud-sql-python-connector[asyncpg]==1.20.4",
+    "cloud-sql-python-connector[asyncpg]==1.22.0",
     # HTTP
     "httpx==0.28.1",
     # Security / auth
     "PyJWT[crypto]==2.13.0",
-    "cachetools==7.1.4",
+    "cachetools==7.1.7",
     "authlib==1.7.2",
     # Error Reporting
-    "sentry-sdk[starlette,fastapi]==2.65.0",
+    "sentry-sdk[starlette,fastapi]==2.68.1",
     # Okta
     "okta==3.4.4",
     # Plugins
@@ -62,13 +62,13 @@ test = [
     # (its dependency, but imported directly by the factories + a few tests, so
     # declared explicitly) provides the built-in `faker` pytest fixture too.
     "polyfactory==3.3.0",
-    "faker==40.31.0",
+    "faker==40.37.0",
 ]
 dev = [
     # Lint / format
-    "ruff==0.15.21",
+    "ruff==0.16.4",
     # Typing
-    "ty==0.0.59",
+    "ty==0.0.74",
     "types-python-dateutil==2.9.0.20260518",
     "types-cachetools==7.0.0.20260713",
     { include-group = "test" },
