@@ -46,7 +46,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
-import {carriedConstraints, durationLabel} from '../../constraints';
+import {carriedConstraints, durationLabel, untilOptionsFor} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
 
@@ -85,12 +85,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
 function AddRolesDialog(props: AddRolesDialogProps) {
   const navigate = useNavigate();
   const currentUser = useCurrentUser();
@@ -125,29 +119,11 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   // current user is a group owner and disallow owner add tag constraint active for type of dialog open (owner/member)
   const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id!) && constraints.isSelfAddDisallowed(props.owner);
 
-  let labels = null;
-  let timeLimitUntil = null;
-  if (!(timeLimit == null)) {
-    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
-      .reduce(
-        (obj, key) => {
-          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-          return obj;
-        },
-        {} as Record<string, string>,
-      );
-
-    timeLimitUntil =
-      timeLimit >= Number(accessConfig.DEFAULT_ACCESS_TIME)
-        ? accessConfig.DEFAULT_ACCESS_TIME
-        : Object.keys(filteredUntil).at(-1)!;
-
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-      id: id,
-      label: label,
-    }));
-  }
+  const untilOptions = untilOptionsFor(timeLimit);
+  const timeLimitUntil =
+    timeLimit != null && timeLimit >= Number(accessConfig.DEFAULT_ACCESS_TIME)
+      ? accessConfig.DEFAULT_ACCESS_TIME
+      : untilOptions.longestId;
 
   const complete = (
     completedUsersChange: RoleMembersSummary | undefined,
@@ -253,9 +229,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
 
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
-      <FormContainer<AddRolesForm>
-        defaultValues={timeLimit ? {until: timeLimitUntil!} : {until: accessConfig.DEFAULT_ACCESS_TIME}}
-        onSuccess={(formData) => submit(formData)}>
+      <FormContainer<AddRolesForm> defaultValues={{until: timeLimitUntil}} onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addRolesText}</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
@@ -280,7 +254,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
             <SelectElement
               label="For how long?"
               name="until"
-              options={labels ?? UNTIL_OPTIONS}
+              options={untilOptions.options}
               onChange={(value) => setUntil(value)}
               required
             />

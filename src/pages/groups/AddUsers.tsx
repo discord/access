@@ -39,7 +39,7 @@ import {
 import {GroupDetail, GroupMember, GroupMembersSummary, OktaUserDetail} from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {carriedConstraints, durationLabel} from '../../constraints';
+import {carriedConstraints, durationLabel, untilOptionsFor} from '../../constraints';
 import accessConfig from '../../config/accessConfig';
 
 dayjs.extend(IsSameOrBefore);
@@ -70,12 +70,6 @@ interface AddUsersForm {
   reason?: string;
 }
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
 function AddUsersDialog(props: AddUsersDialogProps) {
   const navigate = useNavigate();
 
@@ -94,29 +88,11 @@ function AddUsersDialog(props: AddUsersDialogProps) {
   const reason = constraints.isReasonRequired(props.owner);
   const selfAddDisallowed = constraints.isSelfAddDisallowed(props.owner);
 
-  let labels = null;
-  let timeLimitUntil = null;
-  if (!(timeLimit == null)) {
-    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
-      .reduce(
-        (obj, key) => {
-          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-          return obj;
-        },
-        {} as Record<string, string>,
-      );
-
-    timeLimitUntil =
-      timeLimit >= Number(accessConfig.DEFAULT_ACCESS_TIME)
-        ? accessConfig.DEFAULT_ACCESS_TIME
-        : Object.keys(filteredUntil).at(-1)!;
-
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-      id: id,
-      label: label,
-    }));
-  }
+  const untilOptions = untilOptionsFor(timeLimit);
+  const timeLimitUntil =
+    timeLimit != null && timeLimit >= Number(accessConfig.DEFAULT_ACCESS_TIME)
+      ? accessConfig.DEFAULT_ACCESS_TIME
+      : untilOptions.longestId;
 
   const complete = (
     completedUsersChange: GroupMembersSummary | undefined,
@@ -192,9 +168,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
 
   return (
     <Dialog open fullWidth onClose={() => props.setOpen(false)}>
-      <FormContainer<AddUsersForm>
-        defaultValues={timeLimit ? {until: timeLimitUntil!} : {until: accessConfig.DEFAULT_ACCESS_TIME}}
-        onSuccess={(formData) => submit(formData)}>
+      <FormContainer<AddUsersForm> defaultValues={{until: timeLimitUntil}} onSuccess={(formData) => submit(formData)}>
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
@@ -219,7 +193,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
             <SelectElement
               label="For how long?"
               name="until"
-              options={labels ?? UNTIL_OPTIONS}
+              options={untilOptions.options}
               onChange={(value) => setUntil(value)}
               required
             />
