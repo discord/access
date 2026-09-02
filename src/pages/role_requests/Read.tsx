@@ -42,7 +42,7 @@ import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
 import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
-import {useConstraintsForGroups} from '../../constraints';
+import {approvalUntilDefault, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
@@ -259,24 +259,35 @@ export default function ReadRoleRequest() {
   }
 
   // Owned here rather than by `FormContainer` so the effect below can move the
-  // `until` field once the constraints land. React Hook Form snapshots
-  // `defaultValues` on the mounting render, and that is the render on which
-  // the request data arrives and the constraints query is still in flight --
-  // so a limit narrower than the requested duration is never known in time to
-  // be a default.
+  // `until` field as the request and its constraints arrive. React Hook Form
+  // snapshots `defaultValues` on the mounting render, which here is the render
+  // where both queries are still in flight -- so the snapshot is seeded from
+  // an empty request, and every real value has to be written by the effect.
   const resolveForm = useForm<ResolveRequestForm>({
     defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
   });
 
   React.useEffect(() => {
-    // The limit came back lower than what was requested, so the approver's
-    // starting point is the longest duration still on offer. Guarded on
-    // `requestedUntilAdjusted` rather than on `timeLimit` being truthy, since a
-    // limit of zero leaves nothing to offer and the field should stay put.
-    if (timeLimit != null && !autofill_until && requestedUntilAdjusted) {
-      resolveForm.setValue('until', requestedUntilAdjusted);
+    // Both the requested duration and the limit land after the mounting
+    // render, so this owns the field's starting value rather than only
+    // adjusting one. On that first render the request is `{}`, which reads as
+    // "indefinite" -- left in place it would default an approval on any group
+    // without a time limit to indefinite access, and on a group with one to a
+    // duration the narrowed option list no longer offers.
+    const until = approvalUntilDefault({
+      requestedUntil,
+      requestedUntilAdjusted,
+      timeLimit,
+      autofillUntil: autofill_until,
+    });
+    if (until !== null) {
+      resolveForm.setValue('until', until);
     }
-  }, [timeLimit, autofill_until, requestedUntilAdjusted]);
+    resolveForm.setValue('customUntil', (requestEndingAt as unknown as string) ?? '');
+    // `requestEndingAt` is a fresh dayjs every render; it changes only when
+    // `requestedUntil` does, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit, autofill_until, requestedUntil, requestedUntilAdjusted]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.

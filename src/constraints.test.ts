@@ -1,6 +1,12 @@
 import {describe, expect, it} from 'vitest';
 
-import {isSelfAddDisallowed, isReasonRequired, effectiveTimeLimit, carriedConstraints} from './constraints';
+import {
+  approvalUntilDefault,
+  isSelfAddDisallowed,
+  isReasonRequired,
+  effectiveTimeLimit,
+  carriedConstraints,
+} from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
 
 // The API returns constraints already coalesced across whatever set was asked
@@ -99,5 +105,53 @@ describe('carriedConstraints', () => {
     const reader = carriedConstraints([entry('disallow_self_add_membership', true)]);
     expect(reader.isSelfAddDisallowed(false)).toBe(true);
     expect(reader.forGroup('some-other-group').isSelfAddDisallowed(false)).toBe(true);
+  });
+});
+
+describe('approvalUntilDefault', () => {
+  // An approval page renders once before its request has loaded, and React
+  // Hook Form takes its defaults from that render. So the starting duration is
+  // always written afterwards, and this decides what it should be.
+  const asked = {requestedUntil: '2592000', requestedUntilAdjusted: undefined, timeLimit: null, autofillUntil: false};
+
+  it('starts on the requested duration when no limit applies', () => {
+    // The case that made this worth extracting: with no limit the narrowing
+    // branch never runs, so anything that only narrowed would leave the form
+    // on its pre-request snapshot -- which reads as indefinite. An approver
+    // accepting that default grants unbounded access to a 30-day request.
+    expect(approvalUntilDefault(asked)).toBe('2592000');
+  });
+
+  it('starts on the requested duration when it already fits the limit', () => {
+    expect(approvalUntilDefault({...asked, timeLimit: 7776000, autofillUntil: true})).toBe('2592000');
+  });
+
+  it('moves to the longest option still on offer when the limit is narrower', () => {
+    expect(
+      approvalUntilDefault({...asked, requestedUntilAdjusted: '432000', timeLimit: 432000, autofillUntil: false}),
+    ).toBe('432000');
+  });
+
+  it('leaves the field alone when the limit leaves nothing on offer', () => {
+    // No option is short enough, so there is no valid duration to select.
+    expect(
+      approvalUntilDefault({...asked, requestedUntilAdjusted: undefined, timeLimit: 1, autofillUntil: false}),
+    ).toBeNull();
+  });
+
+  it('carries an indefinite request through when nothing limits it', () => {
+    expect(approvalUntilDefault({...asked, requestedUntil: 'indefinite'})).toBe('indefinite');
+  });
+
+  it('does not leave an indefinite request indefinite once a limit applies', () => {
+    expect(
+      approvalUntilDefault({
+        ...asked,
+        requestedUntil: 'indefinite',
+        requestedUntilAdjusted: '43200',
+        timeLimit: 43200,
+        autofillUntil: false,
+      }),
+    ).toBe('43200');
   });
 });
