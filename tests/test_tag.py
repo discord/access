@@ -546,12 +546,12 @@ async def test_get_tag_detail_active_group_tags_carries_group_description(
 
 # --- Explicit nulls on a partial tag update ---------------------------------
 #
-# `UpdateTagBody` types every field `Optional[...]` so a partial PUT can omit
-# it. That makes an explicit JSON `null` indistinguishable from omission by
-# type, but not by presence: `exclude_unset` keeps it, and the handler then
-# writes it to a column that forbids it. `description` and `constraints` have a
-# meaningful empty value and are coerced to it; `name` and `enabled` do not, so
-# a null there is a client error rather than a request to clear.
+# A partial PUT may omit any field, which `UpdateTagBody` allows by giving each
+# one a default. Nullability is a separate question: `name` and `enabled` back
+# columns that forbid null and have no meaningful empty value, so they are not
+# typed `Optional` and an explicit JSON `null` is rejected rather than written.
+# `description` and `constraints` do have one and stay nullable, coerced by the
+# handler to `""` / `{}`.
 
 
 @pytest.mark.parametrize("field", ["name", "enabled"])
