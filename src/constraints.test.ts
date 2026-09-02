@@ -2,10 +2,10 @@ import {describe, expect, it} from 'vitest';
 
 import {
   carriedConstraints,
+  durationLabel,
   effectiveTimeLimit,
   isReasonRequired,
   isSelfAddDisallowed,
-  timeLimitLabel,
 } from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
 
@@ -108,22 +108,35 @@ describe('carriedConstraints', () => {
   });
 });
 
-describe('timeLimitLabel', () => {
+describe('durationLabel', () => {
   it('renders whole days, singular and plural', () => {
-    expect(timeLimitLabel(86400)).toBe('1 day');
-    expect(timeLimitLabel(604800)).toBe('7 days');
+    expect(durationLabel(86400)).toBe('1 day');
+    expect(durationLabel(604800)).toBe('7 days');
+    expect(durationLabel(7776000)).toBe('90 days');
   });
 
-  it('rounds a limit that does not divide evenly into days', () => {
-    expect(timeLimitLabel(90000)).toBe('1 day');
-    expect(timeLimitLabel(7776000)).toBe('90 days');
-  });
-
-  it('renders a sub-day limit as "<1 day" rather than rounding it away', () => {
+  it('renders a sub-day limit exactly rather than rounding it away', () => {
     // A one-hour limit is a legal value -- the constraint validator only
-    // requires a positive integer. Flooring it to days prints "0 days", which
-    // reads as no access at all.
-    expect(timeLimitLabel(3600)).toBe('<1 day');
-    expect(timeLimitLabel(1)).toBe('<1 day');
+    // requires a positive integer -- and it is offered as a duration the user
+    // picks, so it has to say what it is.
+    expect(durationLabel(3600)).toBe('1 hour');
+    expect(durationLabel(1800)).toBe('30 minutes');
+    expect(durationLabel(1)).toBe('1 second');
+  });
+
+  it('composes the units a value actually spans', () => {
+    expect(durationLabel(5400)).toBe('1 hour and 30 minutes');
+    expect(durationLabel(5401)).toBe('1 hour, 30 minutes, and 1 second');
+    expect(durationLabel(90000)).toBe('1 day and 1 hour');
+  });
+
+  it('drops the units a value does not span', () => {
+    expect(durationLabel(86401)).toBe('1 day and 1 second');
+  });
+
+  it('answers for a zero limit', () => {
+    // `effectiveTimeLimit` treats a zero limit as a real constraint rather
+    // than an absent one, so the formatter needs a value for it.
+    expect(durationLabel(0)).toBe('0 seconds');
   });
 });

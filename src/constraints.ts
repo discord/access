@@ -25,23 +25,46 @@ const SELF_ADD_KEYS = {member: 'disallow_self_add_membership', owner: 'disallow_
 // dialog still has to answer for every row.
 const MAX_IDS_PER_REQUEST = 200;
 
-const SECONDS_PER_DAY = 86400;
+const DURATION_UNITS: [name: string, seconds: number][] = [
+  ['day', 86400],
+  ['hour', 3600],
+  ['minute', 60],
+  ['second', 1],
+];
 
 /**
- * Render a time limit the way users think about it: in days.
+ * Render a duration in whole units, largest first.
  *
- * Sub-day limits are legal -- the constraint validator only requires a
- * positive integer -- and rounding one to the nearest day would print
- * "0 days", which reads as no access at all. Values are not guaranteed to
- * divide evenly either, and an unrounded quotient prints a falsely precise
- * fraction.
+ * Used both for a limit being imposed and for a duration the user is
+ * choosing, so it has to be exact. Sub-day limits are legal -- the constraint
+ * validator only requires a positive integer -- and a value is not guaranteed
+ * to divide evenly into any single unit. Composing the units a value actually
+ * spans answers both without printing a falsely precise fraction.
+ *
+ * @param seconds The duration. Zero is a real constraint, not an absent one,
+ *   and renders as "0 seconds".
+ * @returns A human-readable duration, e.g. "1 hour, 30 minutes, and 1 second".
  */
-export function timeLimitLabel(seconds: number): string {
-  if (seconds < SECONDS_PER_DAY) {
-    return '<1 day';
+export function durationLabel(seconds: number): string {
+  const parts: string[] = [];
+  let remaining = seconds;
+  for (const [name, size] of DURATION_UNITS) {
+    const count = Math.floor(remaining / size);
+    if (count > 0) {
+      parts.push(`${count} ${count === 1 ? name : `${name}s`}`);
+      remaining -= count * size;
+    }
   }
-  const days = Math.round(seconds / SECONDS_PER_DAY);
-  return `${days} ${days === 1 ? 'day' : 'days'}`;
+  if (parts.length === 0) {
+    return '0 seconds';
+  }
+  if (parts.length === 1) {
+    return parts[0];
+  }
+  if (parts.length === 2) {
+    return `${parts[0]} and ${parts[1]}`;
+  }
+  return `${parts.slice(0, -1).join(', ')}, and ${parts.at(-1)}`;
 }
 
 export type Constraints = EffectiveConstraintDetail[] | undefined | null;

@@ -46,7 +46,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
-import {carriedConstraints, timeLimitLabel} from '../../constraints';
+import {carriedConstraints, durationLabel} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
 
@@ -262,7 +262,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
             {timeLimit
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
-                timeLimitLabel(timeLimit) +
+                durationLabel(timeLimit) +
                 '.'
               : null}
           </Typography>

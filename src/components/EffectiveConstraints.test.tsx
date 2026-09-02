@@ -128,17 +128,17 @@ describe('EffectiveConstraints', () => {
     expect(screen.queryAllByRole('link')).toHaveLength(1);
   });
 
-  it('rounds a time limit that does not divide evenly into days, and says "day" singular', () => {
-    renderPanel([{...timeLimit, value: 90000}]); // 1.0416... days
-    expect(screen.getByText('Limit time of membership — 1 day')).toBeInTheDocument();
+  it('renders every unit a time limit spans, and says "day" singular', () => {
+    renderPanel([{...timeLimit, value: 90000}]);
+    expect(screen.getByText('Limit time of membership — 1 day and 1 hour')).toBeInTheDocument();
   });
 
-  it('renders a sub-day time limit as "<1 day" rather than rounding it to "0 days"', () => {
-    // A one-hour limit is a legal constraint value (the validator only
-    // requires a positive integer), and the propagation tests use exactly
-    // this. Rounding it to the nearest day would claim no access at all.
+  it('renders a sub-day time limit as the duration it is', () => {
+    // A one-hour limit is a legal value -- the constraint validator only
+    // requires a positive integer. Rounding it to the nearest day would claim
+    // no access at all, and the dialogs offer it as a duration to pick.
     renderPanel([{...timeLimit, value: 3600}]);
-    expect(screen.getByText('Limit time of membership — <1 day')).toBeInTheDocument();
+    expect(screen.getByText('Limit time of membership — 1 hour')).toBeInTheDocument();
   });
 
   it('renders an exactly-one-day limit as singular', () => {

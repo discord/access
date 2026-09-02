@@ -16,14 +16,14 @@ import Typography from '@mui/material/Typography';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import {EffectiveConstraintDetail, EffectiveConstraintSourceDetail} from '../api/apiSchemas';
-import {timeLimitLabel} from '../constraints';
+import {durationLabel} from '../constraints';
 
 const TIME_LIMIT_CONSTRAINTS = ['member_time_limit', 'owner_time_limit'];
 
 function constraintLabel(entry: EffectiveConstraintDetail): string {
   const value = entry.value;
   if (typeof value === 'number' && TIME_LIMIT_CONSTRAINTS.includes(entry.constraint)) {
-    return `${entry.name} — ${timeLimitLabel(value)}`;
+    return `${entry.name} — ${durationLabel(value)}`;
   }
   // Booleans are simple flags: their presence in the list is the information,
   // so appending "— Yes" would be noise.
