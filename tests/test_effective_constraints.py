@@ -7,6 +7,9 @@ from api.extensions import Db
 from api.models import AppTagMap, OktaGroup, OktaGroupTagMap, RoleGroup, RoleGroupMap, Tag
 from api.routers._eager import effective_constraint_options
 from api.models.tag import (
+    ConstraintOrigin,
+    ConstraintSource,
+    _constraint_entry,
     constraint_source_clause,
     constraint_sources,
     effective_constraint,
@@ -290,6 +293,66 @@ async def test_effective_constraints_omits_unset_constraints(db: Db) -> None:
     assert [entry["constraint"] for entry in result] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
     assert result[0]["value"] == 86400
     assert result[0]["name"] == Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY].name
+
+
+async def test_effective_constraints_omits_a_flag_every_tag_turns_off(db: Db) -> None:
+    """The tag form writes all four boolean keys on every save, so a tag whose
+    only real setting is a time limit still carries four `False` flags. Those
+    set nothing, and reporting them would tell a reader that a
+    separation-of-duties control is in force when it is switched off."""
+    group = OktaGroupFactory.build()
+    tag = TagFactory.build(
+        constraints={
+            Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400,
+            Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: False,
+            Tag.REQUIRE_OWNER_REASON_CONSTRAINT_KEY: False,
+            Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: False,
+            Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY: False,
+        }
+    )
+    db.session.add_all([group, tag])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    assert [entry["constraint"] for entry in effective_constraints(loaded)] == [Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+
+
+async def test_effective_constraints_omits_a_tag_that_declines_the_flag(db: Db) -> None:
+    """One tag turning a flag on and another turning it off leaves it in force,
+    but only the first is the reason. Naming the second would send a reader to
+    edit a tag that already says `False`."""
+    group = OktaGroupFactory.build()
+    strict = TagFactory.build(name="Strict", constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: True})
+    lax = TagFactory.build(name="Lax", constraints={Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY: False})
+    db.session.add_all([group, strict, lax])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=strict.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=lax.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] is True
+    assert [source["tag_name"] for source in entry["sources"]] == ["Strict"]
+
+
+async def test_effective_constraints_keeps_a_falsy_numeric_limit(db: Db) -> None:
+    """The `False` filter is discriminated on the boolean, not on truthiness: a
+    zero-second limit is the tightest possible constraint, not the absence of
+    one. The API validator rejects it, so this guards the helper directly."""
+    constraint = Tag.CONSTRAINTS[Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY]
+    source = ConstraintSource(
+        tag=TagFactory.build(constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 0}),
+        value=0,
+        origin=ConstraintOrigin.DIRECT,
+        source_id=None,
+        source_name=None,
+    )
+    entry = _constraint_entry(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, constraint, [source])
+    assert entry is not None
+    assert entry["value"] == 0
 
 
 async def test_effective_constraints_reports_association_source(db: Db) -> None:

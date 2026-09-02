@@ -135,7 +135,7 @@ export type AppGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
-  effective_constraints?: EffectiveConstraintDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default app_group
    */
@@ -585,7 +585,7 @@ export type OktaGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
-  effective_constraints?: EffectiveConstraintDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default okta_group
    */
@@ -1084,7 +1084,7 @@ export type RoleGroupDetail = {
   updated_at: string | null;
   deleted_at?: string | null;
   active_group_tags?: OktaGroupTagMapDetail[];
-  effective_constraints?: EffectiveConstraintDetail[];
+  effective_constraints?: EffectiveConstraintDetail[] | null;
   /**
    * @default role_group
    */
