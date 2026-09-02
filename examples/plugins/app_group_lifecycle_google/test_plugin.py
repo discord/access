@@ -48,6 +48,7 @@ from plugin import (  # noqa: E402
     CONFIG_DISPLAY_NAME,
     CONFIG_EMAIL,
     CONFIG_ENABLED,
+    GOOGLE_API_NUM_RETRIES,
     PLUGIN_ID,
     STATUS_GOOGLE_GROUP_ID,
     STATUS_PUSH_MAPPING_ID,
@@ -340,6 +341,17 @@ async def test_get_google_group_calls_get_by_resource_name(
     mock_groups_api.get().execute.return_value = {"name": "groups/ggid-1"}
     assert (await plugin_instance._get_google_group("ggid-1"))["name"] == "groups/ggid-1"
     assert mock_groups_api.get.call_args.kwargs == {"name": "groups/ggid-1"}
+
+
+async def test_get_google_group_enables_bounded_retries(
+    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
+) -> None:
+    request = mock_groups_api.get.return_value
+    request.execute.return_value = {"name": "groups/ggid-1"}
+
+    assert await plugin_instance._get_google_group("ggid-1") == {"name": "groups/ggid-1"}
+    assert GOOGLE_API_NUM_RETRIES == 3
+    request.execute.assert_called_once_with(num_retries=GOOGLE_API_NUM_RETRIES)
 
 
 async def test_patch_google_group_sets_update_mask(
