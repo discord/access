@@ -332,9 +332,16 @@ class _GroupBase(BaseModel):
     active_group_tags: list[OktaGroupTagMapDetail] = Field(default_factory=list)
     # Populated explicitly by `get_group` from `api.models.tag.effective_constraints`
     # -- not an ORM attribute, so `from_attributes=True` cannot pick it up on its
-    # own. `post_group`/`put_group` leave this at its default `[]`; the group page
-    # re-fetches the detail after a mutation, so it is populated on the read.
-    effective_constraints: list[EffectiveConstraintDetail] = Field(default_factory=list)
+    # own. Only `get_group` does so; `post_group`/`put_group` return the group
+    # without it, and the group page re-fetches the detail after a mutation.
+    #
+    # Null rather than `[]` on those responses, because the two mean different
+    # things to a reader: `[]` is the answer "nothing constrains this group",
+    # while null is "this payload does not carry the answer". The frontend's
+    # `carriedConstraints` fails its gates closed on null and open on `[]`, so
+    # defaulting to `[]` here would have a mutation response quietly assert
+    # that a constrained group has no constraints.
+    effective_constraints: Optional[list[EffectiveConstraintDetail]] = None
 
 
 class OktaGroupDetail(_GroupBase):

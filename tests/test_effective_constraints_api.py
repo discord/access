@@ -39,6 +39,29 @@ async def test_group_detail_exposes_effective_constraints(
     assert constraints[0]["sources"][0]["origin"] == "member_association"
 
 
+async def test_group_create_response_omits_effective_constraints(
+    app: FastAPI, client: AsyncClient, db: Db, url_for: Any, mocker: Any
+) -> None:
+    """`[]` and null are different answers: `[]` says nothing constrains this
+    group, null says this payload does not carry the answer. Only `get_group`
+    resolves them, so every other response must say null -- the frontend fails
+    its gates closed on null and open on `[]`."""
+    from okta.models.group import Group as OktaGroupModel
+
+    from api.services import okta
+
+    mocker.patch.object(okta, "create_group", return_value=OktaGroupModel.from_dict({"id": "okta-id-eff"}))
+
+    response = await client.post(url_for("groups_create"), json={"type": "okta_group", "name": "Constraintless"})
+    assert response.status_code == 201
+    assert response.json()["effective_constraints"] is None
+
+    created_id = response.json()["id"]
+    detail = await client.get(url_for("group_by_id", group_id=created_id))
+    assert detail.status_code == 200
+    assert detail.json()["effective_constraints"] == []
+
+
 async def test_group_detail_effective_constraints_empty_when_untagged(
     app: FastAPI, client: AsyncClient, db: Db, url_for: Any
 ) -> None:

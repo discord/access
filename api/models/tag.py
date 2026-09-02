@@ -390,12 +390,30 @@ def constraint_source_clause(constraint_key: str, group: OktaGroup) -> str:
 
 def _constraint_entry(
     constraint_key: str, constraint: TagConstraint, sources: list[ConstraintSource]
-) -> dict[str, Any]:
-    """One constraint's coalesced value and the sources that produced it."""
+) -> Optional[dict[str, Any]]:
+    """One constraint's coalesced value and the sources that produced it.
+
+    A source setting a flag to `False` imposes nothing -- the tag form writes
+    all four boolean keys on every save, so most tags carry several -- and a
+    constraint every source turns off is not in force at all. Both are dropped,
+    so a reader is never told a restriction applies when it does not, and a tag
+    is never named as the reason for one it explicitly declines to impose.
+    `constraint_source_clause` filters the same way for the same reason.
+
+    Discriminated on `is not False` rather than on truthiness: only a boolean
+    flag can be switched off, and a falsy *number* is the tightest possible
+    limit rather than the absence of one.
+
+    Returns:
+        The entry, or None when nothing is left contributing.
+    """
+    contributing = [source for source in sources if source.value is not False]
+    if not contributing:
+        return None
     return {
         "constraint": constraint_key,
         "name": constraint.name,
-        "value": _fold(constraint, sources),
+        "value": _fold(constraint, contributing),
         "sources": [
             {
                 "tag_id": source.tag.id,
@@ -404,7 +422,7 @@ def _constraint_entry(
                 "source_id": source.source_id,
                 "source_name": source.source_name,
             }
-            for source in sources
+            for source in contributing
         ],
     }
 
@@ -425,8 +443,10 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
         name), `value` (coalesced across every source under that constraint's
         own rule), and `sources`. A source names the tag, how it reached the
         group (`origin`), and the app or group it came from -- `source_id` and
-        `source_name`, both None for a `DIRECT` origin. Constraints nothing
-        sets are omitted, so an untagged group returns an empty list.
+        `source_name`, both None for a `DIRECT` origin. A constraint nothing
+        sets, and a flag every tag setting it turns off, are both omitted --
+        so an untagged group returns an empty list, and so does one whose only
+        tag declines every constraint.
 
     Raises:
         InvalidRequestError: If a relationship this reads was not eager-loaded.
@@ -437,7 +457,7 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
     entries = []
     for constraint_key, constraint in Tag.CONSTRAINTS.items():
         sources = constraint_sources(constraint_key, group, include_provenance=True)
-        if not sources:
-            continue
-        entries.append(_constraint_entry(constraint_key, constraint, sources))
+        entry = _constraint_entry(constraint_key, constraint, sources)
+        if entry is not None:
+            entries.append(entry)
     return entries
