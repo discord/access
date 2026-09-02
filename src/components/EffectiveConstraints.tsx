@@ -26,7 +26,11 @@ function constraintLabel(entry: EffectiveConstraintDetail): string {
     return `${entry.name} — ${timeLimitLabel(value)}`;
   }
   // Booleans are simple flags: their presence in the list is the information,
-  // so appending "— Yes" would be noise.
+  // so appending "— Yes" would be noise. That holds because the API reports
+  // only constraints in force -- a flag every tag setting it turns off is left
+  // out of the response entirely (`_constraint_entry` in `api/models/tag.py`),
+  // which matters since the tag form writes all four boolean keys on every
+  // save. Were a `False` to arrive here it would render as a restriction.
   if (typeof value === 'boolean') {
     return entry.name;
   }
