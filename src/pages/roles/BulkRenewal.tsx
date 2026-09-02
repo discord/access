@@ -30,7 +30,7 @@ import {useTheme} from '@mui/material';
 import dayjs, {Dayjs} from 'dayjs';
 
 import {displayUserName} from '../../helpers';
-import {durationLabel, useConstraintsForGroups} from '../../constraints';
+import {durationLabel, untilOptionsFor, useConstraintsForGroups, type UntilOption} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import {useCurrentUser} from '../../authentication';
@@ -90,12 +90,6 @@ interface CreateRequestForm {
   customUntil?: string;
   reason?: string;
 }
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
 interface BulkRenewalDialogProps {
   setOpen(open: boolean): any;
   rows: RoleGroupMapDetail[];
@@ -116,7 +110,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [groupUpdatesCompleted, setGroupUpdatesCompleted] = React.useState(0);
   const [groupUpdatesErrored, setGroupUpdatesErrored] = React.useState(0);
 
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
+  const [labels, setLabels] = React.useState<Array<UntilOption>>(untilOptionsFor(null).options);
 
   // Track toggle states for each row
   const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
@@ -320,32 +314,17 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     if (constraintsBlocked) {
       return;
     }
+
+    const untilOptions = untilOptionsFor(timeLimit);
+    setLabels(untilOptions.options);
     if (timeLimit == null) {
-      setLabels(UNTIL_OPTIONS);
       return;
     }
 
-    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit)
-      .reduce(
-        (obj, key) => {
-          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-          return obj;
-        },
-        {} as Record<string, string>,
-      );
-
     const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
     if (currentUntilValue === null || currentUntilValue > timeLimit) {
-      setUntil(Object.keys(filteredUntil).at(-1)!);
+      setUntil(untilOptions.longestId);
     }
-
-    setLabels(
-      Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
-        id: id,
-        label: label,
-      })),
-    );
     // `until` is read but deliberately not a dependency: this reacts to the
     // limit changing, not to the user picking a duration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -507,7 +486,9 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         <DialogTitle>Bulk Renew Role Access</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
-            {timeLimit ? 'Access to one or more selected groups is limited to ' + durationLabel(timeLimit) + '.' : null}
+            {timeLimit != null
+              ? 'Access to one or more selected groups is limited to ' + durationLabel(timeLimit) + '.'
+              : null}
           </Typography>
           <Typography variant="subtitle1" color="text.accent">
             {display_owner_add_constraint
