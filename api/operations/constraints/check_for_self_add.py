@@ -8,8 +8,9 @@ from sqlalchemy.orm import (
 from sqlalchemy import func, or_, select
 from api.auth.permissions import is_access_admin as _is_access_admin
 from api.extensions import db
-from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models import AppGroup, OktaGroup, OktaGroupTagMap, OktaUser, OktaUserGroupMember, RoleGroup, Tag
 from api.models.tag import coalesce_constraints, constraint_source_clause, effective_constraint
+from api.routers._eager import effective_constraint_options
 
 
 class CheckForSelfAdd:
@@ -36,16 +37,12 @@ class CheckForSelfAdd:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
+                    # The subtype loader stays here rather than in the helper: it is
+                    # what makes the `RoleGroup` paths resolvable on a polymorphic
+                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
+                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
-                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
+                    *effective_constraint_options(),
                 )
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaGroup.id == self.group_id)
@@ -93,16 +90,12 @@ class CheckForSelfAdd:
             await db.session.scalars(
                 select(OktaGroup)
                 .options(
+                    # The subtype loader stays here rather than in the helper: it is
+                    # what makes the `RoleGroup` paths resolvable on a polymorphic
+                    # `OktaGroup` query, and a query selecting `RoleGroup` directly
+                    # needs no such pairing.
                     selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
-                    selectinload(OktaGroup.active_group_tags).joinedload(OktaGroupTagMap.active_tag),
-                    selectinload(RoleGroup.active_role_associated_group_member_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
-                    selectinload(RoleGroup.active_role_associated_group_owner_mappings)
-                    .joinedload(RoleGroupMap.active_group)
-                    .selectinload(OktaGroup.active_group_tags)
-                    .joinedload(OktaGroupTagMap.active_tag),
+                    *effective_constraint_options(),
                 )
                 .where(OktaGroup.deleted_at.is_(None))
                 .where(OktaGroup.id == self.group_id)
