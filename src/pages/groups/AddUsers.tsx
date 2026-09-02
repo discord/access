@@ -172,7 +172,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
         <DialogTitle>Add {addUsersText}</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
-            {timeLimit
+            {timeLimit != null
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
                 durationLabel(timeLimit) +

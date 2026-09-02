@@ -233,7 +233,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
         <DialogTitle>Add {addRolesText}</DialogTitle>
         <DialogContent>
           <Typography variant="subtitle1" color="text.accent">
-            {timeLimit
+            {timeLimit != null
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'this group is limited to ' +
                 durationLabel(timeLimit) +
