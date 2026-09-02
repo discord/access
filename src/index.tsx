@@ -36,6 +36,11 @@ if (['production', 'staging'].includes(import.meta.env.MODE)) {
     dsn: 'https://user@example.ingest.sentry.io/1234567',
     release: import.meta.env.VITE_SENTRY_RELEASE,
     integrations: [Sentry.replayIntegration()],
+    // React Query cancels in-flight requests when the last observer goes away, which
+    // aborts their signal. That is the intended behaviour, not a fault, and the resulting
+    // rejection reports with no application frames in it. Matched on the exception type
+    // so genuine failures still come through.
+    ignoreErrors: ['AbortError'],
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1.0,
     tunnel: '/api/bugs/sentry',
