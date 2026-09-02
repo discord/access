@@ -665,6 +665,10 @@ class ModifyRoleGroups:
             # A role that is a MEMBER of a group is governed by that group's
             # member limit and one that OWNS it by the owner limit, but both
             # land on the role's own member side, so the tighter governs.
+            #
+            # Both lists are filtered to managed, non-deleted groups where they
+            # are loaded at the top of this method, which is the precondition
+            # `propagating_seconds_limit` states -- it does not re-derive it.
             propagated_limits = [
                 await propagating_seconds_limit([g.id for g in groups_to_add], Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY),
                 await propagating_seconds_limit(

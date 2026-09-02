@@ -198,7 +198,11 @@ async def propagating_seconds_limit(group_ids: Collection[str], constraint_key: 
     object graph. Only enabled tags that propagate contribute.
 
     Args:
-        group_ids: The groups the role is being associated with.
+        group_ids: The groups the role is being associated with. Must be
+            managed and not deleted, as everything else in this module
+            requires; `_propagated_sources` skips an unmanaged source group,
+            so passing one here would report a limit the read side does not
+            show.
         constraint_key: `MEMBER_TIME_LIMIT_CONSTRAINT_KEY` for a member-side
             association, `OWNER_TIME_LIMIT_CONSTRAINT_KEY` for an owner-side one.
 
