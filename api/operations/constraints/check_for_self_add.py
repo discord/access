@@ -73,8 +73,8 @@ class CheckForSelfAdd:
             if group.is_managed and disallow_self_add_ownership is True:
                 return (
                     False,
-                    "Current user is an group owner who is restricted "
-                    + f"from readding themself as owner to {group.name} due to group tags",
+                    "Current user is a group owner who is restricted "
+                    + f"from re-adding themself as owner to {group.name} due to group tags",
                 )
         if len(self.members_to_add) > 0 and current_user.id in self.members_to_add:
             disallow_self_add_membership = coalesce_constraints(
@@ -114,7 +114,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role owner who is restricted from adding themself as "
-                            + f"member to {group.name} because the associated group {member_group.name} "
+                            + f"member to {group.name} because the associated group {owner_group.name} "
                             + "has group tags which restricts self-adding ownership",
                         )
         return True, ""
@@ -194,7 +194,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role member who is restricted from adding "
-                            + f"{group.name} as a member to {member_group.name} because that group  "
+                            + f"{group.name} as a member to {member_group.name} because that group "
                             + "has tags which restricts self-adding membership",
                         )
 
@@ -217,7 +217,7 @@ class CheckForSelfAdd:
                         return (
                             False,
                             "Current user is a role member who is restricted from adding "
-                            + f"{group.name} as an owner to {owner_group.name} because that group  "
+                            + f"{group.name} as an owner to {owner_group.name} because that group "
                             + "has tags which restricts self-adding ownership",
                         )
         return True, ""
