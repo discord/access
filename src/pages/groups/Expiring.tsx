@@ -201,32 +201,20 @@ export default function ExpiringGroups() {
     }
   };
 
-  const handleSetStartDate = (newValue: Dayjs | null) => {
-    if (newValue == null) {
-      setSearchParams((params) => {
+  const handleSetDateRange = (newStartDate: Dayjs | null, newEndDate: Dayjs | null) => {
+    setSearchParams((params) => {
+      if (newStartDate == null) {
         params.delete('start_date');
-        return params;
-      });
-    } else {
-      setSearchParams((params) => {
-        params.set('start_date', newValue.unix().toString());
-        return params;
-      });
-    }
-  };
-
-  const handleSetEndDate = (newValue: Dayjs | null) => {
-    if (newValue == null) {
-      setSearchParams((params) => {
+      } else {
+        params.set('start_date', newStartDate.unix().toString());
+      }
+      if (newEndDate == null) {
         params.delete('end_date');
-        return params;
-      });
-    } else {
-      setSearchParams((params) => {
-        params.set('end_date', newValue.unix().toString());
-        return params;
-      });
-    }
+      } else {
+        params.set('end_date', newEndDate.unix().toString());
+      }
+      return params;
+    });
   };
 
   return (
@@ -257,9 +245,8 @@ export default function ExpiringGroups() {
           </ToggleButtonGroup>
           <DateRangePicker
             startDate={startDate}
-            setStartDate={handleSetStartDate}
             endDate={endDate}
-            setEndDate={handleSetEndDate}
+            setDateRange={handleSetDateRange}
             datesPicked={datesPicked}
             setDatesPicked={setDatesPicked}
             slots={{
