@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import {describe, expect, it} from 'vitest';
 
 import {
@@ -6,8 +7,10 @@ import {
   effectiveTimeLimit,
   isReasonRequired,
   isSelfAddDisallowed,
+  untilOptionsFor,
 } from './constraints';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
+import type {UntilOptions} from './constraints';
 
 // The API returns constraints already coalesced across whatever set was asked
 // about, so these readers only look a value up. Anything resembling a min or
@@ -138,5 +141,69 @@ describe('durationLabel', () => {
     // `effectiveTimeLimit` treats a zero limit as a real constraint rather
     // than an absent one, so the formatter needs a value for it.
     expect(durationLabel(0)).toBe('0 seconds');
+  });
+});
+
+// A fixed label map so these assert the helper's behavior rather than whatever
+// `ACCESS_TIME_LABELS` an operator's `config.default.json` happens to carry.
+const LABELS = {
+  '43200': '12 Hours',
+  '432000': '5 Days',
+  '1209600': 'Two Weeks',
+  indefinite: 'Indefinite',
+  custom: 'Custom',
+};
+
+const ids = (result: UntilOptions) => result.options.map((option) => option.id);
+
+describe('untilOptionsFor', () => {
+  it('offers everything, indefinite included, when no limit applies', () => {
+    const result = untilOptionsFor(null, {labels: LABELS});
+    expect(ids(result)).toEqual(['43200', '432000', '1209600', 'indefinite', 'custom']);
+  });
+
+  it('offers every numeric option, but not indefinite, under a limit above them all', () => {
+    const result = untilOptionsFor(2592000, {labels: LABELS, now: dayjs('2026-09-01T09:00:00')});
+    expect(ids(result)).toEqual(['43200', '432000', '1209600', 'custom']);
+    expect(result.longestId).toBe('1209600');
+  });
+
+  it('truncates at the longest option the limit permits', () => {
+    const result = untilOptionsFor(500000, {labels: LABELS, now: dayjs('2026-09-01T09:00:00')});
+    expect(ids(result)).toEqual(['43200', '432000', 'custom']);
+    expect(result.longestId).toBe('432000');
+  });
+
+  it('synthesizes an option equal to the limit when no configured one fits', () => {
+    // The dialogs are unsubmittable without this: an empty option list leaves
+    // the required select with nothing to choose.
+    const result = untilOptionsFor(3600, {labels: LABELS, now: dayjs('2026-09-01T09:00:00')});
+    expect(result.options).toEqual([{id: '3600', label: '1 hour'}]);
+    expect(result.longestId).toBe('3600');
+  });
+
+  it('gives the synthetic option an id the submit path can parse as seconds', () => {
+    const result = untilOptionsFor(3600, {labels: LABELS, now: dayjs('2026-09-01T09:00:00')});
+    expect(parseInt(result.longestId, 10)).toBe(3600);
+  });
+
+  it('always names a longest id, so no dialog defaults to undefined', () => {
+    for (const limit of [null, 0, 1, 3600, 500000, 2592000]) {
+      const result = untilOptionsFor(limit, {labels: LABELS, now: dayjs('2026-09-01T09:00:00')});
+      expect(result.longestId).toBeDefined();
+      expect(result.options.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('withholds custom when its date picker would have no selectable date', () => {
+    // The picker disables every date on or before today and caps at
+    // `now + timeLimit`, so a two-hour limit in the morning leaves nothing.
+    const result = untilOptionsFor(7200, {labels: LABELS, now: dayjs('2026-09-01T01:00:00')});
+    expect(ids(result)).not.toContain('custom');
+  });
+
+  it('offers custom when the same limit reaches into tomorrow', () => {
+    const result = untilOptionsFor(7200, {labels: LABELS, now: dayjs('2026-09-01T23:00:00')});
+    expect(ids(result)).toContain('custom');
   });
 });

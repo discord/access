@@ -1,9 +1,11 @@
 import * as React from 'react';
 
 import {useQueries} from '@tanstack/react-query';
+import dayjs, {Dayjs} from 'dayjs';
 
 import {effectiveConstraintsQuery} from './api/apiComponents';
 import type {EffectiveConstraintDetail} from './api/apiSchemas';
+import accessConfig from './config/accessConfig';
 
 // Reading the constraints that apply to a group, a set of groups, or a set of
 // tags.
@@ -65,6 +67,75 @@ export function durationLabel(seconds: number): string {
     return `${parts[0]} and ${parts[1]}`;
   }
   return `${parts.slice(0, -1).join(', ')}, and ${parts.at(-1)}`;
+}
+
+export interface UntilOption {
+  id: string;
+  label: string;
+}
+
+export interface UntilOptions {
+  /** Options for a "For how long?" select, ascending by duration. */
+  options: UntilOption[];
+  /** The longest duration on offer, as a seconds id. */
+  longestId: string;
+}
+
+// Whether the `custom` date picker has any date to offer under this limit.
+//
+// The picker disables every date on or before today and caps at
+// `now + timeLimit`, so what matters is whether the limit reaches a later
+// calendar day -- not whether it exceeds 24 hours. A two-hour limit at 23:00
+// does; the same limit at 01:00 does not.
+function isCustomDateSelectable(timeLimit: number, now: Dayjs): boolean {
+  return !now.add(timeLimit, 'second').isBefore(now.add(1, 'day').startOf('day'));
+}
+
+/**
+ * The durations a "For how long?" select may offer under a time limit.
+ *
+ * A limit shorter than every configured option would otherwise leave the
+ * select empty and its default undefined. This answers with the limit itself
+ * in that case, so there is always something valid to pick.
+ *
+ * @param timeLimit Seconds, or null when no limit applies.
+ * @param opts.labels The configured id-to-label map. Defaults to
+ *   `ACCESS_TIME_LABELS`; injectable so callers and tests can pin it.
+ * @param opts.now The moment to measure `custom` against. Defaults to now.
+ * @returns The options to offer and the id of the longest among them.
+ */
+export function untilOptionsFor(
+  timeLimit: number | null,
+  opts: {labels?: Record<string, string>; now?: Dayjs} = {},
+): UntilOptions {
+  const labels = opts.labels ?? accessConfig.ACCESS_TIME_LABELS;
+  const now = opts.now ?? dayjs();
+
+  if (timeLimit == null) {
+    return {
+      options: Object.entries(labels).map(([id, label]) => ({id, label})),
+      longestId: accessConfig.DEFAULT_ACCESS_TIME,
+    };
+  }
+
+  const permitted: UntilOption[] = Object.entries(labels)
+    .filter(([id]) => !isNaN(Number(id)) && Number(id) <= timeLimit)
+    .map(([id, label]) => ({id, label}))
+    .sort((a, b) => Number(a.id) - Number(b.id));
+
+  // Nothing configured fits, so offer the limit itself. Its id is the limit in
+  // seconds, which every dialog's submit path already parses that way.
+  if (permitted.length === 0) {
+    permitted.push({id: String(timeLimit), label: durationLabel(timeLimit)});
+  }
+
+  const longestId = permitted.at(-1)!.id;
+  const options =
+    'custom' in labels && isCustomDateSelectable(timeLimit, now)
+      ? [...permitted, {id: 'custom', label: labels['custom']}]
+      : permitted;
+
+  return {options, longestId};
 }
 
 export type Constraints = EffectiveConstraintDetail[] | undefined | null;
