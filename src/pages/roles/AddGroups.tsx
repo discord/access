@@ -50,7 +50,7 @@ import {
 } from '../../api/apiSchemas';
 import {isAccessAdmin, isGroupOwner} from '../../authorization';
 import {minTagTimeGroups, requiredReasonGroups, ownerCantAddSelfGroups} from '../../helpers';
-import {durationLabel} from '../../constraints';
+import {durationLabel, untilOptionsFor, type UntilOption} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import {group} from 'console';
 import accessConfig from '../../config/accessConfig';
@@ -88,12 +88,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
 function AddGroupsDialog(props: AddGroupsDialogProps) {
   const navigate = useNavigate();
   const currentUser = useCurrentUser();
@@ -116,7 +110,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
   const [groups, setGroups] = React.useState<Array<OktaGroupDetail | AppGroupDetail>>([]);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
+  const [labels, setLabels] = React.useState<Array<UntilOption>>(untilOptionsFor(null).options);
   const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
   const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
 
@@ -167,27 +161,10 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
 
   const updateUntil = (time: number | null) => {
     setTimeLimit(time);
-    if (!(time == null)) {
-      const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-        .filter((key) => Number(key) <= time!)
-        .reduce(
-          (obj, key) => {
-            obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-            return obj;
-          },
-          {} as Record<string, string>,
-        );
-
-      setUntil(Object.keys(filteredUntil).at(-1)!);
-
-      setLabels(
-        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-          id: id,
-          label: label,
-        })),
-      );
-    } else {
-      setLabels(UNTIL_OPTIONS);
+    const untilOptions = untilOptionsFor(time);
+    setLabels(untilOptions.options);
+    if (time != null) {
+      setUntil(untilOptions.longestId);
     }
   };
 
@@ -247,7 +224,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
             </Alert>
           ) : null}
           <Typography variant="subtitle1" color="text.accent">
-            {timeLimit
+            {timeLimit != null
               ? (props.owner ? 'Ownership of ' : 'Membership to ') +
                 'one or more selected groups is limited to ' +
                 durationLabel(timeLimit) +
