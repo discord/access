@@ -355,6 +355,65 @@ async def test_effective_constraints_keeps_a_falsy_numeric_limit(db: Db) -> None
     assert entry["value"] == 0
 
 
+async def test_effective_constraints_lists_the_binding_tag_first(db: Db) -> None:
+    """For a `min` constraint the shortest limit is the one actually binding,
+    so it leads. The reader's question is which tag is stopping them, not which
+    happened to be traversed first."""
+    group = OktaGroupFactory.build()
+    # Named so alphabetical order is the opposite of value order, which is what
+    # makes this test about the value key rather than the name key.
+    lenient = TagFactory.build(name="Aardvark", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 999_999})
+    strict = TagFactory.build(name="Zebra", constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 3600})
+    db.session.add_all([group, lenient, strict])
+    await db.session.commit()
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=lenient.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=strict.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] == 3600
+    assert [source["tag_name"] for source in entry["sources"]] == ["Zebra", "Aardvark"]
+
+
+async def test_effective_constraints_breaks_value_ties_alphabetically(db: Db) -> None:
+    """Flags all coalesce to True, so nothing distinguishes them by value. The
+    name keys make the order deterministic rather than dependent on traversal."""
+    group = OktaGroupFactory.build()
+    later = TagFactory.build(name="Yak", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    earlier = TagFactory.build(name="Badger", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    db.session.add_all([group, later, earlier])
+    await db.session.commit()
+    # Added in the order that would put "Yak" first without the name key.
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=later.id))
+    db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=earlier.id))
+    await db.session.commit()
+
+    loaded = await _load_group_with_provenance(db, group.id)
+    (entry,) = effective_constraints(loaded)
+    assert entry["value"] is True
+    assert [source["tag_name"] for source in entry["sources"]] == ["Badger", "Yak"]
+
+
+async def test_effective_constraints_orders_one_tag_reaching_from_two_groups(db: Db) -> None:
+    """One tag can reach a role from two associated groups, tying on value and
+    tag name. The source name is the tiebreak that keeps the order stable."""
+    strict_group = OktaGroupFactory.build(name="Aardvark-Group")
+    lenient_group = OktaGroupFactory.build(name="Zebra-Group")
+    role = RoleGroupFactory.build()
+    tag = TagFactory.build(name="SOX", constraints={Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True})
+    db.session.add_all([strict_group, lenient_group, role, tag])
+    await db.session.commit()
+    for group in (lenient_group, strict_group):
+        db.session.add(OktaGroupTagMapFactory.build(group_id=group.id, tag_id=tag.id))
+        db.session.add(RoleGroupMap(group_id=group.id, role_group_id=role.id, is_owner=False))
+    await db.session.commit()
+
+    loaded = await _load_role(db, role.id)
+    (entry,) = effective_constraints(loaded)
+    assert [source["source_name"] for source in entry["sources"]] == ["Aardvark-Group", "Zebra-Group"]
+
+
 async def test_effective_constraints_reports_association_source(db: Db) -> None:
     role = await _setup(db, constraints={Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY: 86400}, is_owner=False)
     (entry,) = effective_constraints(role)
