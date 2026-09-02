@@ -58,14 +58,17 @@ from plugin import (  # noqa: E402
     SYNC_PENDING,
     SYNC_SKIPPED,
     SYNC_SYNCED,
+    GoogleGroupSyncError,
     GoogleGroupManagerPlugin,
 )
 
+from api.app import _drop_wrapped_ignored_errors  # noqa: E402
 from api.models import App, AppGroup  # noqa: E402
 from api.plugins.app_group_lifecycle import (  # noqa: E402
     DanglingPushMappingError,
     UnresolvableOktaTargetError,
 )
+from api.plugins._async_dispatch import run_hooks_to_completion  # noqa: E402
 
 
 @pytest.fixture
@@ -149,6 +152,22 @@ def test_group_status_properties_shape(plugin_instance: GoogleGroupManagerPlugin
         "sync_error",
         "last_synced_at",
     }
+
+
+def test_error_logs_have_a_stable_sentry_grouping_key(
+    plugin_instance: GoogleGroupManagerPlugin,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    group = _group(mocker)
+
+    with caplog.at_level(logging.ERROR, logger="app_group_lifecycle_google.plugin"):
+        plugin_instance._mark_error(ctx_mock, group, "HTTP 500")
+
+    record = caplog.records[-1]
+    assert record.msg == "Google group reconciliation failed for group %s: %s"
+    assert record.args == (group.name, "HTTP 500")
 
 
 @pytest.mark.parametrize("pattern,ok", [(None, True), (r"^[a-z-]+$", True), (r"([", False)])
@@ -1063,10 +1082,51 @@ async def test_reconcile_marks_error_and_reraises_on_unexpected_failure(
     mocker.patch.object(plugin_instance, "_get_google_group", side_effect=RuntimeError("boom"))
     set_status = ctx_mock.set_status
 
-    with pytest.raises(RuntimeError, match="boom"):
+    with pytest.raises(GoogleGroupSyncError, match="boom") as exc_info:
         await plugin_instance._reconcile(ctx_mock, group)
 
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
     set_status.assert_any_call(group, STATUS_SYNC_STATUS, SYNC_ERROR, durable_on_failure=True)
+
+
+async def test_unexpected_sync_failure_emits_one_sentry_event(
+    plugin_instance: GoogleGroupManagerPlugin,
+    mocker: MockerFixture,
+    ctx_mock: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    group = _group(
+        mocker,
+        group_config={"email": "sec", "display_name": "Sec"},
+        status={"google_group_id": "ggid-1"},
+    )
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
+        "enabled": True,
+        "email": "sec",
+        "display_name": "Sec",
+    }.get(key, default)
+    mocker.patch.object(plugin_instance, "_get_owned_group_id", return_value="ggid-1")
+    mocker.patch.object(plugin_instance, "_get_google_group", side_effect=RuntimeError("boom"))
+
+    with caplog.at_level(logging.ERROR):
+        _, exceptions = await run_hooks_to_completion(
+            [plugin_instance.sync_group(ctx=ctx_mock, group=group, plugin_id=PLUGIN_ID)],
+            context=f"sync_group hook for group {group.id}",
+        )
+
+    assert len(exceptions) == 1
+    sentry_events = [
+        event
+        for record in caplog.records
+        if record.levelno >= logging.ERROR
+        if (
+            event := _drop_wrapped_ignored_errors(
+                {"message": record.getMessage()}, {"exc_info": record.exc_info} if record.exc_info else {}
+            )
+        )
+        is not None
+    ]
+    assert sentry_events == [{"message": f"Google group reconciliation failed for group {group.name}: boom"}]
 
 
 async def test_reconcile_create_path_skips_on_pattern_violation(

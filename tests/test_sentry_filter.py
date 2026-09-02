@@ -14,6 +14,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ValidationError
 
 from api.app import _drop_wrapped_ignored_errors
+from api.plugins._async_dispatch import ReportedPluginError
 
 
 class _Args(BaseModel):
@@ -51,6 +52,10 @@ def test_drops_tool_error_wrapping_other_ignored_error() -> None:
 def test_drops_bare_ignored_errors() -> None:
     assert _drop_wrapped_ignored_errors({"event": True}, _hint(_validation_error())) is None
     assert _drop_wrapped_ignored_errors({"event": True}, _hint(HTTPException(status_code=404))) is None
+
+
+def test_drops_plugin_errors_that_were_already_reported() -> None:
+    assert _drop_wrapped_ignored_errors({"event": True}, _hint(ReportedPluginError("reported"))) is None
 
 
 def test_keeps_generic_exception() -> None:

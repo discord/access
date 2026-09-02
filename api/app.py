@@ -149,6 +149,7 @@ def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     from api.auth.dependencies import OIDCRedirectRequired
+    from api.plugins._async_dispatch import ReportedPluginError
 
     ignored = (
         HTTPException,
@@ -156,6 +157,7 @@ def _drop_wrapped_ignored_errors(event: dict, hint: dict) -> Optional[dict]:
         RequestValidationError,
         ValidationError,
         OIDCRedirectRequired,
+        ReportedPluginError,
     )
     exc = (hint or {}).get("exc_info", (None, None, None))[1]
     seen: set[int] = set()
@@ -181,6 +183,7 @@ def _configure_sentry() -> None:
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     from api.auth.dependencies import OIDCRedirectRequired
+    from api.plugins._async_dispatch import ReportedPluginError
 
     sentry_profile_env_var = environ.get("ENABLE_SENTRY_PROFILER", "0")
     logger.info(f"ENABLE_SENTRY_PROFILER: {sentry_profile_env_var}")
@@ -190,17 +193,14 @@ def _configure_sentry() -> None:
         environment=settings.ENV,
         traces_sample_rate=0.1,
         profiles_sample_rate=float(sentry_profile_env_var),
-        # Don't ship 4xx-class control flow to Sentry — those are user error,
-        # not application error, and request bodies in breadcrumbs may
-        # carry PII. OIDCRedirectRequired is the unauthenticated-OIDC
-        # path that the exception handler converts to a 307; that's
-        # control flow too, not an exception worth alerting on.
+        # Drop user/control-flow errors and plugin failures already emitted as actionable events.
         ignore_errors=[
             HTTPException,
             StarletteHTTPException,
             RequestValidationError,
             ValidationError,
             OIDCRedirectRequired,
+            ReportedPluginError,
         ],
         # sentry types before_send against its `Event` TypedDict; the hook works
         # on plain event dicts, which is correct at runtime but not assignable.

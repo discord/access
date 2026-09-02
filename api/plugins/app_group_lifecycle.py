@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, joinedload
 
 from api.models import App, AppGroup, OktaUser, OktaUserGroupMember
+from api.plugins._async_dispatch import ReportedPluginError as ReportedPluginError
 from api.plugins._async_dispatch import run_hooks_to_completion, verify_async_impls
 from api.services import okta
 from api.services.okta_service import OktaResourceNotFoundError

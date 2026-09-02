@@ -23,6 +23,14 @@ import pluggy
 logger = logging.getLogger("api")
 
 
+class ReportedPluginError(Exception):
+    """Signal that a hook already emitted its actionable error.
+
+    Hook implementations may raise this after logging at ERROR when the host still needs to count
+    the failure. Access keeps the host failure log but excludes its duplicate Sentry event.
+    """
+
+
 def verify_async_impls(pm: pluggy.PluginManager, hook_names: tuple[str, ...]) -> None:
     """Raise if any registered impl for an async hook is not a coroutine function.
 

@@ -24,6 +24,7 @@ from api.plugins.app_group_lifecycle import (
     AppGroupLifecyclePluginStatusProperty,
     DanglingPushMappingError,
     MissingOktaTargetError,
+    ReportedPluginError,
     UnresolvableOktaTargetError,
     hookimpl,
 )
@@ -73,14 +74,12 @@ GOOGLE_LOCAL_PART_RE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 logger = logging.getLogger(__name__)
 
 
-class GoogleGroupSyncError(Exception):
-    """Raised by sync_group when a reconcile finished in SYNC_ERROR.
+class GoogleGroupSyncError(ReportedPluginError):
+    """Raised when a reconcile recorded an actionable error.
 
-    _reconcile records an admin-actionable failure and returns rather than raising, so its status
-    and explanation survive the host's commit. The batch sync still has to count the group as
-    failed: `api/cli.py` tallies a failure only when the hook returns an exception, so without this
-    a run that left groups in SYNC_ERROR would exit 0 and look clean. Conditions the plugin does
-    not consider failures -- SYNC_SKIPPED and SYNC_PENDING -- deliberately do not raise."""
+    The marker prevents the host's failure log from duplicating the plugin's actionable event.
+    The exception still makes the batch sync count the group as failed and exit non-zero.
+    """
 
 
 def _is_group_absent_error(error: HttpError) -> bool:
@@ -504,7 +503,7 @@ class GoogleGroupManagerPlugin:
             group: The group being reconciled.
             error: Operator-facing failure detail, surfaced in the UI.
         """
-        logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
+        logger.error("Google group reconciliation failed for group %s: %s", group.name, error)
         self._write_sync_status(ctx, group, SYNC_ERROR, error)
 
     # ---- Reconcile ----
@@ -835,12 +834,12 @@ class GoogleGroupManagerPlugin:
 
             self._mark_synced(ctx, group)
         except Exception as e:
-            logger.exception(f"Reconcile failed for group {group.name}")
             try:
                 self._mark_error(ctx, group, str(e))
             except Exception:
                 logger.exception("Failed to persist error status")
-            raise
+                raise
+            raise GoogleGroupSyncError(f"{group.name}: {e}") from e
 
     async def _adopt_or_enforce(
         self, ctx: AppGroupLifecycleContext, group: AppGroup, google_group_id: str, google_group: dict[str, Any]
