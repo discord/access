@@ -190,7 +190,7 @@ export default function ListRoleRequests() {
             renderOption={(props, option, state) => {
               const [id, displayName, ownership, group, status, resolver] = option.split(';');
               return (
-                <li key={id} {...props}>
+                <li {...props} key={id}>
                   <Grid container alignItems="center">
                     <Grid item>
                       <Box>

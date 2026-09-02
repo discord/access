@@ -30,13 +30,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import TimelineOppositeContent, {timelineOppositeContentClasses} from '@mui/lab/TimelineOppositeContent';
 import TimelineDot from '@mui/lab/TimelineDot';
 import Chip from '@mui/material/Chip';
-import {
-  FormContainer,
-  SelectElement,
-  DatePickerElement,
-  TextFieldElement,
-  ToggleButtonGroupElement,
-} from 'react-hook-form-mui';
+import {FormContainer, SelectElement, TextFieldElement, ToggleButtonGroupElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
@@ -709,7 +704,7 @@ export default function ReadRequest() {
                                     label="Custom End Date"
                                     name="customUntil"
                                     shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                                    maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+                                    maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
                                     required
                                   />
                                 </FormControl>
@@ -720,7 +715,7 @@ export default function ReadRequest() {
                                   name="reason"
                                   multiline
                                   rows={4}
-                                  validation={{maxLength: 1024}}
+                                  rules={{maxLength: 1024}}
                                   parseError={(error) => {
                                     if (error?.message != '') {
                                       return error?.message ?? '';

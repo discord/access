@@ -241,7 +241,7 @@ function GroupDialog(props: GroupDialogProps) {
           </FormControl>
           {groupType == 'app_group' ? (
             <FormControl margin="normal" fullWidth required>
-              <AutocompleteElement
+              <AutocompleteElement<(typeof appSearchOptions)[number]>
                 label="App"
                 name="app"
                 options={appSearchOptions}
@@ -249,7 +249,7 @@ function GroupDialog(props: GroupDialogProps) {
                 autocompleteProps={{
                   disabled: props.app != null || !isAccessAdmin(props.currentUser) || props.app_owner_group,
                   getOptionLabel: (option) => option.name,
-                  isOptionEqualToValue: (option, value) => option.id == value.id,
+                  isOptionEqualToValue: (option, value) => option.id == value?.id,
                   onInputChange: (event, newInputValue) => setAppSearchInput(newInputValue),
                   onChange: (event, value) => setAppName(value!.name),
                 }}
@@ -280,7 +280,7 @@ function GroupDialog(props: GroupDialogProps) {
                 name="name"
                 variant="outlined"
                 disabled={props.app_owner_group}
-                validation={{
+                rules={{
                   maxLength: 255,
                   pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
                   validate: (value: string) => {
@@ -324,7 +324,7 @@ function GroupDialog(props: GroupDialogProps) {
               name="description"
               multiline
               rows={4}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               disabled={props.app_owner_group}
               parseError={(error) => {
                 if (error?.message != '') {

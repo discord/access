@@ -57,9 +57,11 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
   );
 }
 
+// The `false` type argument selects the text-field DOM structure the picker uses by default,
+// which is the one that forwards the `InputProps`/`inputProps` that ButtonField reads below.
 interface ButtonFieldProps
-  extends UseDateFieldProps<Dayjs>,
-    BaseSingleInputFieldProps<Dayjs | null, Dayjs, FieldSection, DateValidationError> {
+  extends UseDateFieldProps<Dayjs, false>,
+    BaseSingleInputFieldProps<Dayjs | null, Dayjs, FieldSection, false, DateValidationError> {
   setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
   startDate: Dayjs | null;
   tmpStartDate: Dayjs | null;
@@ -132,15 +134,18 @@ function ButtonField(props: ButtonFieldProps) {
 
 interface DateRangeProps extends DatePickerProps<Dayjs> {
   startDate: Dayjs | null;
-  setStartDate: (newStartDate: Dayjs | null) => void;
   endDate: Dayjs | null;
-  setEndDate: (newEndDate: Dayjs | null) => void;
+  // Both ends of a completed range are committed in a single call. Callers store the range in
+  // the query string, and `setSearchParams` hands its updater a copy of the *committed* params,
+  // so two writes from one event handler would both start from the pre-click state and the
+  // second would discard the first.
+  setDateRange: (newStartDate: Dayjs | null, newEndDate: Dayjs | null) => void;
   datesPicked: number;
   setDatesPicked: (newDatesPicked: number) => void;
 }
 
 export default function DateRangePicker(props: DateRangeProps) {
-  const {startDate, setStartDate, endDate, setEndDate, datesPicked, setDatesPicked, value, onChange, ...rest} = props;
+  const {startDate, endDate, setDateRange, datesPicked, setDatesPicked, value, onChange, ...rest} = props;
 
   const [open, setOpen] = React.useState(false);
   const [tmpStartDate, setTmpStartDate] = React.useState<Dayjs | null>(null);
@@ -156,8 +161,7 @@ export default function DateRangePicker(props: DateRangeProps) {
         onChange={(date: any) => {
           props.setDatesPicked(props.datesPicked + 1);
           if (props.datesPicked % 2 !== 0) {
-            props.setStartDate(tmpStartDate);
-            props.setEndDate(date);
+            props.setDateRange(tmpStartDate, date);
           } else {
             setTmpStartDate(date);
           }

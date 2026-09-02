@@ -146,13 +146,13 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
         <DialogContent>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof groupSearchOptions)[number]>
               label={'Search for Groups to Add'}
               name="group"
               options={groupSearchOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
-                isOptionEqualToValue: (option, value) => option.id == value.id,
+                isOptionEqualToValue: (option, value) => option.id == value?.id,
                 filterOptions: (options) =>
                   options.filter(
                     (option) => option.is_managed == true && !groups.map((group) => group.id).includes(option.id),

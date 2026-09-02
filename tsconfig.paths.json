@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "paths": {
-      "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"]
+      "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"],
+      "react-hook-form-mui/date-pickers": ["./node_modules/react-hook-form-mui/dist/date-pickers.d.ts"]
     }
   }
 }

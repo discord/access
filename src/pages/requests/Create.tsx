@@ -25,10 +25,10 @@ import {
   FormContainer,
   AutocompleteElement,
   SelectElement,
-  DatePickerElement,
   TextFieldElement,
   ToggleButtonGroupElement,
 } from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {
   useGroups,
@@ -342,14 +342,14 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </Typography>
         {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
         <FormControl margin="normal" fullWidth>
-          <AutocompleteElement
+          <AutocompleteElement<(typeof groupSearchOptions)[number]>
             label={'For which group?'}
             name="group"
             options={groupSearchOptions}
             required
             autocompleteProps={{
               getOptionLabel: (option) => option.name,
-              isOptionEqualToValue: (option, value) => option.id == value.id,
+              isOptionEqualToValue: (option, value) => option.id == value?.id,
               filterOptions: (options) => options.filter((option) => option.is_managed == true),
               onInputChange: (event, newInputValue, reason) => {
                 if (reason != 'reset') {
@@ -438,7 +438,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
               label="Custom End Date"
               name="customUntil"
               shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-              maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+              maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
               required
             />
           </FormControl>
@@ -449,7 +449,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="reason"
             multiline
             rows={4}
-            validation={{maxLength: 1024}}
+            rules={{maxLength: 1024}}
             parseError={(error) => {
               if (error?.message != '') {
                 return error?.message ?? '';

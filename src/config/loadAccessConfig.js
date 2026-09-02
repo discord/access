@@ -63,7 +63,7 @@ function validate_override_config(overrideConfig) {
 
 function loadOverrideConfig(accessConfig) {
   const envConfigPath = process.env.ACCESS_CONFIG_FILE
-    ? path.resolve(__dirname, '../../config', process.env.ACCESS_CONFIG_FILE)
+    ? path.resolve(import.meta.dirname, '../../config', process.env.ACCESS_CONFIG_FILE)
     : null;
   if (envConfigPath) {
     if (fs.existsSync(envConfigPath)) {
@@ -81,7 +81,7 @@ function loadOverrideConfig(accessConfig) {
 }
 
 function loadDefaultConfig() {
-  const defaultConfigPath = path.resolve(__dirname, '../../config/config.default.json');
+  const defaultConfigPath = path.resolve(import.meta.dirname, '../../config/config.default.json');
   const defaultConfig = JSON.parse(fs.readFileSync(defaultConfigPath, 'utf8'));
 
   return getConfig(defaultConfig, FRONTEND);

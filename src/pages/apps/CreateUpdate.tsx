@@ -162,7 +162,7 @@ function AppDialog(props: AppDialogProps) {
               label="Name"
               name="name"
               variant="outlined"
-              validation={{
+              rules={{
                 maxLength: 255,
                 pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
               }}
@@ -191,7 +191,7 @@ function AppDialog(props: AppDialogProps) {
               name="description"
               multiline
               rows={4}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               disabled={props.access_app}
               parseError={(error) => {
                 if (error?.message != '') {
