@@ -404,10 +404,22 @@ def _constraint_entry(
     flag can be switched off, and a falsy *number* is the tightest possible
     limit rather than the absence of one.
 
+    Sources are ordered by ascending value, then tag name, then source name.
+    Ascending value puts the tag that actually decided the answer first, which
+    for a `min` constraint is the shortest limit; the reader wants to know which
+    tag is binding them, not which happened to be traversed first. Flags all
+    tie -- every one left is `True` -- so they fall through to the name keys.
+    `bool` subclasses `int`, so one comparator covers both kinds of constraint.
+    The two name keys are what make the order independent of traversal, since
+    one tag can reach a role from two different groups and tie on the first two.
+
     Returns:
         The entry, or None when nothing is left contributing.
     """
-    contributing = [source for source in sources if source.value is not False]
+    contributing = sorted(
+        (source for source in sources if source.value is not False),
+        key=lambda source: (source.value, source.tag.name, source.source_name or ""),
+    )
     if not contributing:
         return None
     return {
@@ -443,10 +455,11 @@ def effective_constraints(group: OktaGroup) -> list[dict[str, Any]]:
         name), `value` (coalesced across every source under that constraint's
         own rule), and `sources`. A source names the tag, how it reached the
         group (`origin`), and the app or group it came from -- `source_id` and
-        `source_name`, both None for a `DIRECT` origin. A constraint nothing
-        sets, and a flag every tag setting it turns off, are both omitted --
-        so an untagged group returns an empty list, and so does one whose only
-        tag declines every constraint.
+        `source_name`, both None for a `DIRECT` origin. Sources are ordered by
+        ascending value, so the tag imposing the coalesced value comes first.
+        A constraint nothing sets, and a flag every tag setting it turns off,
+        are both omitted -- so an untagged group returns an empty list, and so
+        does one whose only tag declines every constraint.
 
     Raises:
         InvalidRequestError: If a relationship this reads was not eager-loaded.
