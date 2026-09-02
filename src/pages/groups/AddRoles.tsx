@@ -22,13 +22,8 @@ import InputLabel from '@mui/material/InputLabel';
 import DeleteIcon from '@mui/icons-material/Close';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {
-  AutocompleteElement,
-  DatePickerElement,
-  FormContainer,
-  SelectElement,
-  TextFieldElement,
-} from 'react-hook-form-mui';
+import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {
   useRoles,
@@ -290,7 +285,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
                 label="Custom End Date"
                 name="customUntil"
                 shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
                 required
               />
             </FormControl>
@@ -302,7 +297,7 @@ function AddRolesDialog(props: AddRolesDialogProps) {
               multiline
               rows={4}
               required={reason}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';
@@ -315,13 +310,13 @@ function AddRolesDialog(props: AddRolesDialogProps) {
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof userSearchOptions)[number]>
               label={'Search for Roles to Add'}
               name="user"
               options={userSearchOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
-                isOptionEqualToValue: (option, value) => option.id == value.id,
+                isOptionEqualToValue: (option, value) => option.id == value?.id,
                 getOptionDisabled: (option) => isOptionDisabled(option),
                 onInputChange: (event, newInputValue, reason) => {
                   if (reason != 'reset') {

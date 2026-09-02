@@ -28,14 +28,8 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import {
-  AutocompleteElement,
-  DatePickerElement,
-  FormContainer,
-  SelectElement,
-  TextFieldElement,
-  useFormContext,
-} from 'react-hook-form-mui';
+import {AutocompleteElement, FormContainer, SelectElement, TextFieldElement, useFormContext} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 import InputLabel from '@mui/material/InputLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Select from '@mui/material/Select';
@@ -793,7 +787,7 @@ export default function ReadGroupRequest() {
                                   {groupType == 'app_group' ? (
                                     <Grid item xs={6}>
                                       <FormControl margin="normal" fullWidth required>
-                                        <AutocompleteElement
+                                        <AutocompleteElement<(typeof appSearchOptions)[number]>
                                           label="App"
                                           name="resolved_app"
                                           options={appSearchOptions}
@@ -801,7 +795,7 @@ export default function ReadGroupRequest() {
                                           autocompleteProps={{
                                             getOptionLabel: (option: AppDetail) => option.name,
                                             isOptionEqualToValue: (option: AppDetail, value: AppDetail) =>
-                                              option.id == value.id,
+                                              option.id == value?.id,
                                             onInputChange: (_event: React.SyntheticEvent, newInputValue: string) =>
                                               setAppSearchInput(newInputValue),
                                             onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
@@ -831,7 +825,7 @@ export default function ReadGroupRequest() {
                                       label="Name"
                                       name="resolved_group_name"
                                       variant="outlined"
-                                      validation={{
+                                      rules={{
                                         maxLength: 255,
                                         pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
                                         validate: (value: string) => {
@@ -872,7 +866,7 @@ export default function ReadGroupRequest() {
                                     name="resolved_group_description"
                                     multiline
                                     rows={4}
-                                    validation={{maxLength: 1024}}
+                                    rules={{maxLength: 1024}}
                                     parseError={(error) => {
                                       if (error?.message != '') return error?.message ?? '';
                                       if (error.type == 'maxLength')
@@ -958,7 +952,7 @@ export default function ReadGroupRequest() {
                                 name="reason"
                                 multiline
                                 rows={4}
-                                validation={{maxLength: 1024}}
+                                rules={{maxLength: 1024}}
                                 parseError={(error) => {
                                   if (error?.message != '') return error?.message ?? '';
                                   if (error.type == 'maxLength')

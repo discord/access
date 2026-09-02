@@ -178,7 +178,7 @@ export default function ListGroupRequests() {
             renderOption={(props, option, state) => {
               const [id, displayName, group_name, status, resolver] = option.split(';');
               return (
-                <li key={id} {...props}>
+                <li {...props} key={id}>
                   <Grid container alignItems="center">
                     <Grid item>
                       <Box>

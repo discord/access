@@ -199,7 +199,7 @@ function TagDialog(props: TagDialogProps) {
                   label="Name"
                   name="name"
                   variant="outlined"
-                  validation={{
+                  rules={{
                     maxLength: 255,
                     pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
                   }}
@@ -248,7 +248,7 @@ function TagDialog(props: TagDialogProps) {
               name="description"
               multiline
               rows={4}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';

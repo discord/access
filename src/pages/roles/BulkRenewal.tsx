@@ -22,7 +22,8 @@ import Typography from '@mui/material/Typography';
 
 import AccessRequestIcon from '../../components/icons/MoreTime';
 
-import {FormContainer, DatePickerElement, TextFieldElement} from 'react-hook-form-mui';
+import {FormContainer, TextFieldElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {GridColDef, GridRenderCellParams} from '@mui/x-data-grid';
 import {useTheme} from '@mui/material';
@@ -521,7 +522,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                   multiline
                   rows={1}
                   required={requiredReason}
-                  validation={{maxLength: 1024}}
+                  rules={{maxLength: 1024}}
                   parseError={(error) => {
                     if (error?.message != '') {
                       return error?.message ?? '';
@@ -563,7 +564,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
                       label="Custom End Date"
                       name="customUntil"
                       shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                      maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+                      maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
                       required
                     />
                   </FormControl>

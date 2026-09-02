@@ -22,13 +22,8 @@ import InputLabel from '@mui/material/InputLabel';
 import DeleteIcon from '@mui/icons-material/Close';
 import CircularProgress from '@mui/material/CircularProgress';
 
-import {
-  FormContainer,
-  SelectElement,
-  AutocompleteElement,
-  DatePickerElement,
-  TextFieldElement,
-} from 'react-hook-form-mui';
+import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {
   useUsers,
@@ -278,7 +273,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
                 label="Custom End Date"
                 name="customUntil"
                 shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
                 required
               />
             </FormControl>
@@ -290,7 +285,7 @@ function AddUsersDialog(props: AddUsersDialogProps) {
               multiline
               rows={4}
               required={reason}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';
@@ -303,13 +298,13 @@ function AddUsersDialog(props: AddUsersDialogProps) {
             />
           </FormControl>
           <FormControl fullWidth sx={{margin: '8px 0'}}>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof userSearchOptions)[number]>
               label={'Search for ' + addUsersText + ' to Add'}
               name="user"
               options={userSearchOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => displayUserName(option),
-                isOptionEqualToValue: (option, value) => option.id == value.id,
+                isOptionEqualToValue: (option, value) => option.id == value?.id,
                 filterOptions: (options) =>
                   options.filter((option) => {
                     const userIds = users.map((user) => user.id);

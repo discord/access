@@ -24,13 +24,8 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 
-import {
-  FormContainer,
-  SelectElement,
-  AutocompleteElement,
-  DatePickerElement,
-  TextFieldElement,
-} from 'react-hook-form-mui';
+import {FormContainer, SelectElement, AutocompleteElement, TextFieldElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {
   useGroups,
@@ -277,7 +272,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
                 label="Custom End Date"
                 name="customUntil"
                 shouldDisableDate={(date: Dayjs) => date.isSameOrBefore(dayjs(), 'day')}
-                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : null}
+                maxDate={timeLimit ? dayjs().add(timeLimit, 'second') : undefined}
                 required
               />
             </FormControl>
@@ -289,7 +284,7 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
               multiline
               rows={4}
               required={requiredReason}
-              validation={{maxLength: 1024}}
+              rules={{maxLength: 1024}}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';
@@ -302,13 +297,13 @@ function AddGroupsDialog(props: AddGroupsDialogProps) {
             />
           </FormControl>
           <FormControl fullWidth sx={{margin: '8px 0'}}>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof autocompleteOptions)[number]>
               label={'Search for ' + addGroupsText + ' to Add'}
               name="group"
               options={autocompleteOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
-                isOptionEqualToValue: (option, value) => option.id == value.id,
+                isOptionEqualToValue: (option, value) => option.id == value?.id,
                 filterOptions: (options) =>
                   options.filter(
                     (option) =>

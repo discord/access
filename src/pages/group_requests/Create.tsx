@@ -19,13 +19,8 @@ import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 
-import {
-  FormContainer,
-  AutocompleteElement,
-  SelectElement,
-  DatePickerElement,
-  TextFieldElement,
-} from 'react-hook-form-mui';
+import {FormContainer, AutocompleteElement, SelectElement, TextFieldElement} from 'react-hook-form-mui';
+import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
 
 import {
   useGroupRequestsCreate,
@@ -264,14 +259,14 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
         </FormControl>
         {groupType === 'app_group' && (
           <FormControl margin="normal" fullWidth required>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof appSearchOptions)[number]>
               label="App"
               name="app"
               options={appSearchOptions}
               required
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
-                isOptionEqualToValue: (option, value) => option.id === value.id,
+                isOptionEqualToValue: (option, value) => option.id === value?.id,
                 onInputChange: (_event, newVal) => setAppSearchInput(newVal),
                 onChange: (_event, value) => setSelectedApp(value ?? null),
               }}
@@ -303,7 +298,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 label="Name"
                 name="name"
                 variant="outlined"
-                validation={{
+                rules={{
                   maxLength: 255,
                   pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
                 }}
@@ -325,7 +320,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="description"
             multiline
             rows={3}
-            validation={{maxLength: 1024}}
+            rules={{maxLength: 1024}}
             parseError={(error) => {
               if (error?.message) return error.message;
               if (error?.type === 'maxLength') return 'Description can be at most 1024 characters';
@@ -381,7 +376,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
             name="reason"
             multiline
             rows={4}
-            validation={{maxLength: 1024}}
+            rules={{maxLength: 1024}}
             parseError={(error) => {
               if (error?.message) return error.message;
               if (error?.type === 'maxLength') return 'Reason can be at most 1024 characters';

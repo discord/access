@@ -57,9 +57,11 @@ function HighlightDay(props: PickersDayProps<Dayjs> & {startDate?: Dayjs; endDat
   );
 }
 
+// The `false` type argument selects the text-field DOM structure the picker uses by default,
+// which is the one that forwards the `InputProps`/`inputProps` that ButtonField reads below.
 interface ButtonFieldProps
-  extends UseDateFieldProps<Dayjs>,
-    BaseSingleInputFieldProps<Dayjs | null, Dayjs, FieldSection, DateValidationError> {
+  extends UseDateFieldProps<Dayjs, false>,
+    BaseSingleInputFieldProps<Dayjs | null, Dayjs, FieldSection, false, DateValidationError> {
   setOpen?: React.Dispatch<React.SetStateAction<boolean>>;
   startDate: Dayjs | null;
   tmpStartDate: Dayjs | null;

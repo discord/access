@@ -128,13 +128,13 @@ function AddAppsDialog(props: AddAppsDialogProps) {
         <DialogContent>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
           <FormControl margin="normal" fullWidth>
-            <AutocompleteElement
+            <AutocompleteElement<(typeof appSearchOptions)[number]>
               label={'Search for Apps to Add'}
               name="app"
               options={appSearchOptions}
               autocompleteProps={{
                 getOptionLabel: (option) => option.name,
-                isOptionEqualToValue: (option, value) => option.id == value.id,
+                isOptionEqualToValue: (option, value) => option.id == value?.id,
                 filterOptions: (options) => options.filter((option) => !apps.map((app) => app.id).includes(option.id)),
                 onInputChange: (event, newInputValue, reason) => {
                   if (reason != 'reset') {

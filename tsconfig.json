@@ -29,7 +29,10 @@
       "./src/globals.d.ts"
     ],
     "paths": {
-      "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"]
+      "@mui/styled-engine": ["./node_modules/@mui/styled-engine-sc"],
+      // `moduleResolution: node` predates `exports` maps, and react-hook-form-mui only
+      // publishes this subpath through one. Vite and Node resolve it natively.
+      "react-hook-form-mui/date-pickers": ["./node_modules/react-hook-form-mui/dist/date-pickers.d.ts"]
     }
   },
   "include": [
