@@ -1492,12 +1492,16 @@ export type UpdateAppBody = {
  * Body for PUT /api/tags/{id}. All fields optional (partial update).
  */
 export type UpdateTagBody = {
-  name?: string | null;
+  /**
+   * @maxLength 255
+   * @minLength 1
+   */
+  name?: string;
   description?: string | null;
   constraints?: {
     [key: string]: any;
   } | null;
-  enabled?: boolean | null;
+  enabled?: boolean;
 };
 
 export type AccessRequestAppGroupRef = {

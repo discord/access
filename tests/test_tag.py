@@ -542,3 +542,73 @@ async def test_get_tag_detail_active_group_tags_carries_group_description(
         if entry.get("active_group") is not None
     ]
     assert "tag-detail-description-fixture" in descriptions
+
+
+# --- Explicit nulls on a partial tag update ---------------------------------
+#
+# A partial PUT may omit any field, which `UpdateTagBody` allows by giving each
+# one a default. Nullability is a separate question: `name` and `enabled` back
+# columns that forbid null and have no meaningful empty value, so they are not
+# typed `Optional` and an explicit JSON `null` is rejected rather than written.
+# `description` and `constraints` do have one and stay nullable, coerced by the
+# handler to `""` / `{}`.
+
+
+@pytest.mark.parametrize("field", ["name", "enabled"])
+async def test_put_tag_rejects_an_explicit_null(
+    client: AsyncClient, db: Db, tag: Tag, url_for: Any, field: str
+) -> None:
+    db.session.add(tag)
+    await db.session.commit()
+    tag_id, tag_name, tag_enabled = tag.id, tag.name, tag.enabled
+
+    response = await client.put(url_for("api-tags.tag_by_id", tag_id=tag_id), json={field: None})
+    assert response.status_code == 400
+    assert field in response.text
+
+    # The row is untouched, rather than left holding a null the column forbids.
+    db.session.expire_all()
+    reloaded = await db.session.get(Tag, tag_id)
+    assert reloaded is not None
+    assert reloaded.name == tag_name
+    assert reloaded.enabled == tag_enabled
+
+
+async def test_put_tag_still_clears_the_fields_that_have_an_empty_value(
+    client: AsyncClient, db: Db, tag: Tag, url_for: Any
+) -> None:
+    """`description` and `constraints` keep their null-to-empty coercion."""
+    tag.description = "something"
+    tag.constraints = {Tag.REQUIRE_MEMBER_REASON_CONSTRAINT_KEY: True}
+    db.session.add(tag)
+    await db.session.commit()
+    tag_id = tag.id
+
+    response = await client.put(
+        url_for("api-tags.tag_by_id", tag_id=tag_id), json={"description": None, "constraints": None}
+    )
+    assert response.status_code == 200
+
+    db.session.expire_all()
+    reloaded = await db.session.get(Tag, tag_id)
+    assert reloaded is not None
+    assert reloaded.description == ""
+    assert reloaded.constraints == {}
+
+
+async def test_put_tag_leaves_omitted_fields_alone(client: AsyncClient, db: Db, tag: Tag, url_for: Any) -> None:
+    """The point of the rejection is that omission remains the way to say
+    "leave this as it is"."""
+    tag.enabled = False
+    db.session.add(tag)
+    await db.session.commit()
+    tag_id, tag_name = tag.id, tag.name
+
+    response = await client.put(url_for("api-tags.tag_by_id", tag_id=tag_id), json={"description": "updated"})
+    assert response.status_code == 200
+
+    db.session.expire_all()
+    reloaded = await db.session.get(Tag, tag_id)
+    assert reloaded is not None
+    assert reloaded.name == tag_name
+    assert reloaded.enabled is False
