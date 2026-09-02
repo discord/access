@@ -9,10 +9,14 @@
 // Mirrored here so the tag form reports the conflict inline rather than
 // bouncing the admin off a 400 after submit.
 
-// Captions for the two controls, shared with the form so the message names a
-// restriction by the same words the admin just toggled.
-export const OWNER_SELF_ADD_LABEL = 'Disallow owners adding selves as owners';
-export const MEMBER_SELF_ADD_LABEL = 'Disallow owners adding selves as members';
+import {CONSTRAINT_LABELS, DISALLOW_SELF_ADD_MEMBERSHIP, DISALLOW_SELF_ADD_OWNERSHIP} from './constraintHelp';
+
+// The message names a restriction by the same words the admin just toggled, so
+// it reads off the shared labels rather than repeating them. Trailing "?" is
+// trimmed: the label is a question the toggle answers, but here it is the
+// subject of a sentence.
+const OWNER_SELF_ADD_SUBJECT = CONSTRAINT_LABELS[DISALLOW_SELF_ADD_OWNERSHIP].replace(/\?$/, '');
+const MEMBER_SELF_ADD_SUBJECT = CONSTRAINT_LABELS[DISALLOW_SELF_ADD_MEMBERSHIP].replace(/\?$/, '');
 
 export interface PropagationConflictInput {
   propagateToRoles: 'yes' | 'no';
@@ -34,10 +38,10 @@ export function propagationConflictMessage({
 
   const conflicting: string[] = [];
   if (ownerAdd === 'yes') {
-    conflicting.push(`“${OWNER_SELF_ADD_LABEL}”`);
+    conflicting.push(`“${OWNER_SELF_ADD_SUBJECT}”`);
   }
   if (memberAdd === 'yes') {
-    conflicting.push(`“${MEMBER_SELF_ADD_LABEL}”`);
+    conflicting.push(`“${MEMBER_SELF_ADD_SUBJECT}”`);
   }
   if (conflicting.length === 0) {
     return null;
