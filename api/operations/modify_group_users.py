@@ -9,6 +9,7 @@ from api.context import get_request_context
 from sqlalchemy.orm import joinedload, selectin_polymorphic, selectinload
 
 from api.extensions import db
+from api.operations._derived_reason import role_derived_reason
 from api.operations._fan_out import defer_or_drain_fan_out, prepare_notification_task
 from api.models import (
     AccessRequest,
@@ -668,7 +669,15 @@ class ModifyGroupUsers:
                             is_owner=role_associated_group_map.is_owner,
                             role_group_map_id=role_associated_group_map.id,
                             ended_at=associated_users_ended_at,
-                            created_reason=self.created_reason,
+                            # The mirror of `ModifyRoleGroups`: this operation
+                            # supplies why the user joined the role, and the
+                            # association mapping supplies why the role reaches
+                            # this group.
+                            created_reason=role_derived_reason(
+                                self.created_reason,
+                                role_associated_group_map.created_reason,
+                                is_owner=role_associated_group_map.is_owner,
+                            ),
                             created_actor_id=self.current_user_id,
                             ended_actor_id=self.current_user_id if associated_users_ended_at is not None else None,
                         )

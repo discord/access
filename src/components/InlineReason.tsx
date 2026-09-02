@@ -20,6 +20,10 @@ export default function InlineReason({reason}: InlineReasonProps) {
       <Typography
         variant="body2"
         sx={{
+          // A role-derived justification is two labelled lines; without this
+          // they render as one run-on sentence. The clamp below still bounds
+          // the height.
+          whiteSpace: 'pre-line',
           wordBreak: 'break-word',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
