@@ -44,7 +44,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import {groupBy, displayUserName} from '../../helpers';
-import {durationLabel, useConstraintsForGroups} from '../../constraints';
+import {durationLabel, untilOptionsFor, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
@@ -106,12 +106,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
 // Which constraints apply to the requested group, resolved by the API rather
 // than re-derived here. A requested role's applicable constraints cannot be
 // read off its own tags: they depend on which of its associations propagate,
@@ -148,7 +142,7 @@ export default function ReadRequest() {
   const requestedUntil =
     requestedUntilDelta == null
       ? 'indefinite'
-      : requestedUntilDelta in UNTIL_ID_TO_LABELS
+      : requestedUntilDelta in accessConfig.ACCESS_TIME_LABELS
         ? requestedUntilDelta.toString()
         : 'custom';
 
@@ -196,26 +190,7 @@ export default function ReadRequest() {
     autofill_until = true;
   }
 
-  let labels = null;
-  let requestedUntilAdjusted: string | undefined = undefined;
-  if (!(timeLimit == null)) {
-    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-      .filter((key) => Number(key) <= timeLimit!)
-      .reduce(
-        (obj, key) => {
-          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-          return obj;
-        },
-        {} as Record<string, string>,
-      );
-
-    requestedUntilAdjusted = Object.keys(filteredUntil).at(-1);
-
-    labels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-      id: id,
-      label: label,
-    }));
-  }
+  const untilOptions = untilOptionsFor(timeLimit);
 
   // Owned here rather than by `FormContainer` so the effect below can move the
   // `until` field once the constraints land. React Hook Form snapshots
@@ -229,13 +204,11 @@ export default function ReadRequest() {
 
   React.useEffect(() => {
     // The limit came back lower than what was requested, so the approver's
-    // starting point is the longest duration still on offer. Guarded on
-    // `requestedUntilAdjusted` rather than on `timeLimit` being truthy, since a
-    // limit of zero leaves nothing to offer and the field should stay put.
-    if (timeLimit != null && !autofill_until && requestedUntilAdjusted) {
-      resolveForm.setValue('until', requestedUntilAdjusted);
+    // starting point is the longest duration still on offer.
+    if (timeLimit != null && !autofill_until) {
+      resolveForm.setValue('until', untilOptions.longestId);
     }
-  }, [timeLimit, autofill_until, requestedUntilAdjusted]);
+  }, [timeLimit, autofill_until, untilOptions.longestId]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.
@@ -641,7 +614,7 @@ export default function ReadRequest() {
                                   <Grid container>
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle1" color="text.accent">
-                                        {timeLimit
+                                        {timeLimit != null
                                           ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
                                             durationLabel(timeLimit) +
@@ -654,7 +627,7 @@ export default function ReadRequest() {
                                         fullWidth
                                         label="For how long?"
                                         name="until"
-                                        options={labels ?? UNTIL_OPTIONS}
+                                        options={untilOptions.options}
                                         onChange={(value) => setUntil(value)}
                                         required
                                       />

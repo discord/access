@@ -65,7 +65,7 @@ import {
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import {displayUserName} from '../../helpers';
-import {durationLabel, useConstraintsForTags} from '../../constraints';
+import {durationLabel, untilOptionsFor, useConstraintsForTags} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
@@ -86,12 +86,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
 } as const;
 
 const GROUP_TYPE_OPTIONS = Object.entries(GROUP_TYPE_ID_TO_LABELS).map(([id, label]) => ({id, label}));
-
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label]) => ({id, label}));
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
 
 const APP_GROUP_PREFIX = 'App-';
 const APP_NAME_APP_GROUP_SEPARATOR = '-';
@@ -119,10 +113,10 @@ function OwnershipEndingField({
     if (ownershipTimeLimit == null) {
       return constraintsBlocked
         ? [[], accessConfig.DEFAULT_ACCESS_TIME]
-        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+        : [untilOptionsFor(null).options, accessConfig.DEFAULT_ACCESS_TIME];
     }
-    const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
-    return [filtered, lastId];
+    const untilOptions = untilOptionsFor(ownershipTimeLimit);
+    return [untilOptions.options, untilOptions.longestId];
   }, [ownershipTimeLimit, constraintsBlocked]);
 
   React.useEffect(() => {
@@ -159,25 +153,6 @@ function OwnershipEndingField({
       />
     </FormControl>
   );
-}
-
-function filterUntilLabels(timeLimit: number): [string, Array<{id: string; label: string}>] {
-  const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-    .filter((key) => Number(key) <= timeLimit)
-    .reduce(
-      (obj, key) => {
-        obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-        return obj;
-      },
-      {} as Record<string, string>,
-    );
-
-  const filteredLabels = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
-    id,
-    label,
-  }));
-
-  return [Object.keys(filteredUntil).at(-1)!, filteredLabels];
 }
 
 interface ResolveRequestForm {
@@ -233,7 +208,7 @@ export default function ReadGroupRequest() {
       if (data.requested_ownership_ending_at) {
         const delta =
           Math.round(dayjs(data.requested_ownership_ending_at).diff(dayjs(data.created_at), 'second') / 100) * 100;
-        setOwnershipUntil(delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom');
+        setOwnershipUntil(delta in accessConfig.ACCESS_TIME_LABELS ? delta.toString() : 'custom');
       }
       setTypesSeeded(true);
     }
@@ -463,7 +438,7 @@ export default function ReadGroupRequest() {
       ? (() => {
           const endingAt = groupRequest.requested_ownership_ending_at;
           const delta = Math.round(dayjs(endingAt).diff(dayjs(groupRequest.created_at), 'second') / 100) * 100;
-          return delta in UNTIL_ID_TO_LABELS ? delta.toString() : 'custom';
+          return delta in accessConfig.ACCESS_TIME_LABELS ? delta.toString() : 'custom';
         })()
       : 'indefinite',
     resolved_ownership_ending_at_custom: groupRequest.requested_ownership_ending_at ?? undefined,
