@@ -48,7 +48,13 @@ import {
   RoleGroupMapDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin} from '../../authorization';
-import {carriedConstraints, durationLabel, useConstraintsForGroups} from '../../constraints';
+import {
+  carriedConstraints,
+  durationLabel,
+  untilOptionsFor,
+  useConstraintsForGroups,
+  type UntilOption,
+} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import accessConfig from '../../config/accessConfig';
 
@@ -186,33 +192,6 @@ const GROUP_TYPE_ID_TO_LABELS: Record<string, string> = {
   role_group: 'Role',
 } as const;
 
-const UNTIL_ID_TO_LABELS: Record<string, string> = accessConfig.ACCESS_TIME_LABELS;
-const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(UNTIL_ID_TO_LABELS).filter(([key]) => !isNaN(Number(key))),
-);
-const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
-
-function filterUntilLabels(timeLimit: number): [string, Array<Record<string, string>>] {
-  const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-    .filter((key) => Number(key) <= timeLimit!)
-    .reduce(
-      (obj, key) => {
-        obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-        return obj;
-      },
-      {} as Record<string, string>,
-    );
-
-  const filteredLabeles = Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(
-    ([id, label], index) => ({
-      id: id,
-      label: label,
-    }),
-  );
-
-  return [Object.keys(filteredUntil).at(-1)!, filteredLabeles];
-}
-
 function CreateRequestContainer(props: CreateRequestContainerProps) {
   const navigate = useNavigate();
 
@@ -230,7 +209,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   // constraints arrive, including on first render for a group passed in as a
   // prop.
   const [until, setUntil] = React.useState(accessConfig.DEFAULT_ACCESS_TIME);
-  const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
+  const [labels, setLabels] = React.useState<Array<UntilOption>>(untilOptionsFor(null).options);
 
   // Owned here rather than by `FormContainer` so the constraint effect below
   // can move the `until` field when the allowed durations narrow.
@@ -290,19 +269,18 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
     if (constraints.blocked) {
       return;
     }
+    const untilOptions = untilOptionsFor(timeLimit);
+    setLabels(untilOptions.options);
     if (timeLimit == null) {
-      setLabels(UNTIL_OPTIONS);
       return;
     }
-    const [filteredUntil, filteredLabels] = filterUntilLabels(timeLimit);
-    setUntil(filteredUntil);
-    setLabels(filteredLabels);
+    setUntil(untilOptions.longestId);
     // The form's own value has to move too, not just the option list. RHF
     // snapshots `defaultValues` at mount, so narrowing the options underneath
     // it leaves the field holding a duration no longer on offer -- the select
     // renders blank and a submit sends a length the backend then shortens
     // without saying so.
-    formContext.setValue('until', filteredUntil);
+    formContext.setValue('until', untilOptions.longestId);
   }, [timeLimit, constraints.blocked]);
 
   const submit = (requestForm: CreateRequestForm) => {
@@ -339,7 +317,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       </DialogTitle>
       <DialogContent>
         <Typography variant="subtitle1" color="text.accent">
-          {timeLimit
+          {timeLimit != null
             ? (owner ? 'Ownership of ' : 'Membership to ') +
               'this group is limited to ' +
               durationLabel(timeLimit) +
@@ -395,7 +373,7 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 fullWidth
                 label="For how long?"
                 name="until"
-                options={labels ?? UNTIL_OPTIONS}
+                options={labels}
                 onChange={(value) => setUntil(value)}
                 required
               />
