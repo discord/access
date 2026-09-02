@@ -42,7 +42,7 @@ dependencies = [
     # MCP — embedded Model Context Protocol server (gated behind ENABLE_MCP).
     # Bumping the major (2.x) will break imports — FastMCP's API has
     # historically reshaped between majors.
-    "mcp[cli]==1.28.1",
+    "mcp[cli]==2.1.1",
 ]
 
 [project.scripts]
