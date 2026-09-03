@@ -90,9 +90,16 @@ export async function apiFetch<
       return (await response.blob()) as unknown as TData;
     }
   } catch (e) {
-    // Genuine network/abort failures arrive here as `Error` instances; the
-    // re-thrown problem-detail above is already in `{status, payload}` shape,
-    // so pass it through untouched.
+    // React Query aborts the signal whenever a query is cancelled -- a navigation, or a
+    // search keystroke superseding the request in flight. `DOMException` extends `Error`,
+    // so without this the abort would be rewritten as a network failure below and React
+    // Query would never see the cancellation it asked for.
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw e;
+    }
+    // Genuine network failures arrive here as `Error` instances; the re-thrown
+    // problem-detail above is already in `{status, payload}` shape, so pass it
+    // through untouched.
     if (e instanceof Error) {
       throw {
         status: 'unknown' as const,

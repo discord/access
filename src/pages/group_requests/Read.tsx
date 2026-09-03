@@ -800,7 +800,10 @@ export default function ReadGroupRequest() {
                                               setAppSearchInput(newInputValue),
                                             onChange: (_event: React.SyntheticEvent, value: AppDetail | null) =>
                                               setAppName(value?.name ?? ''),
-                                            disabled: !admin,
+                                            // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
+                                            // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
+                                            // this would drop the app from the submitted form.
+                                            readOnly: !admin,
                                           }}
                                         />
                                       </FormControl>

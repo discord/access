@@ -363,7 +363,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
                 updateUntil(value);
               },
               inputValue: groupSearchInput,
-              disabled: props.group != null,
+              // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
+              // rhf-mui forwards `autocompleteProps.disabled` straight into `useController`, so
+              // disabling this would submit the group as `undefined`. readOnly fixes the value
+              // without dropping it.
+              readOnly: props.group != null,
               renderOption: (props, option, state) => {
                 return (
                   <li {...props}>

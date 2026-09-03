@@ -247,11 +247,14 @@ function GroupDialog(props: GroupDialogProps) {
                 options={appSearchOptions}
                 required
                 autocompleteProps={{
-                  disabled: props.app != null || !isAccessAdmin(props.currentUser) || props.app_owner_group,
+                  // `readOnly`, not `disabled`: react-hook-form clears a disabled field's value, and
+                  // rhf-mui forwards `autocompleteProps.disabled` into `useController`, so disabling
+                  // this would drop the app from the submitted form.
+                  readOnly: props.app != null || !isAccessAdmin(props.currentUser) || props.app_owner_group,
                   getOptionLabel: (option) => option.name,
                   isOptionEqualToValue: (option, value) => option.id == value?.id,
                   onInputChange: (event, newInputValue) => setAppSearchInput(newInputValue),
-                  onChange: (event, value) => setAppName(value!.name),
+                  onChange: (event, value) => setAppName(value?.name ?? ''),
                 }}
               />
             </FormControl>
