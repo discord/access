@@ -19,6 +19,15 @@ mock_google_auth.default = MagicMock(return_value=(MagicMock(), None))
 mock_googleapiclient_discovery = MagicMock()
 mock_googleapiclient_discovery.build = MagicMock(return_value=MagicMock())
 
+
+class _FakeHttpRequest:
+    def execute(self, http: Any = None, num_retries: int = 0) -> Any:
+        return None
+
+
+mock_googleapiclient_http = MagicMock()
+mock_googleapiclient_http.HttpRequest = _FakeHttpRequest
+
 sys.modules["google"] = MagicMock()
 sys.modules["google.auth"] = mock_google_auth
 sys.modules["google.cloud"] = MagicMock()
@@ -26,6 +35,7 @@ sys.modules["google.cloud.sql"] = MagicMock()
 sys.modules["google.cloud.sql.connector"] = MagicMock()
 sys.modules["googleapiclient"] = MagicMock()
 sys.modules["googleapiclient.discovery"] = mock_googleapiclient_discovery
+sys.modules["googleapiclient.http"] = mock_googleapiclient_http
 
 
 class _FakeHttpError(Exception):
@@ -59,6 +69,7 @@ from plugin import (  # noqa: E402
     SYNC_SKIPPED,
     SYNC_SYNCED,
     GoogleGroupManagerPlugin,
+    _RetryingHttpRequest,
 )
 
 from api.models import App, AppGroup  # noqa: E402
@@ -359,15 +370,24 @@ async def test_get_google_group_calls_get_by_resource_name(
     assert mock_groups_api.get.call_args.kwargs == {"name": "groups/ggid-1"}
 
 
-async def test_get_google_group_enables_bounded_retries(
-    plugin_instance: GoogleGroupManagerPlugin, mock_groups_api: MagicMock
-) -> None:
-    request = mock_groups_api.get.return_value
-    request.execute.return_value = {"name": "groups/ggid-1"}
+def test_google_client_configures_bounded_retries(mocker: MockerFixture) -> None:
+    credentials = Mock()
+    mocker.patch("plugin.default", return_value=(credentials, None))
+    client = MagicMock()
+    build = mocker.patch("plugin.build", return_value=client)
 
-    assert await plugin_instance._get_google_group("ggid-1") == {"name": "groups/ggid-1"}
+    GoogleGroupManagerPlugin()
+
+    build.assert_called_once_with("cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest)
     assert GOOGLE_API_NUM_RETRIES == 3
-    request.execute.assert_called_once_with(num_retries=GOOGLE_API_NUM_RETRIES)
+
+
+def test_google_client_request_retry_default(mocker: MockerFixture) -> None:
+    execute = mocker.patch.object(_FakeHttpRequest, "execute")
+
+    _RetryingHttpRequest().execute()
+
+    execute.assert_called_once_with(http=None, num_retries=GOOGLE_API_NUM_RETRIES)
 
 
 async def test_patch_google_group_sets_update_mask(

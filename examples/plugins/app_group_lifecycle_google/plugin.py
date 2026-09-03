@@ -15,6 +15,7 @@ from typing import Any
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import HttpRequest
 from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
@@ -84,6 +85,13 @@ class GoogleGroupSyncError(Exception):
     """
 
 
+class _RetryingHttpRequest(HttpRequest):
+    """Google API request with a bounded retry default."""
+
+    def execute(self, http: Any = None, num_retries: int = GOOGLE_API_NUM_RETRIES) -> Any:
+        return super().execute(http=http, num_retries=num_retries)
+
+
 def _is_group_absent_error(error: HttpError) -> bool:
     """Whether a Cloud Identity error means the group is not visible to us.
 
@@ -116,7 +124,9 @@ class GoogleGroupManagerPlugin:
         self._domain = domain
 
         credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
-        self._groups_api = build("cloudidentity", "v1", credentials=credentials).groups()
+        self._groups_api = build(
+            "cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest
+        ).groups()
 
     # ---- Helpers ----
 
@@ -345,8 +355,8 @@ class GoogleGroupManagerPlugin:
     # plugin interface these wrappers are coroutines that offload each blocking `.execute()`
     # to a worker thread (asyncio.to_thread) so they never stall the event loop.
     async def _execute_request(self, request: Any) -> Any:
-        """Execute a blocking Google request with bounded retries off the event loop."""
-        return await asyncio.to_thread(request.execute, num_retries=GOOGLE_API_NUM_RETRIES)
+        """Execute a blocking Google request off the event loop."""
+        return await asyncio.to_thread(request.execute)
 
     async def _get_google_group(self, google_group_id: str) -> dict[str, Any]:
         return await self._execute_request(self._groups_api.get(name=self._resource_name(google_group_id)))
