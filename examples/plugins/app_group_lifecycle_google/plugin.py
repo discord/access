@@ -15,6 +15,7 @@ from typing import Any
 from google.auth import default
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from googleapiclient.http import HttpRequest
 from api.models import AppGroup
 from api.plugins.app_group_lifecycle import (
     AmbiguousOktaTargetError,
@@ -31,6 +32,7 @@ from api.plugins.app_group_lifecycle import (
 PLUGIN_ID = "google_group_manager"
 
 GOOGLE_GROUP_API_SCOPES = ["https://www.googleapis.com/auth/cloud-identity.groups"]
+GOOGLE_API_NUM_RETRIES = 3
 
 ENV_OKTA_APP_ID = "GOOGLE_WORKSPACE_OKTA_APP_ID"
 ENV_DOMAIN = "GOOGLE_WORKSPACE_DOMAIN"
@@ -79,7 +81,15 @@ class GoogleGroupSyncError(Exception):
     and explanation survive the host's commit. The batch sync still has to count the group as
     failed: `api/cli.py` tallies a failure only when the hook returns an exception, so without this
     a run that left groups in SYNC_ERROR would exit 0 and look clean. Conditions the plugin does
-    not consider failures -- SYNC_SKIPPED and SYNC_PENDING -- deliberately do not raise."""
+    not consider failures -- SYNC_SKIPPED and SYNC_PENDING -- deliberately do not raise.
+    """
+
+
+class _RetryingHttpRequest(HttpRequest):
+    """Google API request with a bounded retry default."""
+
+    def execute(self, http: Any = None, num_retries: int = GOOGLE_API_NUM_RETRIES) -> Any:
+        return super().execute(http=http, num_retries=num_retries)
 
 
 def _is_group_absent_error(error: HttpError) -> bool:
@@ -114,7 +124,9 @@ class GoogleGroupManagerPlugin:
         self._domain = domain
 
         credentials, _ = default(scopes=GOOGLE_GROUP_API_SCOPES)
-        self._groups_api = build("cloudidentity", "v1", credentials=credentials).groups()
+        self._groups_api = build(
+            "cloudidentity", "v1", credentials=credentials, requestBuilder=_RetryingHttpRequest
+        ).groups()
 
     # ---- Helpers ----
 
@@ -342,10 +354,12 @@ class GoogleGroupManagerPlugin:
     # The google-api-python-client is a synchronous, blocking HTTP client. Under the async
     # plugin interface these wrappers are coroutines that offload each blocking `.execute()`
     # to a worker thread (asyncio.to_thread) so they never stall the event loop.
+    async def _execute_request(self, request: Any) -> Any:
+        """Execute a blocking Google request off the event loop."""
+        return await asyncio.to_thread(request.execute)
+
     async def _get_google_group(self, google_group_id: str) -> dict[str, Any]:
-        return await asyncio.to_thread(
-            lambda: self._groups_api.get(name=self._resource_name(google_group_id)).execute()
-        )
+        return await self._execute_request(self._groups_api.get(name=self._resource_name(google_group_id)))
 
     async def _patch_google_group(
         self, google_group_id: str, *, display_name: str | None = None, description: str | None = None
@@ -368,17 +382,13 @@ class GoogleGroupManagerPlugin:
         if not body:
             return
         update_mask = ",".join(sorted(body))
-        await asyncio.to_thread(
-            lambda: self._groups_api.patch(
-                name=self._resource_name(google_group_id), body=body, updateMask=update_mask
-            ).execute()
+        await self._execute_request(
+            self._groups_api.patch(name=self._resource_name(google_group_id), body=body, updateMask=update_mask)
         )
 
     async def _delete_google_group(self, google_group_id: str) -> None:
         try:
-            await asyncio.to_thread(
-                lambda: self._groups_api.delete(name=self._resource_name(google_group_id)).execute()
-            )
+            await self._execute_request(self._groups_api.delete(name=self._resource_name(google_group_id)))
         except HttpError as e:
             if _is_group_absent_error(e):
                 logger.warning(
@@ -398,7 +408,7 @@ class GoogleGroupManagerPlugin:
             The bare group id, or None if no such group is visible.
         """
         try:
-            result = await asyncio.to_thread(lambda: self._groups_api.lookup(groupKey_id=email).execute())
+            result = await self._execute_request(self._groups_api.lookup(groupKey_id=email))
         except HttpError as e:
             if _is_group_absent_error(e):
                 return None
@@ -505,7 +515,7 @@ class GoogleGroupManagerPlugin:
             group: The group being reconciled.
             error: Operator-facing failure detail, surfaced in the UI.
         """
-        logger.error(f"Google group reconciliation failed for group {group.name}: {error}")
+        logger.error("Google group reconciliation failed for group %s: %s", group.name, error)
         self._write_sync_status(ctx, group, SYNC_ERROR, error)
 
     # ---- Reconcile ----
@@ -836,7 +846,6 @@ class GoogleGroupManagerPlugin:
 
             self._mark_synced(ctx, group)
         except Exception as e:
-            logger.exception(f"Reconcile failed for group {group.name}")
             try:
                 self._mark_error(ctx, group, str(e))
             except Exception:
