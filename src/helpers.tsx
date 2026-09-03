@@ -1,3 +1,5 @@
+import dayjs, {Dayjs} from 'dayjs';
+
 import {
   OktaUserDetail,
   OktaUserSummary,
@@ -164,4 +166,141 @@ export function groupMemberships(
   memberships: Array<OktaUserGroupMemberDetail> | undefined,
 ): Record<string, Array<OktaUserGroupMemberDetail>> {
   return groupBy(memberships ?? [], (membership) => membership.active_user?.id ?? '');
+}
+
+/**
+ * The resolution_reason the backend writes when the sync cronjob closes a
+ * request for age or for a lapsed window. Mirrors `EXPIRED_REQUEST_REASON` in
+ * `api/syncer.py`, which is the producer.
+ *
+ * Expiration is deliberately not modelled as its own status or column, so this
+ * string plus a null resolver is how the UI recognizes it. Keep the two in
+ * sync; `tests/test_expired_reason_constant.py` fails if they drift.
+ */
+export const EXPIRED_REQUEST_REASON = 'Closed because the request expired';
+
+export interface ExpirableRequest {
+  status?: string | null;
+  resolver?: {id?: string} | null;
+  resolution_reason?: string | null;
+}
+
+/**
+ * True when a request was closed by the expiration sweep rather than by a
+ * person or by another system path.
+ *
+ * A null resolver alone is not enough: user deletion, group deletion, group
+ * unmanaging, and a conditional-access plugin denial all close requests with no
+ * resolver too. The reason string is what separates expiration from those, and
+ * in particular from a policy denial, which must never be offered a one-click
+ * reopen.
+ *
+ * Checks `resolver`, NOT `resolver_user_id`: AccessRequestDetail and
+ * RoleRequestDetail expose both, but GroupRequestDetail exposes only `resolver`,
+ * so keying off the id would silently never match on group requests.
+ */
+export function isExpiredRequest(request: ExpirableRequest): boolean {
+  return (
+    request.status === 'REJECTED' &&
+    (request.resolver ?? null) === null &&
+    request.resolution_reason === EXPIRED_REQUEST_REASON
+  );
+}
+
+export interface ReconstructedUntil {
+  /** An option id from `untilLabels`, or 'indefinite', or 'custom'. */
+  until: string;
+  /**
+   * Set whenever `until` is 'custom' — including the clamped case, where it
+   * is a valid date set to exactly the tag's `timeLimit` from now, so a form
+   * fed this result always has something to show in the date picker. A
+   * Dayjs, because that is what DatePickerElement consumes.
+   */
+  customUntil?: Dayjs;
+  /**
+   * The raw rounded duration in seconds, or null when there was no end date.
+   * Always unclamped, even when `until` was clamped by `timeLimit`. Exposed so
+   * callers that need the delta for their own logic (the read views' separate
+   * tag-limit clamp) do not recompute it.
+   */
+  deltaSeconds: number | null;
+}
+
+/**
+ * The clamped result for a tag `timeLimit`: the largest numeric option that
+ * fits, or a custom date at exactly the limit when no option is small enough.
+ */
+function clampedToTimeLimit(
+  untilLabels: Record<string, string>,
+  timeLimit: number,
+  deltaSeconds: number | null,
+): ReconstructedUntil {
+  const allowed = Object.keys(untilLabels)
+    .filter((key) => !isNaN(Number(key)) && Number(key) <= timeLimit)
+    .sort((a, b) => Number(a) - Number(b));
+  const largest = allowed.at(-1);
+  if (largest != null) {
+    return {until: largest, deltaSeconds};
+  }
+  // No option fits the limit; offer a custom date at exactly the limit rather
+  // than a 'custom' selection with nothing in the picker.
+  return {until: 'custom', customUntil: dayjs().add(timeLimit, 'second'), deltaSeconds};
+}
+
+/**
+ * Recover the duration a request originally asked for, re-based from today.
+ *
+ * Requests store an absolute `request_ending_at`, so a request that expired
+ * because its window lapsed has a stored date in the past that cannot be
+ * re-submitted as-is. Diffing against `created_at` recovers the *duration* the
+ * requester picked: an exact match in `untilLabels` round-trips to that option,
+ * and anything else was a custom date, so it is re-offered as one based from
+ * now.
+ *
+ * `timeLimit` (seconds, from a tag constraint) is OPTIONAL and defaults to no
+ * clamping. Pass it only where you want the result restricted to what the tag
+ * currently allows. There are five call sites, for three different reasons:
+ * - `requests/Read.tsx` and `role_requests/Read.tsx` each call this once with
+ *   no `timeLimit`, for the approve form's `requestedUntil`; both apply their
+ *   own clamp separately (via `autofill_until` / `requestedUntilAdjusted`)
+ *   when building form defaultValues, so passing it here too would
+ *   double-clamp.
+ * - Those same two files each call this a second time, for the reopen
+ *   prefill, passing the current `timeLimit` so the prefill respects a tag
+ *   limit that may have tightened since the original request.
+ * - `group_requests/Read.tsx` calls this once, also for a reopen prefill, but
+ *   passes `timeLimit: null` explicitly rather than omitting it: the group
+ *   create form that reopen hands the prefill to applies no tag clamp at all
+ *   (it doesn't import `minTagTime`), so there is nothing to clamp against
+ *   there, ever.
+ */
+export function reconstructRequestedUntil(args: {
+  createdAt?: string | null;
+  endingAt?: string | null;
+  untilLabels: Record<string, string>;
+  timeLimit?: number | null;
+}): ReconstructedUntil {
+  const {createdAt, endingAt, untilLabels, timeLimit} = args;
+
+  if (endingAt == null) {
+    // A tag time limit forbids indefinite access, so clamp rather than offer it.
+    if (timeLimit != null) {
+      return clampedToTimeLimit(untilLabels, timeLimit, null);
+    }
+    return {until: 'indefinite', deltaSeconds: null};
+  }
+
+  // Round to the nearest 100s to absorb the sub-second drift between the form
+  // computing the date and the row being written.
+  const deltaSeconds = Math.round(dayjs(endingAt).diff(dayjs(createdAt), 'second') / 100) * 100;
+
+  if (timeLimit != null && deltaSeconds > timeLimit) {
+    return clampedToTimeLimit(untilLabels, timeLimit, deltaSeconds);
+  }
+
+  if (deltaSeconds.toString() in untilLabels) {
+    return {until: deltaSeconds.toString(), deltaSeconds};
+  }
+
+  return {until: 'custom', customUntil: dayjs().add(deltaSeconds, 'second'), deltaSeconds};
 }

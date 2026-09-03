@@ -58,13 +58,14 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName, minTagTime, isExpiredRequest, reconstructRequestedUntil} from '../../helpers';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
 import accessConfig from '../../config/accessConfig';
-import {pluginIdForApp, extractRequestedPluginData} from './pluginConfig';
+import {pluginIdForApp, extractRequestedPluginData, prefillablePluginData} from './pluginConfig';
 import PluginConfigDisplay from './PluginConfigDisplay';
+import CreateRequest, {UNTIL_ID_TO_LABELS as CREATE_FORM_UNTIL_ID_TO_LABELS} from './Create';
 import ChangeTitle from '../../tab-title';
 import NotFound from '../NotFound';
 
@@ -202,6 +203,19 @@ export default function ReadGroupRequest() {
   const requestedAppId = groupRequest.requested_app_id ?? null;
   const requestedTagNames: string[] = groupRequest.requested_group_tags ?? [];
 
+  // Compute against the create form's own option map (CREATE_FORM_UNTIL_ID_TO_LABELS,
+  // imported from Create.tsx), not the UNTIL_ID_TO_LABELS above (which is this
+  // file's resolve/approve-form map, sourced from accessConfig.ACCESS_TIME_LABELS
+  // and operator-configurable). Reopen hands its prefill to that create form, so
+  // the prefilled value must only ever be one that form's select actually lists;
+  // timeLimit is always null here because the create form applies no tag clamp.
+  const reopenOwnershipUntil = reconstructRequestedUntil({
+    createdAt: groupRequest.created_at,
+    endingAt: groupRequest.requested_ownership_ending_at,
+    untilLabels: CREATE_FORM_UNTIL_ID_TO_LABELS,
+    timeLimit: null,
+  });
+
   const [typesSeeded, setTypesSeeded] = React.useState(false);
   React.useEffect(() => {
     if (!typesSeeded && data?.requested_group_type) {
@@ -219,6 +233,18 @@ export default function ReadGroupRequest() {
     {pathParams: {appId: requestedAppId ?? ''}},
     {enabled: requestedAppId != null && requestedGroupType === 'app_group'},
   );
+
+  // Anyone may request a group, so reopen is offered to any authenticated
+  // viewer; it is a shortcut for the create form they could already open.
+  //
+  // The one exception is an app_group request whose app no longer resolves:
+  // strippedRequestedName then falls back to the full stored name, and the
+  // create form re-prepends the prefix of whichever app the user picks, yielding
+  // `App-Bar-App-Foo-Reporting`. That submits a valid-looking but wrong name, so
+  // suppress the affordance rather than prefill it; a fresh request by hand
+  // still works.
+  const reopenNameIsSafe = requestedGroupType !== 'app_group' || (requestedAppData?.name ?? null) !== null;
+  const canReopen = isExpiredRequest(groupRequest) && reopenNameIsSafe;
   // The lifecycle plugin configured on the target app (null if none).
   const requestPluginId = pluginIdForApp(requestedAppData);
 
@@ -1033,6 +1059,30 @@ export default function ReadGroupRequest() {
                         <b>Reason:</b>{' '}
                         {groupRequest.resolution_reason ? groupRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {canReopen ? (
+                        <Box sx={{mt: 2}}>
+                          <CreateRequest
+                            currentUser={currentUser}
+                            reopen
+                            prefill={{
+                              type: requestedGroupType as 'okta_group' | 'app_group' | 'role_group',
+                              app: requestedAppData,
+                              // The un-prefixed suffix, not the full stored name: the
+                              // create form's Name field holds only the suffix (it
+                              // renders "App-<app>-"/"Role-" as static Typography
+                              // beside it) and re-prepends the prefix on submit, so
+                              // passing the full name here would double it up.
+                              name: strippedRequestedName,
+                              description: groupRequest.requested_group_description ?? '',
+                              ownershipUntil: reopenOwnershipUntil.until,
+                              customOwnershipUntil: reopenOwnershipUntil.customUntil,
+                              reason: groupRequest.request_reason ?? '',
+                              tags: requestedTags,
+                              pluginData: prefillablePluginData(requestedAppData, groupRequest.requested_plugin_data),
+                            }}
+                          />
+                        </Box>
+                      ) : null}
                       {groupRequest.status === 'APPROVED' && approvedDetails.length > 0 && (
                         <Box sx={{mt: 1}}>
                           <Typography variant="body1" sx={{mb: 0.5}}>
