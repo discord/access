@@ -47,6 +47,7 @@ import Loading from '../../components/Loading';
 import DeleteTag from './Delete';
 import {EmptyListEntry} from '../../components/EmptyListEntry';
 import MarkdownDescription from '../../components/MarkdownDescription';
+import PropagationNoteView from './PropagationNoteView';
 
 export default function ReadTag() {
   const currentUser = useCurrentUser();
@@ -187,6 +188,11 @@ export default function ReadTag() {
                           Tag Constraints
                         </Typography>
                       </Stack>
+                      {/* `?? true`, not `Boolean(...)`: the field is optional in the
+                          generated type, and the server default is `true`, so
+                          coercing `undefined` with `Boolean` would show the
+                          opposite of what an older tag actually does. */}
+                      <PropagationNoteView propagateToRoles={tag.propagate_to_roles ?? true} />
                     </TableCell>
                   </TableRow>
                   <TableRow>
