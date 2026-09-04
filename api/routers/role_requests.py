@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy import String, and_, cast, false, not_, or_, select
-from sqlalchemy.orm import aliased, joinedload, selectinload
+from sqlalchemy.orm import aliased, joinedload, selectin_polymorphic, selectinload
 from starlette.requests import Request
 
 from api.auth.dependencies import CurrentUserId
@@ -17,19 +17,19 @@ from api.models import (
     App,
     AppGroup,
     OktaGroup,
-    OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
     RoleGroup,
     RoleRequest,
     Tag,
 )
-from api.models.tag import coalesce_constraints
+from api.models.tag import effective_constraint
 from api.operations import ApproveRoleRequest, CreateRoleRequest, RejectRoleRequest
 from fastapi_pagination.ext.sqlalchemy import apaginate
 
 from api.pagination import Page, validated
 from api.routers._eager import (
+    effective_constraint_options,
     group_tag_map_options,
     polymorphic_group_options,
     user_group_member_options,
@@ -177,24 +177,22 @@ async def list_role_requests(
                                     selectinload(OktaGroup.active_user_memberships)
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
-                                    # `active_tag` is read per tag below in the
-                                    # disallow-self-add constraint check, so nest its
-                                    # loader — selectinload of the collection alone
-                                    # leaves OktaGroupTagMap.active_tag on raise_on_sql.
-                                    selectinload(OktaGroup.active_group_tags).options(
-                                        joinedload(OktaGroupTagMap.active_tag)
-                                    ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request), so the constraint
+                                    # lookup below may consult propagation. The
+                                    # polymorphic loader is what lets the RoleGroup
+                                    # paths in `effective_constraint_options` resolve.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    *effective_constraint_options(),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
                             .where(RoleRequest.request_ownership.is_(True))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
                 tagged_member_requests = [
                     rr
@@ -206,24 +204,22 @@ async def list_role_requests(
                                     selectinload(OktaGroup.active_user_memberships)
                                 ),
                                 joinedload(RoleRequest.requested_group).options(
-                                    # `active_tag` is read per tag below in the
-                                    # disallow-self-add constraint check, so nest its
-                                    # loader — selectinload of the collection alone
-                                    # leaves OktaGroupTagMap.active_tag on raise_on_sql.
-                                    selectinload(OktaGroup.active_group_tags).options(
-                                        joinedload(OktaGroupTagMap.active_tag)
-                                    ),
                                     selectinload(OktaGroup.active_user_ownerships),
+                                    # `requested_group` can be a RoleGroup (e.g.
+                                    # `ModifyGroupType` converted a group that already
+                                    # had a pending role request), so the constraint
+                                    # lookup below may consult propagation. The
+                                    # polymorphic loader is what lets the RoleGroup
+                                    # paths in `effective_constraint_options` resolve.
+                                    selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                    *effective_constraint_options(),
                                 ),
                             )
                             .where(RoleRequest.status == AccessRequestStatus.PENDING)
                             .where(RoleRequest.request_ownership.is_(False))
                         )
                     ).all()
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in rr.requested_group.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, rr.requested_group)
                 ]
 
                 blocked_request_ids: list[str] = []
@@ -251,12 +247,13 @@ async def list_role_requests(
                     (
                         await db.scalars(
                             select(OktaGroup)
-                            # `active_tag` is read per tag below; nest its loader so
-                            # OktaGroupTagMap.active_tag isn't left on raise_on_sql.
+                            # `owned_groups` has no type filter, so `g` can be a
+                            # RoleGroup here (a role owner's own role); the
+                            # polymorphic loader is what lets the RoleGroup paths
+                            # in `effective_constraint_options` resolve.
                             .options(
-                                selectinload(OktaGroup.active_group_tags).options(
-                                    joinedload(OktaGroupTagMap.active_tag)
-                                )
+                                selectin_polymorphic(OktaGroup, [AppGroup, RoleGroup]),
+                                *effective_constraint_options(),
                             )
                             .where(
                                 or_(
@@ -272,18 +269,12 @@ async def list_role_requests(
                 owned_groups_no_self_owner = [
                     g.id
                     for g in owned_groups
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in g.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_OWNERSHIP_CONSTRAINT_KEY, g)
                 ]
                 owned_groups_no_self_member = [
                     g.id
                     for g in owned_groups
-                    if coalesce_constraints(
-                        constraint_key=Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY,
-                        tags=[tm.active_tag for tm in g.active_group_tags],
-                    )
+                    if effective_constraint(Tag.DISALLOW_SELF_ADD_MEMBERSHIP_CONSTRAINT_KEY, g)
                 ]
                 role_membership_ids = [
                     rg.id

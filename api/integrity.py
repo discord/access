@@ -1,10 +1,14 @@
 import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
 from api.extensions import db
-from api.models import OktaGroup, OktaUserGroupMember, RoleGroupMap
-from api.operations._derived_reason import role_derived_reason
+from api.models import OktaGroup, OktaUserGroupMember, RoleGroup, RoleGroupMap, Tag
+from api.models.tag import effective_constraint
 from api.operations import UnmanageGroup
+from api.operations._derived_reason import role_derived_reason
+from api.operations._time_limits import limit_access_conferred_by_roles
+from api.routers._eager import effective_constraint_options
 from api.services import okta
 
 logger = logging.getLogger(__name__)
@@ -174,3 +178,55 @@ async def verify_and_fix_role_memberships(dry_run: bool = False) -> None:
                         # Remove user from okta group owners
                         # https://help.okta.com/en-us/Content/Topics/identity-governance/group-owner.htm
                         await okta.remove_owner_from_group(active_role_group_map.group_id, user_id)
+
+
+async def cap_role_memberships(dry_run: bool = False) -> int:
+    """Cap existing role memberships against propagated time limits.
+
+    The enforcement path (grant time) is complete on its own; this is the
+    one-off sweep over grants that predate the feature. Delta-based, so it is
+    safe to re-run: a membership already at or under its limit is skipped.
+    """
+    roles = (
+        await db.session.scalars(
+            select(RoleGroup)
+            .options(*effective_constraint_options())
+            .where(RoleGroup.deleted_at.is_(None))
+            .where(RoleGroup.is_managed.is_(True))
+        )
+    ).all()
+
+    capped = 0
+    for role in roles:
+        seconds_limit = effective_constraint(Tag.MEMBER_TIME_LIMIT_CONSTRAINT_KEY, role)
+        if seconds_limit is None:
+            continue
+        limit_from_now = datetime.now(UTC) + timedelta(seconds=seconds_limit)
+        over_long = (
+            await db.session.scalars(
+                select(OktaUserGroupMember)
+                .where(OktaUserGroupMember.group_id == role.id)
+                .where(OktaUserGroupMember.is_owner.is_(False))
+                .where(
+                    or_(
+                        OktaUserGroupMember.ended_at.is_(None),
+                        OktaUserGroupMember.ended_at > limit_from_now,
+                    )
+                )
+            )
+        ).all()
+        capped += len(over_long)
+        if not dry_run and len(over_long) > 0:
+            await limit_access_conferred_by_roles([role.id], end_at=limit_from_now)
+        if len(over_long) > 0:
+            logger.info(
+                "cap_role_memberships: role=%s limit=%ss over_long=%d dry_run=%s",
+                role.name,
+                seconds_limit,
+                len(over_long),
+                dry_run,
+            )
+
+    if not dry_run:
+        await db.session.commit()
+    return capped
