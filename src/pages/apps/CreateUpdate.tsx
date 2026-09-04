@@ -166,6 +166,10 @@ function AppDialog(props: AppDialogProps) {
                 maxLength: 255,
                 pattern: new RegExp(accessConfig.NAME_VALIDATION_PATTERN),
               }}
+              // `disabled`, so react-hook-form omits the field: the Access app's name is
+              // immutable, and a partial update should leave it alone rather than resubmit it.
+              // Do not switch this to `readOnly` -- `rules` would then run against a value the
+              // user cannot correct, leaving the tag-only edit with no way to submit.
               disabled={props.access_app}
               parseError={(error) => {
                 if (error?.message != '') {
@@ -192,6 +196,7 @@ function AppDialog(props: AppDialogProps) {
               multiline
               rows={4}
               rules={{maxLength: 1024}}
+              // `disabled`, like the name above: immutable, so left out of the partial update.
               disabled={props.access_app}
               parseError={(error) => {
                 if (error?.message != '') {

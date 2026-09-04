@@ -174,16 +174,23 @@ function GroupDialog(props: GroupDialogProps) {
       group.tags_to_add = selectedTags.map((tag: TagSummary) => tag.id);
     }
 
+    // The name field holds the suffix only; the type-derived prefix is added back here.
+    // Locked-and-immutable names (an owner group's) are absent from the form data, and a
+    // partial update must leave them alone rather than prefix an undefined suffix.
     switch (group.type) {
       case 'okta_group':
         break;
       case 'role_group':
-        group.name = ROLE_GROUP_PREFIX + group.name;
+        if (group.name != null) {
+          group.name = ROLE_GROUP_PREFIX + group.name;
+        }
         break;
       case 'app_group':
         const appGroup = group as AppGroupDetail;
         appGroup.app_id = appGroup.app?.id ?? '';
-        appGroup.name = APP_GROUP_PREFIX + (appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
+        if (appGroup.name != null) {
+          appGroup.name = APP_GROUP_PREFIX + (appGroup.app?.name ?? '') + APP_NAME_APP_GROUP_SEPARATOR + appGroup.name;
+        }
         break;
     }
     delete (group as AppGroupDetail).app;
@@ -235,7 +242,16 @@ function GroupDialog(props: GroupDialogProps) {
               name="type"
               options={GROUP_TYPE_OPTIONS}
               onChange={(value) => setGroupType(value)}
-              disabled={props.app != null || !isAccessAdmin(props.currentUser) || props.app_owner_group}
+              // `readOnly`, not `disabled`: react-hook-form omits a disabled field from the
+              // submitted data, and rhf-mui forwards `SelectElement`'s `disabled` into
+              // `useController`. The API discriminates the group body on `type`, so dropping it
+              // fails validation ("Unable to extract tag using discriminator 'type'") and also
+              // skips the prefixing in `submit`.
+              slotProps={{
+                select: {
+                  readOnly: props.app != null || !isAccessAdmin(props.currentUser) || props.app_owner_group,
+                },
+              }}
               required
             />
           </FormControl>
@@ -282,6 +298,9 @@ function GroupDialog(props: GroupDialogProps) {
                 label="Name"
                 name="name"
                 variant="outlined"
+                // `disabled`, unlike the Type select above: an owner group's name is structural
+                // and immutable, so omitting it from the partial update is what we want. It also
+                // keeps `rules`/`required` from running against a value the user cannot correct.
                 disabled={props.app_owner_group}
                 rules={{
                   maxLength: 255,
@@ -328,6 +347,8 @@ function GroupDialog(props: GroupDialogProps) {
               multiline
               rows={4}
               rules={{maxLength: 1024}}
+              // `disabled`, like the name above: immutable for an owner group, so it is left out
+              // of the partial update rather than submitted unchanged.
               disabled={props.app_owner_group}
               parseError={(error) => {
                 if (error?.message != '') {
