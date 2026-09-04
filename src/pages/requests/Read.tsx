@@ -39,7 +39,7 @@ import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import {groupBy, displayUserName} from '../../helpers';
-import {approvalUntilDefault, useConstraintsForGroups} from '../../constraints';
+import {approvalUntilDefault, timeLimitLabel, useConstraintsForGroups} from '../../constraints';
 import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
@@ -650,8 +650,8 @@ export default function ReadRequest() {
                                         {timeLimit
                                           ? (accessRequest.request_ownership ? 'Ownership of ' : 'Membership to ') +
                                             'this group is limited to ' +
-                                            Math.floor(timeLimit / 86400) +
-                                            ' days.'
+                                            timeLimitLabel(timeLimit) +
+                                            '.'
                                           : null}
                                       </Typography>
                                     </Grid>

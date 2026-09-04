@@ -77,6 +77,7 @@ import AppLinkButton from './AppLinkButton';
 import AvatarButton from '../../components/AvatarButton';
 import MembershipChip from '../../components/MembershipChip';
 import AppGroupLifecyclePluginData from '../../components/AppGroupLifecyclePluginData';
+import EffectiveConstraints from '../../components/EffectiveConstraints';
 import DebouncedSearchField from '../../components/DebouncedSearchField';
 
 function sortGroupMembers(
@@ -429,6 +430,15 @@ export default function ReadGroup() {
               </Stack>
             </Paper>
           </Grid>
+          {/* The panel renders nothing when nothing applies, but the grid item
+              around it still costs its own 24px of padding -- a gap on every
+              group with no constraints, which is most of them. Hence the
+              condition here as well as inside the component. */}
+          {(group.effective_constraints ?? []).length > 0 && (
+            <Grid item xs={12}>
+              <EffectiveConstraints constraints={group.effective_constraints ?? []} />
+            </Grid>
+          )}
           {group.type === 'app_group' && (app as any)?.app_group_lifecycle_plugin && (
             <Grid item xs={12}>
               <AppGroupLifecyclePluginData
