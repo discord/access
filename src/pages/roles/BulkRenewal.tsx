@@ -30,7 +30,9 @@ import {useTheme} from '@mui/material';
 
 import dayjs, {Dayjs} from 'dayjs';
 
-import {displayUserName, minTagTimeGroups, ownerCantAddSelfGroups, requiredReasonGroups} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import {useCurrentUser} from '../../authentication';
 
@@ -116,8 +118,6 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
   const [groupUpdatesErrored, setGroupUpdatesErrored] = React.useState(0);
 
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(UNTIL_OPTIONS);
-  const [timeLimit, setTimeLimit] = React.useState<number | null>(null);
-  const [requiredReason, setRequiredReason] = React.useState<boolean>(false);
 
   // Track toggle states for each row
   const [toggleStates, setToggleStates] = React.useState<Record<number, 'yes' | 'no' | ''>>(() => {
@@ -147,20 +147,45 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     page: props.select != undefined ? Math.ceil((props.rows.map((e) => e.id).indexOf(props.select) + 1) / 10) - 1 : 0,
   });
 
-  const role_memberships =
-    currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
-      curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
-      return out;
-    }, new Set<string>()) ?? new Set<string>();
+  // Memoised because the constraint scans below depend on it; rebuilt every
+  // render it would defeat their memos.
+  const role_memberships = React.useMemo(
+    () =>
+      currentUser.active_group_memberships?.reduce((out: Set<string>, curr: OktaUserGroupMemberDetail) => {
+        curr.active_group?.type == 'role_group' ? out.add(curr.active_group!.name!) : null;
+        return out;
+      }, new Set<string>()) ?? new Set<string>(),
+    [currentUser],
+  );
 
-  const groups_cant_add_self_owner = props.rows.reduce((out, curr) => {
-    ownerCantAddSelfGroups([curr.group!], true) ? out.add(curr.group!.name) : null;
-    return out;
-  }, new Set<string>());
-  const groups_cant_add_self_member = props.rows.reduce((out, curr) => {
-    ownerCantAddSelfGroups([curr.group!], false) ? out.add(curr.group!.name) : null;
-    return out;
-  }, new Set<string>());
+  // Per-row rather than coalesced: this marks which individual rows a self-add
+  // restriction blocks, so it reads each group's own entry from `by_group`
+  // instead of the roll-up.
+  // A role can be associated with more groups than one request may name, so
+  // this set is split across requests rather than truncated -- see
+  // `useConstraintsForGroups`. Answering for only the first 200 rows would
+  // drop the self-add warning on exactly the largest roles.
+  const allRowGroupIds = React.useMemo(() => props.rows.map((row) => row.group?.id), [props.rows]);
+  const rowConstraints = useConstraintsForGroups(allRowGroupIds);
+
+  const rowDisallowsSelfAdd = React.useCallback(
+    (group: GroupRefForMembership | null | undefined, isOwner: boolean) =>
+      rowConstraints.forGroup(group?.id).isSelfAddDisallowed(isOwner),
+    [rowConstraints],
+  );
+
+  // Memoised on the rows and the answer rather than recomputed per render:
+  // each lookup allocates and scans the group's constraint list, the grid
+  // re-renders on every toggle, and a role can have hundreds of rows.
+  const [groups_cant_add_self_owner, groups_cant_add_self_member] = React.useMemo(() => {
+    const owners = new Set<string>();
+    const members = new Set<string>();
+    for (const row of props.rows) {
+      if (rowDisallowsSelfAdd(row.group, true)) owners.add(row.group!.name);
+      if (rowDisallowsSelfAdd(row.group, false)) members.add(row.group!.name);
+    }
+    return [owners, members];
+  }, [props.rows, rowDisallowsSelfAdd]);
 
   // Custom cell renderer for the ToggleButtonGroup
   const renderToggleButtons = (params: GridRenderCellParams) => {
@@ -238,111 +263,94 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
     },
   ];
 
-  const display_owner_add_constraint =
-    !isAccessAdmin(currentUser) &&
-    props.rows.reduce((out, curr) => {
-      return (
-        out || (role_memberships.has(curr.role_group?.name!) && ownerCantAddSelfGroups([curr.group!], curr.is_owner!))
-      );
-    }, false);
+  const display_owner_add_constraint = React.useMemo(
+    () =>
+      !isAccessAdmin(currentUser) &&
+      props.rows.some(
+        (row) => role_memberships.has(row.role_group?.name!) && rowDisallowsSelfAdd(row.group, row.is_owner!),
+      ),
+    [currentUser, props.rows, role_memberships, rowDisallowsSelfAdd],
+  );
 
-  const updateUntil = (memberships: RoleGroupMapDetail[]) => {
-    // Only calculate time limit for memberships selected for renewal (yes)
-    const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
+  // Which rows are actually being renewed, split by the side each was granted
+  // on: a group's owner limit governs only the rows being renewed as
+  // ownerships, and its member limit only the rest.
+  const renewalMemberships = React.useMemo(
+    () => [...selectedYes, ...selectedNo].filter((m) => toggleStates[m.id!] === 'yes'),
+    [selectedYes, selectedNo, toggleStates],
+  );
+  const ownerGroupIds = React.useMemo(
+    () => renewalMemberships.filter((m) => m.is_owner).map((m) => m.group?.id),
+    [renewalMemberships],
+  );
+  const memberGroupIds = React.useMemo(
+    () => renewalMemberships.filter((m) => !m.is_owner).map((m) => m.group?.id),
+    [renewalMemberships],
+  );
 
-    if (renewalMemberships.length === 0) {
-      // No renewals selected, use default options
-      setTimeLimit(null);
-      setLabels(UNTIL_OPTIONS);
-      return;
-    }
-
-    const groups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: RoleGroupMapDetail) => {
-        return all.add(curr.group!);
-      }, new Set<GroupRefForMembership>()),
-    );
-
-    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: RoleGroupMapDetail) => {
-      return all.add(curr.is_owner!);
-    }, new Set<boolean>());
-
-    let time: number | null = null;
-    if (owner_member.size == 2) {
-      const owner = minTagTimeGroups(groups, true);
-      const member = minTagTimeGroups(groups, false);
-      time = owner == null && member == null ? null : Math.min(owner ?? Number.MAX_VALUE, member ?? Number.MAX_VALUE);
-    } else if (owner_member.has(true)) {
-      time = minTagTimeGroups(groups, true);
-    } else {
-      time = minTagTimeGroups(groups, false);
-    }
-
-    setTimeLimit(time);
-
-    if (!(time == null)) {
-      const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
-        .filter((key) => Number(key) <= time!)
-        .reduce(
-          (obj, key) => {
-            obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
-            return obj;
-          },
-          {} as Record<string, string>,
-        );
-
-      // Only adjust the user's selection if it exceeds the new time limit
-      const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
-
-      if (currentUntilValue === null || currentUntilValue > time!) {
-        // User's selection exceeds limit (or is indefinite), set to highest valid option
-        setUntil(Object.keys(filteredUntil).at(-1)!);
-      }
-
-      // Otherwise, keep the user's current selection
-      setLabels(
-        Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label], index) => ({
-          id: id,
-          label: label,
-        })),
-      );
-    } else {
-      setLabels(UNTIL_OPTIONS);
-    }
+  // Two requests rather than one over the union: a request names one side, so
+  // asking about every selected group at once would apply each group's owner
+  // limit to rows that are only memberships.
+  const ownerSideConstraints = useConstraintsForGroups(ownerGroupIds);
+  const memberSideConstraints = useConstraintsForGroups(memberGroupIds);
+  const constraintsBlocked = rowConstraints.blocked || ownerSideConstraints.blocked || memberSideConstraints.blocked;
+  const constraintsError = {
+    error: rowConstraints.error ?? ownerSideConstraints.error ?? memberSideConstraints.error,
   };
 
-  const updateRequiredReason = (memberships: RoleGroupMapDetail[]) => {
-    // Only calculate required reason for memberships selected for renewal (yes)
-    const renewalMemberships = memberships.filter((m) => toggleStates[m.id!] === 'yes');
+  const ownerTimeLimit = ownerSideConstraints.timeLimit(true);
+  const memberTimeLimit = memberSideConstraints.timeLimit(false);
+  // Two different constraint keys governing two disjoint sets of rows, which
+  // no single request can combine; choosing the tighter is the caller's call.
+  const timeLimit =
+    ownerTimeLimit == null
+      ? memberTimeLimit
+      : memberTimeLimit == null
+        ? ownerTimeLimit
+        : Math.min(ownerTimeLimit, memberTimeLimit);
 
-    if (renewalMemberships.length === 0) {
-      setRequiredReason(false);
-      return;
-    }
+  const requiredReason = ownerSideConstraints.isReasonRequired(true) || memberSideConstraints.isReasonRequired(false);
 
-    const groups = Array.from(
-      renewalMemberships.reduce((all: Set<GroupRefForMembership>, curr: RoleGroupMapDetail) => {
-        return all.add(curr.group!);
-      }, new Set<GroupRefForMembership>()),
-    );
-
-    const owner_member = renewalMemberships.reduce((all: Set<boolean>, curr: RoleGroupMapDetail) => {
-      return all.add(curr.is_owner!);
-    }, new Set<boolean>());
-
-    if (owner_member.size == 2) {
-      setRequiredReason(requiredReasonGroups(groups, true) || requiredReasonGroups(groups, false));
-    } else if (owner_member.has(true)) {
-      setRequiredReason(requiredReasonGroups(groups, true));
-    } else {
-      setRequiredReason(requiredReasonGroups(groups, false));
-    }
-  };
-
+  // Bound the duration control to whatever limit is in force, and pull the
+  // user's selection down if it now exceeds it.
   React.useEffect(() => {
-    updateUntil([...selectedYes, ...selectedNo]);
-    updateRequiredReason([...selectedYes, ...selectedNo]);
-  }, [selectedYes, selectedNo, toggleStates]);
+    // Only widen once the answer is known. While a refetch is in flight the
+    // limit reads as null, and re-offering durations the selection forbids
+    // makes them briefly clickable -- the narrowing that follows then
+    // overwrites the choice without saying so.
+    if (constraintsBlocked) {
+      return;
+    }
+    if (timeLimit == null) {
+      setLabels(UNTIL_OPTIONS);
+      return;
+    }
+
+    const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
+      .filter((key) => Number(key) <= timeLimit)
+      .reduce(
+        (obj, key) => {
+          obj[key] = UNTIL_JUST_NUMERIC_ID_TO_LABELS[key];
+          return obj;
+        },
+        {} as Record<string, string>,
+      );
+
+    const currentUntilValue = until === 'custom' ? null : until === 'indefinite' ? Number.MAX_VALUE : Number(until);
+    if (currentUntilValue === null || currentUntilValue > timeLimit) {
+      setUntil(Object.keys(filteredUntil).at(-1)!);
+    }
+
+    setLabels(
+      Object.entries(Object.assign({}, filteredUntil, {custom: 'Custom'})).map(([id, label]) => ({
+        id: id,
+        label: label,
+      })),
+    );
+    // `until` is read but deliberately not a dependency: this reacts to the
+    // limit changing, not to the user picking a duration.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit]);
 
   const complete = (
     completedUsersChange: RoleMembersSummary | undefined,
@@ -513,6 +521,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
             Selected for renewal: {selectedYes.length} | Selected to allow expiration: {selectedNo.length}
           </Typography>
           {requestError != '' ? <Alert severity="error">{requestError}</Alert> : null}
+          <ConstraintsUnavailableAlert constraints={constraintsError} action="renewal" />
           <Grid container spacing={1}>
             <Grid item xs={6}>
               <FormControl fullWidth sx={{margin: '7px 0'}}>
@@ -590,7 +599,7 @@ function BulkRenewalDialog(props: BulkRenewalDialogProps) {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => props.setOpen(false)}>Cancel</Button>
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || constraintsBlocked}>
             {submitting ? <CircularProgress size={24} /> : 'Submit'}
           </Button>
         </DialogActions>

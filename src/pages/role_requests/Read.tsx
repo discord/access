@@ -34,21 +34,16 @@ import TimelineDot from '@mui/lab/TimelineDot';
 import InfoOutlined from '@mui/icons-material/InfoOutlined';
 import {FormContainer, SelectElement, TextFieldElement, ToggleButtonGroupElement} from 'react-hook-form-mui';
 import {DatePickerElement} from 'react-hook-form-mui/date-pickers';
+import {useForm} from 'react-hook-form';
 
 import dayjs, {Dayjs} from 'dayjs';
 import RelativeTime from 'dayjs/plugin/relativeTime';
 import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 
 import RoleMembers from './RoleMembers';
-import {
-  groupBy,
-  displayUserName,
-  minTagTime,
-  minTagTimeGroups,
-  ownerCantAddSelf,
-  requiredReason,
-  requiredReasonGroups,
-} from '../../helpers';
+import {groupBy, displayUserName, ownerCantAddSelf} from '../../helpers';
+import {approvalUntilDefault, useConstraintsForGroups} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, isAccessAdmin, ACCESS_APP_RESERVED_NAME} from '../../authorization';
 import {
@@ -127,46 +122,12 @@ const UNTIL_JUST_NUMERIC_ID_TO_LABELS: Record<string, string> = {
 
 const UNTIL_OPTIONS = Object.entries(UNTIL_ID_TO_LABELS).map(([id, label], index) => ({id: id, label: label}));
 
-function ComputeConstraints(roleRequest: RoleRequestDetail) {
-  const group = roleRequest.requested_group ?? null;
-
-  if (group == null) {
-    return [null, null];
-  }
-
-  let timeLimit = minTagTime(
-    group.active_group_tags ? group.active_group_tags.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  let reason = requiredReason(
-    group.active_group_tags ? group.active_group_tags?.map((tagMap: OktaGroupTagMapDetail) => tagMap.active_tag!) : [],
-    roleRequest.request_ownership!,
-  );
-
-  if ((group.type as string) == 'role_group' && !roleRequest.request_ownership) {
-    const active_groups_owners = (group as RoleGroupDetail).active_role_associated_group_owner_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-    const active_groups_members = (group as RoleGroupDetail).active_role_associated_group_member_mappings?.reduce(
-      (out, curr) => {
-        curr.active_group ? out.push(curr.active_group) : null;
-        return out;
-      },
-      new Array<GroupRefForMembership>(),
-    );
-
-    reason =
-      reason ||
-      requiredReasonGroups(active_groups_members ?? [], false) ||
-      requiredReasonGroups(active_groups_owners ?? [], true);
-  }
-
-  return [timeLimit, reason];
+// Which constraints apply to the requested group, resolved by the API rather
+// than re-derived here. A requested role's applicable constraints cannot be
+// read off its own tags: they depend on which of its associations propagate,
+// which is the server's rule to apply.
+function useRequestConstraints(roleRequest: RoleRequestDetail) {
+  return useConstraintsForGroups([roleRequest.requested_group?.id]);
 }
 
 export default function ReadRoleRequest() {
@@ -221,6 +182,12 @@ export default function ReadRoleRequest() {
     },
     new Array<TagSummary>(),
   );
+  // Deliberately read from the group's own tags rather than the constraints
+  // endpoint. This is the role-to-group direction, where nothing propagates —
+  // the target of a role request is never itself a role — so the group's own
+  // tags are the whole answer and both sources agree. Answering synchronously
+  // costs no request and spares the approver a render with the controls
+  // withheld while a fetch that could not change the answer settles.
   const tagged =
     (ownerCantAddSelf(tags, false) && !roleRequest.request_ownership) ||
     (ownerCantAddSelf(tags, true) && roleRequest.request_ownership);
@@ -257,10 +224,13 @@ export default function ReadRoleRequest() {
 
   const group = groupData ?? ({} as GroupDetail);
 
-  const constraints = ComputeConstraints(roleRequest);
-
-  const timeLimit: number | null = constraints[0] as number | null;
-  const reason: boolean = constraints[1] as boolean;
+  const constraints = useRequestConstraints(roleRequest);
+  const constraintSide = !!roleRequest.request_ownership;
+  // `isReasonRequired` reports true until the answer lands, and approval stays
+  // disabled while `blocked`, so nothing offers a duration or waives a
+  // justification on the strength of an answer that has not arrived.
+  const timeLimit = constraints.timeLimit(constraintSide);
+  const reason = constraints.isReasonRequired(constraintSide);
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -268,7 +238,7 @@ export default function ReadRoleRequest() {
   }
 
   let labels = null;
-  let requestedUntilAdjusted = null;
+  let requestedUntilAdjusted: string | undefined = undefined;
   if (!(timeLimit == null)) {
     const filteredUntil = Object.keys(UNTIL_JUST_NUMERIC_ID_TO_LABELS)
       .filter((key) => Number(key) <= timeLimit!)
@@ -287,6 +257,37 @@ export default function ReadRoleRequest() {
       label: label,
     }));
   }
+
+  // Owned here rather than by `FormContainer` so the effect below can move the
+  // `until` field as the request and its constraints arrive. React Hook Form
+  // snapshots `defaultValues` on the mounting render, which here is the render
+  // where both queries are still in flight -- so the snapshot is seeded from
+  // an empty request, and every real value has to be written by the effect.
+  const resolveForm = useForm<ResolveRequestForm>({
+    defaultValues: {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''},
+  });
+
+  React.useEffect(() => {
+    // Both the requested duration and the limit land after the mounting
+    // render, so this owns the field's starting value rather than only
+    // adjusting one. On that first render the request is `{}`, which reads as
+    // "indefinite" -- left in place it would default an approval on any group
+    // without a time limit to indefinite access, and on a group with one to a
+    // duration the narrowed option list no longer offers.
+    const until = approvalUntilDefault({
+      requestedUntil,
+      requestedUntilAdjusted,
+      timeLimit,
+      autofillUntil: autofill_until,
+    });
+    if (until !== null) {
+      resolveForm.setValue('until', until);
+    }
+    resolveForm.setValue('customUntil', (requestEndingAt as unknown as string) ?? '');
+    // `requestEndingAt` is a fresh dayjs every render; it changes only when
+    // `requestedUntil` does, which is a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLimit, autofill_until, requestedUntil, requestedUntilAdjusted]);
 
   // Owner/approver lists are no longer inlined on the group/app payloads; they
   // come from the bounded owner-filtered endpoints instead.
@@ -732,11 +733,7 @@ export default function ReadRoleRequest() {
                           </Paper>
                           <Paper sx={{p: 2, mt: 1}}>
                             <FormContainer<ResolveRequestForm>
-                              defaultValues={
-                                timeLimit && !autofill_until && requestedUntilAdjusted
-                                  ? {until: requestedUntilAdjusted} // case where time limit lowered below requested time
-                                  : {until: requestedUntil, customUntil: (requestEndingAt as unknown as string) ?? ''}
-                              }
+                              formContext={resolveForm}
                               onSuccess={(formData) => submit(formData)}>
                               {requestError != '' ? (
                                 <Alert severity="error" sx={{my: 1}}>
@@ -820,6 +817,7 @@ export default function ReadRoleRequest() {
                                   }}
                                 />
                               </FormControl>
+                              <ConstraintsUnavailableAlert constraints={constraints} action="approval" />
                               <FormControl margin="normal" style={{flexDirection: 'row'}}>
                                 <Button
                                   variant="contained"
@@ -828,7 +826,7 @@ export default function ReadRoleRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting || ownRequest}
+                                  disabled={submitting || ownRequest || constraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>

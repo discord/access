@@ -110,8 +110,25 @@ export async function apiFetch<
   }
 }
 
-const resolveUrl = (url: string, queryParams: Record<string, string> = {}, pathParams: Record<string, string> = {}) => {
-  let query = new URLSearchParams(queryParams).toString();
+// An array value becomes one repeated key, which is how FastAPI reads a
+// `list[str]` query parameter. The `URLSearchParams` record constructor cannot
+// do this: it stringifies each value, so an array arrives as a single
+// comma-joined one and the server sees one id named "a,b,c" rather than three.
+// A one-element array survives that intact, which is exactly why it is worth
+// spelling out here — the endpoints that pass one id would look healthy while
+// every multi-id caller silently got an empty answer.
+const resolveUrl = (
+  url: string,
+  queryParams: Record<string, string | string[]> = {},
+  pathParams: Record<string, string> = {},
+) => {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(queryParams)) {
+    if (value == null) continue;
+    if (Array.isArray(value)) value.forEach((item) => params.append(key, String(item)));
+    else params.append(key, String(value));
+  }
+  let query = params.toString();
   if (query) query = `?${query}`;
   return url.replace(/\{\w*\}/g, (key) => pathParams[key.slice(1, -1)] ?? '') + query;
 };

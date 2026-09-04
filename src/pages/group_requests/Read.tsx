@@ -58,7 +58,9 @@ import {
 } from '../../api/apiSchemas';
 import {useCurrentUser} from '../../authentication';
 import {isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
-import {displayUserName, minTagTime} from '../../helpers';
+import {displayUserName} from '../../helpers';
+import {useConstraintsForTags} from '../../constraints';
+import ConstraintsUnavailableAlert from '../../components/ConstraintsUnavailableAlert';
 
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
 import Loading from '../../components/Loading';
@@ -91,20 +93,31 @@ const ROLE_GROUP_PREFIX = 'Role-';
 
 interface OwnershipEndingFieldProps {
   ownershipTimeLimit: number | null;
+  constraintsBlocked: boolean;
   ownershipUntil: string | null;
   setOwnershipUntil: (v: string | null) => void;
 }
 
-function OwnershipEndingField({ownershipTimeLimit, ownershipUntil, setOwnershipUntil}: OwnershipEndingFieldProps) {
+function OwnershipEndingField({
+  ownershipTimeLimit,
+  constraintsBlocked,
+  ownershipUntil,
+  setOwnershipUntil,
+}: OwnershipEndingFieldProps) {
   const {control, setValue} = useFormContext();
 
   const [availableUntilOptions, defaultUntilId] = React.useMemo<[Array<{id: string; label: string}>, string]>(() => {
+    // While the tag-mode answer is in flight the limit reads as null. Holding
+    // the narrower list rather than re-offering the full one keeps a duration
+    // the chosen tags forbid from being briefly clickable.
     if (ownershipTimeLimit == null) {
-      return [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
+      return constraintsBlocked
+        ? [[], accessConfig.DEFAULT_ACCESS_TIME]
+        : [UNTIL_OPTIONS, accessConfig.DEFAULT_ACCESS_TIME];
     }
     const [lastId, filtered] = filterUntilLabels(ownershipTimeLimit);
     return [filtered, lastId];
-  }, [ownershipTimeLimit]);
+  }, [ownershipTimeLimit, constraintsBlocked]);
 
   React.useEffect(() => {
     if (ownershipUntil == null || ownershipUntil === 'indefinite' || ownershipUntil === 'custom') return;
@@ -188,7 +201,12 @@ export default function ReadGroupRequest() {
   const [tagSearchInput, setTagSearchInput] = React.useState('');
   const [ownershipUntil, setOwnershipUntil] = React.useState<string | null>(null);
 
-  const ownershipTimeLimit = React.useMemo<number | null>(() => minTagTime(selectedTags, true), [selectedTags]);
+  // The group being tagged does not exist yet, so there is no id to resolve
+  // constraints against — only the tags the approver has picked. That is what
+  // the endpoint's tag mode is for, and it keeps the coalescing on the server
+  // here too.
+  const tagConstraints = useConstraintsForTags(selectedTags.map((tag) => tag.id));
+  const ownershipTimeLimit = tagConstraints.timeLimit(true);
 
   const {data, isError, isLoading} = useGroupRequestById({
     pathParams: {groupRequestId: id ?? ''},
@@ -763,6 +781,7 @@ export default function ReadGroupRequest() {
                                 {requestError}
                               </Alert>
                             ) : null}
+                            <ConstraintsUnavailableAlert constraints={tagConstraints} action="approval" />
                             {canApprove && (
                               <>
                                 <Typography variant="h6" sx={{mb: 1}}>
@@ -891,6 +910,7 @@ export default function ReadGroupRequest() {
                                   <Grid item xs={6}>
                                     <OwnershipEndingField
                                       ownershipTimeLimit={ownershipTimeLimit}
+                                      constraintsBlocked={tagConstraints.blocked}
                                       ownershipUntil={ownershipUntil}
                                       setOwnershipUntil={setOwnershipUntil}
                                     />
@@ -973,7 +993,7 @@ export default function ReadGroupRequest() {
                                   type="submit"
                                   startIcon={<ApprovedIcon />}
                                   sx={{mx: 2}}
-                                  disabled={submitting}
+                                  disabled={submitting || tagConstraints.blocked}
                                   onClick={() => setApproved(true)}>
                                   Approve
                                 </Button>

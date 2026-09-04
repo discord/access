@@ -41,7 +41,7 @@ import {
   OktaUserDetail,
 } from '../../api/apiSchemas';
 import {canManageGroup, isAccessAdmin, isGroupOwner} from '../../authorization';
-import {minTagTime, ownerCantAddSelf, requiredReason} from '../../helpers';
+import {carriedConstraints} from '../../constraints';
 import {useCurrentUser} from '../../authentication';
 import accessConfig from '../../config/accessConfig';
 
@@ -107,17 +107,18 @@ function AddRolesDialog(props: AddRolesDialogProps) {
   const [rolesUpdatesCompleted, setRolesUpdatesCompleted] = React.useState(0);
   const [rolesUpdatesErrored, setRolesUpdatesErrored] = React.useState(0);
 
-  const activeGroupTags = props.group.active_group_tags
-    ? props.group.active_group_tags.map((tagMap) => tagMap.active_tag!)
-    : [];
+  // Read off the group the page already fetched, so this stays synchronous and
+  // resolved by the same code that enforces it. This is the role-to-group
+  // direction — the constraints that apply are the target group's, which is
+  // what `effective_constraints` reports for a group that is not itself a role.
+  const constraints = carriedConstraints(props.group.effective_constraints);
 
-  // in seconds
-  const timeLimit = minTagTime(activeGroupTags, props.owner);
+  const timeLimit = constraints.timeLimit(props.owner); // in seconds
 
-  const reason = requiredReason(activeGroupTags, props.owner);
+  const reason = constraints.isReasonRequired(props.owner);
 
   // current user is a group owner and disallow owner add tag constraint active for type of dialog open (owner/member)
-  const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id!) && ownerCantAddSelf(activeGroupTags, props.owner);
+  const disallowOwnerAdd = isGroupOwner(currentUser, props.group.id!) && constraints.isSelfAddDisallowed(props.owner);
 
   let labels = null;
   let timeLimitUntil = null;
