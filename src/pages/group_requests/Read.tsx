@@ -780,7 +780,13 @@ export default function ReadGroupRequest() {
                                           setAppName('');
                                         }}
                                         required
-                                        disabled={!admin}
+                                        // `readOnly`, not `disabled`: react-hook-form omits a
+                                        // disabled field from the submitted data, and rhf-mui
+                                        // forwards `SelectElement`'s `disabled` into
+                                        // `useController`. `submit` derives the resolved group
+                                        // name and app id from this type, so dropping it resolves
+                                        // the request to an unprefixed, app-less group.
+                                        slotProps={{select: {readOnly: !admin}}}
                                       />
                                     </FormControl>
                                   </Grid>
