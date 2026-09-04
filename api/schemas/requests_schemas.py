@@ -402,6 +402,25 @@ def _validate_tag_constraints(v: Optional[dict[str, Any]]) -> Optional[dict[str,
     return valid
 
 
+#: Ceiling on how many ids one request may name. The eager loads scale with
+#: the requested set, so it is bounded rather than left to the caller. Well
+#: above any real dialog selection.
+_EFFECTIVE_CONSTRAINTS_MAX_IDS = 200
+
+
+class EffectiveConstraintsQuery(BaseModel):
+    """Query for GET /api/constraints/effective.
+
+    Exactly one of the two lists is populated; the router rejects naming both
+    or neither, since the two modes answer different questions and combining
+    them would silently invent a third.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+    group_ids: list[str] = Field(default_factory=list, max_length=_EFFECTIVE_CONSTRAINTS_MAX_IDS)
+    tag_ids: list[str] = Field(default_factory=list, max_length=_EFFECTIVE_CONSTRAINTS_MAX_IDS)
+
+
 class CreateTagBody(BaseModel):
     """Body for POST /api/tags."""
 
