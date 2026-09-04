@@ -75,6 +75,14 @@ export default defineConfig(({mode}) => {
       alias: {
         '@mui/styled-engine': '@mui/styled-engine-sc',
       },
+      // Test-only field order. Vitest resolves bare dependencies through Node, which
+      // picks MUI's CJS `main` (`node/index.js`); that build `require`s
+      // '@mui/styled-engine' itself, bypassing the alias above and demanding
+      // @emotion/styled, which this app does not install (it renders through
+      // styled-components). Preferring `module` keeps MUI on its ESM build so the
+      // alias applies and component tests can render real MUI instead of mocking it.
+      // The app build keeps Vite's default order.
+      ...(mode === 'test' ? {mainFields: ['module', 'browser', 'main']} : {}),
     },
     define: {
       ACCESS_CONFIG: accessConfig,
@@ -107,6 +115,9 @@ export default defineConfig(({mode}) => {
       // *this* checkout's node_modules, reporting failures that belong to some
       // other branch. Every frontend test lives under src/.
       include: ['src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+      // Inline MUI and react-hook-form-mui so Vite transforms them (and applies the
+      // styled-engine alias) rather than handing them to Node's CJS loader.
+      server: {deps: {inline: [/@mui/, /react-hook-form-mui/]}},
     },
   };
 });
