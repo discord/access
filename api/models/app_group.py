@@ -1,9 +1,24 @@
+import re
 from typing import List
 
 from sqlalchemy import func, or_, select
 
 from api.extensions import db
 from api.models.core_models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
+
+_LEADING_BLANK_LINES_RE = re.compile(r"^(?:[ \t]*\n)+")
+
+
+def _trim_free_text(text: str) -> str:
+    """Strip leading blank lines and trailing whitespace, preserving indentation on the first line of real content.
+
+    Leading spaces/tabs on a non-blank line are meaningful markdown (an indented list item or
+    code block), so unlike `str.strip()` this does not treat a run of leading whitespace and
+    newlines as one unit to discard -- only whole blank lines ahead of the first real content are
+    removed. Trailing whitespace carries no such meaning and is stripped in full. Mirrors
+    `firstParagraph`'s leading-blank-line handling in `src/components/MarkdownDescription.tsx`.
+    """
+    return _LEADING_BLANK_LINES_RE.sub("", text).rstrip()
 
 
 async def get_app_managers(app_id: str) -> List[OktaUser]:
@@ -91,7 +106,7 @@ def app_owners_group_description(app_name: str, additional_description: str | No
         The base line alone, or the base line, a blank line, and the free text.
     """
     base = f"Owners of the {app_name} application"
-    additional = (additional_description or "").strip()
+    additional = _trim_free_text(additional_description or "")
     if not additional:
         return base
     return f"{base}\n\n{additional}"
@@ -118,5 +133,5 @@ def app_owners_group_description_remainder(description: str, app_name: str) -> s
     if normalized.strip() == base:
         return ""
     if normalized.startswith(base):
-        return normalized[len(base) :].strip()
-    return normalized.strip()
+        return _trim_free_text(normalized[len(base) :])
+    return _trim_free_text(normalized)

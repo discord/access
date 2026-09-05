@@ -65,3 +65,24 @@ def test_a_similarly_named_app_is_not_a_false_match() -> None:
 def test_compose_and_split_round_trip() -> None:
     composed = app_owners_group_description("Zendesk", "Also grants billing access")
     assert app_owners_group_description_remainder(composed, "Zendesk") == "Also grants billing access"
+
+
+def test_remainder_preserves_indentation_on_a_conforming_description() -> None:
+    # The remainder is markdown; leading spaces on its first content line are a nested list
+    # item, not incidental whitespace to discard.
+    description = "Owners of the Zendesk application\n\n    - nested item\n    - another item"
+    assert app_owners_group_description_remainder(description, "Zendesk") == ("    - nested item\n    - another item")
+
+
+def test_remainder_preserves_indentation_on_a_non_conforming_description() -> None:
+    # Same principle for the whole-description (non-matching-base-line) branch.
+    description = "    - nested item\n    - another item"
+    assert app_owners_group_description_remainder(description, "Zendesk") == ("    - nested item\n    - another item")
+
+
+def test_compose_and_split_round_trip_preserves_indentation() -> None:
+    composed = app_owners_group_description("Zendesk", "    - nested item\n    - another item")
+    assert app_owners_group_description_remainder(composed, "Zendesk") == "    - nested item\n    - another item"
+    assert (
+        app_owners_group_description("Zendesk", app_owners_group_description_remainder(composed, "Zendesk")) == composed
+    )
