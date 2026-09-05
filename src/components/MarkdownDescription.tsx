@@ -39,11 +39,17 @@ const INLINE_ELEMENTS = ['strong', 'em', 'code', 'del', 'br'];
  * text nodes with no separator between paragraphs. Truncating the source to its first paragraph
  * keeps a list cell readable and signals that the full text is longer.
  *
+ * Leading blank lines are stripped before the search, so a description that opens with a
+ * paragraph break returns its first non-blank paragraph rather than an empty head. Only blank
+ * lines are stripped, not all leading whitespace; leading spaces on a non-blank line are
+ * meaningful markdown (an indented code block), and this function truncates source markdown
+ * rather than rendering it.
+ *
  * @param description Raw markdown. May be empty.
  * @returns The first paragraph, suffixed with ` ...` when non-empty content follows it.
  */
 export function firstParagraph(description: string): string {
-  const normalized = description.replace(/\r\n/g, '\n');
+  const normalized = description.replace(/\r\n/g, '\n').replace(/^(?:[ \t]*\n)+/, '');
   const paragraphBreak = normalized.match(/\n[ \t]*\n/);
 
   if (paragraphBreak?.index === undefined) {
@@ -59,8 +65,9 @@ export function firstParagraph(description: string): string {
 /**
  * Renders markdown descriptions. Default mode is for detail-page heroes
  * (centered, full block-level features). `inline` mode renders inside table
- * cells whose row is wrapped in <a>: single-line CSS clamp, inline-only
- * formatting, and links unwrapped to plain text to avoid nested anchors.
+ * cells whose row is wrapped in <a>: first paragraph only, single-line CSS
+ * clamp, inline-only formatting, and links unwrapped to plain text to avoid
+ * nested anchors.
  */
 export default function MarkdownDescription({description, inline, sx}: MarkdownDescriptionProps) {
   if (!description) {
@@ -78,7 +85,7 @@ export default function MarkdownDescription({description, inline, sx}: MarkdownD
           ...sx,
         }}>
         <ReactMarkdown allowedElements={INLINE_ELEMENTS} unwrapDisallowed>
-          {description}
+          {firstParagraph(description)}
         </ReactMarkdown>
       </Box>
     );
