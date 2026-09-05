@@ -33,6 +33,30 @@ const FULL_ELEMENTS = [
 const INLINE_ELEMENTS = ['strong', 'em', 'code', 'del', 'br'];
 
 /**
+ * The first markdown paragraph of `description`, with ` ...` appended when more content follows.
+ *
+ * Inline mode disallows `p` and unwraps it, so a multi-paragraph description renders as adjacent
+ * text nodes with no separator between paragraphs. Truncating the source to its first paragraph
+ * keeps a list cell readable and signals that the full text is longer.
+ *
+ * @param description Raw markdown. May be empty.
+ * @returns The first paragraph, suffixed with ` ...` when non-empty content follows it.
+ */
+export function firstParagraph(description: string): string {
+  const normalized = description.replace(/\r\n/g, '\n');
+  const paragraphBreak = normalized.match(/\n[ \t]*\n/);
+
+  if (paragraphBreak?.index === undefined) {
+    return normalized;
+  }
+
+  const head = normalized.slice(0, paragraphBreak.index).trimEnd();
+  const tail = normalized.slice(paragraphBreak.index + paragraphBreak[0].length).trim();
+
+  return tail.length > 0 ? `${head} ...` : head;
+}
+
+/**
  * Renders markdown descriptions. Default mode is for detail-page heroes
  * (centered, full block-level features). `inline` mode renders inside table
  * cells whose row is wrapped in <a>: single-line CSS clamp, inline-only
