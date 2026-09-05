@@ -38,6 +38,13 @@ describe('firstParagraph', () => {
   it('ignores leading blank lines and still marks that more follows', () => {
     expect(firstParagraph('\n\nSecond para\n\nThird')).toBe('Second para ...');
   });
+
+  it('preserves leading indentation, which is meaningful markdown', () => {
+    // Only blank lines are stripped. Leading spaces on a non-blank line are
+    // meaningful in markdown (an indented code block). A `trimStart()` here would
+    // incorrectly remove them.
+    expect(firstParagraph('    curl -X GET /api\n\nSee the docs')).toBe('    curl -X GET /api ...');
+  });
 });
 
 describe('MarkdownDescription inline rendering', () => {
