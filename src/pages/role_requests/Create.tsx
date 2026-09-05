@@ -62,6 +62,7 @@ interface CreateRequestButtonProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
 }
 
 function CreateRequestButton(props: CreateRequestButtonProps) {
@@ -80,11 +81,13 @@ function CreateRequestButton(props: CreateRequestButtonProps) {
           disabled={!props.enabled}>
           {props.group == null
             ? 'Create Request'
-            : props.renew
-              ? 'Renew'
-              : props.owner
-                ? 'Request Ownership'
-                : 'Request Membership'}
+            : props.reopen
+              ? 'Reopen Request'
+              : props.renew
+                ? 'Renew'
+                : props.owner
+                  ? 'Request Ownership'
+                  : 'Request Membership'}
         </Button>
       </span>
     </Tooltip>
@@ -102,6 +105,10 @@ interface CreateRequestContainerProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 interface CreateRequestForm {
   role: RoleGroupDetail;
@@ -196,7 +203,11 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
   const untilLabels: [string, Array<Record<string, string>>] = timeLimit
     ? filterUntilLabels(timeLimit)
     : ['1209600', UNTIL_OPTIONS];
-  const [until, setUntil] = React.useState(untilLabels[0]);
+  // Seeded from the prefill, not just from `defaultValues`: the custom-date
+  // picker below is gated on this state, so a 'custom' prefill would otherwise
+  // show a Custom selection with no date field -- and submit the hidden seeded
+  // date without the picker's `required` validation ever running.
+  const [until, setUntil] = React.useState(props.until ?? untilLabels[0]);
   const [labels, setLabels] = React.useState<Array<Record<string, string>>>(untilLabels[1]);
 
   const complete = (
@@ -295,7 +306,10 @@ function CreateRequestContainer(props: CreateRequestContainerProps) {
       defaultValues={{
         role: props.role,
         group: props.group,
-        until: '1209600',
+        until: props.until ?? '1209600',
+        // Typed string, holds a Dayjs at runtime; same convention as the access form.
+        customUntil: props.customUntil as unknown as string,
+        reason: props.reason,
         ownerOrMember: props.owner != null ? (props.owner ? 'owner' : 'member') : undefined,
       }}
       onSuccess={(formData) => submit(formData)}>
@@ -498,6 +512,9 @@ interface CreateRequestDialogProps {
   group?: GroupDetail;
   owner?: boolean;
   renew?: boolean;
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 function CreateRequestDialog(props: CreateRequestDialogProps) {
@@ -518,8 +535,13 @@ interface CreateRequestProps {
   group?: OktaGroupDetail | AppGroupDetail;
   owner?: boolean;
   renew?: boolean;
+  reopen?: boolean;
   open?: boolean;
   setOpen?: (open: boolean) => void;
+  // Prefill, used when reopening an expired request.
+  until?: string;
+  customUntil?: Dayjs;
+  reason?: string;
 }
 
 export default function CreateRequest(props: CreateRequestProps) {
@@ -546,6 +568,7 @@ export default function CreateRequest(props: CreateRequestProps) {
           group={props.group as GroupDetail | undefined}
           owner={props.owner}
           renew={props.renew}
+          reopen={props.reopen}
         />
       )}
       {open ? (

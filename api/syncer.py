@@ -524,6 +524,12 @@ async def sync_group_ownerships(
 # trail: a null resolver alone does not identify an expiry, since requester
 # deletion, group deletion, group unmanaging, and a conditional-access denial
 # all close requests with no actor too. This wording is what tells them apart.
+#
+# That makes it a contract with the frontend, not just display text:
+# `isExpiredRequest` in `src/helpers.tsx` matches it verbatim to decide whether
+# to offer a "reopen" button, because expiration is not modelled distinctly in
+# the data model. Rewording here without rewording there silently removes that
+# button; `tests/test_expired_reason_constant.py` pins the pairing.
 EXPIRED_REQUEST_REASON = "Closed because the request expired"
 
 

@@ -40,13 +40,16 @@ import IsSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import {
   groupBy,
   displayUserName,
+  isExpiredRequest,
   minTagTime,
   minTagTimeGroups,
+  reconstructRequestedUntil,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
 import {useCurrentUser} from '../../authentication';
 import {canManageGroup, ACCESS_APP_RESERVED_NAME} from '../../authorization';
+import CreateRequest from './Create';
 import {
   useAccessRequestById,
   useGroupById,
@@ -173,17 +176,13 @@ export default function ReadRequest() {
   const ownRequest = accessRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(accessRequest.request_ending_at);
-  // round the delta to adjust based on partial seconds
-  const requestedUntilDelta =
-    accessRequest.request_ending_at == null
-      ? null
-      : Math.round(requestEndingAt.diff(dayjs(accessRequest.created_at), 'second') / 100) * 100;
-  const requestedUntil =
-    requestedUntilDelta == null
-      ? 'indefinite'
-      : requestedUntilDelta in UNTIL_ID_TO_LABELS
-        ? requestedUntilDelta.toString()
-        : 'custom';
+  // No timeLimit: the clamp for a tag limit that dropped below the original ask
+  // is applied separately below, via autofill_until / requestedUntilAdjusted.
+  const {until: requestedUntil, deltaSeconds: requestedUntilDelta} = reconstructRequestedUntil({
+    createdAt: accessRequest.created_at,
+    endingAt: accessRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+  });
 
   const requestedGroupManager = canManageGroup(currentUser, accessRequest.requested_group);
 
@@ -220,6 +219,19 @@ export default function ReadRequest() {
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
+
+  // Reopen is offered only on a request the sweep closed, and only to the
+  // original requester: an access request targets its own requester, so nobody
+  // else can recreate *this* request. `ownRequest` is already computed above.
+  const canReopen = isExpiredRequest(accessRequest) && ownRequest;
+  // Unlike `requestedUntil` above, this passes `timeLimit` so the prefill
+  // respects a tag limit that may have tightened since the original request.
+  const reopenPrefill = reconstructRequestedUntil({
+    createdAt: accessRequest.created_at,
+    endingAt: accessRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+    timeLimit: timeLimit,
+  });
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -998,6 +1010,19 @@ export default function ReadRequest() {
                         <b>Reason:</b>{' '}
                         {accessRequest.resolution_reason ? accessRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {canReopen ? (
+                        <Box sx={{mt: 2}}>
+                          <CreateRequest
+                            currentUser={currentUser}
+                            group={group}
+                            owner={accessRequest.request_ownership ?? false}
+                            reopen
+                            until={reopenPrefill.until}
+                            customUntil={reopenPrefill.customUntil}
+                            reason={accessRequest.request_reason ?? ''}
+                          />
+                        </Box>
+                      ) : null}
                     </Paper>
                   )}
                 </TimelineContent>

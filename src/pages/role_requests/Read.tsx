@@ -43,9 +43,11 @@ import RoleMembers from './RoleMembers';
 import {
   groupBy,
   displayUserName,
+  isExpiredRequest,
   minTagTime,
   minTagTimeGroups,
   ownerCantAddSelf,
+  reconstructRequestedUntil,
   requiredReason,
   requiredReasonGroups,
 } from '../../helpers';
@@ -67,6 +69,7 @@ import {
   AppGroupDetail,
   AppGroupForAppDetail,
   GroupRefForMembership,
+  OktaGroupDetail,
   OktaUserGroupMemberDetail,
   OktaUserSummary,
   GroupDetail,
@@ -82,6 +85,7 @@ import NotFound from '../NotFound';
 import Loading from '../../components/Loading';
 import ChangeTitle from '../../tab-title';
 import AccessHistory from '../../components/AccessHistory';
+import CreateRequest from './Create';
 
 dayjs.extend(RelativeTime);
 dayjs.extend(IsSameOrBefore);
@@ -190,17 +194,12 @@ export default function ReadRoleRequest() {
   const ownRequest = roleRequest.requester?.id == currentUser.id;
 
   const requestEndingAt = dayjs(roleRequest.request_ending_at);
-  // round the delta to adjust based on partial seconds
-  const requestedUntilDelta =
-    roleRequest.request_ending_at == null
-      ? null
-      : Math.round(requestEndingAt.diff(dayjs(roleRequest.created_at), 'second') / 100) * 100;
-  const requestedUntil =
-    requestedUntilDelta == null
-      ? 'indefinite'
-      : requestedUntilDelta in UNTIL_ID_TO_LABELS
-        ? requestedUntilDelta.toString()
-        : 'custom';
+  // No timeLimit here either; see the comment in requests/Read.tsx.
+  const {until: requestedUntil, deltaSeconds: requestedUntilDelta} = reconstructRequestedUntil({
+    createdAt: roleRequest.created_at,
+    endingAt: roleRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+  });
 
   // Check to see if current user is a blocked group owner
   const ownedGroup = currentUser.active_group_ownerships
@@ -261,6 +260,18 @@ export default function ReadRoleRequest() {
 
   const timeLimit: number | null = constraints[0] as number | null;
   const reason: boolean = constraints[1] as boolean;
+
+  // Role requests must be submitted by an owner of the role, so reopen is
+  // offered to current role owners rather than only the original requester.
+  const canReopen = isExpiredRequest(roleRequest) && canManageGroup(currentUser, roleRequest.requester_role);
+  // Unlike `requestedUntil` above, this passes `timeLimit` so the prefill
+  // respects a tag limit that may have tightened since the original request.
+  const reopenPrefill = reconstructRequestedUntil({
+    createdAt: roleRequest.created_at,
+    endingAt: roleRequest.request_ending_at,
+    untilLabels: UNTIL_ID_TO_LABELS,
+    timeLimit: timeLimit,
+  });
 
   let autofill_until = false;
   if (requestedUntilDelta && timeLimit && requestedUntilDelta <= timeLimit) {
@@ -1107,6 +1118,21 @@ export default function ReadRoleRequest() {
                         <b>Reason:</b>{' '}
                         {roleRequest.resolution_reason ? roleRequest.resolution_reason : 'No reason given'}
                       </Typography>
+                      {canReopen ? (
+                        <Box sx={{mt: 2}}>
+                          <CreateRequest
+                            enabled
+                            currentUser={currentUser}
+                            role={roleRequest.requester_role as RoleGroupDetail}
+                            group={roleRequest.requested_group as OktaGroupDetail | AppGroupDetail}
+                            owner={roleRequest.request_ownership ?? false}
+                            reopen
+                            until={reopenPrefill.until}
+                            customUntil={reopenPrefill.customUntil}
+                            reason={roleRequest.request_reason ?? ''}
+                          />
+                        </Box>
+                      ) : null}
                     </Paper>
                   )}
                 </TimelineContent>
