@@ -355,6 +355,12 @@ class TestFindRedundantGrants:
         # surface. `user_b` is the mirror: a direct grant plus role coverage in
         # `group_b`, so the pair of users and pair of groups both appear in the
         # narrowing sets and the cross product actually forms.
+        #
+        # This pins down that cross-product rows do not corrupt the result. It
+        # does not pin down the `key not in direct_latest` guard itself, which
+        # cannot change the output while the results loop reads `role_latest`
+        # only at keys drawn from `direct_latest`; it would begin to if that
+        # loop ever iterated `role_latest` directly.
         user_b = OktaUserFactory.build()
         group_b = OktaGroupFactory.build()
         db.session.add_all([user, user_b, okta_group, group_b, role_group])
