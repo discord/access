@@ -503,16 +503,13 @@ class TestResolveUserIds:
         # wildcard. This matches the id-or-email resolution idiom used across
         # the codebase in ~10 call sites. A caller wanting exact matching would
         # need `func.lower(...) == func.lower(...)` instead.
-        user_with_underscore = OktaUserFactory.build(email="jane_doe@example.com")
-        user_without_underscore = OktaUserFactory.build(email="janexdoe@example.com")
-        db.session.add_all([user_with_underscore, user_without_underscore])
+        user_no_underscore = OktaUserFactory.build(email="janexdoe@example.com")
+        db.session.add(user_no_underscore)
         await db.session.commit()
 
-        # Querying with the underscore email matches both users via ILIKE.
-        # scalar() returns the first row the DB returns, so the result is one of
-        # the two ids; the specific one is database-dependent.
+        # Querying with `jane_doe` (with underscore) matches `janexdoe` (with x)
+        # via ILIKE because `_` is a wildcard matching any single character.
+        # This test fails if someone changes to exact matching.
         result_ids = await resolve_user_ids(("jane_doe@example.com",))
 
-        assert result_ids == {user_with_underscore.id} or result_ids == {user_without_underscore.id}
-        assert len(result_ids) == 1
-        assert result_ids <= {user_with_underscore.id, user_without_underscore.id}
+        assert result_ids == {user_no_underscore.id}

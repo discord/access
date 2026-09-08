@@ -286,7 +286,9 @@ async def resolve_user_ids(user_filters: Sequence[str]) -> set[str] | None:
     """Resolve user filters to the set of user ids they name.
 
     Matches a user id or email; email comparison is case-insensitive, matching
-    how the `init-builtin-apps` command resolves its admin.
+    how the `init-builtin-apps` command resolves its admin. Email filters are
+    matched via ILIKE, so `_` and `%` in the filter value act as SQL LIKE
+    wildcards.
 
     Args:
         user_filters: User ids or emails.
