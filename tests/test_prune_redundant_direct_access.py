@@ -2,7 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 
-from api.redundant_access import AccessTarget, RedundantGrant, _later
+from api.extensions import Db
+from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
+from api.redundant_access import AccessTarget, RedundantGrant, _later, find_redundant_grants
+from tests.factories import OktaUserGroupMemberFactory, RoleGroupFactory, RoleGroupMapFactory
 
 NOW = datetime(2026, 9, 8, 12, 0, 0, tzinfo=UTC)
 IN_30_DAYS = NOW + timedelta(days=30)
@@ -69,3 +72,201 @@ class TestShortensAccess:
     def test_equal_end_dates_do_not_shorten(self) -> None:
         # The guard is `<=`: an identical end date takes nothing away.
         assert _grant(IN_30_DAYS, IN_30_DAYS).shortens_access is False
+
+
+async def _direct_grant(
+    *, user: OktaUser, group: OktaGroup, is_owner: bool = False, ended_at: datetime | None = None
+) -> OktaUserGroupMember:
+    """Persist a direct grant: an active membership row with no role behind it."""
+    return await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id, group_id=group.id, is_owner=is_owner, ended_at=ended_at
+    )
+
+
+async def _role_grant(
+    *,
+    user: OktaUser,
+    group: OktaGroup,
+    role_group: RoleGroup,
+    is_owner: bool = False,
+    ended_at: datetime | None = None,
+) -> OktaUserGroupMember:
+    """Persist role-derived coverage: a RoleGroupMap plus the membership row it
+    justifies.
+
+    The row's own `ended_at` is what the operations layer already coalesces from
+    the role membership and the mapping, so tests set it directly rather than
+    reconstructing that arithmetic. The user's membership in the role group
+    itself is not created: discovery keys off `role_group_map_id` on the derived
+    row, so an extra row would only add noise.
+    """
+    role_map = await RoleGroupMapFactory.create_async(role_group_id=role_group.id, group_id=group.id, is_owner=is_owner)
+    return await OktaUserGroupMemberFactory.create_async(
+        user_id=user.id,
+        group_id=group.id,
+        is_owner=is_owner,
+        role_group_map_id=role_map.id,
+        ended_at=ended_at,
+    )
+
+
+class TestFindRedundantGrants:
+    async def test_direct_and_role_coverage_is_a_candidate(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH)
+
+        assert len(grants) == 1
+        assert grants[0].user_id == user.id
+        assert grants[0].user_email == user.email
+        assert grants[0].group_id == okta_group.id
+        assert grants[0].group_name == okta_group.name
+        assert grants[0].is_owner is False
+        assert grants[0].latest_direct_ended_at is None
+        assert grants[0].latest_role_ended_at is None
+
+    async def test_direct_grant_without_role_coverage_is_not_a_candidate(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup
+    ) -> None:
+        db.session.add_all([user, okta_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_role_coverage_without_direct_grant_is_not_a_candidate(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_expired_direct_grant_is_not_a_candidate(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group, ended_at=datetime.now(UTC) - timedelta(days=1))
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_expired_role_coverage_is_not_a_candidate(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(
+            user=user, group=okta_group, role_group=role_group, ended_at=datetime.now(UTC) - timedelta(days=1)
+        )
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_membership_and_ownership_are_separate_triples(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # A direct membership covered by role *ownership* is not redundant: the
+        # dimensions grant different things.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group, is_owner=False)
+        await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=True)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_target_narrows_to_one_dimension(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        for is_owner in (False, True):
+            await _direct_grant(user=user, group=okta_group, is_owner=is_owner)
+            await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=is_owner)
+        await db.session.commit()
+
+        assert len(await find_redundant_grants(target=AccessTarget.BOTH)) == 2
+        members_only = await find_redundant_grants(target=AccessTarget.MEMBERS)
+        assert [g.is_owner for g in members_only] == [False]
+        owners_only = await find_redundant_grants(target=AccessTarget.OWNERS)
+        assert [g.is_owner for g in owners_only] == [True]
+
+    async def test_multiple_covering_roles_take_the_longest_coverage(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # An indefinite role covers the group even though another covering role
+        # is expiring, so `latest_role_ended_at` is indefinite.
+        second_role = RoleGroupFactory.build()
+        db.session.add_all([user, okta_group, role_group, second_role])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(
+            user=user, group=okta_group, role_group=role_group, ended_at=datetime.now(UTC) + timedelta(days=30)
+        )
+        await _role_grant(user=user, group=okta_group, role_group=second_role, ended_at=None)
+        await db.session.commit()
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH)
+
+        assert len(grants) == 1
+        assert grants[0].latest_role_ended_at is None
+
+    async def test_multiple_direct_rows_take_the_longest_grant(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # Grant precedence normally collapses these into one row, but the guard
+        # must reflect the longest of whatever is actually active.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        soon = datetime.now(UTC) + timedelta(days=10)
+        later = datetime.now(UTC) + timedelta(days=45)
+        await _direct_grant(user=user, group=okta_group, ended_at=soon)
+        await _direct_grant(user=user, group=okta_group, ended_at=later)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH)
+
+        assert len(grants) == 1
+        assert grants[0].latest_direct_ended_at is not None
+        # NaiveUTCDateTime normalizes an aware value to naive UTC on bind, so what
+        # comes back is naive. The tolerance keeps the assertion about which of the
+        # two rows won rather than about round-trip precision.
+        assert abs(grants[0].latest_direct_ended_at.replace(tzinfo=UTC) - later) < timedelta(seconds=1)
+
+    async def test_soft_deleted_user_is_excluded(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        user.deleted_at = datetime.now(UTC)
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_soft_deleted_group_is_excluded(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        okta_group.deleted_at = datetime.now(UTC)
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
