@@ -26,6 +26,7 @@ from api.models import (
     RoleGroup,
     Tag,
 )
+from api.models.app_group import app_owners_group_description
 from api.operations import CreateAccessRequest, ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import (
@@ -307,7 +308,8 @@ async def test_put_group(
         url_for=url_for,
     )
 
-    # Updating the name of the built-in app owners group should fail
+    # Renaming or retyping the built-in app owners group should fail, even when
+    # combined with a tag change -- those structural fields stay rejected.
     builtin_access_owners_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}{App.ACCESS_APP_RESERVED_NAME}"
         + f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
@@ -327,14 +329,11 @@ async def test_put_group(
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
 
-    # Updating tags is allowed, but nothing else
+    # Updating tags is allowed, but a structural field (name/type/app_id) is not.
+    # `type` must match the group's actual type -- "app_group" -- to isolate the
+    # tags-only case from the rename/retype rejected above.
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_add": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    rep = await client.put(group_url, json={"type": "app_group", "tags_to_add": [tag_id]})
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -346,12 +345,7 @@ async def test_put_group(
     assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 1
 
     update_group_spy.reset_mock()
-    data.update(
-        {
-            "tags_to_remove": [tag_id],
-        }
-    )
-    rep = await client.put(group_url, json=data)
+    rep = await client.put(group_url, json={"type": "app_group", "tags_to_remove": [tag_id]})
     assert rep.status_code == 200
     assert update_group_spy.call_count == 0
 
@@ -476,6 +470,116 @@ async def test_put_app_group_rebind_authorization(
     rep = await client.put(group_url, json=rebind_data)
     assert rep.status_code == 200
     assert rep.json()["app_id"] == target_app_id
+
+
+async def _make_owner_group(db: Db, access_app: App, app_group: AppGroup) -> AppGroup:
+    """Wire access_app/app_group into an app owner group with a conforming description."""
+    app_group.app_id = access_app.id
+    app_group.is_owner = True
+    app_group.name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}{access_app.name}"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    app_group.description = app_owners_group_description(access_app.name)
+    db.session.add(access_app)
+    db.session.add(app_group)
+    await db.session.commit()
+    return app_group
+
+
+async def test_owner_group_accepts_a_conforming_description(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    """An app owner group's description may carry free text below its base line."""
+    owner_group = await _make_owner_group(db, access_app, app_group)
+    mocker.patch.object(okta, "update_group")
+
+    base = app_owners_group_description(access_app.name)
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group.id)
+    response = await client.put(
+        group_url,
+        json={"type": "app_group", "description": f"{base}\n\nAlso grants billing access"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == f"{base}\n\nAlso grants billing access"
+
+
+async def test_owner_group_rejects_a_description_without_the_base_line(
+    client: AsyncClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    owner_group = await _make_owner_group(db, access_app, app_group)
+
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group.id)
+    response = await client.put(group_url, json={"type": "app_group", "description": "Something else"})
+
+    assert response.status_code == 400
+    # RFC 9457 envelope: the human-readable message is in `detail`.
+    assert "Owners of the" in response.json()["detail"]
+
+
+async def test_owner_group_still_rejects_a_rename(
+    client: AsyncClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    owner_group = await _make_owner_group(db, access_app, app_group)
+
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group.id)
+    response = await client.put(
+        group_url,
+        json={"type": "app_group", "name": f"{AppGroup.APP_GROUP_NAME_PREFIX}Renamed"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_owner_group_still_rejects_a_type_change(
+    client: AsyncClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    owner_group = await _make_owner_group(db, access_app, app_group)
+
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group.id)
+    response = await client.put(group_url, json={"type": "okta_group"})
+
+    assert response.status_code == 400
+
+
+async def test_owner_group_still_rejects_an_app_rebind(
+    client: AsyncClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    owner_group = await _make_owner_group(db, access_app, app_group)
+    other_app = AppFactory.build()
+    db.session.add(other_app)
+    await db.session.commit()
+    other_app_id = other_app.id
+
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group.id)
+    response = await client.put(
+        group_url,
+        json={"type": "app_group", "app_id": other_app_id},
+    )
+
+    assert response.status_code == 400
 
 
 async def test_put_group_members(

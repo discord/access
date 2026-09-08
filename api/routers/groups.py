@@ -234,10 +234,14 @@ async def put_group(
     if group is None:
         raise HTTPException(404, "Not Found")
 
-    # Capture the pre-update name/description so the single, consolidated group_updated fire
-    # (below) can report them.
+    # Capture the pre-update name/description/app_id so the single, consolidated
+    # group_updated fire (below) can report them, and so the app-owner-group guard
+    # further down can detect a rebind even after the rebind-authorization block
+    # (which runs first, unconditionally on AppGroup, not just owner groups) has
+    # already applied `group.app_id = target_app.id` in memory.
     old_name = group.name
     old_description = group.description or ""
+    original_app_id = getattr(group, "app_id", None)
     # Length + REQUIRE_DESCRIPTIONS-when-set are enforced by the schema; this
     # just normalises a `None` (only possible when the client explicitly sent
     # `null`) to an empty string for ModifyGroupDetails.
@@ -308,8 +312,27 @@ async def put_group(
     tags_to_add = body.tags_to_add or []
     tags_to_remove = body.tags_to_remove or []
 
-    # App owner groups: only tag changes allowed
+    # App owner groups: only tag and description changes are allowed. The description is
+    # itself constrained -- it must keep its "Owners of the {app name} application" base
+    # line -- which ModifyGroupDetails enforces for every caller.
+    #
+    # `type` is the discriminator and is present in `fields_set` on every request, so the
+    # structural fields are compared by value rather than by presence.
     if type(group) is AppGroup and group.is_owner:
+        renaming = "name" in fields_set and body.name is not None and body.name != group.name
+        retyping = body.type != group.type
+        rebinding = isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set and body.app_id != original_app_id
+        if renaming or retyping or rebinding:
+            raise HTTPException(400, "Only tags and the description can be modified for application owner groups")
+
+        if description is not None:
+            try:
+                await ModifyGroupDetails(
+                    group=group, description=description, current_user_id=current_user_id
+                ).execute()
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+
         if len(tags_to_add) > 0 or len(tags_to_remove) > 0:
             await ModifyGroupTags(
                 group=group,
@@ -317,9 +340,9 @@ async def put_group(
                 tags_to_remove=tags_to_remove,
                 current_user_id=current_user_id,
             ).execute()
-            refreshed = await _load_group_with_options(db, group.id)
-            return _group_adapter.validate_python(refreshed, from_attributes=True)
-        raise HTTPException(400, "Only tags can be modifed for application owner groups")
+
+        refreshed = await _load_group_with_options(db, group.id)
+        return _group_adapter.validate_python(refreshed, from_attributes=True)
 
     # Block renaming to a reserved prefix unless the final group type matches.
     # Computed using the target type since a legitimate
