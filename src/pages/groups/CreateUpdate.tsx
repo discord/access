@@ -42,6 +42,11 @@ import {
 import {canManageGroup, isAccessAdmin, isAppOwnerGroupOwner} from '../../authorization';
 import accessConfig, {requireDescriptions} from '../../config/accessConfig';
 import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupLifecyclePluginConfigurationForm';
+import {
+  appOwnerGroupDescriptionPrefix,
+  appOwnerGroupDescriptionRemainder,
+  composeAppOwnerGroupDescription,
+} from './appOwnerGroupDescription';
 
 interface GroupButtonProps {
   defaultGroupType: 'okta_group' | 'app_group' | 'role_group';
@@ -107,6 +112,17 @@ function GroupDialog(props: GroupDialogProps) {
   const [appName, setAppName] = React.useState(initialAppName);
   const [requestError, setRequestError] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
+
+  // An owner group's description is the fixed base line plus optional free text. The form
+  // edits only the free text -- the same split the name field uses, where the field holds
+  // the suffix and submit() re-adds the prefix. Without an app name there is no correct
+  // prefix to show, so the description stays locked as it is for every other owner field.
+  const ownerDescriptionPrefix = props.app_owner_group && appName ? appOwnerGroupDescriptionPrefix(appName) : null;
+  const ownerDescriptionRemainder = ownerDescriptionPrefix
+    ? appOwnerGroupDescriptionRemainder(props.group?.description ?? '', appName)
+    : '';
+  const descriptionMaxLength =
+    ownerDescriptionPrefix != null ? Math.max(0, 1024 - ownerDescriptionPrefix.length - 2) : 1024;
 
   const appGroupLifecyclePluginId = React.useMemo(() => {
     if (groupType !== 'app_group') return null;
@@ -174,6 +190,12 @@ function GroupDialog(props: GroupDialogProps) {
       group.tags_to_add = selectedTags.map((tag: TagSummary) => tag.id);
     }
 
+    // The description field holds the free text only; the fixed base line is added back
+    // here, mirroring how the name field's prefix is re-added below.
+    if (ownerDescriptionPrefix != null) {
+      group.description = composeAppOwnerGroupDescription(appName, group.description ?? '');
+    }
+
     // The name field holds the suffix only; the type-derived prefix is added back here.
     // Locked-and-immutable names (an owner group's) are absent from the form data, and a
     // partial update must leave them alone rather than prefix an undefined suffix.
@@ -219,7 +241,7 @@ function GroupDialog(props: GroupDialogProps) {
                   props.group?.name.substring(
                     (APP_GROUP_PREFIX + initialAppName + APP_NAME_APP_GROUP_SEPARATOR).length,
                   ) ?? '',
-                description: props.group?.description ?? '',
+                description: ownerDescriptionPrefix ? ownerDescriptionRemainder : props.group?.description ?? '',
               }
             : {
                 type: defaultGroupType,
@@ -227,7 +249,7 @@ function GroupDialog(props: GroupDialogProps) {
                   props.group?.type == 'role_group'
                     ? props.group?.name.substring(ROLE_GROUP_PREFIX.length)
                     : props.group?.name ?? '',
-                description: props.group?.description ?? '',
+                description: ownerDescriptionPrefix ? ownerDescriptionRemainder : props.group?.description ?? '',
               }
         }
         onSuccess={(formData) => submit(formData)}>
@@ -341,25 +363,39 @@ function GroupDialog(props: GroupDialogProps) {
             </Box>
           </FormControl>
           <FormControl margin="normal" fullWidth>
+            {ownerDescriptionPrefix != null && (
+              <Typography variant="body2" color="text.secondary" sx={{mb: 1, whiteSpace: 'pre-wrap'}}>
+                {ownerDescriptionPrefix}
+              </Typography>
+            )}
             <TextFieldElement
-              label="Description"
+              label={ownerDescriptionPrefix != null ? 'Additional description' : 'Description'}
               name="description"
               multiline
               rows={4}
-              rules={{maxLength: 1024}}
-              // `disabled`, like the name above: immutable for an owner group, so it is left out
-              // of the partial update rather than submitted unchanged.
-              disabled={props.app_owner_group}
+              rules={{maxLength: descriptionMaxLength}}
+              // MUI v6: the HTML attribute goes through slotProps.htmlInput, not the deprecated
+              // inputProps. `rules` drives the react-hook-form message; this drives the browser cap.
+              slotProps={{htmlInput: {maxLength: descriptionMaxLength}}}
+              helperText={
+                ownerDescriptionPrefix != null ? 'Shown as a second paragraph below the line above.' : undefined
+              }
+              // `disabled`, like the name above: an owner group with no resolvable app name has no
+              // correct prefix to show, so its description stays immutable and is left out of the
+              // partial update rather than submitted unchanged.
+              disabled={props.app_owner_group && ownerDescriptionPrefix == null}
               parseError={(error) => {
                 if (error?.message != '') {
                   return error?.message ?? '';
                 }
                 if (error.type == 'maxLength') {
-                  return 'Description can be at most 1024 characters in length';
+                  return `Description can be at most ${descriptionMaxLength} characters in length`;
                 }
                 return '';
               }}
-              required={requireDescriptions}
+              // The base line always satisfies REQUIRE_DESCRIPTIONS, so the free text below it is
+              // always optional.
+              required={ownerDescriptionPrefix != null ? false : requireDescriptions}
             />
           </FormControl>
           <FormControl margin="normal" fullWidth>

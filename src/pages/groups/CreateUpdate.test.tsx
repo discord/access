@@ -94,10 +94,13 @@ describe('creating an app group from an app page', () => {
 });
 
 describe('editing an app owner group', () => {
-  // Type, name and description are all locked for an owner group. Only `type` has to be
-  // submitted -- it discriminates the update body. Name and description are immutable,
-  // so they are left out of the partial update entirely.
-  it('submits the locked type and omits the immutable name and description', async () => {
+  // Type and name are locked for an owner group. Only `type` has to be submitted -- it
+  // discriminates the update body -- and the immutable name is left out of the partial
+  // update entirely. The description is different: only its base line is fixed, and the
+  // free text below it is user-editable (see "editing an app owner group description" below).
+  // OWNER_APP_GROUP's stored description does not match the base line for its app, so the
+  // reseat rule treats it as divergent and repairs it under the current base line on save.
+  it('submits the locked type and omits the immutable name, but recomposes the description', async () => {
     render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={OWNER_APP_GROUP} />);
 
     await openDialog('edit');
@@ -107,12 +110,13 @@ describe('editing an app owner group', () => {
     const body = updateMutate.mock.calls[0][0].body;
     expect(body).toMatchObject({type: 'app_group'});
     expect(body.name).toBeUndefined();
-    expect(body.description).toBeUndefined();
+    expect(body.description).toBe('Owners of the HammerAndChiselZendeskSandbox application\n\nOwners of the sandbox');
   });
 
-  // An owner group whose description is empty must still be editable -- validating a
-  // `required` description the user cannot reach would leave the form with no way out.
-  it('submits when the immutable description is empty', async () => {
+  // An owner group's additional description is always optional -- the fixed base line
+  // alone always satisfies a `require description` tag constraint, so leaving the free
+  // text empty must still submit.
+  it('submits when the additional description is empty', async () => {
     const emptyDescription = {...OWNER_APP_GROUP, description: ''} as GroupDetail;
     render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={emptyDescription} />);
 
@@ -120,5 +124,91 @@ describe('editing an app owner group', () => {
     await submitDialog('Update');
 
     expect(updateMutate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('editing an app owner group description', () => {
+  const ownerGroupWith = (description: string) => ({...OWNER_APP_GROUP, description}) as unknown as GroupDetail;
+
+  const BASE = 'Owners of the HammerAndChiselZendeskSandbox application';
+
+  it('seeds the field with the remainder, not the whole description', async () => {
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={ownerGroupWith(`${BASE}\n\nAlso grants billing access`)}
+      />,
+    );
+    await openDialog('edit');
+
+    expect(screen.getByLabelText(/^Additional description/)).toHaveValue('Also grants billing access');
+    expect(screen.getByText(BASE)).toBeInTheDocument();
+  });
+
+  it('seeds the whole description when it does not match the base line', async () => {
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={ownerGroupWith('Owners of the sandbox')}
+      />,
+    );
+    await openDialog('edit');
+
+    // Divergent text stays visible and editable, so saving repairs the description.
+    expect(screen.getByLabelText(/^Additional description/)).toHaveValue('Owners of the sandbox');
+  });
+
+  it('submits the base line rejoined with the edited remainder', async () => {
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={ownerGroupWith(BASE)} />);
+    await openDialog('edit');
+    await userEvent.type(screen.getByLabelText(/^Additional description/), 'Also grants billing access');
+    await submitDialog('Update');
+
+    expect(updateMutate).toHaveBeenCalledTimes(1);
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({
+      description: `${BASE}\n\nAlso grants billing access`,
+    });
+  });
+
+  it('submits the bare base line when the remainder is cleared', async () => {
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={ownerGroupWith(`${BASE}\n\nAlso grants billing access`)}
+      />,
+    );
+    await openDialog('edit');
+    await userEvent.clear(screen.getByLabelText(/^Additional description/));
+    await submitDialog('Update');
+
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: BASE});
+  });
+
+  it('caps the remainder so the composed description fits 1024 characters', async () => {
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={ownerGroupWith(BASE)} />);
+    await openDialog('edit');
+
+    expect(screen.getByLabelText(/^Additional description/)).toHaveAttribute(
+      'maxlength',
+      String(1024 - BASE.length - 2),
+    );
+  });
+
+  it('leaves the field disabled when the app name is unavailable', async () => {
+    const groupWithoutApp = {...OWNER_APP_GROUP, description: BASE, app: undefined};
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={groupWithoutApp as unknown as GroupDetail}
+      />,
+    );
+    await openDialog('edit');
+
+    // Better no edit than a wrong prefix built from a missing name.
+    expect(screen.getByLabelText(/^Description/)).toBeDisabled();
   });
 });
