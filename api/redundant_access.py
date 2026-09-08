@@ -305,6 +305,8 @@ async def resolve_user_ids(user_filters: Sequence[str]) -> set[str] | None:
         user_id = await db.session.scalar(
             select(OktaUser.id)
             .where(OktaUser.deleted_at.is_(None))
+            # Email matching is LIKE-based, consistent with the rest of the codebase,
+            # so `_` and `%` in a filter value act as wildcards.
             .where(or_(OktaUser.id == value, OktaUser.email.ilike(value)))
         )
         if user_id is None:

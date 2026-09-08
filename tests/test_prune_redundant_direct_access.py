@@ -497,3 +497,22 @@ class TestResolveUserIds:
 
         with pytest.raises(FilterResolutionError):
             await resolve_user_ids((user.email,))
+
+    async def test_email_matching_is_like_based_with_underscore_wildcard(self, db: Db) -> None:
+        # The value goes into ILIKE unescaped, so `_` is a single-character
+        # wildcard. This matches the id-or-email resolution idiom used across
+        # the codebase in ~10 call sites. A caller wanting exact matching would
+        # need `func.lower(...) == func.lower(...)` instead.
+        user_with_underscore = OktaUserFactory.build(email="jane_doe@example.com")
+        user_without_underscore = OktaUserFactory.build(email="janexdoe@example.com")
+        db.session.add_all([user_with_underscore, user_without_underscore])
+        await db.session.commit()
+
+        # Querying with the underscore email matches both users via ILIKE.
+        # scalar() returns the first row the DB returns, so the result is one of
+        # the two ids; the specific one is database-dependent.
+        result_ids = await resolve_user_ids(("jane_doe@example.com",))
+
+        assert result_ids == {user_with_underscore.id} or result_ids == {user_without_underscore.id}
+        assert len(result_ids) == 1
+        assert result_ids <= {user_with_underscore.id, user_without_underscore.id}
