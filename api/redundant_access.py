@@ -197,7 +197,10 @@ async def find_redundant_grants(
     for user_id, group_id, is_owner, ended_at in (await db.session.execute(role_stmt)).all():
         key = (user_id, group_id, is_owner)
         # The user/group pairs are filtered as a cross product, so this query can
-        # return triples that were never candidates.
+        # return triples that were never candidates. Keeping them out holds
+        # `role_latest` to the candidate set; the loop below reads it only at
+        # keys drawn from `direct_latest`, so a non-candidate entry would be
+        # ignored rather than wrong.
         if key not in direct_latest:
             continue
         role_latest[key] = _later(role_latest[key], ended_at) if key in role_latest else ended_at
