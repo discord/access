@@ -64,3 +64,41 @@ describe('composeAppOwnerGroupDescription', () => {
     expect(appOwnerGroupDescriptionRemainder(composed, 'Zendesk')).toBe('Also grants billing');
   });
 });
+
+// Mirrors tests/test_app_group_description.py one-for-one so the two can be diffed.
+describe('markdown indentation parity with the backend', () => {
+  // test_remainder_preserves_indentation_on_a_conforming_description
+  it('preserves indentation on the remainder of a conforming description', () => {
+    const description = 'Owners of the Zendesk application\n\n    - nested item\n    - another item';
+    expect(appOwnerGroupDescriptionRemainder(description, 'Zendesk')).toBe('    - nested item\n    - another item');
+  });
+
+  // test_remainder_preserves_indentation_on_a_non_conforming_description
+  it('preserves indentation on a non-conforming description', () => {
+    const description = '    - nested item\n    - another item';
+    expect(appOwnerGroupDescriptionRemainder(description, 'Zendesk')).toBe('    - nested item\n    - another item');
+  });
+
+  // Covers composeAppOwnerGroupDescription's own use of the same helper.
+  it('preserves indentation when composing with an indented remainder', () => {
+    expect(composeAppOwnerGroupDescription('Zendesk', '    - nested item\n    - another item')).toBe(
+      'Owners of the Zendesk application\n\n    - nested item\n    - another item',
+    );
+  });
+
+  // test_compose_and_split_round_trip_preserves_indentation
+  it('round-trips an indented remainder through compose and remainder exactly', () => {
+    const composed = composeAppOwnerGroupDescription('Zendesk', '    - nested item\n    - another item');
+    expect(appOwnerGroupDescriptionRemainder(composed, 'Zendesk')).toBe('    - nested item\n    - another item');
+    expect(composeAppOwnerGroupDescription('Zendesk', appOwnerGroupDescriptionRemainder(composed, 'Zendesk'))).toBe(
+      composed,
+    );
+  });
+
+  // test_composing_after_a_crlf_normalises_the_separator
+  it('still removes leading blank lines, including a CRLF blank-line separator', () => {
+    expect(
+      appOwnerGroupDescriptionRemainder('Owners of the Zendesk application\n\n\n\n   \nActual text', 'Zendesk'),
+    ).toBe('Actual text');
+  });
+});

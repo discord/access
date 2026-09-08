@@ -10,6 +10,24 @@ export function appOwnerGroupDescriptionPrefix(appName: string): string {
   return `Owners of the ${appName} application`;
 }
 
+const LEADING_BLANK_LINES_RE = /^(?:[ \t]*\n)+/;
+
+/**
+ * Strip leading blank lines and trailing whitespace, preserving indentation on the first
+ * line of real content.
+ *
+ * Leading spaces/tabs on a non-blank line are meaningful markdown (an indented list item
+ * or code block), so unlike `String.trim()` this does not treat a run of leading
+ * whitespace and newlines as one unit to discard; only whole blank lines ahead of the
+ * first real content are removed. Trailing whitespace carries no such meaning and is
+ * stripped in full. Mirrors `_trim_free_text` in `api/models/app_group.py`.
+ *
+ * `\r\n` is normalized to `\n` first, since a browser textarea submits CRLF line endings.
+ */
+function trimFreeText(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(LEADING_BLANK_LINES_RE, '').trimEnd();
+}
+
 /**
  * The free text below an app owner group's base line.
  *
@@ -26,14 +44,14 @@ export function appOwnerGroupDescriptionRemainder(description: string, appName: 
     return '';
   }
   if (normalized.startsWith(prefix)) {
-    return normalized.slice(prefix.length).trim();
+    return trimFreeText(normalized.slice(prefix.length));
   }
-  return normalized.trim();
+  return trimFreeText(normalized);
 }
 
 /** The base line, plus a blank line and `remainder` when there is any. */
 export function composeAppOwnerGroupDescription(appName: string, remainder: string): string {
   const prefix = appOwnerGroupDescriptionPrefix(appName);
-  const trimmed = (remainder ?? '').trim();
+  const trimmed = trimFreeText(remainder ?? '');
   return trimmed.length > 0 ? `${prefix}\n\n${trimmed}` : prefix;
 }

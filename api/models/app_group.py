@@ -19,6 +19,10 @@ def _trim_free_text(text: str) -> str:
     `firstParagraph`'s leading-blank-line handling in `src/components/MarkdownDescription.tsx`.
 
     `\\r\\n` is normalized to `\\n` first, since a browser textarea submits CRLF line endings.
+
+    Mirrored in the frontend by `trimFreeText`, a private helper in
+    `src/pages/groups/appOwnerGroupDescription.ts`; both are pinned by tests that name
+    each other.
     """
     return _LEADING_BLANK_LINES_RE.sub("", text.replace("\r\n", "\n")).rstrip()
 
