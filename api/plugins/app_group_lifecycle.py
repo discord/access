@@ -660,6 +660,12 @@ class AppGroupLifecycleContext:
         idempotent and re-enforce on the next pass; the alternative -- committing here -- breaks
         the lock.
 
+        An app owner group constrains what it accepts: the description must keep its
+        "Owners of the {app name} application" base line, optionally followed by a blank
+        line and free text. A non-conforming value raises, and because a failing hook is
+        logged and swallowed, it fails quietly -- compose the base line back on rather
+        than replacing it wholesale.
+
         Args:
             group: The app group to describe.
             description: The description to set, replacing whatever is there.

@@ -6,6 +6,7 @@ from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, RoleGroup
+from api.models.app_group import app_owners_group_description
 from api.operations._lifecycle_fan_out import defer_or_invoke_lifecycle_hook
 from api.plugins.app_group_lifecycle import AppGroupLifecycleHook
 from api.services import okta
@@ -86,6 +87,25 @@ class ModifyGroupDetails:
                         self.name, app_group_name_prefix
                     )
                 )
+
+        # An app owner group's description keeps its base line: "Owners of the {app name}
+        # application", optionally followed by a blank line and free text. Enforced here
+        # rather than in the router so it also holds for the plugin `set_group_description`
+        # capability and any other caller that bypasses the route.
+        if self.description is not None and type(self.group) is AppGroup and self.group.is_owner:
+            description = self.description.replace("\r\n", "\n")
+            owner_app = (
+                await db.session.scalars(select(App).where(App.id == self.group.app_id).where(App.deleted_at.is_(None)))
+            ).first()
+            if owner_app is None:
+                raise ValueError("App for AppGroup does not exist")
+            base = app_owners_group_description(owner_app.name)
+            if description != base and not description.startswith(f"{base}\n\n"):
+                raise ValueError(
+                    f'An app owner group description must begin with "{base}", optionally '
+                    "followed by a blank line and additional text."
+                )
+            self.description = description
 
         if self.name is not None:
             self.group.name = self.name

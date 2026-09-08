@@ -1,7 +1,15 @@
+import pytest
+from pytest_mock import MockerFixture
+
+from api.extensions import Db
+from api.models import AppGroup
 from api.models.app_group import (
     app_owners_group_description,
     app_owners_group_description_remainder,
 )
+from api.operations import ModifyGroupDetails
+from api.services import okta
+from tests.factories import AppFactory, AppGroupFactory
 
 
 # Pinned literal. The frontend mirrors this format string in
@@ -86,3 +94,91 @@ def test_compose_and_split_round_trip_preserves_indentation() -> None:
     assert (
         app_owners_group_description("Zendesk", app_owners_group_description_remainder(composed, "Zendesk")) == composed
     )
+
+
+def test_composing_after_a_crlf_normalises_the_separator() -> None:
+    # A CRLF blank-line separator (e.g. from a browser textarea) must not survive verbatim --
+    # otherwise compose -> remainder -> compose is not stable for that input.
+    assert app_owners_group_description("Zendesk", "\r\n\r\nExtra text") == (
+        "Owners of the Zendesk application\n\nExtra text"
+    )
+
+
+async def _owner_group(db: Db, app_name: str = "Zendesk") -> AppGroup:
+    """Create an app and its owner group with a conforming description, mirroring what CreateApp produces."""
+    app = await AppFactory.create_async(name=app_name, description="")
+    return await AppGroupFactory.create_async(
+        app_id=app.id,
+        is_owner=True,
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        description=app_owners_group_description(app_name),
+    )
+
+
+async def test_accepts_the_bare_base_line(db: Db, mocker: MockerFixture) -> None:
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    await ModifyGroupDetails(group=group, description="Owners of the Zendesk application").execute()
+    assert group.description == "Owners of the Zendesk application"
+
+
+async def test_accepts_the_base_line_followed_by_a_blank_line_and_text(db: Db, mocker: MockerFixture) -> None:
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    await ModifyGroupDetails(
+        group=group, description="Owners of the Zendesk application\n\nAlso grants billing"
+    ).execute()
+    assert group.description == "Owners of the Zendesk application\n\nAlso grants billing"
+
+
+async def test_normalises_crlf_before_checking(db: Db, mocker: MockerFixture) -> None:
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    await ModifyGroupDetails(
+        group=group, description="Owners of the Zendesk application\r\n\r\nAlso grants billing"
+    ).execute()
+    assert group.description == "Owners of the Zendesk application\n\nAlso grants billing"
+
+
+async def test_rejects_a_description_that_drops_the_base_line(db: Db, mocker: MockerFixture) -> None:
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    with pytest.raises(ValueError, match="Owners of the Zendesk application"):
+        await ModifyGroupDetails(group=group, description="Something else entirely").execute()
+
+
+async def test_rejects_text_appended_on_the_same_line(db: Db, mocker: MockerFixture) -> None:
+    # One paragraph is not the requested format; it must be a blank line.
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    with pytest.raises(ValueError):
+        await ModifyGroupDetails(
+            group=group, description="Owners of the Zendesk application and also billing"
+        ).execute()
+
+
+async def test_rejects_a_single_newline_separator(db: Db, mocker: MockerFixture) -> None:
+    group = await _owner_group(db)
+    mocker.patch.object(okta, "update_group")
+
+    with pytest.raises(ValueError):
+        await ModifyGroupDetails(
+            group=group, description="Owners of the Zendesk application\nAlso grants billing"
+        ).execute()
+
+
+async def test_a_non_owner_app_group_description_is_unconstrained(db: Db, mocker: MockerFixture) -> None:
+    app = await AppFactory.create_async(name="Zendesk", description="")
+    group = await AppGroupFactory.create_async(app_id=app.id, is_owner=False, description="anything")
+    mocker.patch.object(okta, "update_group")
+
+    await ModifyGroupDetails(group=group, description="literally anything").execute()
+    assert group.description == "literally anything"

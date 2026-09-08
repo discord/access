@@ -17,8 +17,10 @@ def _trim_free_text(text: str) -> str:
     newlines as one unit to discard -- only whole blank lines ahead of the first real content are
     removed. Trailing whitespace carries no such meaning and is stripped in full. Mirrors
     `firstParagraph`'s leading-blank-line handling in `src/components/MarkdownDescription.tsx`.
+
+    `\\r\\n` is normalized to `\\n` first, since a browser textarea submits CRLF line endings.
     """
-    return _LEADING_BLANK_LINES_RE.sub("", text).rstrip()
+    return _LEADING_BLANK_LINES_RE.sub("", text.replace("\r\n", "\n")).rstrip()
 
 
 async def get_app_managers(app_id: str) -> List[OktaUser]:
