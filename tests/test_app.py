@@ -4,7 +4,7 @@ from typing import Any, Protocol, cast
 import pytest
 from faker import Faker
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from okta.models.group import Group
 from pytest_mock import MockerFixture
 from fastapi import FastAPI
@@ -15,6 +15,7 @@ from api.models import (
     App,
     AppGroup,
     AppTagMap,
+    OktaGroup,
     OktaGroupTagMap,
     OktaUser,
     OktaUserGroupMember,
@@ -1077,6 +1078,53 @@ async def test_create_app_preserves_a_preexisting_owner_group_description(
     promoted = await db.session.get(AppGroup, preexisting_group_id)
     assert promoted is not None
     assert promoted.description == app_owners_group_description("Payments", "Hand-written legacy text")
+
+
+async def test_create_app_fails_when_the_composed_description_would_overflow(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    url_for: Any,
+) -> None:
+    """Promoting a pre-existing group whose composed description would exceed 1024
+    characters fails loudly instead of truncating -- and it fails before anything is
+    created, not merely before a response is returned."""
+    create_group_mock = mocker.patch.object(okta, "create_group")
+    add_user_to_group_mock = mocker.patch.object(okta, "add_user_to_group")
+    add_owner_to_group_mock = mocker.patch.object(okta, "add_owner_to_group")
+    update_group_mock = mocker.patch.object(okta, "update_group")
+
+    owner_group_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    # 1010 chars of remainder pushes the composition (base line + remainder) over 1024.
+    original_description = app_owners_group_description("Payments", "x" * 1010)
+    preexisting_group = await OktaGroupFactory.create_async(name=owner_group_name, description=original_description)
+    preexisting_group_id = preexisting_group.id
+
+    apps_url = url_for("api-apps.apps")
+    rep = await client.post(apps_url, json={"name": "Payments"})
+
+    assert rep.status_code == 400
+    assert "1024" in rep.json()["detail"]
+
+    # Nothing was created or changed: no App row, the pre-existing group's type and
+    # description untouched, and no Okta call made.
+    assert (
+        await db.session.scalars(select(App).where(func.lower(App.name) == "payments").where(App.deleted_at.is_(None)))
+    ).first() is None
+
+    refreshed_group = await db.session.get(OktaGroup, preexisting_group_id)
+    assert refreshed_group is not None
+    await db.session.refresh(refreshed_group)
+    assert type(refreshed_group) is OktaGroup
+    assert refreshed_group.description == original_description
+
+    assert create_group_mock.call_count == 0
+    assert add_user_to_group_mock.call_count == 0
+    assert add_owner_to_group_mock.call_count == 0
+    assert update_group_mock.call_count == 0
 
 
 async def test_create_app_succeeds_with_members_only_preexisting_owner_group(

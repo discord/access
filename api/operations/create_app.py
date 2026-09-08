@@ -8,6 +8,7 @@ from api.context import get_request_context
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import with_polymorphic
 
+from api.exceptions import InvalidRequestError
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
 from api.models.app_group import app_owners_group_description, app_owners_group_description_remainder
@@ -17,6 +18,7 @@ from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
 from api.schemas import AuditLogSchema, EventType
+from api.schemas.requests_schemas import _GROUP_DESC_MAX_LENGTH
 
 
 class AppDict(TypedDict):
@@ -117,6 +119,29 @@ class CreateApp:
         if existing_app is not None:
             return existing_app
 
+        # A pre-existing group at the owner-group name is promoted below rather than
+        # replaced, and its description is reseated onto the new base line (matching the
+        # app-rename path). Composing can push the result past _GROUP_DESC_MAX_LENGTH --
+        # checked here, before anything is created or committed, so a refusal leaves no
+        # partial app, no promoted group, and no Okta call.
+        existing_owner_group = (
+            await db.session.scalars(
+                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
+                .where(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
+                .where(OktaGroup.deleted_at.is_(None))
+            )
+        ).first()
+        if existing_owner_group is not None:
+            remainder = app_owners_group_description_remainder(existing_owner_group.description or "", self.app.name)
+            composed = app_owners_group_description(self.app.name, remainder)
+            if len(composed) > _GROUP_DESC_MAX_LENGTH:
+                raise InvalidRequestError(
+                    f'Creating this app would make the description of "{existing_owner_group.name}" '
+                    f"{len(composed)} characters, over the {_GROUP_DESC_MAX_LENGTH} limit. "
+                    f"Shorten that group's description by "
+                    f"{len(composed) - _GROUP_DESC_MAX_LENGTH} characters and try again."
+                )
+
         # Audit logging
         email = None
         if current_user_id is not None:
@@ -142,14 +167,6 @@ class CreateApp:
         await db.session.commit()
 
         app_id = self.app.id
-
-        existing_owner_group = (
-            await db.session.scalars(
-                select(with_polymorphic(OktaGroup, [AppGroup, RoleGroup]))
-                .where(func.lower(OktaGroup.name) == func.lower(self.owner_group_name))
-                .where(OktaGroup.deleted_at.is_(None))
-            )
-        ).first()
 
         if existing_owner_group is None:
             owner_app_group = AppGroup(
