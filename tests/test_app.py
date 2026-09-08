@@ -1015,12 +1015,14 @@ async def test_create_app_succeeds_with_empty_preexisting_owner_group(
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
+    mocker.patch.object(okta, "update_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
         f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
     )
-    await OktaGroupFactory.create_async(name=owner_group_name)
+    preexisting_group = await OktaGroupFactory.create_async(name=owner_group_name)
+    preexisting_group_id = preexisting_group.id
 
     apps_url = url_for("api-apps.apps")
     rep = await client.post(apps_url, json={"name": "Payments"})
@@ -1031,6 +1033,50 @@ async def test_create_app_succeeds_with_empty_preexisting_owner_group(
     assert (
         await db.session.scalars(select(App).where(App.name == "Payments").where(App.deleted_at.is_(None)))
     ).first() is not None
+
+    # The promoted owner group's empty description becomes the bare base line, not left
+    # empty -- an empty owner group description previously reached a non-conforming state
+    # that later crashed any plugin trying to reconcile it (see the app-group-lifecycle
+    # docs on `set_group_description`).
+    promoted = await db.session.get(AppGroup, preexisting_group_id)
+    assert promoted is not None
+    assert promoted.description == app_owners_group_description("Payments")
+
+
+async def test_create_app_preserves_a_preexisting_owner_group_description(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    faker: Faker,  # type: ignore[type-arg]
+    url_for: Any,
+) -> None:
+    """Promoting a pre-existing group with its own free text keeps that text below the
+    new base line rather than discarding it -- the same reseat rule an app rename uses."""
+    mocker.patch.object(
+        okta,
+        "create_group",
+        side_effect=lambda name, desc: Group.from_dict({"id": cast(FakerWithPyStr, faker).pystr()}),
+    )
+    mocker.patch.object(okta, "add_user_to_group")
+    mocker.patch.object(okta, "add_owner_to_group")
+    mocker.patch.object(okta, "update_group")
+
+    owner_group_name = (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    preexisting_group = await OktaGroupFactory.create_async(
+        name=owner_group_name, description="Hand-written legacy text"
+    )
+    preexisting_group_id = preexisting_group.id
+
+    apps_url = url_for("api-apps.apps")
+    rep = await client.post(apps_url, json={"name": "Payments"})
+    assert rep.status_code == 201
+
+    promoted = await db.session.get(AppGroup, preexisting_group_id)
+    assert promoted is not None
+    assert promoted.description == app_owners_group_description("Payments", "Hand-written legacy text")
 
 
 async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
@@ -1051,6 +1097,7 @@ async def test_create_app_succeeds_with_members_only_preexisting_owner_group(
     )
     mocker.patch.object(okta, "add_user_to_group")
     mocker.patch.object(okta, "add_owner_to_group")
+    mocker.patch.object(okta, "update_group")
 
     owner_group_name = (
         f"{AppGroup.APP_GROUP_NAME_PREFIX}Payments"

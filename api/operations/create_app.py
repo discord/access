@@ -10,8 +10,9 @@ from sqlalchemy.orm import with_polymorphic
 
 from api.extensions import db
 from api.models import App, AppGroup, AppTagMap, OktaGroup, OktaGroupTagMap, OktaUser, RoleGroup, Tag
-from api.models.app_group import app_owners_group_description
+from api.models.app_group import app_owners_group_description, app_owners_group_description_remainder
 from api.operations.create_group import CreateGroup, GroupDict
+from api.operations.modify_group_details import ModifyGroupDetails
 from api.operations.modify_group_type import ModifyGroupType
 from api.operations.modify_group_users import ModifyGroupUsers
 from api.operations.modify_role_groups import ModifyRoleGroups
@@ -171,6 +172,20 @@ class CreateApp:
             owner_app_group.app_id = app_id
             owner_app_group.is_owner = True
             await db.session.commit()
+
+            # A promoted group keeps whatever it already had for a description: the
+            # reseat rule (shared with app rename, in `put_app`) composes the base line
+            # onto the existing text as a remainder rather than discarding it. Routed
+            # through ModifyGroupDetails, not a bare attribute assignment, so the Okta
+            # side of this pre-existing group is pushed to match -- unlike `app_id` and
+            # `is_owner` above, `description` is a real Okta group field, and this branch
+            # has no later step that would otherwise sync it.
+            remainder = app_owners_group_description_remainder(owner_app_group.description or "", self.app.name)
+            await ModifyGroupDetails(
+                group=owner_app_group,
+                description=app_owners_group_description(self.app.name, remainder),
+                current_user_id=current_user_id,
+            ).execute()
 
         if owner_id is not None:
             # Add the app owner to the app owner group as members and owners

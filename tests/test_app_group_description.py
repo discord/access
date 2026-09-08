@@ -11,6 +11,7 @@ from api.models.app_group import (
     app_owners_group_description_remainder,
 )
 from api.operations import ModifyGroupDetails
+from api.schemas.requests_schemas import _GROUP_DESC_MAX_LENGTH
 from api.services import okta
 from tests.factories import AppFactory, AppGroupFactory
 
@@ -57,6 +58,39 @@ def test_frontend_prefix_template_matches_backend() -> None:
         "has it been renamed or restructured?"
     )
     assert match.group(1) == expected_template
+
+
+def test_frontend_length_limit_matches_backend() -> None:
+    """The frontend's remainder length budget must match the backend's `_GROUP_DESC_MAX_LENGTH`.
+
+    `appOwnerGroupDescriptionRemainderMaxLength` (`src/pages/groups/appOwnerGroupDescription.ts`)
+    hardcodes the same 1024-character description column limit as
+    `_GROUP_DESC_MAX_LENGTH` (`api/schemas/requests_schemas.py`), rather than importing it --
+    there is no shared-constant channel between the two languages. Reads the TypeScript
+    source and compares the literal against the backend constant, the same way
+    `test_frontend_prefix_template_matches_backend` pins the base-line format string
+    above. Without this, the two figures could drift apart silently: too high a client
+    cap lets a user type text the API then rejects with a 400; too low one blocks text
+    the API would have accepted. Skipped if the frontend file is absent, e.g. a
+    backend-only checkout.
+    """
+    repo_root = Path(__file__).resolve().parent.parent
+    frontend_path = repo_root / "src" / "pages" / "groups" / "appOwnerGroupDescription.ts"
+    if not frontend_path.exists():
+        pytest.skip(f"{frontend_path} not present; backend-only checkout")
+
+    source = frontend_path.read_text()
+    match = re.search(
+        r"export function appOwnerGroupDescriptionRemainderMaxLength\(appName: string\): number \{\s*"
+        r"return Math\.max\(0, (\d+) - appOwnerGroupDescriptionPrefix\(appName\)\.length - "
+        r"BASE_LINE_SEPARATOR\.length\);\s*\}",
+        source,
+    )
+    assert match is not None, (
+        "could not find appOwnerGroupDescriptionRemainderMaxLength's return statement in "
+        f"{frontend_path}; has it been renamed or restructured?"
+    )
+    assert int(match.group(1)) == _GROUP_DESC_MAX_LENGTH
 
 
 def test_composes_additional_text_after_a_blank_line() -> None:
@@ -199,7 +233,7 @@ async def test_rejects_text_appended_on_the_same_line(db: Db, mocker: MockerFixt
     group = await _owner_group(db)
     mocker.patch.object(okta, "update_group")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Owners of the Zendesk application"):
         await ModifyGroupDetails(
             group=group, description="Owners of the Zendesk application and also billing"
         ).execute()
@@ -209,7 +243,7 @@ async def test_rejects_a_single_newline_separator(db: Db, mocker: MockerFixture)
     group = await _owner_group(db)
     mocker.patch.object(okta, "update_group")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Owners of the Zendesk application"):
         await ModifyGroupDetails(
             group=group, description="Owners of the Zendesk application\nAlso grants billing"
         ).execute()

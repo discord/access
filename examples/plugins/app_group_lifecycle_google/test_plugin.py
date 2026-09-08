@@ -306,6 +306,7 @@ def _group(
     group_config: dict[str, Any] | None = None,
     status: dict[str, Any] | None = None,
     description: str = "",
+    is_owner: bool = False,
 ) -> Mock:
     app = Mock(spec=App)
     app.plugin_data = {PLUGIN_ID: {"configuration": app_config or {"enabled": True}, "status": {}}}
@@ -313,6 +314,7 @@ def _group(
     group.id = "grp-1"
     group.name = "App-Google-Platform-Security"
     group.description = description
+    group.is_owner = is_owner
     group.app = app
     group.plugin_data = {PLUGIN_ID: {"configuration": group_config or {}, "status": status or {}}}
     return group
@@ -706,6 +708,48 @@ async def test_reconcile_adopts_missing_config_from_live_group(
     # updates Access + syncs Okta); the group_updated hook is suppressed to avoid re-entering this
     # plugin, and Google itself is not mutated.
     modify.assert_awaited_once_with(group, "Adopted desc")
+    patch.assert_not_called()
+
+
+async def test_reconcile_does_not_backfill_description_onto_an_owner_group(
+    plugin_instance: GoogleGroupManagerPlugin, mocker: MockerFixture, ctx_mock: MagicMock
+) -> None:
+    """An owner group's description is governed by Access's fixed base line, not by
+    whatever free text Google holds -- adopting it wholesale would not conform, and
+    `set_group_description` raising on that would roll back the `set_config` calls this
+    same adoption pass just made. Config (email/display name) is still adopted; only the
+    description backfill is skipped."""
+    group = _group(mocker, group_config={}, description="", is_owner=True)  # no config, no description
+    ctx_mock.get_config.side_effect = lambda obj, key, default=None: {
+        "enabled": True,
+    }.get(key, default)
+    ctx_mock.get_status.side_effect = lambda *_a, **_k: None
+    ctx_mock.discover_existing_push_mapping_and_target_group_external_id.return_value = (
+        "map-1",
+        "adopted@test-company.com",
+    )
+    mocker.patch.object(plugin_instance, "_look_up_google_group_id", return_value="ggid-1")
+    mocker.patch.object(
+        plugin_instance,
+        "_get_google_group",
+        return_value={
+            "name": "groups/ggid-1",
+            "groupKey": {"id": "adopted@test-company.com"},
+            "displayName": "Adopted Name",
+            "description": "Adopted desc",
+        },
+    )
+    ctx_mock.create_push_mapping_for_existing_group.return_value = "map-existing"
+    ctx_mock.find_groups_by_status.return_value = []  # not owned elsewhere
+    seed = ctx_mock.set_config
+    modify = ctx_mock.set_group_description
+    patch = mocker.patch.object(plugin_instance, "_patch_google_group")
+
+    await plugin_instance._reconcile(ctx_mock, group)
+
+    seed.assert_any_call(group, CONFIG_EMAIL, "adopted")
+    seed.assert_any_call(group, CONFIG_DISPLAY_NAME, "Adopted Name")
+    modify.assert_not_awaited()
     patch.assert_not_called()
 
 

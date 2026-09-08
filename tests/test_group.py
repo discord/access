@@ -613,6 +613,47 @@ async def test_owner_group_still_rejects_a_plugin_data_change(
     assert refreshed.plugin_data == {"existing_plugin": {"key": "value"}}
 
 
+async def test_owner_group_echoing_identical_plugin_data_succeeds(
+    client: AsyncClient,
+    db: Db,
+    mocker: MockerFixture,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    """CreateUpdate.tsx seeds the owner-group edit dialog's plugin config form from the
+    group's current `plugin_data` and resubmits it on every save, so a description or tag
+    edit on a plugin-managed app always echoes an unchanged `plugin_data` value back. That
+    echo must not trip the "Plugin configuration cannot be modified" guard -- only an
+    actual change to the value should. This is a value comparison
+    (`new_plugin_data != (group.plugin_data or {})`), not a presence check, precisely so
+    this echo succeeds."""
+    owner_group = await _make_owner_group(db, access_app, app_group)
+    owner_group.plugin_data = {"existing_plugin": {"key": "value"}}
+    db.session.add(owner_group)
+    await db.session.commit()
+    owner_group_id = owner_group.id
+    mocker.patch.object(okta, "update_group")
+
+    base = app_owners_group_description(access_app.name)
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+    response = await client.put(
+        group_url,
+        json={
+            "type": "app_group",
+            "description": f"{base}\n\nAlso grants billing access",
+            "plugin_data": {"existing_plugin": {"key": "value"}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == f"{base}\n\nAlso grants billing access"
+
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.plugin_data == {"existing_plugin": {"key": "value"}}
+
+
 async def test_put_group_members(
     client: AsyncClient,
     db: Db,

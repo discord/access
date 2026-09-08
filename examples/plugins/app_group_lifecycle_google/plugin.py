@@ -882,7 +882,17 @@ class GoogleGroupManagerPlugin:
                 return f"Live Google group email '{google_email}' is not in domain {self._domain}"
             ctx.set_config(group, CONFIG_EMAIL, inferred_email_prefix)
             ctx.set_config(group, CONFIG_DISPLAY_NAME, google_group.get("displayName", "") or "")
-            if not (group.description or "") and google_description:
+            # An owner group's description is governed by Access's own fixed base line
+            # ("Owners of the {app name} application"), not by whatever free text Google
+            # holds, so it is never a backfill target here: adopting Google's raw text
+            # wholesale would not conform, and `set_group_description` raises on a
+            # non-conforming value -- a failure that rolls back the `set_config` calls
+            # just above and reproduces on every later reconcile. Access itself keeps a
+            # freshly created or promoted owner group's description conforming and
+            # non-empty (see `CreateApp`/`CreateGroup`), so this guard only matters for a
+            # group that was already an empty-description owner group before that
+            # invariant existed.
+            if not group.is_owner and not (group.description or "") and google_description:
                 logger.info(f"Backfilling group description from Google to Access for {group.name}...")
                 # Route the Access-side description change through the plugin interface, which
                 # updates the ORM and syncs to Okta without committing or re-firing this hook.
