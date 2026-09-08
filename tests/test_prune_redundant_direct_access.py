@@ -1,20 +1,27 @@
 """Tests for `api.redundant_access` and the `prune-redundant-direct-access` CLI command."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
+from pytest_mock import MockerFixture
+from sqlalchemy import select
 
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
+from api.operations import ModifyGroupUsers
 from api.redundant_access import (
     AccessTarget,
     FilterResolutionError,
+    PruneOutcome,
     RedundantGrant,
     _later,
     find_redundant_grants,
+    prune_redundant_direct_access,
     resolve_group_ids,
     resolve_user_ids,
 )
+from api.services import okta
 from tests.factories import (
     AppFactory,
     AppGroupFactory,
@@ -24,6 +31,7 @@ from tests.factories import (
     RoleGroupFactory,
     RoleGroupMapFactory,
 )
+from tests.helpers import db_count
 
 NOW = datetime(2026, 9, 8, 12, 0, 0, tzinfo=UTC)
 IN_30_DAYS = NOW + timedelta(days=30)
@@ -513,3 +521,226 @@ class TestResolveUserIds:
         result_ids = await resolve_user_ids(("jane_doe@example.com",))
 
         assert result_ids == {user_no_underscore.id}
+
+
+async def _active_direct_count(db: Db, *, user: OktaUser, group: OktaGroup, is_owner: bool = False) -> int:
+    return await db_count(
+        db.session,
+        select(OktaUserGroupMember)
+        .where(OktaUserGroupMember.user_id == user.id)
+        .where(OktaUserGroupMember.group_id == group.id)
+        .where(OktaUserGroupMember.is_owner.is_(is_owner))
+        .where(OktaUserGroupMember.role_group_map_id.is_(None))
+        .where(OktaUserGroupMember.ended_at.is_(None)),
+    )
+
+
+async def _active_role_derived_count(db: Db, *, user: OktaUser, group: OktaGroup) -> int:
+    return await db_count(
+        db.session,
+        select(OktaUserGroupMember)
+        .where(OktaUserGroupMember.user_id == user.id)
+        .where(OktaUserGroupMember.group_id == group.id)
+        .where(OktaUserGroupMember.role_group_map_id.isnot(None))
+        .where(OktaUserGroupMember.ended_at.is_(None)),
+    )
+
+
+class TestPruneDriver:
+    async def test_dry_run_reports_but_writes_nothing(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=True)
+
+        assert summary.candidates == 1
+        assert summary.removed == 1
+        assert summary.decisions[0].outcome is PruneOutcome.REMOVED
+        assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+    async def test_apply_ends_the_direct_grant_and_keeps_the_role_grant(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert summary.removed == 1
+        assert await _active_direct_count(db, user=user, group=okta_group) == 0
+        assert await _active_role_derived_count(db, user=user, group=okta_group) == 1
+
+    async def test_removal_leaves_no_ended_actor(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # The CLI has no acting user, matching how the syncer attributes its own
+        # removals.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        direct = await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        await db.session.refresh(direct)
+        assert direct.ended_at is not None
+        assert direct.ended_actor_id is None
+
+    async def test_guard_skips_a_direct_grant_that_outlives_the_role(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group, ended_at=None)
+        await _role_grant(
+            user=user, group=okta_group, role_group=role_group, ended_at=datetime.now(UTC) + timedelta(days=30)
+        )
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert summary.candidates == 1
+        assert summary.skipped == 1
+        assert summary.removed == 0
+        assert summary.decisions[0].outcome is PruneOutcome.SKIPPED_WOULD_SHORTEN
+        assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+    async def test_allow_shortening_removes_the_longer_direct_grant(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group, ended_at=None)
+        await _role_grant(
+            user=user, group=okta_group, role_group=role_group, ended_at=datetime.now(UTC) + timedelta(days=30)
+        )
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, allow_shortening=True)
+
+        assert summary.removed == 1
+        assert await _active_direct_count(db, user=user, group=okta_group) == 0
+
+    async def test_okta_is_never_called(
+        self, db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # The role-derived row survives every removal, so ModifyGroupUsers finds
+        # other active access and leaves the external group membership alone.
+        okta_group.is_managed = True
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+        remove_member = mocker.patch.object(okta, "remove_user_from_group")
+        remove_owner = mocker.patch.object(okta, "remove_owner_from_group")
+
+        await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert remove_member.call_count == 0
+        assert remove_owner.call_count == 0
+
+    async def test_both_dimensions_prune_in_one_pass(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        for is_owner in (False, True):
+            await _direct_grant(user=user, group=okta_group, is_owner=is_owner)
+            await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=is_owner)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert summary.removed == 2
+        assert await _active_direct_count(db, user=user, group=okta_group, is_owner=False) == 0
+        assert await _active_direct_count(db, user=user, group=okta_group, is_owner=True) == 0
+
+    async def test_target_members_leaves_ownership_alone(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        for is_owner in (False, True):
+            await _direct_grant(user=user, group=okta_group, is_owner=is_owner)
+            await _role_grant(user=user, group=okta_group, role_group=role_group, is_owner=is_owner)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.MEMBERS, dry_run=False)
+
+        assert summary.removed == 1
+        assert await _active_direct_count(db, user=user, group=okta_group, is_owner=False) == 0
+        assert await _active_direct_count(db, user=user, group=okta_group, is_owner=True) == 1
+
+    async def test_a_failing_group_does_not_strand_the_others(
+        self, db: Db, mocker: MockerFixture, user: OktaUser, role_group: RoleGroup
+    ) -> None:
+        first = OktaGroupFactory.build(name="AFirstGroup")
+        second = OktaGroupFactory.build(name="BSecondGroup")
+        db.session.add_all([user, role_group, first, second])
+        await db.session.commit()
+        for group in (first, second):
+            await _direct_grant(user=user, group=group)
+            await _role_grant(user=user, group=group, role_group=role_group)
+        await db.session.commit()
+
+        real_execute = ModifyGroupUsers.execute
+        # Captured eagerly as a plain string: the driver's own rollback on the
+        # first group's failure expires every ORM instance in the identity
+        # map, `first` included, so reading `first.id` lazily inside the
+        # closure on the second call would itself raise MissingGreenlet.
+        first_id = first.id
+
+        async def _fail_on_first(self: ModifyGroupUsers) -> Any:
+            if self.group_id == first_id:
+                raise RuntimeError("boom")
+            return await real_execute(self)
+
+        mocker.patch.object(ModifyGroupUsers, "execute", _fail_on_first)
+
+        summary = await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False)
+
+        assert summary.failed == 1
+        assert summary.removed == 1
+        assert await _active_direct_count(db, user=user, group=second) == 0
+
+    async def test_filters_narrow_the_sweep(self, db: Db, user: OktaUser, role_group: RoleGroup) -> None:
+        wanted = OktaGroupFactory.build(name="Wanted")
+        other = OktaGroupFactory.build(name="Other")
+        db.session.add_all([user, role_group, wanted, other])
+        await db.session.commit()
+        for group in (wanted, other):
+            await _direct_grant(user=user, group=group)
+            await _role_grant(user=user, group=group, role_group=role_group)
+        await db.session.commit()
+
+        summary = await prune_redundant_direct_access(
+            target=AccessTarget.BOTH, dry_run=False, group_filters=("Wanted",)
+        )
+
+        assert summary.candidates == 1
+        assert await _active_direct_count(db, user=user, group=wanted) == 0
+        assert await _active_direct_count(db, user=user, group=other) == 1
+
+    async def test_unresolvable_filter_raises_before_writing(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        with pytest.raises(FilterResolutionError):
+            await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, group_filters=("Nope",))
+
+        assert await _active_direct_count(db, user=user, group=okta_group) == 1
