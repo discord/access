@@ -1181,6 +1181,35 @@ async def _app_with_owner_and_non_owner_groups(
     return app, owner_group, non_owner_group
 
 
+async def _app_with_non_owner_group_created_before_owner_group(
+    mocker: MockerFixture, app_name: str = "Zendesk"
+) -> tuple[App, AppGroup, AppGroup, Any]:
+    """An app whose non-owner group is created before its owner group, so the
+    unordered query the rename endpoint runs returns the non-owner group first. Used to
+    discriminate a length pre-flight that runs before the rename loop (correct) from one
+    that runs inside it (a regression): with the owner group first, a per-iteration check
+    would raise on the very first row, before mutating anything, and the two behaviors
+    would be indistinguishable. Returns the `okta.update_group` mock alongside the app and
+    groups so callers can assert Okta was never reached."""
+    update_group_mock = mocker.patch.object(okta, "update_group")
+    app = await AppFactory.create_async(name=app_name, description="")
+    non_owner_group = await AppGroupFactory.create_async(
+        app_id=app.id,
+        is_owner=False,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Admin",
+    )
+    owner_group = await AppGroupFactory.create_async(
+        app_id=app.id,
+        is_owner=True,
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        description=app_owners_group_description(app_name),
+    )
+    return app, owner_group, non_owner_group, update_group_mock
+
+
 async def test_rename_preserves_the_owner_group_free_text(
     client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
 ) -> None:
@@ -1218,12 +1247,24 @@ async def test_rename_reseats_a_divergent_description_rather_than_discarding_it(
 async def test_rename_fails_when_the_composed_description_would_overflow(
     client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
 ) -> None:
-    """Over 1024 characters, the rename fails loudly instead of truncating."""
-    app, owner_group, non_owner_group = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    """Over 1024 characters, the rename fails loudly instead of truncating -- and it fails
+    before anything is renamed, not merely before a response is returned."""
+    app, owner_group, non_owner_group, update_group_mock = await _app_with_non_owner_group_created_before_owner_group(
+        mocker, "Zendesk"
+    )
     # 1010 chars of remainder + a longer base line pushes the composition over 1024.
     owner_group.description = app_owners_group_description(app.name, "x" * 1010)
     db.session.add(owner_group)
     await db.session.commit()
+
+    # This test only discriminates a pre-flight (correct) from a per-iteration check
+    # inside the rename loop (a regression) if the non-owner group sorts before the
+    # overflowing owner group in the unordered query the endpoint runs -- otherwise a
+    # per-iteration check would raise on the very first row, before mutating anything,
+    # and look identical to the pre-flight. Assert that ordering directly rather than
+    # assuming SQLite returns rows by insertion order.
+    ordered = (await db.session.scalars(select(AppGroup).where(AppGroup.app_id == app.id))).all()
+    assert [g.id for g in ordered] == [non_owner_group.id, owner_group.id]
 
     original_app_name = app.name
     original_owner_group_name = owner_group.name
@@ -1246,6 +1287,7 @@ async def test_rename_fails_when_the_composed_description_would_overflow(
     assert owner_group.name == original_owner_group_name
     assert non_owner_group.name == original_non_owner_group_name
     assert owner_group.description == original_owner_description
+    assert update_group_mock.call_count == 0
 
 
 async def test_rename_leaves_non_owner_app_group_descriptions_alone(
@@ -1262,3 +1304,38 @@ async def test_rename_leaves_non_owner_app_group_descriptions_alone(
     assert rep.status_code == 200
     await db.session.refresh(non_owner_group)
     assert non_owner_group.description == "Grants the Admin role"
+
+
+async def test_rename_succeeds_despite_a_soft_deleted_owner_group_with_overlong_description(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """A soft-deleted owner group isn't shown in the UI, so its description can't be
+    shortened to unblock a rename -- the length pre-flight skips deleted groups rather
+    than permanently blocking the app's rename on a group nobody can act on."""
+    app, owner_group, non_owner_group = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    # Over 1024 once composed onto the new base line; would 400 if the pre-flight
+    # evaluated this group like a live one.
+    original_owner_description = app_owners_group_description(app.name, "x" * 1010)
+    owner_group.description = original_owner_description
+    owner_group.deleted_at = datetime.now(timezone.utc)
+    db.session.add(owner_group)
+    await db.session.commit()
+
+    app_url = url_for("api-apps.app_by_id", app_id=app.id)
+    rep = await client.put(app_url, json={"name": "ZendeskSupport"})
+
+    assert rep.status_code == 200
+    await db.session.refresh(app)
+    await db.session.refresh(owner_group)
+    await db.session.refresh(non_owner_group)
+    assert app.name == "ZendeskSupport"
+    assert non_owner_group.name == (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}ZendeskSupport{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Admin"
+    )
+    # The rename loop still renames the deleted group, same as before this change, but
+    # its description -- skipped in the pre-flight -- is left untouched.
+    assert owner_group.name == (
+        f"{AppGroup.APP_GROUP_NAME_PREFIX}ZendeskSupport"
+        f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+    )
+    assert owner_group.description == original_owner_description

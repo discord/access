@@ -382,14 +382,18 @@ async def put_app(
         # An owner group's description keeps whatever free text sits below its base line,
         # so the new base line is composed onto the old remainder rather than replacing it.
         #
-        # Composing can grow the string past the 1024-character column -- a longer app
-        # name, or a description that predates the convention and reseats whole -- so the
-        # length is checked here, before the loop. ModifyGroupDetails pushes to Okta and
-        # commits on every call, so raising from inside the loop would leave earlier
-        # groups renamed and the app rename itself already published.
+        # Composing can grow the string past _GROUP_DESC_MAX_LENGTH -- a longer app name,
+        # or a description that predates the convention and reseats whole -- so the length
+        # is checked here, before the loop. ModifyGroupDetails pushes to Okta and commits
+        # on every call, so raising from inside the loop would leave earlier groups renamed
+        # and the app rename itself already published.
+        #
+        # Soft-deleted owner groups are skipped: they aren't visible in the UI, so a user
+        # can't shorten their description to unblock the rename, and the rename loop below
+        # renames them without touching their description regardless.
         owner_descriptions: dict[str, str] = {}
         for ag in app_groups:
-            if not ag.is_owner:
+            if not ag.is_owner or ag.deleted_at is not None:
                 continue
             remainder = app_owners_group_description_remainder(ag.description or "", old_app_name)
             composed = app_owners_group_description(app_obj.name, remainder)
@@ -409,7 +413,7 @@ async def put_app(
                 new_group_name = f"{new_prefix}{suffix}"
             else:
                 new_group_name = f"{new_prefix}{ag.name}"
-            new_description = owner_descriptions.get(ag.id) if ag.is_owner else None
+            new_description = owner_descriptions.get(ag.id)
             await ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
 
     await db.commit()
