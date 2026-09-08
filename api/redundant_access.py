@@ -12,7 +12,8 @@ them, leaving the role as the single legible source of the access.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Sequence
@@ -22,6 +23,9 @@ from sqlalchemy.orm import aliased
 
 from api.extensions import db
 from api.models import App, AppGroup, OktaGroup, OktaUser, OktaUserGroupMember
+from api.operations import ModifyGroupUsers
+
+logger = logging.getLogger(__name__)
 
 
 class AccessTarget(Enum):
@@ -316,3 +320,132 @@ async def resolve_user_ids(user_filters: Sequence[str]) -> set[str] | None:
         user_ids.add(user_id)
 
     return user_ids
+
+
+class PruneOutcome(Enum):
+    """What a prune run decided about one candidate.
+
+    The values double as the labels the CLI prints.
+    """
+
+    REMOVED = "REMOVE"
+    SKIPPED_WOULD_SHORTEN = "SKIP (would shorten)"
+    FAILED = "FAILED"
+
+
+@dataclass(frozen=True)
+class GrantDecision:
+    """One candidate and what the run decided about it."""
+
+    grant: RedundantGrant
+    outcome: PruneOutcome
+
+
+@dataclass
+class PruneSummary:
+    """The outcome of one prune run, in reporting order.
+
+    On a dry run, `removed` counts what an applying run would have removed.
+    """
+
+    decisions: list[GrantDecision] = field(default_factory=list)
+
+    def _count(self, outcome: PruneOutcome) -> int:
+        return sum(1 for decision in self.decisions if decision.outcome is outcome)
+
+    @property
+    def candidates(self) -> int:
+        """How many redundant grants the run found."""
+        return len(self.decisions)
+
+    @property
+    def removed(self) -> int:
+        """How many direct grants were removed."""
+        return self._count(PruneOutcome.REMOVED)
+
+    @property
+    def skipped(self) -> int:
+        """How many candidates the duration guard held back."""
+        return self._count(PruneOutcome.SKIPPED_WOULD_SHORTEN)
+
+    @property
+    def failed(self) -> int:
+        """How many candidates were left in place by a failed write."""
+        return self._count(PruneOutcome.FAILED)
+
+
+async def prune_redundant_direct_access(
+    *,
+    target: AccessTarget = AccessTarget.BOTH,
+    dry_run: bool = True,
+    allow_shortening: bool = False,
+    group_filters: Sequence[str] = (),
+    user_filters: Sequence[str] = (),
+    app_filters: Sequence[str] = (),
+) -> PruneSummary:
+    """Remove direct group grants that a role already provides to the same user.
+
+    Args:
+        target: Which dimension(s) of direct grant to prune.
+        dry_run: When True, decide and report without writing anything.
+        allow_shortening: When True, also remove direct grants that outlive their
+            role coverage, ending the user's access sooner than it would have.
+        group_filters: Group ids or exact names to restrict the sweep to.
+        user_filters: User ids or emails to restrict the sweep to.
+        app_filters: App ids or exact names whose app groups to restrict to.
+
+    Returns:
+        The decision for every candidate, ordered by group name, user email, and
+        dimension.
+
+    Raises:
+        FilterResolutionError: A filter value matched no active record. Raised
+            before any write, so a mistyped filter changes nothing.
+    """
+    group_ids = await resolve_group_ids(group_filters, app_filters)
+    user_ids = await resolve_user_ids(user_filters)
+    grants = await find_redundant_grants(target=target, group_ids=group_ids, user_ids=user_ids)
+
+    summary = PruneSummary()
+    by_group: dict[str, list[RedundantGrant]] = {}
+    for grant in grants:
+        if grant.shortens_access and not allow_shortening:
+            summary.decisions.append(GrantDecision(grant, PruneOutcome.SKIPPED_WOULD_SHORTEN))
+            continue
+        by_group.setdefault(grant.group_id, []).append(grant)
+
+    if dry_run:
+        for group_grants in by_group.values():
+            summary.decisions.extend(GrantDecision(g, PruneOutcome.REMOVED) for g in group_grants)
+        summary.decisions.sort(key=_decision_sort_key)
+        return summary
+
+    for group_id, group_grants in by_group.items():
+        # `grants` holds plain values, never ORM instances: a failed group's
+        # rollback expires the whole identity map, and re-reading an expired
+        # attribute on an AsyncSession raises MissingGreenlet rather than
+        # refreshing. Holding only scalars keeps the loop independent of that.
+        try:
+            # ModifyGroupUsers ends only rows with a null `role_group_map_id`,
+            # so this touches the direct grants and leaves role-derived coverage
+            # intact. It commits its own unit of work.
+            await ModifyGroupUsers(
+                group=group_id,
+                members_to_remove=[g.user_id for g in group_grants if not g.is_owner],
+                owners_to_remove=[g.user_id for g in group_grants if g.is_owner],
+            ).execute()
+        except Exception:
+            await db.session.rollback()
+            logger.exception(f"Failed to prune redundant direct access in group {group_id}, skipping.")
+            summary.decisions.extend(GrantDecision(g, PruneOutcome.FAILED) for g in group_grants)
+            continue
+        summary.decisions.extend(GrantDecision(g, PruneOutcome.REMOVED) for g in group_grants)
+
+    summary.decisions.sort(key=_decision_sort_key)
+    return summary
+
+
+def _decision_sort_key(decision: GrantDecision) -> tuple[str, str, bool]:
+    """Order decisions by group, then user, then dimension, so a run's report is
+    reproducible regardless of the order groups were processed in."""
+    return (decision.grant.group_name, decision.grant.user_email, decision.grant.is_owner)
