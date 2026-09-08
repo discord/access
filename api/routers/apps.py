@@ -283,9 +283,13 @@ async def put_app(
 
     from api.auth.permissions import is_access_admin
     from api.models import AppGroup as _AppGroup
-    from api.models.app_group import app_owners_group_description
+    from api.models.app_group import (
+        app_owners_group_description,
+        app_owners_group_description_remainder,
+    )
     from api.operations import ModifyAppTags, ModifyGroupDetails
     from api.plugins.app_group_lifecycle import merge_app_lifecycle_plugin_data, validate_app_plugin_config_or_raise
+    from api.schemas.requests_schemas import _GROUP_DESC_MAX_LENGTH
 
     fields_set = body.model_fields_set
     description = (body.description if body.description is not None else "") if "description" in fields_set else None
@@ -374,13 +378,38 @@ async def put_app(
         old_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{old_app_name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         new_prefix = f"{_AppGroup.APP_GROUP_NAME_PREFIX}{app_obj.name}{_AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}"
         app_groups = (await db.scalars(select(_AppGroup).where(_AppGroup.app_id == app_obj.id))).all()
+
+        # An owner group's description keeps whatever free text sits below its base line,
+        # so the new base line is composed onto the old remainder rather than replacing it.
+        #
+        # Composing can grow the string past the 1024-character column -- a longer app
+        # name, or a description that predates the convention and reseats whole -- so the
+        # length is checked here, before the loop. ModifyGroupDetails pushes to Okta and
+        # commits on every call, so raising from inside the loop would leave earlier
+        # groups renamed and the app rename itself already published.
+        owner_descriptions: dict[str, str] = {}
+        for ag in app_groups:
+            if not ag.is_owner:
+                continue
+            remainder = app_owners_group_description_remainder(ag.description or "", old_app_name)
+            composed = app_owners_group_description(app_obj.name, remainder)
+            if len(composed) > _GROUP_DESC_MAX_LENGTH:
+                raise HTTPException(
+                    400,
+                    f'Renaming this app would make the description of "{ag.name}" '
+                    f"{len(composed)} characters, over the {_GROUP_DESC_MAX_LENGTH} limit. "
+                    f"Shorten that group's description by "
+                    f"{len(composed) - _GROUP_DESC_MAX_LENGTH} characters and try again.",
+                )
+            owner_descriptions[ag.id] = composed
+
         for ag in app_groups:
             if ag.name.startswith(old_prefix):
                 suffix = ag.name[len(old_prefix) :]
                 new_group_name = f"{new_prefix}{suffix}"
             else:
                 new_group_name = f"{new_prefix}{ag.name}"
-            new_description = app_owners_group_description(app_obj.name) if ag.is_owner else None
+            new_description = owner_descriptions.get(ag.id) if ag.is_owner else None
             await ModifyGroupDetails(group=ag, name=new_group_name, description=new_description).execute()
 
     await db.commit()

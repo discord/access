@@ -22,6 +22,7 @@ from api.models import (
     RoleGroupMap,
     Tag,
 )
+from api.models.app_group import app_owners_group_description
 from api.operations import ModifyGroupUsers, ModifyRoleGroups
 from api.services import okta
 from tests.factories import (
@@ -1154,3 +1155,110 @@ async def test_get_apps_q_via_http(client: AsyncClient, db: Db, url_for: Any) ->
     names = [a["name"] for a in rep.json()["items"]]
     assert "ZelaPaymentsApp" in names
     assert "LoggingApp" not in names
+
+
+async def _app_with_owner_and_non_owner_groups(
+    mocker: MockerFixture, app_name: str = "Zendesk"
+) -> tuple[App, AppGroup, AppGroup]:
+    """An app with a conforming owner group and a plain (non-owner) app group,
+    ready to exercise a rename PUT. Mirrors what CreateApp produces."""
+    mocker.patch.object(okta, "update_group")
+    app = await AppFactory.create_async(name=app_name, description="")
+    owner_group = await AppGroupFactory.create_async(
+        app_id=app.id,
+        is_owner=True,
+        name=(
+            f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}"
+            f"{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}{AppGroup.APP_OWNERS_GROUP_NAME_SUFFIX}"
+        ),
+        description=app_owners_group_description(app_name),
+    )
+    non_owner_group = await AppGroupFactory.create_async(
+        app_id=app.id,
+        is_owner=False,
+        name=f"{AppGroup.APP_GROUP_NAME_PREFIX}{app_name}{AppGroup.APP_NAME_GROUP_NAME_SEPARATOR}Admin",
+    )
+    return app, owner_group, non_owner_group
+
+
+async def test_rename_preserves_the_owner_group_free_text(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """Renaming an app rewrites the base line and keeps the text below it."""
+    app, owner_group, _ = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    owner_group.description = "Owners of the Zendesk application\n\nAlso grants billing"
+    db.session.add(owner_group)
+    await db.session.commit()
+
+    app_url = url_for("api-apps.app_by_id", app_id=app.id)
+    rep = await client.put(app_url, json={"name": "ZendeskSupport"})
+
+    assert rep.status_code == 200
+    await db.session.refresh(owner_group)
+    assert owner_group.description == "Owners of the ZendeskSupport application\n\nAlso grants billing"
+
+
+async def test_rename_reseats_a_divergent_description_rather_than_discarding_it(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """A description that does not match the old base line becomes the remainder whole."""
+    app, owner_group, _ = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    owner_group.description = "Hand-written legacy text"
+    db.session.add(owner_group)
+    await db.session.commit()
+
+    app_url = url_for("api-apps.app_by_id", app_id=app.id)
+    rep = await client.put(app_url, json={"name": "ZendeskSupport"})
+
+    assert rep.status_code == 200
+    await db.session.refresh(owner_group)
+    assert owner_group.description == "Owners of the ZendeskSupport application\n\nHand-written legacy text"
+
+
+async def test_rename_fails_when_the_composed_description_would_overflow(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    """Over 1024 characters, the rename fails loudly instead of truncating."""
+    app, owner_group, non_owner_group = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    # 1010 chars of remainder + a longer base line pushes the composition over 1024.
+    owner_group.description = app_owners_group_description(app.name, "x" * 1010)
+    db.session.add(owner_group)
+    await db.session.commit()
+
+    original_app_name = app.name
+    original_owner_group_name = owner_group.name
+    original_non_owner_group_name = non_owner_group.name
+    original_owner_description = owner_group.description
+
+    app_url = url_for("api-apps.app_by_id", app_id=app.id)
+    rep = await client.put(app_url, json={"name": "AVeryMuchLongerApplicationName"})
+
+    assert rep.status_code == 400
+    assert "1024" in rep.json()["detail"]
+
+    # The pre-flight must run before ANY mutation: ModifyGroupDetails pushes to Okta and
+    # commits per call, so a check inside the loop would leave earlier groups renamed and
+    # the app rename already published.
+    await db.session.refresh(app)
+    await db.session.refresh(owner_group)
+    await db.session.refresh(non_owner_group)
+    assert app.name == original_app_name
+    assert owner_group.name == original_owner_group_name
+    assert non_owner_group.name == original_non_owner_group_name
+    assert owner_group.description == original_owner_description
+
+
+async def test_rename_leaves_non_owner_app_group_descriptions_alone(
+    client: AsyncClient, db: Db, mocker: MockerFixture, url_for: Any
+) -> None:
+    app, _, non_owner_group = await _app_with_owner_and_non_owner_groups(mocker, "Zendesk")
+    non_owner_group.description = "Grants the Admin role"
+    db.session.add(non_owner_group)
+    await db.session.commit()
+
+    app_url = url_for("api-apps.app_by_id", app_id=app.id)
+    rep = await client.put(app_url, json={"name": "ZendeskSupport"})
+
+    assert rep.status_code == 200
+    await db.session.refresh(non_owner_group)
+    assert non_owner_group.description == "Grants the Admin role"
