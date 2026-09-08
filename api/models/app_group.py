@@ -17,13 +17,8 @@ async def get_app_managers(app_id: str) -> List[OktaUser]:
 
     if ((await db.session.scalar(select(func.count()).select_from(owner_app_groups_stmt.subquery()))) or 0) > 0:
         owner_app_group_ids = [ag.id for ag in await db.session.scalars(owner_app_groups_stmt)]
-        # A user can hold two concurrent active OktaUserGroupMember owner rows
-        # for the same app-owner group at once (a direct grant plus one via a
-        # role mapping, per the access-grant-precedence rules) -- distinct()
-        # so such a user is returned once, not once per row.
         result = await db.session.scalars(
             select(OktaUser)
-            .distinct()
             .join(OktaUser.all_group_memberships_and_ownerships)
             .where(OktaUserGroupMember.group_id.in_(owner_app_group_ids))
             .where(OktaUserGroupMember.is_owner.is_(True))
@@ -60,11 +55,8 @@ async def get_access_owners() -> List[OktaUser]:
 
     if ((await db.session.scalar(select(func.count()).select_from(owner_app_groups_stmt.subquery()))) or 0) > 0:
         owner_app_group_ids = [ag.id for ag in await db.session.scalars(owner_app_groups_stmt)]
-        # See the distinct() note in get_app_managers above -- same concurrent
-        # direct-plus-role-grant case applies to members of this group.
         result = await db.session.scalars(
             select(OktaUser)
-            .distinct()
             .join(OktaUser.all_group_memberships_and_ownerships)
             .where(OktaUserGroupMember.group_id.in_(owner_app_group_ids))
             .where(OktaUserGroupMember.is_owner.is_(False))
