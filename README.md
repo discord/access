@@ -422,11 +422,16 @@ access prune-redundant-direct-access [--target members|owners|both] [--apply]
 
 The command reports without changing anything unless `--apply` is passed. By default it only
 removes a direct grant that ends no later than the role-based access covering it, so a user never
-loses access sooner than they otherwise would; `--allow-shortening` lifts that restriction.
-`--group`, `--user`, and `--app` are repeatable and narrow the sweep.
+loses access sooner than they otherwise would; `--allow-shortening` lifts that restriction. Under
+`--allow-shortening`, an indefinite direct grant can become access that silently ends when the
+role coverage expires: the expiring-access notification queries in `api/syncer.py` filter out
+role-derived rows, so a role-derived expiration is never notified to the user or the group owner,
+unlike the default path. `--group`, `--user`, and `--app` are repeatable and narrow the sweep.
 
 Removals are recorded as ordinary `GROUP_MODIFY_USER` audit events. Because the role-based grant
-survives, the user's Okta group membership is untouched.
+survives, the user's Okta group membership is untouched. A write failure for one group is logged
+and that group's grants are left in place; the sweep continues with the remaining groups, and the
+command still exits non-zero so a run wired into a periodic job shows up as failed.
 
 ### Kubernetes Deployment and CronJobs
 

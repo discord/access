@@ -491,10 +491,15 @@ async def sync_app_groups() -> None:
 
 
 def _format_ended_at(ended_at: datetime | None) -> str:
-    """Render an end date for the report, naming the indefinite case."""
+    """Render an end date for the report, naming the indefinite case.
+
+    Includes the time of day: two grants ending on the same date but at different
+    times both render as that date at day precision, which makes a SKIP decision
+    from the strict `>` guard look identical to a REMOVE decision.
+    """
     if ended_at is None:
         return "indefinite"
-    return ended_at.strftime("%Y-%m-%d")
+    return ended_at.strftime("%Y-%m-%d %H:%M")
 
 
 @cli.command("prune-redundant-direct-access")
@@ -570,10 +575,19 @@ async def prune_redundant_direct_access_command(
             err=decision.outcome is PruneOutcome.FAILED,
         )
 
-    click.echo(
-        f"Found {summary.candidates} redundant direct grant(s): "
-        f"{summary.removed} removed, {summary.skipped} skipped, {summary.failed} failed"
-    )
+    if apply_changes:
+        click.echo(
+            f"Found {summary.candidates} redundant direct grant(s): "
+            f"{summary.removed} removed, {summary.skipped} skipped, {summary.failed} failed"
+        )
+    else:
+        # A dry run never removes or fails anything -- `summary.removed` counts what
+        # an applying run would remove, so word it as a projection, not a report of
+        # what happened.
+        click.echo(
+            f"Found {summary.candidates} redundant direct grant(s): "
+            f"{summary.removed} would be removed, {summary.skipped} would be skipped"
+        )
 
     if summary.failed:
         # Every group is attempted regardless, but a run that left grants
