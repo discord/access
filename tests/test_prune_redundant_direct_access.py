@@ -3,10 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import click
 import pytest
+from click.testing import CliRunner
 from pytest_mock import MockerFixture
 from sqlalchemy import select
 
+from api.cli import cli, prune_redundant_direct_access_command
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.operations import ModifyGroupUsers
@@ -744,3 +747,122 @@ class TestPruneDriver:
             await prune_redundant_direct_access(target=AccessTarget.BOTH, dry_run=False, group_filters=("Nope",))
 
         assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+
+class TestCliOptions:
+    # These assert on the command's declared parameters and its --help output.
+    # Click's help option is eager and exits before the callback, so no event
+    # loop or database is involved.
+    def test_command_is_registered(self) -> None:
+        assert "prune-redundant-direct-access" in cli.commands
+
+    def test_help_lists_every_option(self) -> None:
+        result = CliRunner().invoke(cli, ["prune-redundant-direct-access", "--help"])
+
+        assert result.exit_code == 0
+        for flag in ("--target", "--apply", "--allow-shortening", "--group", "--user", "--app"):
+            assert flag in result.output
+
+    def test_defaults_are_dry_run_both_dimensions_and_guarded(self) -> None:
+        params = {p.name: p for p in prune_redundant_direct_access_command.params}
+
+        assert params["target"].default == "both"
+        assert set(params["target"].type.choices) == {"members", "owners", "both"}
+        assert params["apply_changes"].default is False
+        assert params["allow_shortening"].default is False
+
+    def test_filters_are_repeatable(self) -> None:
+        params = {p.name: p for p in prune_redundant_direct_access_command.params}
+
+        assert params["groups"].multiple is True
+        assert params["users"].multiple is True
+        assert params["apps"].multiple is True
+
+
+class TestCliCallback:
+    # The command body is invoked as `.callback.__wrapped__()`, which peels off
+    # `_with_app_context`. CliRunner cannot drive it: CliRunner is synchronous
+    # and `_with_app_context` calls asyncio.run(), which would use the test's
+    # loop-bound aiosqlite engine from a different loop.
+    async def test_dry_run_is_the_default_and_writes_nothing(
+        self, db: Db, capsys: pytest.CaptureFixture[str], user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=False, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        output = capsys.readouterr().out
+        assert "dry run" in output
+        assert user.email in output
+        assert okta_group.name in output
+        assert await _active_direct_count(db, user=user, group=okta_group) == 1
+
+    async def test_apply_removes_and_reports(
+        self, db: Db, capsys: pytest.CaptureFixture[str], user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        output = capsys.readouterr().out
+        assert "dry run" not in output
+        assert "1 removed" in output
+        assert await _active_direct_count(db, user=user, group=okta_group) == 0
+
+    async def test_nothing_to_do_reports_cleanly(self, db: Db, capsys: pytest.CaptureFixture[str]) -> None:
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=False, allow_shortening=False, groups=(), users=(), apps=()
+        )
+
+        assert "No redundant direct access found" in capsys.readouterr().out
+
+    async def test_unresolvable_filter_raises_a_click_exception(self, db: Db) -> None:
+        with pytest.raises(click.ClickException, match="No active group matches 'Nope'"):
+            await prune_redundant_direct_access_command.callback.__wrapped__(
+                target="both", apply_changes=False, allow_shortening=False, groups=("Nope",), users=(), apps=()
+            )
+
+    async def test_a_failed_group_exits_non_zero(
+        self, db: Db, mocker: MockerFixture, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # A periodic run that left grants unpruned has to be visible as a failed
+        # run, not only as stderr output.
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+        mocker.patch.object(ModifyGroupUsers, "execute", side_effect=RuntimeError("boom"))
+
+        with pytest.raises(SystemExit) as exc_info:
+            await prune_redundant_direct_access_command.callback.__wrapped__(
+                target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+            )
+
+        assert exc_info.value.code == 1
+
+    async def test_a_clean_run_does_not_exit_non_zero(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        # Must not raise SystemExit: a clean run leaves the exit status at 0.
+        await prune_redundant_direct_access_command.callback.__wrapped__(
+            target="both", apply_changes=True, allow_shortening=False, groups=(), users=(), apps=()
+        )

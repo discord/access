@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import uuid
+from datetime import datetime
 from typing import Any, Callable, TypeVar, cast
 
 import click
@@ -486,6 +487,98 @@ async def sync_app_groups() -> None:
         # Every group is attempted regardless, but the command must still exit non-zero:
         # this runs as a periodic job, so a run that left groups unreconciled has to be
         # visible as a failed run rather than only as stderr output.
+        raise SystemExit(1)
+
+
+def _format_ended_at(ended_at: datetime | None) -> str:
+    """Render an end date for the report, naming the indefinite case."""
+    if ended_at is None:
+        return "indefinite"
+    return ended_at.strftime("%Y-%m-%d")
+
+
+@cli.command("prune-redundant-direct-access")
+@click.option(
+    "--target",
+    type=click.Choice(["members", "owners", "both"]),
+    default="both",
+    show_default=True,
+    help="Which direct grants to prune: memberships, ownerships, or both.",
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Commit the removals. Without this flag the command reports what it would do and changes nothing.",
+)
+@click.option(
+    "--allow-shortening",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help="Also remove direct grants that outlive their role-based access, ending that access sooner.",
+)
+@click.option("--group", "groups", multiple=True, help="Limit to this group, by id or exact name. Repeatable.")
+@click.option("--user", "users", multiple=True, help="Limit to this user, by id or email. Repeatable.")
+@click.option("--app", "apps", multiple=True, help="Limit to this app's groups, by id or exact name. Repeatable.")
+@_with_app_context
+async def prune_redundant_direct_access_command(
+    target: str,
+    apply_changes: bool,
+    allow_shortening: bool,
+    groups: tuple[str, ...],
+    users: tuple[str, ...],
+    apps: tuple[str, ...],
+) -> None:
+    """Remove direct group access that a role already grants the same user."""
+    from api.redundant_access import (
+        AccessTarget,
+        FilterResolutionError,
+        PruneOutcome,
+        prune_redundant_direct_access,
+    )
+
+    try:
+        summary = await prune_redundant_direct_access(
+            target=AccessTarget(target),
+            dry_run=not apply_changes,
+            allow_shortening=allow_shortening,
+            group_filters=groups,
+            user_filters=users,
+            app_filters=apps,
+        )
+    except FilterResolutionError as error:
+        raise click.ClickException(str(error)) from error
+
+    if summary.candidates == 0:
+        click.echo("No redundant direct access found")
+        return
+
+    if not apply_changes:
+        click.echo("Reporting only (dry run) -- re-run with --apply to commit these removals")
+
+    for decision in summary.decisions:
+        grant = decision.grant
+        click.echo(
+            f"{grant.user_email}  {grant.group_name}  "
+            f"{'owners' if grant.is_owner else 'members'}  "
+            f"direct {_format_ended_at(grant.latest_direct_ended_at)}, "
+            f"role {_format_ended_at(grant.latest_role_ended_at)}  "
+            f"{decision.outcome.value}",
+            err=decision.outcome is PruneOutcome.FAILED,
+        )
+
+    click.echo(
+        f"Found {summary.candidates} redundant direct grant(s): "
+        f"{summary.removed} removed, {summary.skipped} skipped, {summary.failed} failed"
+    )
+
+    if summary.failed:
+        # Every group is attempted regardless, but a run that left grants
+        # unpruned has to be visible as a failed run rather than only as stderr
+        # output -- this runs as a periodic job.
         raise SystemExit(1)
 
 
