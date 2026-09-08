@@ -101,7 +101,8 @@ def app_owners_group_description(app_name: str, additional_description: str | No
 
     This format string is mirrored in the frontend by `appOwnerGroupDescriptionPrefix`
     (`src/pages/groups/appOwnerGroupDescription.ts`), which needs the base line to seed
-    its edit field. Change one and you must change the other; both are pinned by tests.
+    its edit field. `test_frontend_prefix_template_matches_backend`
+    (`tests/test_app_group_description.py`) enforces that the two agree.
 
     Args:
         app_name: The owning app's name.

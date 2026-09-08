@@ -1,8 +1,9 @@
 // The base line of an app owner group's description. The backend owns this format in
 // `app_owners_group_description` (api/models/app_group.py) and validates against it; the
 // form needs it here to split the stored description into an immutable prefix and an
-// editable remainder. Both copies are pinned by tests that name each other -- if you
-// change the wording, change it in both places.
+// editable remainder. `test_frontend_prefix_template_matches_backend`
+// (tests/test_app_group_description.py) enforces that this template literal agrees with
+// the backend's format string -- if you change the wording, change it in both places.
 //
 // This mirrors how the group name is handled in this directory: APP_GROUP_PREFIX and
 // ROLE_GROUP_PREFIX in CreateUpdate.tsx are the same kind of client-side copy.

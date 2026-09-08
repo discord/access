@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import pytest
 from pytest_mock import MockerFixture
 
@@ -14,9 +17,46 @@ from tests.factories import AppFactory, AppGroupFactory
 
 # Pinned literal. The frontend mirrors this format string in
 # `appOwnerGroupDescriptionPrefix` (src/pages/groups/appOwnerGroupDescription.ts);
-# if you change the wording here, change it there and update both tests.
+# `test_frontend_prefix_template_matches_backend` below is what enforces that the two
+# stay in agreement -- this pin only guards the backend's own wording.
 def test_base_line_literal_is_pinned() -> None:
     assert app_owners_group_description("Zendesk") == "Owners of the Zendesk application"
+
+
+def test_frontend_prefix_template_matches_backend() -> None:
+    """The frontend's returned template literal must match the backend's format string.
+
+    Reads `src/pages/groups/appOwnerGroupDescription.ts` from disk (resolved relative to
+    the repository root, not the working directory pytest was invoked from) and compares
+    the exact template literal returned by `appOwnerGroupDescriptionPrefix` against a
+    template derived from `app_owners_group_description`: the base line is generated for
+    a placeholder app name, then the placeholder is swapped for the TypeScript
+    interpolation syntax. Matching against the returned expression -- rather than
+    checking whether the backend's wording merely appears in the file somewhere -- means
+    a wording change that survives only in a comment, or an interpolation that is
+    restructured to produce different output, still fails here; a comment addition or
+    unrelated reformatting elsewhere in the file does not. Skipped if the frontend file
+    is absent, e.g. a backend-only checkout.
+    """
+    placeholder = "___APP_NAME_PLACEHOLDER___"
+    expected_template = app_owners_group_description(placeholder).replace(placeholder, "${appName}")
+
+    repo_root = Path(__file__).resolve().parent.parent
+    frontend_path = repo_root / "src" / "pages" / "groups" / "appOwnerGroupDescription.ts"
+    if not frontend_path.exists():
+        pytest.skip(f"{frontend_path} not present; backend-only checkout")
+
+    source = frontend_path.read_text()
+    match = re.search(
+        r"export function appOwnerGroupDescriptionPrefix\(appName: string\): string \{\s*"
+        r"return\s*`([^`]*)`;\s*\}",
+        source,
+    )
+    assert match is not None, (
+        f"could not find appOwnerGroupDescriptionPrefix's return statement in {frontend_path}; "
+        "has it been renamed or restructured?"
+    )
+    assert match.group(1) == expected_template
 
 
 def test_composes_additional_text_after_a_blank_line() -> None:
