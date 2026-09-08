@@ -235,10 +235,12 @@ async def put_group(
         raise HTTPException(404, "Not Found")
 
     # Capture the pre-update name/description/app_id so the single, consolidated
-    # group_updated fire (below) can report them, and so the app-owner-group guard
-    # further down can detect a rebind even after the rebind-authorization block
-    # (which runs first, unconditionally on AppGroup, not just owner groups) has
-    # already applied `group.app_id = target_app.id` in memory.
+    # group_updated fire (below) can report them. The rebind-authorization block
+    # further down only mutates `group.app_id` in memory for non-owner AppGroups;
+    # the owner-group guard still compares against this captured value rather
+    # than the live attribute as defence in depth, so a future edit that widens
+    # the rebind block's condition can't silently reach an owner group's app_id
+    # before the guard has a chance to reject the change.
     old_name = group.name
     old_description = group.description or ""
     original_app_id = getattr(group, "app_id", None)
@@ -266,7 +268,8 @@ async def put_group(
     new_plugin_data = (
         body.plugin_data if isinstance(body, _AppGroupUpdateBody) and "plugin_data" in fields_set else None
     )
-    if new_plugin_data is not None and new_plugin_data != (group.plugin_data or {}):
+    plugin_data_changing = new_plugin_data is not None and new_plugin_data != (group.plugin_data or {})
+    if plugin_data_changing:
         if not (
             await is_access_admin(db, current_user_id)
             or (type(group) is AppGroup and await is_app_owner_group_owner(db, current_user_id, app_group=group))
@@ -284,9 +287,12 @@ async def put_group(
     # Prevent rebinding an AppGroup to a different app without owning the
     # target app. Access admins can always rebind. Apply the rebind here when
     # the group type isn't also changing — type-change rebinds are wired into
-    # ModifyGroupType below.
+    # ModifyGroupType below. Owner groups are structural (membership confers
+    # app-owner permissions), so they're excluded here and rejected outright
+    # by the owner-group guard further down instead of being rebound.
     if (
         type(group) is AppGroup
+        and not group.is_owner
         and isinstance(body, _AppGroupUpdateBody)
         and "app_id" in fields_set
         and body.app_id != group.app_id
@@ -314,7 +320,10 @@ async def put_group(
 
     # App owner groups: only tag and description changes are allowed. The description is
     # itself constrained -- it must keep its "Owners of the {app name} application" base
-    # line -- which ModifyGroupDetails enforces for every caller.
+    # line -- which ModifyGroupDetails enforces for every caller. Plugin configuration is
+    # rejected separately below rather than silently dropped -- owner groups do participate
+    # in lifecycle plugins, so a discarded `plugin_data` write would be meaningful config
+    # loss, not a cosmetic no-op.
     #
     # `type` is the discriminator and is present in `fields_set` on every request, so the
     # structural fields are compared by value rather than by presence.
@@ -324,6 +333,8 @@ async def put_group(
         rebinding = isinstance(body, _AppGroupUpdateBody) and "app_id" in fields_set and body.app_id != original_app_id
         if renaming or retyping or rebinding:
             raise HTTPException(400, "Only tags and the description can be modified for application owner groups")
+        if plugin_data_changing:
+            raise HTTPException(400, "Plugin configuration cannot be modified for application owner groups")
 
         if description is not None:
             try:

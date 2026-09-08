@@ -321,13 +321,16 @@ async def test_put_group(
     ).first()
     update_group_spy.reset_mock()
 
-    data: dict[str, Any] = OktaGroupUpdateBodyFactory.json(name="Updated", description="new description")
+    data: dict[str, Any] = OktaGroupUpdateBodyFactory.json(
+        name="Updated", description="new description", tags_to_add=[tag_id]
+    )
     # Capture the id once before any requests — the failed PUT below rolls back
     # the shared session and expires the fixture-loaded object.
     group_id = builtin_access_owners_group.id
     group_url = url_for("api-groups.group_by_id", group_id=group_id)
     rep = await client.put(group_url, json=data)
     assert rep.status_code == 400
+    assert await db_count(db.session, select(OktaGroupTagMap).where(OktaGroupTagMap.ended_at.is_(None))) == 0
 
     # Updating tags is allowed, but a structural field (name/type/app_id) is not.
     # `type` must match the group's actual type -- "app_group" -- to isolate the
@@ -580,6 +583,34 @@ async def test_owner_group_still_rejects_an_app_rebind(
     )
 
     assert response.status_code == 400
+
+
+async def test_owner_group_still_rejects_a_plugin_data_change(
+    client: AsyncClient,
+    db: Db,
+    access_app: App,
+    app_group: AppGroup,
+    url_for: Any,
+) -> None:
+    """Owner groups participate in lifecycle plugins, so a `plugin_data` edit is
+    refused with 400 rather than silently discarded."""
+    owner_group = await _make_owner_group(db, access_app, app_group)
+    owner_group.plugin_data = {"existing_plugin": {"key": "value"}}
+    db.session.add(owner_group)
+    await db.session.commit()
+    owner_group_id = owner_group.id
+
+    group_url = url_for("api-groups.group_by_id", group_id=owner_group_id)
+    response = await client.put(
+        group_url,
+        json={"type": "app_group", "plugin_data": {"existing_plugin": {"key": "new_value"}}},
+    )
+
+    assert response.status_code == 400
+
+    refreshed = await db.session.get(AppGroup, owner_group_id)
+    assert refreshed is not None
+    assert refreshed.plugin_data == {"existing_plugin": {"key": "value"}}
 
 
 async def test_put_group_members(
