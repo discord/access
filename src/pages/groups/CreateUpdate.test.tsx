@@ -14,6 +14,18 @@ vi.mock('../../api/apiComponents', () => ({
   useGroupsCreate: () => ({mutate: createMutate}),
   useGroupByIdPut: () => ({mutate: updateMutate}),
 }));
+// REQUIRE_DESCRIPTIONS is a build-time global sourced from an untracked local `.env`; CI runs
+// without it set, so `requireDescriptions` is false there regardless of this developer's
+// environment. Mocking the config module makes tests that depend on it true independent of
+// both, rather than passing only on a machine with the right `.env`.
+vi.mock('../../config/accessConfig', () => ({
+  default: {
+    NAME_VALIDATION_PATTERN: '^[A-Z][A-Za-z0-9-]*$',
+    NAME_VALIDATION_ERROR: 'Name must start capitalized and contain only alphanumeric characters or hyphens.',
+  },
+  appName: 'Access',
+  requireDescriptions: true,
+}));
 
 import CreateUpdateGroup from './CreateUpdate';
 
@@ -90,6 +102,17 @@ describe('creating an app group from an app page', () => {
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(typeSelect).toHaveTextContent('App Group');
+  });
+
+  // A non-owner group's Description has no owner-group remainder budget to protect, so it must
+  // not carry the DOM-level cap: the field's own `maxLength` rule (1024, same figure) is what
+  // enforces the limit, and it fails visibly instead of silently truncating input.
+  it('does not cap the Description field at the DOM level', async () => {
+    render(<CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" app={APP} />);
+
+    await openDialog('Create App Group');
+
+    expect(screen.getByLabelText(/^Description/)).not.toHaveAttribute('maxlength');
   });
 });
 
@@ -195,6 +218,52 @@ describe('editing an app owner group description', () => {
       'maxlength',
       String(1024 - BASE.length - 2),
     );
+  });
+
+  it('seeds an empty field and submits the bare base line for a description that is the base line plus trailing whitespace', async () => {
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={ownerGroupWith(`${BASE}\n\n   `)}
+      />,
+    );
+    await openDialog('edit');
+
+    expect(screen.getByLabelText(/^Additional description/)).toHaveValue('');
+
+    await submitDialog('Update');
+
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: BASE});
+  });
+
+  it('round-trips a remainder containing a blank line unchanged through seed and submit', async () => {
+    const remainder = 'Also grants billing\n\nSecond paragraph';
+    render(
+      <CreateUpdateGroup
+        currentUser={ACCESS_ADMIN}
+        defaultGroupType="app_group"
+        group={ownerGroupWith(`${BASE}\n\n${remainder}`)}
+      />,
+    );
+    await openDialog('edit');
+
+    expect(screen.getByLabelText(/^Additional description/)).toHaveValue(remainder);
+
+    await submitDialog('Update');
+
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: `${BASE}\n\n${remainder}`});
+  });
+
+  it('round-trips a conforming description byte-identical when submitted without touching the field', async () => {
+    const original = `${BASE}\n\nAlso grants billing access`;
+    render(
+      <CreateUpdateGroup currentUser={ACCESS_ADMIN} defaultGroupType="app_group" group={ownerGroupWith(original)} />,
+    );
+    await openDialog('edit');
+    await submitDialog('Update');
+
+    expect(updateMutate.mock.calls[0][0].body).toMatchObject({description: original});
   });
 
   it('leaves the field disabled when the app name is unavailable', async () => {

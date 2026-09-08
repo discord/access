@@ -45,6 +45,7 @@ import AppGroupLifecyclePluginConfigurationForm from '../../components/AppGroupL
 import {
   appOwnerGroupDescriptionPrefix,
   appOwnerGroupDescriptionRemainder,
+  appOwnerGroupDescriptionRemainderMaxLength,
   composeAppOwnerGroupDescription,
 } from './appOwnerGroupDescription';
 
@@ -122,7 +123,7 @@ function GroupDialog(props: GroupDialogProps) {
     ? appOwnerGroupDescriptionRemainder(props.group?.description ?? '', appName)
     : '';
   const descriptionMaxLength =
-    ownerDescriptionPrefix != null ? Math.max(0, 1024 - ownerDescriptionPrefix.length - 2) : 1024;
+    ownerDescriptionPrefix != null ? appOwnerGroupDescriptionRemainderMaxLength(appName) : 1024;
 
   const appGroupLifecyclePluginId = React.useMemo(() => {
     if (groupType !== 'app_group') return null;
@@ -376,7 +377,11 @@ function GroupDialog(props: GroupDialogProps) {
               rules={{maxLength: descriptionMaxLength}}
               // MUI v6: the HTML attribute goes through slotProps.htmlInput, not the deprecated
               // inputProps. `rules` drives the react-hook-form message; this drives the browser cap.
-              slotProps={{htmlInput: {maxLength: descriptionMaxLength}}}
+              // Applied only on the owner-group path: there, `descriptionMaxLength` is a remainder
+              // budget the user cannot otherwise see, so capping input at the DOM level prevents
+              // typing past it. Elsewhere the cap is a validation rule the user should see fail
+              // (with the message below) rather than have their input silently truncated.
+              slotProps={ownerDescriptionPrefix != null ? {htmlInput: {maxLength: descriptionMaxLength}} : undefined}
               helperText={
                 ownerDescriptionPrefix != null ? 'Shown as a second paragraph below the line above.' : undefined
               }

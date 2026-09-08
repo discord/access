@@ -11,6 +11,9 @@ export function appOwnerGroupDescriptionPrefix(appName: string): string {
   return `Owners of the ${appName} application`;
 }
 
+// The blank line composeAppOwnerGroupDescription joins the base line and remainder with.
+const BASE_LINE_SEPARATOR = '\n\n';
+
 const LEADING_BLANK_LINES_RE = /^(?:[ \t]*\n)+/;
 
 /**
@@ -54,5 +57,18 @@ export function appOwnerGroupDescriptionRemainder(description: string, appName: 
 export function composeAppOwnerGroupDescription(appName: string, remainder: string): string {
   const prefix = appOwnerGroupDescriptionPrefix(appName);
   const trimmed = trimFreeText(remainder ?? '');
-  return trimmed.length > 0 ? `${prefix}\n\n${trimmed}` : prefix;
+  return trimmed.length > 0 ? `${prefix}${BASE_LINE_SEPARATOR}${trimmed}` : prefix;
+}
+
+/**
+ * The longest `remainder` composeAppOwnerGroupDescription can accept for `appName` without the
+ * composed description exceeding the backend's 1024-character description limit.
+ *
+ * Derived from the base line's length and the separator composeAppOwnerGroupDescription joins
+ * with, rather than a hardcoded figure, so a change to either does not silently open a gap
+ * between this cap and the limit it exists to enforce. Floored at zero, which is unreachable in
+ * practice since `App.name` is capped at 255 characters.
+ */
+export function appOwnerGroupDescriptionRemainderMaxLength(appName: string): number {
+  return Math.max(0, 1024 - appOwnerGroupDescriptionPrefix(appName).length - BASE_LINE_SEPARATOR.length);
 }

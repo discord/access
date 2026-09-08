@@ -3,6 +3,7 @@ import {describe, it, expect} from 'vitest';
 import {
   appOwnerGroupDescriptionPrefix,
   appOwnerGroupDescriptionRemainder,
+  appOwnerGroupDescriptionRemainderMaxLength,
   composeAppOwnerGroupDescription,
 } from './appOwnerGroupDescription';
 
@@ -44,6 +45,16 @@ describe('appOwnerGroupDescriptionRemainder', () => {
 
   it('returns an empty string for an empty description', () => {
     expect(appOwnerGroupDescriptionRemainder('', 'Zendesk')).toBe('');
+  });
+});
+
+describe('appOwnerGroupDescriptionRemainderMaxLength', () => {
+  it('caps the remainder so a description composed at that length is exactly 1024 characters', () => {
+    const appName = 'Zendesk';
+    const maxLength = appOwnerGroupDescriptionRemainderMaxLength(appName);
+    const remainderAtLimit = 'x'.repeat(maxLength);
+
+    expect(composeAppOwnerGroupDescription(appName, remainderAtLimit)).toHaveLength(1024);
   });
 });
 
