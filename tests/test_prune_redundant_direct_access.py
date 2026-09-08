@@ -5,7 +5,13 @@ from datetime import UTC, datetime, timedelta
 from api.extensions import Db
 from api.models import OktaGroup, OktaUser, OktaUserGroupMember, RoleGroup
 from api.redundant_access import AccessTarget, RedundantGrant, _later, find_redundant_grants
-from tests.factories import OktaUserGroupMemberFactory, RoleGroupFactory, RoleGroupMapFactory
+from tests.factories import (
+    OktaGroupFactory,
+    OktaUserFactory,
+    OktaUserGroupMemberFactory,
+    RoleGroupFactory,
+    RoleGroupMapFactory,
+)
 
 NOW = datetime(2026, 9, 8, 12, 0, 0, tzinfo=UTC)
 IN_30_DAYS = NOW + timedelta(days=30)
@@ -270,3 +276,110 @@ class TestFindRedundantGrants:
         await db.session.commit()
 
         assert await find_redundant_grants(target=AccessTarget.BOTH) == []
+
+    async def test_group_ids_narrows_to_named_groups(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # A second, genuine candidate in another group must be excluded once
+        # `group_ids` narrows to the first group only.
+        other_group = OktaGroupFactory.build()
+        db.session.add_all([user, okta_group, other_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await _direct_grant(user=user, group=other_group)
+        await _role_grant(user=user, group=other_group, role_group=role_group)
+        await db.session.commit()
+
+        assert len(await find_redundant_grants(target=AccessTarget.BOTH)) == 2
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH, group_ids={okta_group.id})
+
+        assert len(grants) == 1
+        assert grants[0].group_id == okta_group.id
+
+    async def test_group_ids_empty_set_excludes_everything(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # An empty set narrows to nothing, distinct from `None`'s "no narrowing".
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH, group_ids=set()) == []
+
+    async def test_user_ids_narrows_to_named_users(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # A second, genuine candidate for another user must be excluded once
+        # `user_ids` narrows to the first user only.
+        other_user = OktaUserFactory.build()
+        db.session.add_all([user, other_user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await _direct_grant(user=other_user, group=okta_group)
+        await _role_grant(user=other_user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert len(await find_redundant_grants(target=AccessTarget.BOTH)) == 2
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH, user_ids={user.id})
+
+        assert len(grants) == 1
+        assert grants[0].user_id == user.id
+
+    async def test_user_ids_empty_set_excludes_everything(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # An empty set narrows to nothing, distinct from `None`'s "no narrowing".
+        db.session.add_all([user, okta_group, role_group])
+        await db.session.commit()
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        await db.session.commit()
+
+        assert await find_redundant_grants(target=AccessTarget.BOTH, user_ids=set()) == []
+
+    async def test_cross_product_of_two_users_and_two_groups_excludes_non_candidates(
+        self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
+    ) -> None:
+        # The second query narrows on `user_id.in_(...)` AND `group_id.in_(...)`
+        # independently, so with two candidates in play it can also match
+        # (user_a, group_b) and (user_b, group_a) role-derived rows even though
+        # neither pairing is an actual candidate. `user_a` has a direct grant
+        # plus role coverage in `group_a`, and separately only role coverage
+        # (no direct grant) in `group_b` -- the cross-product row that would
+        # surface. `user_b` is the mirror: a direct grant plus role coverage in
+        # `group_b`, so the pair of users and pair of groups both appear in the
+        # narrowing sets and the cross product actually forms.
+        user_b = OktaUserFactory.build()
+        group_b = OktaGroupFactory.build()
+        db.session.add_all([user, user_b, okta_group, group_b, role_group])
+        await db.session.commit()
+
+        # Genuine candidate: (user, okta_group, member).
+        await _direct_grant(user=user, group=okta_group)
+        await _role_grant(user=user, group=okta_group, role_group=role_group)
+        # Role-only coverage for `user` in `group_b`: not a candidate, but pulls
+        # `group_b` into the cross product alongside `user`.
+        await _role_grant(user=user, group=group_b, role_group=role_group, ended_at=IN_30_DAYS)
+
+        # Genuine candidate: (user_b, group_b, member).
+        await _direct_grant(user=user_b, group=group_b)
+        await _role_grant(user=user_b, group=group_b, role_group=role_group)
+        # Role-only coverage for `user_b` in `okta_group`: not a candidate, but
+        # pulls `user_b` into the cross product alongside `okta_group`.
+        await _role_grant(user=user_b, group=okta_group, role_group=role_group, ended_at=IN_60_DAYS)
+        await db.session.commit()
+
+        grants = await find_redundant_grants(target=AccessTarget.BOTH)
+
+        assert len(grants) == 2
+        by_user = {g.user_id: g for g in grants}
+        assert by_user[user.id].group_id == okta_group.id
+        assert by_user[user.id].latest_role_ended_at is None
+        assert by_user[user_b.id].group_id == group_b.id
+        assert by_user[user_b.id].latest_role_ended_at is None
