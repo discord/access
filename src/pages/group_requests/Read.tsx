@@ -953,7 +953,10 @@ export default function ReadGroupRequest() {
                                     }}
                                   />
                                 </FormControl>
-                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="center">
+                                {/* Top-aligned, not centred: the Tags column grows when the
+                                    app contributes tags of its own, and centring would drop the
+                                    duration field below the field beside it. */}
+                                <Grid container columnSpacing={2} rowSpacing={0} alignItems="flex-start">
                                   {ownershipTimeLimit != null && (
                                     <Grid item xs={12}>
                                       <Typography variant="subtitle2" color="text.accent" sx={{pt: 1}}>
