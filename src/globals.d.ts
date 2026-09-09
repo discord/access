@@ -4,7 +4,8 @@ declare const REQUIRE_DESCRIPTIONS: boolean;
 
 interface ImportMetaEnv {
   readonly VITE_API_SERVER_URL: string;
-  readonly VITE_SENTRY_RELEASE: string;
+  // Undefined unless the build sets `SENTRY_RELEASE`; see the `define` in vite.config.ts.
+  readonly VITE_SENTRY_RELEASE: string | undefined;
   readonly MODE: string;
 }
 

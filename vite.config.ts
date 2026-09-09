@@ -31,6 +31,13 @@ export default defineConfig(({mode}) => {
   // Process environment variables take precedence over .env files
   const env = {...loadEnv(mode, process.cwd(), ''), ...process.env};
 
+  // One value stamps both the release the browser SDK reports and the release the uploaded
+  // source maps are filed under, so a report and its maps can never name different builds.
+  // `SENTRY_RELEASE` is the name to set: it is what the Sentry CLI and the vite plugin already
+  // read, and Vite only surfaces `VITE_`-prefixed vars to the client on its own, so the value
+  // is handed across explicitly in `define` below.
+  const sentryRelease = env.SENTRY_RELEASE || env.VITE_SENTRY_RELEASE || '';
+
   return {
     plugins: [
       react(),
@@ -65,7 +72,7 @@ export default defineConfig(({mode}) => {
                 filesToDeleteAfterUpload: './build/**/*.map',
               },
               release: {
-                name: env.SENTRY_RELEASE,
+                name: sentryRelease,
               },
             }),
           ]
@@ -75,6 +82,9 @@ export default defineConfig(({mode}) => {
       ACCESS_CONFIG: accessConfig,
       APP_NAME: JSON.stringify(env.APP_NAME || 'Access'),
       REQUIRE_DESCRIPTIONS: env.REQUIRE_DESCRIPTIONS?.toLowerCase() === 'true',
+      // `undefined` rather than `""` when unset: Sentry treats an empty-string release as a
+      // real release name and files every event under it.
+      'import.meta.env.VITE_SENTRY_RELEASE': sentryRelease ? JSON.stringify(sentryRelease) : 'undefined',
     },
     server: {
       port: 3000,

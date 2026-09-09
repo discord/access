@@ -5,8 +5,9 @@ name: Build Docker Image
 # to main (after merge) and needs registry credentials to push.
 #
 # Deliberately secret-free so it runs on forked-PR builds too:
-#   - PUSH_SENTRY_RELEASE stays "false", so the Dockerfile's `sentry` stage is
-#     never in the build graph and the SENTRY_* secret mounts are never reached.
+#   - The SENTRY_* secrets are not mounted, so the frontend build leaves those
+#     variables unset, vite.config.ts skips @sentry/vite-plugin, and no source
+#     maps are generated or uploaded.
 #   - ACCESS_CONFIG_OVERRIDE is not mounted, so the frontend builds against
 #     config/config.default.json — the same path an open-source `docker build`
 #     takes.
