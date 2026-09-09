@@ -27,6 +27,7 @@ from api.auth.dependencies import CurrentUserId
 from api.database import DbSession
 from api.models import AppGroup, OktaGroup, RoleGroup, Tag
 from api.models.tag import (
+    EffectiveConstraintEntry,
     effective_constraints,
     effective_constraints_across_groups,
     effective_constraints_for_tags,
@@ -41,7 +42,7 @@ from api.schemas import (
 router = APIRouter(prefix="/api/constraints", tags=["constraints"])
 
 
-def _details(entries: list[dict]) -> list[EffectiveConstraintDetail]:
+def _details(entries: list[EffectiveConstraintEntry]) -> list[EffectiveConstraintDetail]:
     """Validate raw `api.models.tag` entries into their response schema."""
     return [EffectiveConstraintDetail.model_validate(entry) for entry in entries]
 

@@ -504,7 +504,7 @@ def effective_constraints(group: OktaGroup) -> list[EffectiveConstraintEntry]:
             `effective_constraint` does -- `OktaGroupTagMap.active_app_tag_mapping`,
             supplied by `group_tag_map_options()` in `api/routers/_eager.py`.
     """
-    entries = []
+    entries: list[EffectiveConstraintEntry] = []
     for constraint_key, constraint in Tag.CONSTRAINTS.items():
         sources = constraint_sources(constraint_key, group, include_provenance=True)
         entry = _constraint_entry(constraint_key, constraint, sources)
@@ -513,7 +513,7 @@ def effective_constraints(group: OktaGroup) -> list[EffectiveConstraintEntry]:
     return entries
 
 
-def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[str, Any]]:
+def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[EffectiveConstraintEntry]:
     """Every constraint in force across `groups` taken together.
 
     Not a per-group answer merged by the caller: the sources from every group
@@ -539,7 +539,7 @@ def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[st
         InvalidRequestError: If a relationship this reads was not eager-loaded
             on any of the groups. Same set as `effective_constraints`.
     """
-    entries = []
+    entries: list[EffectiveConstraintEntry] = []
     for constraint_key, constraint in Tag.CONSTRAINTS.items():
         sources: list[ConstraintSource] = []
         for group in groups:
@@ -550,7 +550,7 @@ def effective_constraints_across_groups(groups: list[OktaGroup]) -> list[dict[st
     return entries
 
 
-def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
+def effective_constraints_for_tags(tags: list[Tag]) -> list[EffectiveConstraintEntry]:
     """Every constraint a set of tags would impose, with no group involved.
 
     For the case where the group does not exist yet -- approving a group
@@ -571,7 +571,7 @@ def effective_constraints_for_tags(tags: list[Tag]) -> list[dict[str, Any]]:
         Nothing. Only `Tag.constraints` and `Tag.enabled` are read, both
         columns rather than relationships, so no eager loading applies.
     """
-    entries = []
+    entries: list[EffectiveConstraintEntry] = []
     for constraint_key, constraint in Tag.CONSTRAINTS.items():
         sources = [
             ConstraintSource(
