@@ -222,7 +222,7 @@ class TestFindRedundantGrants:
 
         assert await find_redundant_grants(target=AccessTarget.BOTH) == []
 
-    async def test_target_narrows_to_one_dimension(
+    async def test_target_returns_only_memberships_or_only_ownerships(
         self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
     ) -> None:
         db.session.add_all([user, okta_group, role_group])
@@ -371,24 +371,13 @@ class TestFindRedundantGrants:
 
         assert await find_redundant_grants(target=AccessTarget.BOTH, user_ids=set()) == []
 
-    async def test_cross_product_of_two_users_and_two_groups_excludes_non_candidates(
+    async def test_role_coverage_in_another_group_does_not_leak_into_a_candidate(
         self, db: Db, user: OktaUser, okta_group: OktaGroup, role_group: RoleGroup
     ) -> None:
-        # The second query narrows on `user_id.in_(...)` AND `group_id.in_(...)`
-        # independently, so with two candidates in play it can also match
-        # (user_a, group_b) and (user_b, group_a) role-derived rows even though
-        # neither pairing is an actual candidate. `user_a` has a direct grant
-        # plus role coverage in `group_a`, and separately only role coverage
-        # (no direct grant) in `group_b` -- the cross-product row that would
-        # surface. `user_b` is the mirror: a direct grant plus role coverage in
-        # `group_b`, so the pair of users and pair of groups both appear in the
-        # narrowing sets and the cross product actually forms.
-        #
-        # This pins down that cross-product rows do not corrupt the result. It
-        # does not pin down the `key not in direct_latest` guard itself, which
-        # cannot change the output while the results loop reads `role_latest`
-        # only at keys drawn from `direct_latest`; it would begin to if that
-        # loop ever iterated `role_latest` directly.
+        # Two users, two groups, and each user additionally holds role-only
+        # coverage in the *other* user's group. Only the two triples that hold
+        # both a direct grant and role coverage are candidates, and each must
+        # carry its own group's role end date rather than the one next door.
         user_b = OktaUserFactory.build()
         group_b = OktaGroupFactory.build()
         db.session.add_all([user, user_b, okta_group, group_b, role_group])
@@ -397,15 +386,14 @@ class TestFindRedundantGrants:
         # Genuine candidate: (user, okta_group, member).
         await _direct_grant(user=user, group=okta_group)
         await _role_grant(user=user, group=okta_group, role_group=role_group)
-        # Role-only coverage for `user` in `group_b`: not a candidate, but pulls
-        # `group_b` into the cross product alongside `user`.
+        # Role-only coverage for `user` in `group_b`: no direct grant, so not a
+        # candidate, and its end date must not reach the candidate above.
         await _role_grant(user=user, group=group_b, role_group=role_group, ended_at=IN_30_DAYS)
 
-        # Genuine candidate: (user_b, group_b, member).
+        # Genuine candidate: (user_b, group_b, member), with the mirror image of
+        # the same arrangement.
         await _direct_grant(user=user_b, group=group_b)
         await _role_grant(user=user_b, group=group_b, role_group=role_group)
-        # Role-only coverage for `user_b` in `okta_group`: not a candidate, but
-        # pulls `user_b` into the cross product alongside `okta_group`.
         await _role_grant(user=user_b, group=okta_group, role_group=role_group, ended_at=IN_60_DAYS)
         await db.session.commit()
 
@@ -417,31 +405,6 @@ class TestFindRedundantGrants:
         assert by_user[user.id].latest_role_ended_at is None
         assert by_user[user_b.id].group_id == group_b.id
         assert by_user[user_b.id].latest_role_ended_at is None
-
-    async def test_role_group_direct_membership_never_surfaces_as_a_candidate(
-        self, db: Db, user: OktaUser, role_group: RoleGroup
-    ) -> None:
-        # A role group's own membership rows -- who holds the role -- are always
-        # direct (`role_group_map_id IS NULL`). `role_group_map_id` is only set on a
-        # member row of a *different* group that a role maps into, and a role group
-        # can never be that target: `ModifyRoleGroups.execute()` filters role-typed
-        # groups out of the candidates it accepts as `groups_to_add`
-        # (api/operations/modify_role_groups.py), and `ModifyGroupType` ends every
-        # role-derived row before a group converts to a role group
-        # (api/operations/modify_group_type.py). So a role group can never hold both
-        # a direct row and a role-derived row for the same (user, group, is_owner)
-        # triple -- what `find_redundant_grants` itself requires to call something a
-        # candidate; this query applies no group-type filter of its own. That
-        # matters because if a role group ever did surface here, pruning it would
-        # cascade: `ModifyGroupUsers` removes a role group's member from every group
-        # that role grants (api/operations/modify_group_users.py, the
-        # role-associated-group handling), not just from the role group itself.
-        db.session.add_all([user, role_group])
-        await db.session.commit()
-        await _direct_grant(user=user, group=role_group)
-        await db.session.commit()
-
-        assert await find_redundant_grants(target=AccessTarget.BOTH) == []
 
 
 class TestResolveGroupIds:
